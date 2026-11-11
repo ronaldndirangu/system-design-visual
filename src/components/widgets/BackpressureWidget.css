@@ -1,0 +1,34 @@
+/* The stage stretches every svg to full width; keep the badge icon at its normal size. */
+.sdv-bp__lane > .sdv-badge {
+  justify-self: start;
+}
+.sdv-bp__lane > .sdv-badge svg {
+  display: inline-block;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.sdv-bp__canvas {
+  display: block;
+  height: 300px;
+  touch-action: pan-y;
+  width: 100%;
+}
+.sdv-bp__late {
+  border: 2.5px solid var(--sdv-warn);
+  border-radius: 50%;
+  display: inline-block;
+  height: 0.85rem;
+  overflow: hidden;
+  position: relative;
+  width: 0.85rem;
+}
+.sdv-bp__late::after {
+  background: var(--sdv-warn);
+  content: "";
+  height: 2px;
+  left: -15%;
+  position: absolute;
+  top: calc(50% - 1px);
+  transform: rotate(-45deg);
+  width: 130%;
+}

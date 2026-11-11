@@ -1,0 +1,308 @@
+---
+title: Idempotency
+description: Watch lost receipts and slow payments charge sho.rt customers twice, then make every retry safe with an idempotency key claimed before the charge.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import IdempotencyWidget from '../../../components/widgets/IdempotencyWidget';
+
+export const nodes = [
+  { id: 'client', kind: 'client', x: 70, y: 150, label: 'Phone app' },
+  { id: 'server', kind: 'server', x: 290, y: 150, label: 'sho.rt server', sublabel: 'POST /purchases' },
+  { id: 'keys', kind: 'database', x: 520, y: 60, label: 'Key store', sublabel: 'key → receipt' },
+  { id: 'pay', kind: 'server', x: 520, y: 240, label: 'Payment provider', sublabel: 'charges cards' },
+];
+export const edges = [
+  { from: 'client', to: 'server' },
+  { from: 'server', to: 'keys' },
+  { from: 'server', to: 'pay' },
+];
+export const steps = [
+  {
+    title: 'The app makes one key per purchase',
+    text: 'Before the first attempt, the app creates a random key for this purchase, such as 8e03…f324, and sends it with POST /purchases in an Idempotency-Key header.',
+    nodes: ['client', 'server'],
+    flows: ['client>server'],
+  },
+  {
+    title: 'The server claims the key',
+    text: 'The server records the key as in progress in the key store, in one atomic step. If another copy of this purchase already claimed it, the server stops here.',
+    nodes: ['server', 'keys'],
+    flows: ['server>keys'],
+  },
+  {
+    title: 'The server charges the card',
+    text: 'Only the request that won the claim calls the payment provider. The provider charges $5 and answers.',
+    nodes: ['server', 'pay'],
+    flows: ['server>pay', 'pay>server'],
+  },
+  {
+    title: 'The server saves the receipt, then answers',
+    text: 'The receipt goes into the key store under the same key, and then back to the app.',
+    nodes: ['client', 'server', 'keys'],
+    flows: ['server>keys', 'server>client'],
+  },
+  {
+    title: 'The receipt gets lost',
+    text: 'The phone loses signal in a tunnel and the receipt never arrives. After 1 s of silence, the app cannot tell whether the charge happened.',
+    nodes: ['client'],
+  },
+  {
+    title: 'The retry gets the saved receipt',
+    text: 'The app sends the same purchase with the same key. The server finds the saved receipt and returns it. The card is charged once.',
+    nodes: ['client', 'server', 'keys'],
+    flows: ['client>server', 'server>keys', 'server>client'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'The sho.rt app sent a purchase and heard nothing back for 1 s. What does the app know about the charge?',
+    options: [
+      { text: 'The charge failed, so a retry is safe', why: 'Silence is not a failure report. The charge may have succeeded and only the receipt got lost.' },
+      { text: 'The charge succeeded, so the app should show a receipt', why: 'The request itself may never have reached the server, or the payment may still be running. The app has no receipt to show.' },
+      { text: 'Nothing: a lost request, a lost receipt, and a slow payment all look the same from the phone', correct: true, why: 'All three produce the same silence. Only the server knows what happened, which is why the retry has to carry something the server can recognize.' },
+      { text: 'The server is down', why: 'A healthy server behind a lossy network looks exactly like this too. One silent request says nothing about the server as a whole.' },
+    ],
+  },
+  {
+    prompt: 'Where should the idempotency key for a purchase come from?',
+    options: [
+      { text: 'The server generates it when the request arrives', why: 'Each retry reaches the server as a fresh request, so it would get a fresh key, and the server could never match it to the first attempt.' },
+      { text: 'The app generates a new one for each attempt', why: 'A new key on every attempt makes every retry look like a new purchase. That protects nothing.' },
+      { text: 'The app generates it once per purchase, before the first attempt, and reuses it on every retry', correct: true, why: 'The key names the customer\'s intent to buy, so every copy of that intent carries the same key. The app should store it with the pending purchase so even an app restart reuses it.' },
+      { text: 'The payment provider assigns it after charging', why: 'The app needs the key before the first attempt leaves the phone. A key that only exists after the charge cannot protect the first retry.' },
+    ],
+  },
+  {
+    prompt: 'The server saves each key together with its receipt, after the charge finishes. A retry arrives while the first payment is still running. What happens?',
+    options: [
+      { text: 'The server replays the saved receipt', why: 'There is no saved receipt yet. The first payment has not finished, so the key store has nothing under that key.' },
+      { text: 'The server answers 409 Conflict', why: 'Only a server that claims the key before charging knows a payment is in progress. This server has written nothing yet.' },
+      { text: 'The server starts a second payment, and the customer pays twice', correct: true, why: 'The key store looks empty for this key, so the retry looks new. In the toy model this is exactly how the saved-after lane double charges 10 customers during the slowdown.' },
+      { text: 'The payment provider merges the two charges', why: 'The provider sees two separate charge calls. It can only merge them if the server passes it an idempotency key of its own.' },
+    ],
+  },
+  {
+    prompt: 'A server first checks whether the key exists, and if not, inserts it in a second query and charges. Two copies of a purchase arrive in the same millisecond. What can happen?',
+    options: [
+      { text: 'Both checks find no key, so both copies charge the card', correct: true, why: 'Check, then insert is two steps, and both copies can pass the check before either inserts. Make the insert itself the claim: one atomic statement that reports whether it added the row, and only the copy that added it charges.' },
+      { text: 'The second copy waits for the first automatically', why: 'Nothing in check, then insert makes anyone wait. Each copy runs its own check independently.' },
+      { text: 'The second check sees the first insert, so only one charges', why: 'That holds only when the first insert lands before the second check runs. Two copies that arrive together can both finish their checks first.' },
+      { text: 'Nothing, since duplicates never arrive at the same moment', why: 'They do: a double tap, a client retry racing a proxy retry, or two app instances can send the same purchase at once.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain why a client that hears no answer cannot know whether its request took effect.
+- Use an idempotency key and a dedupe store so a repeated request returns the first result instead of repeating the work.
+- Claim the key before doing the work, so a duplicate that arrives mid request cannot run it twice.
+- Choose who creates keys, how long to keep them, and what to scope them to, and estimate what the store costs.
+
+</Objectives>
+
+## The failure: a lost receipt charges twice
+
+sho.rt sells custom short links, such as sho.rt/launch-party, for $5. The phone app sends **POST /purchases**, the
+server charges the card through a payment provider, and the server answers with a receipt. On a train, the phone loses
+signal for a moment and the receipt never arrives. The app waits 1 s, hears nothing, and sends the purchase again. To
+the server, the second request looks like a brand new purchase.
+
+<Predict
+  client:visible
+  question="On a lossy mobile network, 15% of receipts get lost. The app sends a purchase again whenever it sees no receipt within 1 s. Out of 64 purchases, how many customers pay twice?"
+  options={[
+    'None, because the retry replaces the first attempt',
+    'Roughly one for every lost receipt',
+    'All of them',
+    'Only customers whose retry also gets lost',
+  ]}
+  answer={1}
+>
+
+**Roughly one for every lost receipt.** The server has no way to tell a retry from a new purchase, so every attempt
+charges the card. In this toy model with seed 42, 64 customers send 73 attempts and the network loses 9 receipts. The
+server without keys charges 73 times: 9 customers pay twice, and $45 is taken by mistake. The server that checks a key
+charges 64 times and answers the 9 retries with the receipt it already saved.
+
+</Predict>
+
+<IdempotencyWidget
+  client:visible
+  scenarios={['lossy', 'calm']}
+  initial="lossy"
+  title="Same purchases, with and without a key"
+  instructions="Press Play and watch for 2× squares in the No key lane: each one is a customer charged twice. Then pick Healthy network: with almost nothing lost, the two lanes match."
+/>
+
+## Why the client cannot just know
+
+From the phone, three different failures look identical: the request got lost on the way in, the receipt got lost on
+the way out, or the payment is still running. Each one is silence. The app has two choices, and both are bad without
+help:
+
+- **Give up**, and leave a customer who may have paid with no receipt and no link.
+- **Retry**, and charge a customer who already paid a second time.
+
+Idempotency removes the dilemma. An operation is **idempotent** when doing it twice has the same effect as doing it
+once. "Set the link's target to example.com" is idempotent: run it ten times and the link points to the same place.
+"Charge $5" is not. HTTP marks GET, PUT, and DELETE as idempotent methods; POST makes no such promise, so a purchase
+endpoint has to earn it.
+
+The usual tool is an **idempotency key**. The app creates a unique key once per purchase and sends it on every attempt,
+for example in an `Idempotency-Key` header. The server keeps a **dedupe store** that maps each key to its result. A new
+key means do the work and save the result. A known key means return the saved result and do nothing else. Now retrying
+is always the right move.
+
+This toy model loses only receipts. A lost request never reached the server, so retrying it was always safe; lost
+receipts are the case that charges twice.
+
+<StepDiagram client:visible title="A purchase with an idempotency key" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy>
+
+A paper cheque carries a number. Mail the same cheque twice by mistake and the bank pays it once, because it recognizes
+cheque 1042 the second time. The idempotency key is the cheque number, and the dedupe store is the bank's list of
+cheques it already paid. Claiming the key first is the teller stamping the cheque "processing" before walking to the
+vault, so a second teller holding a copy waits instead of paying it out too.
+
+</Analogy>
+
+## Duplicates that arrive while the first is still running
+
+A simple version saves the key together with the receipt, after the charge. That handles a lost receipt: by the time
+the retry arrives, the receipt is in the store. A retry that arrives sooner is a different story.
+
+<Predict
+  client:visible
+  question="The server saves each key with its receipt after the charge. From 4 s to 10 s, 40% of payments take 1.2 to 2 s, longer than the 1 s the app waits. Does the saved key still stop double charges?"
+  options={[
+    'Yes, every retry carries the same key',
+    'No, a retry that arrives while the first payment is still running finds no key and charges again',
+    'No, slow payments make the keys expire',
+  ]}
+  answer={1}
+>
+
+**No.** The app gives up at 1 s and pauses 250 ms, so its retry reaches the server 1.25 s after the first payment
+started. A payment that takes longer than that is still running, the store has nothing under the key yet, and the retry
+starts a second payment. In this toy model with seed 42, the saved-after lane starts 10 payments while an earlier one
+for the same order is still running: 10 customers pay twice, and $50 is taken by mistake. The claimed-first lane
+answers 16 early retries with **409 Conflict**, charges each order exactly once, and still confirms all 64 purchases.
+
+</Predict>
+
+<IdempotencyWidget
+  client:visible
+  scenarios={['slow']}
+  title="A retry that arrives too early"
+  instructions="Press Play. The payment provider slows down from 4 s to 10 s. Watch which lane charges a purchase twice while its first payment is still running."
+/>
+
+The fix is to **claim the key before doing the work**. The first request writes the key as "in progress" in one atomic
+step. A copy that finds "in progress" gets 409 Conflict and tries again later; a copy that finds a saved receipt gets
+that receipt. In PostgreSQL, the claim can be a single insert:
+
+```sql
+INSERT INTO idempotency_keys (user_id, key, request_hash, status)
+VALUES ($1, $2, $3, 'in_progress')
+ON CONFLICT (user_id, key) DO NOTHING;
+```
+
+If the insert added a row, this request owns the key and charges the card. If it added nothing, the server reads the
+existing row and replays or answers 409. A separate "check, then insert" does not work: two copies can both pass the
+check before either one inserts. Redis offers the same atomic claim with `SET key value NX`.
+
+Claiming has costs of its own:
+
+- **Extra round trips.** Each 409 sends the client around again. In the slow scenario, the claimed-first lane sends 91
+  attempts against 78 for the saved-after lane. Some servers hold the duplicate until the first request finishes and
+  return its result instead.
+- **Stuck claims.** If the server crashes after claiming and before saving, the key says "in progress" forever. Give
+  each claim a lease that expires, and record how far the work got, so a later retry can finish or safely restart it.
+- **The next hop needs a key too.** The server's own call to the payment provider can time out just like the app's
+  call to the server. Many payment APIs, Stripe among them, accept an idempotency key, so the server passes one along
+  and its own retries stay safe. The toy model leaves this hop out.
+
+## How long to keep keys, and who owns them
+
+**The client makes the key, once per intent.** The app generates a random UUID when the customer taps Buy, stores it
+with the pending purchase, and reuses it on every retry, even after an app restart. A key made per attempt protects
+nothing.
+
+**Scope keys to a user and an operation.** Store keys per account, so one customer's key can never return another
+customer's receipt. Store a hash of the request body next to the key. If the same key arrives with a different body,
+the client has a bug, and replaying the old receipt would hide it. An IETF draft for the `Idempotency-Key` header
+suggests **422 Unprocessable Content** for that case and **409 Conflict** for a request still in progress.
+
+**Keep keys longer than any retry can arrive.** Once a key expires, a late retry looks new and runs again. Stripe, for
+example, removes keys once they are at least 24 hours old. The store's size follows from Little's law, which you met in
+[Queues and backpressure](../queues-and-backpressure/): keys stored = purchases per second × lifetime. At 100 purchases
+per second for 24 hours, that is 100 × 86,400 ≈ 8.6 million keys. With a saved receipt of about 500 bytes each, the
+store holds roughly 4.3 GB (illustrative numbers).
+
+Every purchase now pays for one extra write, and every retry for one extra read. That cost is small next to a refund,
+a chargeback fee, and an angry customer.
+
+The same idea protects sho.rt's click analytics. When a redirect server re-sends a batch of click events because an
+acknowledgment got lost, an analytics counter that runs `clicks += 1` counts those clicks twice. Give each click an
+event ID and skip IDs already seen. The lesson Delivery semantics and the outbox covers this side in depth.
+
+## Try it: break things on purpose
+
+1. In the first simulation, play **Lossy mobile network** and match each 2× square in the No key lane to a lost
+   receipt. Then play **Healthy network**: both lanes charge 64 times, so a key costs nothing you can see when little
+   gets lost.
+2. In the second simulation, every 2× square in the saved-after lane belongs to an order whose first payment started
+   during the slowdown and was still running when the retry arrived. Before 4 s, every payment finishes before any
+   retry could arrive.
+3. Compare **Attempts sent** in the slow scenario. The claimed-first lane sends 13 more attempts: that is the price of
+   answering 409 instead of charging twice.
+4. Find **Retries answered with the saved receipt** in each lane. Every replay is a retry that would have been a second
+   charge on the No key server.
+
+## Trade-offs
+
+<TradeoffTable title="Making a repeat safe">
+
+| Choice                                  | What it buys                                                   | What it costs                                                                                |
+| --------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| No key                                  | Nothing to store                                               | Every retry after a lost response repeats the work                                           |
+| Key saved after the work                | Retries after a finished request get the saved result          | A duplicate that arrives mid request runs the work twice                                     |
+| Key claimed before the work             | At most one run per key, even with overlapping duplicates      | Needs an atomic claim, a lease for crashed requests, and extra round trips for 409 answers  |
+| Long key lifetime                       | Late retries stay safe                                         | The store grows with requests per second × lifetime                                          |
+| Short key lifetime                      | A small store                                                  | A retry after expiry looks new and runs again                                                |
+| Naturally idempotent operation          | No store at all: "set to X" is safe to repeat                  | Many operations, such as charging a card, cannot be phrased that way                         |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+sho.rt's redirect servers send click events in batches to the analytics service, which runs `clicks[link] += 1` for
+each event. When an acknowledgment gets lost, the sender re-sends the whole batch. This week, some links show more
+clicks than the redirects the servers logged. About 1,000 clicks arrive per second, and every re-send happens within 10
+minutes. What is going wrong, how do you fix it, and how big is your dedupe store?
+
+<div slot="answer">
+
+- **Re-sent batches get counted again.** Adding one is not idempotent, so every re-send inflates the counts.
+- **Give each click an event ID** when the redirect server creates it, and keep that ID on every re-send.
+- **Skip events already seen.** The analytics service records each event ID and the count change in the same
+  transaction, so a crash between the two can neither double count nor lose a click. Storing one row per event ID and
+  counting rows works too: a repeat insert changes nothing.
+- **Size it with Little's law.** Keep IDs comfortably longer than the 10 minute re-send window, such as 1 hour:
+  1,000 × 3,600 = 3.6 million IDs, about 58 MB of raw 16 byte IDs before index overhead.
+
+</div>
+
+</Challenge>

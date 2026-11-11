@@ -1,0 +1,107 @@
+.sdv-budget {
+  display: grid;
+  gap: 0.6rem;
+}
+.sdv-budget__label {
+  display: grid;
+  gap: 0.05rem;
+}
+.sdv-budget__name {
+  color: var(--sl-color-white);
+  font-weight: 600;
+}
+.sdv-budget__allowance {
+  font-size: var(--sl-text-xs);
+}
+.sdv-budget__track {
+  height: 1.25rem;
+  overflow: hidden;
+}
+.sdv-budget__span {
+  background: color-mix(in oklab, var(--sl-color-text-accent) 80%, var(--sl-color-bg));
+  border: 1px solid var(--sl-color-text-accent);
+  border-radius: 0.25rem;
+  bottom: 0;
+  position: absolute;
+  top: 0;
+}
+.sdv-budget__span--late {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-bad) 0 3px,
+    color-mix(in oklab, var(--sdv-bad) 25%, var(--sl-color-bg)) 3px 7px
+  );
+  border-color: var(--sdv-bad);
+  border-style: dashed;
+}
+.sdv-budget__deadline,
+.sdv-budget__timer {
+  bottom: -2px;
+  position: absolute;
+  top: -2px;
+}
+.sdv-budget__deadline {
+  border-inline-start: 2px solid var(--sl-color-white);
+}
+.sdv-budget__timer {
+  border-inline-start: 2px dotted var(--sdv-warn);
+}
+.sdv-budget__time {
+  display: grid;
+  font-weight: 400;
+  gap: 0.05rem;
+}
+.sdv-budget__outcome {
+  font-weight: 700;
+}
+.sdv-budget__outcome[data-outcome="answered"]::before {
+  content: "✓ ";
+}
+.sdv-budget__outcome[data-outcome="timed-out"]::before {
+  content: "⏱ ";
+}
+.sdv-budget__outcome[data-outcome="cancelled"]::before {
+  content: "✕ ";
+}
+.sdv-budget__axis {
+  color: var(--sl-color-gray-2);
+  display: flex;
+  font-size: var(--sl-text-xs);
+  justify-content: space-between;
+  margin: 0;
+}
+.sdv-budget__key {
+  background: color-mix(in oklab, var(--sl-color-text-accent) 80%, var(--sl-color-bg));
+  border: 1px solid var(--sl-color-text-accent);
+  border-radius: 0.2rem;
+  display: inline-block;
+  height: 0.9rem;
+  width: 1.4rem;
+}
+.sdv-budget__key--late {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-bad) 0 3px,
+    color-mix(in oklab, var(--sdv-bad) 25%, var(--sl-color-bg)) 3px 7px
+  );
+  border-color: var(--sdv-bad);
+  border-style: dashed;
+}
+.sdv-budget__key--deadline,
+.sdv-budget__key--timer {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  width: 0.6rem;
+}
+.sdv-budget__key--deadline {
+  border-inline-start: 2px solid var(--sl-color-white);
+}
+.sdv-budget__key--timer {
+  border-inline-start: 2px dotted var(--sdv-warn);
+}
+@media (min-width: 40rem) {
+  .sdv-budget .sdv-waterfall__row {
+    grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 3fr) 6.5rem;
+  }
+}

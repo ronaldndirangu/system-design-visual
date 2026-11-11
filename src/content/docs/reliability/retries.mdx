@@ -1,0 +1,316 @@
+---
+title: Retries with backoff and jitter
+description: Watch retries turn a three second slowdown in sho.rt's click analytics into an outage that outlives it, then retry safely with exponential backoff, full jitter, and a retry budget.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import RetriesWidget from '../../../components/widgets/RetriesWidget';
+import RetryHerdWidget from '../../../components/widgets/RetryHerdWidget';
+
+export const nodes = [
+  { id: 'redirect', kind: 'client', x: 70, y: 150, label: 'Redirect servers', sublabel: '150 clicks/s' },
+  { id: 'queue', kind: 'queue', x: 280, y: 150, label: 'Ingest queue', sublabel: 'holds 150' },
+  { id: 'ingest', kind: 'server', x: 500, y: 70, label: 'Ingest service', sublabel: '8 workers' },
+  { id: 'store', kind: 'database', x: 500, y: 240, label: 'Analytics store', sublabel: 'dedupes click IDs' },
+];
+export const edges = [
+  { from: 'redirect', to: 'queue' },
+  { from: 'queue', to: 'ingest' },
+  { from: 'ingest', to: 'store' },
+];
+export const steps = [
+  {
+    title: 'A normal day',
+    text: 'Redirect servers send 150 clicks a second. Eight workers finish an attempt in 30 to 50 ms, so the service handles about 200 a second. The queue stays short, and 95% of clicks are confirmed within 70 ms.',
+    nodes: ['redirect', 'queue', 'ingest', 'store'],
+    flows: ['redirect>queue', 'queue>ingest', 'ingest>store'],
+  },
+  {
+    title: 'The service slows down',
+    text: 'At 3 s every attempt takes twice as long, so the workers handle about 100 a second. With 150 arriving, the queue grows by about 50 a second.',
+    nodes: ['queue', 'ingest'],
+    flows: ['redirect>queue', 'queue>ingest'],
+  },
+  {
+    title: 'The wait passes the timeout',
+    text: 'A full queue of 150 takes 750 ms to drain at full speed and 1.5 s while slow. Both are longer than the 500 ms the sender waits, so attempts at the back time out before a worker reaches them. The workers still finish them later, for nobody.',
+    nodes: ['queue', 'ingest'],
+    flows: ['queue>ingest'],
+  },
+  {
+    title: 'Every timeout becomes a retry',
+    text: 'Each timed out click is sent again, up to four attempts within its 2 s deadline. Fresh clicks plus retries now arrive far faster than 150 a second, and the extra attempts land in the same full queue.',
+    nodes: ['redirect', 'queue'],
+    flows: ['redirect>queue'],
+  },
+  {
+    title: 'The trigger ends, the overload stays',
+    text: 'At 6 s the service is fast again. Fresh clicks plus retries still exceed 200 a second, so the queue stays full, attempts still wait past 500 ms, and every timeout makes another retry. The slowdown is over, but the overload now feeds itself.',
+    nodes: ['redirect', 'queue', 'ingest'],
+    flows: ['redirect>queue', 'queue>ingest'],
+  },
+  {
+    title: 'Late copies reach the store',
+    text: 'A timed out attempt can still finish, and so can its retry. The analytics store sees the same click twice. The click ID works as an idempotency key, so the store records it once.',
+    nodes: ['ingest', 'store'],
+    flows: ['ingest>store'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'During the slowdown, the lane that retries with backoff and jitter confirmed far fewer clicks than the lane that never retries. Why?',
+    options: [
+      { text: 'The backoff waits were too long, so clicks ran out of time', why: 'On a normal day the same waits confirm every click. The waits are a few hundred milliseconds at most; the problem is the extra load.' },
+      { text: 'Retries added load that kept the queue longer than the timeout, so almost every attempt failed', correct: true, why: 'Each failed attempt came back as another attempt in the same full queue. With a 750 ms queue and a 500 ms timeout, nearly every attempt timed out and turned into yet another retry.' },
+      { text: 'The ingest service crashed under the extra attempts', why: 'Nothing crashed. The workers stayed busy the whole time, finishing 2,972 attempts whose senders had already stopped waiting.' },
+      { text: 'Jitter made the retries arrive at the same moment', why: 'Jitter does the opposite: it spreads retries across the backoff window. Synchronized retries come from backoff without jitter, as the herd simulation shows.' },
+    ],
+  },
+  {
+    prompt: 'Forty senders lose their connection at the same instant and retry with doubling backoff and no jitter. The service can take 3 attempts every 50 ms. What happens?',
+    options: [
+      { text: 'They retry in waves of almost all of them at once; each wave gets 3 in, and the service sits idle between waves', correct: true, why: 'Identical waits keep the senders in lockstep. In the toy model, 28 of 40 are still waiting after 6 s, while the service sat idle for 106 of the 110 steps after it came back.' },
+      { text: 'Small differences between their networks spread them out', why: 'Real networks add a few milliseconds of difference, far less than backoff windows of hundreds of milliseconds. The waves stay sharp.' },
+      { text: 'Doubling the wait each time is enough to spread the load', why: 'Doubling moves the next wave further away. Every sender still waits the same amount, so each wave still arrives all at once.' },
+      { text: 'The service queues them and serves them in order', why: 'Even a service with a queue sees a wave of 40 arrive in one instant. Any wave bigger than its free capacity gets refused, and the refused senders form the next wave.' },
+    ],
+  },
+  {
+    prompt: 'A retry budget allows retries up to 10% of fresh requests. On a normal day, 2% of attempts hit a transient error. What does the budget change?',
+    options: [
+      { text: 'It turns away 10% of fresh clicks', why: 'A budget only limits retries. Fresh clicks always go out, and each one adds to the budget.' },
+      { text: 'It allows only one failed click in ten to retry', why: 'The budget counts tokens that fresh clicks earn. 150 fresh clicks a second earn 15 retries a second, and only about 3 clicks a second fail.' },
+      { text: 'Nothing: every failed click still gets its retry', correct: true, why: '2% of failures is well inside a 10% budget. In the toy model the budget lane and the plain jitter lane produce identical results on a normal day, with no retry denied.' },
+      { text: 'It adds a wait before every retry', why: 'A budget decides whether a retry may go at all. The backoff decides when.' },
+    ],
+  },
+  {
+    prompt: 'Which call is safe to retry automatically after a timeout?',
+    options: [
+      { text: 'POST /purchases without an idempotency key', why: 'The first attempt may have charged the card before its answer got lost. A retry would charge it again.' },
+      { text: 'A click event that carries a click ID the analytics store dedupes', correct: true, why: 'If the first attempt landed after all, the store recognizes the click ID and records nothing new. Repeating it is harmless.' },
+      { text: 'Any call, as long as the retry uses backoff with jitter', why: 'Backoff controls when the retry goes, never what it does. A repeated charge is a repeated charge however late it lands.' },
+      { text: 'A call whose deadline has already passed', why: 'Nobody is waiting for that answer. Retrying it creates work finished for nobody; cancel it instead.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain how retries multiply load, and how they can keep a system down after the cause of the trouble is gone.
+- Spread retries out with exponential backoff and full jitter, and say why backoff alone still sends synchronized waves.
+- Cap the total number of retries with a retry budget that costs nothing on a normal day.
+- Retry only what is safe and still useful: pair retries with timeouts, deadlines, and idempotency keys.
+
+</Objectives>
+
+## The failure: three seconds of slowness, an outage that stays
+
+Every time someone opens a sho.rt link, the redirect server sends a click event to the analytics ingest service. The
+ingest service has 8 workers and a queue that holds 150 attempts. The redirect server gives each attempt 500 ms, as the
+[Timeouts and cancellation](../timeouts/) lesson recommends, and each click a 2 s deadline in total. Every click
+carries a click ID, so the analytics store can drop copies, as in [Idempotency](../idempotency/).
+
+Retries look like pure upside. 2% of attempts hit a transient error, and a sender that tries again turns those failures
+into confirmed clicks. Then, one afternoon, a slow disk makes every attempt take twice as long for 3 seconds.
+
+<Predict
+  client:visible
+  question="Both lanes get the exact same 3,018 clicks over 20 s. From 3 s to 6 s, every attempt takes twice as long. One lane never retries. The other retries timed out and rejected attempts with backoff and jitter, up to 4 attempts per click. Which lane confirms more clicks?"
+  options={[
+    'Backoff with jitter, by a wide margin',
+    'Backoff with jitter, by a little',
+    'About the same',
+    'No retries, by a wide margin',
+  ]}
+  answer={3}
+>
+
+**No retries, by a wide margin.** In this toy model with seed 42, the lane without retries confirms 2,485 clicks and is
+healthy again 1.8 s after the slowdown ends. The lane with backoff and jitter sends 10,002 attempts, confirms only
+574 clicks, and is still failing when the run ends, 14 s after the service went back to full speed.
+
+</Predict>
+
+<RetriesWidget
+  client:visible
+  scenarios={['storm', 'healthy']}
+  initial="storm"
+  title="Same clicks, retries or none"
+  instructions="Press Play and watch the clicks each lane confirms per second after 3 s, and again after the service is fast at 6 s. Then pick Normal day: with nothing slow, retries rescue every transient error and cost almost nothing."
+/>
+
+## Why retries made it worse
+
+Start with capacity. Eight workers at about 40 ms per attempt finish about 200 attempts a second. During the slowdown
+that drops to about 100, below the 150 clicks arriving, so the queue grows by about 50 a second. Once about 50
+attempts are queued, a new attempt waits longer than its 500 ms timeout while the service is slow. A full queue is
+worse: with 150 attempts ahead of it, a new attempt waits about 750 ms even at full speed.
+
+From then on, almost every attempt in the retry lane times out. Each timeout becomes another attempt in the same queue,
+and each of those times out too. The sender sends 3.31 attempts for every click, and attempts peak at 720 a second
+against a service that can finish about 200. When the disk recovers at 6 s, fresh clicks plus retries still exceed 200
+a second, so the queue never drains. The slowdown caused the overload, and the retries keep it going. Engineers call
+this a **metastable failure**: the system stays broken in a state the original trigger no longer explains.
+
+The wasted work is easy to see in the table. The workers finish 2,972 attempts whose senders had already given up on
+them, and the analytics store drops 1,198 late copies of clicks it already recorded. Without the click ID, those
+copies would have inflated the counts. The lane without retries suffers during the slowdown too, but its load stays at
+150 a second, so its queue drains as soon as the disk recovers.
+
+<StepDiagram client:visible title="How a slowdown becomes a retry storm" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy>
+
+A busy pizza place stops answering the phone for a few minutes. Every caller who hears ringing hangs up and redials at
+once. When the staff can answer again, the line is jammed with redials from people who already called, and new
+customers cannot get through either. The kitchen did not get slower; the redialing kept the phone busy.
+
+</Analogy>
+
+## Backoff: wait longer after each failure
+
+The first fix is to slow down. **Exponential backoff** doubles the wait after each failed attempt, so a struggling
+service gets more breathing room the longer it struggles. The lane above already uses it: after the first failure the
+sender waits up to 200 ms, after the second up to 400 ms, after the third up to 800 ms, and it never retries past the
+click's 2 s deadline. It also skips a retry the deadline cannot fit: a retry that lands after the caller stopped
+waiting is pure waste.
+
+Backoff matters most for short outages. Pick **Restart at 3 s** below: the ingest service restarts and refuses every
+connection for half a second. One lane retries at once, the other backs off with jitter.
+
+<RetriesWidget
+  client:visible
+  scenarios={['blip']}
+  title="A half second restart"
+  instructions="Press Play. Both lanes lose the same half second. Compare the attempts per second while the service is down, and the clicks each lane gives up."
+/>
+
+Retrying at once burns through all four attempts in about 40 ms, long before the service is back, and 76 clicks give up
+for good. Its attempts peak at 403 a second. Backing off spreads the same attempts across the restart: the jitter
+lane peaks at 333 a second, gets 180 attempts refused against 317, and loses only 3 clicks. Both
+lanes are healthy 0.1 s after the service comes back, because nothing piled up in a queue.
+
+## Jitter: do not retry in lockstep
+
+Backoff alone has a trap. When many senders fail at the same moment, as they do when a service restarts, they all
+compute the same wait and come back at the same moment.
+
+<Predict
+  client:visible
+  question="Forty redirect servers lose their connection when the ingest service restarts. Each one retries with doubling backoff (100 ms, 200 ms, 400 ms, up to 1.6 s) and no jitter. The service is back after 500 ms and takes 3 attempts every 50 ms. After 6 s, how many senders are still waiting?"
+  options={['None', 'A handful', 'Most of them', 'All forty']}
+  answer={2}
+>
+
+**Most of them.** All forty retry in the same 50 ms step. Once the service is back it takes 3, and the other 37 back off
+by exactly the same amount and return together. In this toy model, 28 senders are still waiting after 222 attempts,
+and the service sits idle in 106 of the 110 steps after it comes back. With full jitter, all 40 connect by 2.0 s using
+163 attempts.
+
+</Predict>
+
+<RetryHerdWidget client:visible />
+
+Synchronized retries waste capacity twice: each wave overwhelms the service, then the service sits idle until the next
+wave. The fix is **full jitter**: pick the wait at random anywhere between zero and the backoff window. A sender that
+would have waited exactly 400 ms waits anywhere up to 400 ms instead. The senders spread across the whole window, so
+the service sees a steady trickle it can handle. Real networks add a few milliseconds of natural variation, far too
+little to break up waves hundreds of milliseconds apart.
+
+## Retry budgets: cap the total
+
+Backoff and jitter decide **when** retries go. Neither limits **how many**. Under sustained overload, every attempt
+fails, every failure earns another attempt, and the storm above happens anyway: that lane already used backoff with
+full jitter.
+
+A **retry budget** caps retries as a fraction of fresh traffic. Each fresh click adds 0.1 of a token, up to 10 tokens,
+and each retry spends one. With 150 clicks a second, the sender can sustain about 15 retries a second, plus one burst of
+up to 10 from tokens it banked earlier, however bad things get. When the budget runs dry, failed clicks give up at once
+and add no load.
+
+<RetriesWidget
+  client:visible
+  scenarios={['budget']}
+  title="Backoff with jitter, without and with a budget"
+  instructions="Press Play and watch the clicks each lane confirms per second after 3 s. The budget runs dry just over a second into the slowdown; compare attempts sent and the time each lane takes to recover."
+/>
+
+With the budget, the sender retries only 103 times, sends 3,121 attempts, confirms 2,489 clicks, and recovers 2.2 s
+after the slowdown, while the budget denies 520 retries that would have fed the storm. On a normal day the budget
+changes nothing: only about 3 clicks a second fail, well inside 15 retries a second, so in the toy model a lane with a
+budget matches the plain jitter lane click for click. A budget lets retries do their job on a normal day and switches
+them off when they would make things worse.
+
+Two more rules keep retries honest:
+
+- **Retry at one layer.** If the browser, the redirect server, and the ingest client each make up to 4 attempts, one
+  click can become 4 × 4 × 4 = 64 attempts at the bottom. Pick the layer that owns the deadline and the idempotency
+  key, and let the others fail fast.
+- **Retry only what can succeed.** Timeouts, refused connections, and 503s can succeed later. A 400 Bad Request will
+  fail the same way every time. When a server answers 503 with **Retry-After**, as in
+  [Queues and backpressure](../queues-and-backpressure/), wait at least that long.
+
+The lesson Rate limiting covers how the server side enforces a fair share, and the lesson [Circuit breakers](../circuit-breakers/) shows how a
+sender stops calling a failing service entirely and probes it gently until it recovers.
+
+## Try it: break things on purpose
+
+1. In the first simulation, play **Slowdown at 3 s** and find the moment the retry lane's confirmed clicks collapse.
+   Check that they stay low after 6 s, when the service is fast again. Then read **Attempts finished for nobody**: that
+   is work the service did for senders who had already left.
+2. Play **Normal day**. The retry lane confirms 3,015 clicks to 2,963, and its attempts per click stay at 1.02. Retries
+   are cheap and useful when the service is healthy.
+3. In the restart simulation, compare **Clicks given up**. Retrying at once spends all four attempts inside the half
+   second outage.
+4. In the herd simulation, watch the no jitter lane: count the waves and the idle steps between them.
+5. In the budget simulation, compare **Time to recover once the service is healthy**. The budget lane recovers; the
+   lane without one is still failing when the run ends.
+
+## Trade-offs
+
+<TradeoffTable title="Retrying a failed call">
+
+| Choice                          | What it buys                                                        | What it costs                                                                                |
+| ------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| No retries                      | Never adds load                                                     | Every transient error loses the request: 52 clicks on a normal day in the toy model          |
+| Retry at once                   | The fastest answer when one attempt fails at random                 | Spends every attempt inside a short outage and adds load exactly when the service struggles  |
+| Exponential backoff, no jitter  | Fewer attempts the longer an outage lasts                           | Senders that failed together retry together, in waves                                        |
+| Backoff with full jitter        | Spreads retries across the window, so the service sees a trickle    | Some retries wait longer; total retries still grow without limit under sustained overload    |
+| Retry budget                    | Caps retries at a share of fresh traffic, so retries cannot feed an overload | During a long incident, failed requests stop retrying; needs a counter per sender   |
+| Retries at every layer          | Each layer hides its own transient errors                           | Attempts multiply: 4 attempts at each of 3 layers is 64 at the bottom                        |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+sho.rt's mobile app creates short links through an API gateway, which calls the link service, which writes to a
+database. Each of the three makes up to 3 attempts per call, with no wait between them. Last week the database failed over to a replica,
+which normally takes 10 s. During the failover the database saw about 27 times its usual traffic, and the failover took
+4 minutes. Explain what happened, and design a retry policy that keeps the next failover to about 10 s.
+
+<div slot="answer">
+
+- **Retries multiplied across layers.** Three layers that each make up to 3 attempts turn one request into 3 × 3 × 3 =
+  27 attempts at the database, all sent at once, exactly when it could handle the least.
+- **Retry at one layer only.** Let the app retry, since it owns the deadline and can hold the idempotency key. The
+  gateway and the link service fail fast and pass the error back.
+- **Back off with full jitter** from about 200 ms, double the window after each failure, cap it at a few seconds, and
+  never retry past the request's deadline.
+- **Add a retry budget** of about 10% of fresh requests per app instance, so a long failover shrinks retries to a
+  trickle instead of a storm. Honor Retry-After when the gateway sends one.
+- **Make link creation idempotent.** The app sends one idempotency key per new link, so a retry after a lost response
+  returns the existing link instead of creating a second one.
+
+</div>
+
+</Challenge>

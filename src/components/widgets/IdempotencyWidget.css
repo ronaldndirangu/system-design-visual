@@ -1,0 +1,77 @@
+/* The stage stretches every svg to full width; keep the badge icon at its normal size. */
+.sdv-idem__lane > .sdv-badge {
+  justify-self: start;
+}
+.sdv-idem__lane > .sdv-badge svg {
+  display: inline-block;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.sdv-idem__grid {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+}
+.sdv-idem__grid-name {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+  margin: 0;
+}
+.sdv-idem__cells {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+.sdv-idem__cell {
+  align-items: center;
+  aspect-ratio: 1.4;
+  border: 1px dotted color-mix(in oklab, var(--sl-color-gray-3) 60%, var(--sl-color-bg));
+  border-radius: 0.2rem;
+  color: var(--sl-color-white);
+  display: inline-flex;
+  font-size: 0.62rem;
+  font-weight: 700;
+  justify-content: center;
+  line-height: 1;
+  min-height: 0.9rem;
+}
+.sdv-qtracks__legend .sdv-idem__cell {
+  height: 1rem;
+  width: 1.5rem;
+}
+.sdv-idem__cell[data-state="open"] {
+  border: 1px dashed var(--sdv-queue);
+}
+.sdv-idem__cell[data-state="paid"] {
+  background: color-mix(in oklab, var(--sdv-ok) 30%, var(--sl-color-bg));
+  border: 1px solid var(--sdv-ok);
+}
+.sdv-idem__cell[data-state="paid"]::after {
+  content: "✓";
+}
+.sdv-idem__cell[data-state="double"] {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklab, var(--sdv-bad) 40%, var(--sl-color-bg)) 0 3px,
+    color-mix(in oklab, var(--sdv-bad) 15%, var(--sl-color-bg)) 3px 6px
+  );
+  border: 2px solid var(--sdv-bad);
+}
+.sdv-idem__cell[data-state="double"]::after {
+  content: attr(data-charges) "×";
+}
+.sdv-idem__cell[data-state="unsure"] {
+  background: color-mix(in oklab, var(--sdv-warn) 25%, var(--sl-color-bg));
+  border: 1px solid var(--sdv-warn);
+}
+.sdv-idem__cell[data-state="unsure"]::after {
+  content: "?";
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sdv-idem__cell {
+    transition:
+      background-color 0.2s ease,
+      border-color 0.2s ease;
+  }
+}
