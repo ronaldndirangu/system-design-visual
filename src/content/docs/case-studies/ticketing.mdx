@@ -59,7 +59,7 @@ export const steps = [
   },
   {
     title: 'Pay before the hold expires',
-    text: 'The winner has a few minutes to pay. If they leave, the hold expires and the seat goes back on sale. A unique constraint on (event, seat) in the orders table guards the very last step.',
+    text: 'The winner has a few minutes to pay. Pressing Pay claims the hold with one more conditional write and a fresh deadline. If the buyer leaves, or the claim outlasts its deadline, the seat goes back on sale and a late payment is voided. A unique constraint on (event, seat) in the orders table guards the very last step.',
     nodes: ['app', 'db'],
     flows: ['app>db', 'db>app'],
   },
@@ -164,7 +164,7 @@ export const quiz = [
 
 - Explain why reading a seat as free and then writing a buyer into it sells the same seat twice under a rush.
 - Use a conditional write, a row lock, or a unique constraint so the database rejects the second claim.
-- Size holds that expire, and see why holds that never expire strand seats.
+- Size holds that expire, claim them at checkout, and see why holds that never expire strand seats.
 - Place a waiting room in front of the sale, and say what it fixes and what it leaves to the database.
 
 </Objectives>
@@ -231,10 +231,12 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
 3. **API.** `GET /events/{id}/seats` returns the seat map and can be a second stale. `POST /holds` takes an event and a
    seat and returns a hold with its expiry time, or `409 Conflict` when someone else got there first.
    `POST /orders` takes a hold and a payment token, with an `Idempotency-Key` header so a retried checkout cannot buy
-   twice (the [Idempotency](../../reliability/idempotency/) lesson covers keys in depth).
+   twice (the [Idempotency](../../reliability/idempotency/) lesson covers keys in depth). It claims the hold before it
+   charges the card, and answers `409 Conflict` when the hold has already lapsed.
 
-4. **Data model.** A `seats` table keyed by (event, seat) holds the status, the holder, and the hold expiry time. An
-   `orders` table records each paid ticket, with a unique constraint on (event, seat) as a final guard.
+4. **Data model.** A `seats` table keyed by (event, seat) holds the status (`available`, `held`, `paying` or `sold`),
+   the holder, and the deadline for the current hold. An `orders` table records each paid ticket, with a unique
+   constraint on (event, seat) as a final guard.
 
 5. **High-level design.** Fans pass through a waiting room, then a load balancer, to stateless app servers. The servers
    read the seat map from a cache and send every claim to the seat database.
@@ -242,10 +244,11 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
 6. **Deep dive: the claim.** This is where the design breaks first, and the simulations below live here. Three tools
    make the database reject a second claim. A conditional write:
    `UPDATE seats SET status = 'held', holder = ?, expires = now() + 8 min WHERE event = ? AND seat = ? AND (status =
-   'available' OR (status = 'held' AND expires < now()))`, then check how many rows changed. A sold seat matches neither
-   branch, so no claim can take it back. A row lock: `SELECT ... FOR UPDATE` inside a transaction, then the write. A unique
-   constraint that refuses a second order row for the same seat. The [Transactions and constraints](../../foundations/transactions/) lesson covers all
-   three.
+   'available' OR (status IN ('held', 'paying') AND expires < now())))`, then check how many rows changed. A sold seat
+   matches neither branch, so no claim can take it back. A row lock: `SELECT ... FOR UPDATE` inside a transaction, then
+   the write. A unique constraint that refuses a second order row for the same seat. The [Transactions and
+   constraints](../../foundations/transactions/) lesson covers all three, and [Holds that expire](#holds-that-expire)
+   adds the checkout steps.
 
 7. **Trade-offs.** Hold length, a waiting room or open doors, and pick your seat or best available. The table at the
    end of this page lays them out.
@@ -278,8 +281,23 @@ A buyer who claims a seat gets a **hold**: the seat is theirs while they type a 
 They close the tab, their card fails, or they change their mind. If a hold lasts until the buyer pays, an abandoned seat
 stays locked for the rest of the sale while people in line are told it is sold out.
 
-Both lanes below use conditional writes, so neither one sells a seat twice. They face the same 400 buyers, and the same
-30% of them walk away at checkout. Only the hold rule differs.
+So every hold gets a deadline, and the deadline binds every buyer, including one whose payment is still at the bank. A
+seat moves through a small state machine, and each move is one conditional write on its row:
+
+1. **Held.** The claim from step 6 sets `status = 'held'`, the holder, and a deadline.
+2. **Paying.** When the buyer presses Pay, the server claims the hold before it charges anything:
+   `UPDATE seats SET status = 'paying', expires = now() + 10 min WHERE event = ? AND seat = ? AND holder = ? AND
+   status = 'held' AND expires > now()`. One row changed means this checkout owns the seat, with a fresh deadline that
+   covers a slow bank. Zero rows means the hold already lapsed, so the buyer picks again before any money moves.
+3. **Sold.** The bank authorizes the card. One transaction then inserts the order row and marks the seat sold, only if
+   the claim still stands (`WHERE holder = ? AND status = 'paying' AND expires > now()`). The server captures the money
+   after that commit.
+4. **Expired.** A hold or claim past its deadline goes back on sale, and the next claim from step 6 can take it. When
+   the bank approves after that, the conditional write changes zero rows, and the server voids the authorization (or
+   refunds a captured charge). The buyer gets an apology instead of a ticket for someone else's seat.
+
+Both lanes below use conditional writes, so neither one sells a seat twice. They face the same 400 buyers, who press Pay
+or walk away at the same moments. Only the hold rules differ.
 
 <TicketingWidget client:visible duel="holds" />
 
@@ -289,10 +307,16 @@ What to look for:
   buyers who already left, while **300 buyers** hear "sold out". Expiring holds after 8 s releases **40 holds**, sells
   **97 tickets**, and turns away 260. The 3 seats still stuck at the end belong to buyers who left less than 8 s before
   the run ended.
-- **Everyone pays.** Both lanes sell all 100 seats and the curves match. Expiry only matters when buyers leave.
+- **Everyone pays.** Both lanes sell all 100 seats and the curves match. Every buyer presses Pay within 6 s and the bank
+  approves at once, so no 8 s hold runs out.
+- **Slow bank approvals.** Now the bank takes 1 to 5 s per payment. When holds simply expire after 8 s, **61 holds**
+  lapse while their payments are still at the bank. Those buyers lose their seats, **59 approvals** arrive too late and
+  are voided, and only **90 tickets** sell by the end of the run. When Pay claims the hold and extends it to 10 s, every
+  approval lands inside its deadline: **100 tickets** and no voids.
 
-Real holds last 5 to 10 minutes. Make them long enough for a slow payment, and make the payment step check the hold
-again (`WHERE holder = me AND expires > now()`), because a hold can expire while the card is still processing.
+Real holds last 5 to 10 minutes, and the claim's deadline should cover the payment provider's slowest normal answer. The
+claim still needs a deadline: a checkout that hangs forever strands its seat exactly like a hold that never expires.
+[Payments](../payments/) covers what to do when the bank never answers at all.
 
 ## The waiting room
 
@@ -319,8 +343,8 @@ stays.
 | The guard         | A conditional write on the seat row            | An idempotency key and a ledger that must balance     |
 | Undoing a mistake | A hold expires and the seat goes back on sale  | Moved money needs a refund, a new entry in the ledger |
 
-A seat hold can lapse harmlessly because no money has moved yet. Once a payment succeeds, nothing expires: the only way
-back is a second transaction that moves the money home.
+A seat hold can lapse cheaply because no money has been captured yet: at worst the server voids an authorization. Once a
+payment is captured, nothing expires: the only way back is a second transaction that moves the money home.
 
 ## Trade-offs
 
@@ -333,6 +357,7 @@ back is a second transaction that moves the money home.
 | Unique constraint on (event, seat) | The database enforces it even if the code forgets  | Fails late, after the buyer thinks they won                   |
 | Short holds                        | Abandoned seats return quickly                     | Slow payers lose their seat mid-checkout                      |
 | Long holds                         | Payers have time                                   | Abandoned seats sit idle while buyers hear "sold out"         |
+| Claim the hold when Pay is pressed | A checkout keeps its seat while the bank works     | One more conditional write, and a void for any late approval  |
 | Waiting room                       | Flat load, arrival order, fewer collisions         | Everyone waits, and it is one more system to run              |
 | Assign the best available seat     | Spreads claims across seats, so fewer collisions   | Buyers lose the choice of exactly where to sit                |
 

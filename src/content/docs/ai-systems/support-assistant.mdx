@@ -16,7 +16,7 @@ export const nodes = [
   { id: 'customer', kind: 'client', x: 60, y: 150, label: 'Customer', sublabel: 'signed in to a store' },
   { id: 'gateway', kind: 'loadBalancer', x: 200, y: 150, label: 'Gateway', sublabel: 'identity, budget' },
   { id: 'cache', kind: 'cache', x: 340, y: 60, label: 'Answer cache', sublabel: 'keyed per store' },
-  { id: 'index', kind: 'vectorIndex', x: 340, y: 240, label: 'Search', sublabel: 'store and role filter' },
+  { id: 'index', kind: 'vectorIndex', x: 340, y: 240, label: 'Search', sublabel: 'filter, then rank' },
   { id: 'model', kind: 'model', x: 480, y: 150, label: 'Model', sublabel: 'reply or tool call' },
   { id: 'checks', kind: 'server', x: 620, y: 150, label: 'Checks', sublabel: 'schema, cites, support' },
   { id: 'staff', kind: 'client', x: 480, y: 60, label: 'Staff', sublabel: 'reviews, approves' },
@@ -46,7 +46,7 @@ export const steps = [
   },
   {
     title: 'Search inside the store, then gate on evidence',
-    text: 'On a miss, search runs with a filter on store and visibility, so another store\u2019s documents and staff only rules never come back. If the best hit scores under 0.6, the assistant hands off to staff before calling the model.',
+    text: 'On a miss, search applies the store and visibility filter inside the query, before ranking. Another store\u2019s documents and staff only rules never enter the ranking, so every one of the top 2 slots holds a document this asker may read. If the best hit scores under 0.6, the assistant hands off to staff before calling the model.',
     nodes: ['gateway', 'index'],
     flows: ['gateway>index'],
   },
@@ -241,6 +241,8 @@ What to look for:
 
 - **Where each request stops.** A request lights up the stages it visits. In the guarded lane, weak or unsafe requests
   stop at Retrieve or Checks and go to Staff. In the prototype, every request reaches the customer.
+- **The two search lists.** The prototype ranks every store's documents, so a blocked document can take the top slot.
+  The guarded search filters first and then ranks, so both of its slots hold documents the asker may read.
 - **The harm badges.** Each harm gets a badge with an icon and a label: a leak, an answer without evidence, a wrong
   refund, or a refusal because another store spent the budget. The guarded lane has none, in every scenario.
 - **The cost of the guards.** The guarded lane answers fewer requests on its own and sends more to staff. Those
@@ -295,7 +297,8 @@ documents apart in one index.
 ### 4. Data model
 
 - **Documents and chunks** carry `store_id` and `visibility` (`public` or `staff`). Search filters on both inside the
-  query, before ranking, as in [retrieval](../retrieval/).
+  query, before ranking, as in [retrieval](../retrieval/). Filtering after ranking would drop blocked hits from a top k
+  that is already cut, and leave fewer results than asked for.
 - **Answer cache:** key `store | role | prompt version | question`. Values expire, and a document change clears that
   store's entries.
 - **Budget ledger:** units spent per store per day, checked before each model call, as in the
@@ -315,7 +318,7 @@ a serving layer like the one in [serving models](../llm-serving/), where batchin
 <Analogy>
 
 A bank branch. The front desk checks your ID before anything else (the gateway). A teller can only open your branch's
-files (filtered search), quotes the rule they are reading from (citations), and calls a manager when the rulebook has no
+files (search scoped to your branch), quotes the rule they are reading from (citations), and calls a manager when the rulebook has no
 answer (handoff). Paying out money needs a supervisor's signature and a receipt number, so the same slip cannot be
 cashed twice (approval and an idempotency key). Each branch has its own daily cash limit, so a rush at one branch cannot
 empty the vault for the others (per store budget).
@@ -328,8 +331,10 @@ Each scenario in the widget is one deep dive. Run them in order.
 
 **Tenant leak probe.** The prototype leaks four times: two shared cache hits, one cross-store search hit, and one staff
 only document. The guarded design answers 4 and hands off 2. Its two handoffs (the Pine bike question and the Harbor
-customer asking about refund flags) find nothing above the evidence gate once search is filtered, so they cost no model
-units. Notice the cache: the guarded lane gets 1 hit instead of 2, because Pine can no longer reuse Harbor's answer.
+customer asking about refund flags) find nothing above the evidence gate once search ranks only documents the asker may
+read: Pine's best match for the bike question scores 0.31, and the best public Harbor document for refund flags scores
+0.48. Both stop before the model, so they cost no model units. Notice the cache: the guarded lane gets 1 hit instead of
+2, because Pine can no longer reuse Harbor's answer.
 
 **Weak evidence.** The prototype answers all 6, and 4 of them state things no document supports: a promise about
 signed first editions, a price match, a student discount, and two gift cards on one order. The guarded design hands off
@@ -376,7 +381,7 @@ anyone.
 | Choice | What it buys | What it costs |
 | --- | --- | --- |
 | Cache key with store, role, and prompt version | No cached answer crosses stores or roles, and a prompt change cannot serve stale answers | Fewer hits: 1 instead of 2 in the leak probe |
-| Store and visibility filter inside search | Other stores' chunks and staff only rules never reach the model | Every chunk needs the right tags, and a missing tag hides a document |
+| Store and visibility filter inside search, before ranking | Other stores' chunks and staff only rules never reach the model, and every top k slot holds a readable document | Every chunk needs the right tags, and a missing tag hides a document |
 | Evidence gate (hand off below 0.6) | Weak questions reach a person instead of a guess | Fewer automatic answers, and the threshold needs tuning on your eval set |
 | Citation check after the model | Catches answers that cite something search never returned | The model call is already paid for, and a strict check rejects some good answers |
 | Support check on the cited passage | Catches a real citation that never states the claim | Another check per answer, and real checkers miss some unsupported claims and reject some good answers |

@@ -296,7 +296,7 @@ a little random jitter so many clients do not return in the same instant, and st
 The patient one. During the burst, 16 new requests arrive every 100 ms and the bucket refills only 6 tokens in that
 time. Instant retries join that crowd, so most of them meet another 429 and the client burns its 3 retries within half a
 second. Waiting about a second lets the burst pass and the bucket refill. With seed 42, retrying at once gives up on 181
-of 1,814 requests and triggers 1,126 responses with 429. Waiting for Retry-After gives up on 32 and triggers 721.
+of 1,814 requests and triggers 927 responses with 429. Waiting for Retry-After gives up on 57 and triggers 633.
 
 </Predict>
 

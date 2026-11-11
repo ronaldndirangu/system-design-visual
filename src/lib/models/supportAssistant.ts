@@ -32,7 +32,7 @@ export interface SupportDoc {
 
 export interface SearchHit {
   doc: string;
-  /** Relevance from a search over every store’s documents. Illustrative. */
+  /** Relevance of this document to the question. Illustrative. */
   score: number;
 }
 
@@ -52,7 +52,7 @@ export interface SupportRequest {
   text: string;
   /** Policy questions are cacheable. Questions about one customer’s order are not. */
   cacheable: boolean;
-  /** Top hits over every store’s documents, best first. */
+  /** Best matching documents from every store, best first. Every other document scores BACKGROUND_SCORE. */
   hits: SearchHit[];
   /** The fixture answer states this, and no retrieved document supports it. */
   invents?: string;
@@ -103,6 +103,10 @@ export interface PipelineSummary {
 }
 
 export const EVIDENCE_THRESHOLD = 0.6;
+/** How many documents one search returns. */
+export const TOP_K = 2;
+/** Relevance of any document a request does not list in its hits. Illustrative, and below every listed score. */
+export const BACKGROUND_SCORE = 0.1;
 export const MODEL_CALL_UNITS = 3;
 export const PROMPT_VERSION = 'v3';
 
@@ -471,6 +475,20 @@ function blockReason(request: SupportRequest, doc: SupportDoc): string | undefin
   return undefined;
 }
 
+/**
+ * The top TOP_K documents one search returns, best first. The guarded search applies the store and role
+ * filter inside the query, before ranking, so every slot holds a document the asker may read. The prototype
+ * ranks every store.
+ */
+export function searchHits(request: SupportRequest, guarded: boolean): SearchHit[] {
+  const listed = new Map(request.hits.map((hit) => [hit.doc, hit.score]));
+  return supportDocs
+    .filter((doc) => !guarded || mayRead(request, doc))
+    .map((doc) => ({ doc: doc.id, score: listed.get(doc.id) ?? BACKGROUND_SCORE }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, TOP_K);
+}
+
 export class SupportPipeline {
   readonly id: PipelineId;
   readonly results: RequestResult[] = [];
@@ -559,28 +577,22 @@ export class SupportPipeline {
     }
 
     path.push('retrieve');
-    const allowed = this.guarded
-      ? request.hits.filter((hit) => {
-          const doc = getDoc(hit.doc);
-          return doc ? mayRead(request, doc) : false;
-        })
-      : request.hits;
+    const allowed = searchHits(request, this.guarded);
     const best = allowed[0];
     if (this.guarded && (!best || best.score < EVIDENCE_THRESHOLD)) {
       path.push('staff');
-      const top = request.hits[0];
-      const topDoc = top ? getDoc(top.doc) : undefined;
-      const removed = topDoc ? blockReason(request, topDoc) : undefined;
-      const filtered = removed && topDoc ? `Filters removed ${topDoc.title}, ${removed}. ` : '';
+      const scope = `Search ranked only ${tenants[request.tenant].short} documents a ${request.role} may read`;
+      const top = getDoc(request.hits[0]?.doc ?? '');
+      const outside = top && blockReason(request, top) ? `, so ${top.title} never entered the ranking` : '';
       const evidence = best
-        ? `Best evidence this ${request.role} may read scored ${best.score.toFixed(2)}`
-        : 'Nothing left';
+        ? `Best evidence scored ${best.score.toFixed(2)}, under the ${EVIDENCE_THRESHOLD} gate`
+        : 'Nothing matched';
       return done({
         outcome: 'handoff',
         cost: 0,
         cites: [],
         fromCache: false,
-        note: `${filtered}${evidence}, under the ${EVIDENCE_THRESHOLD} gate. Abstained and handed the question to staff.`,
+        note: `${scope}${outside}. ${evidence}. Abstained and handed the question to staff.`,
       });
     }
     if (!best) throw new Error(`Request ${request.id} has no search hits`);
@@ -615,7 +627,7 @@ export class SupportPipeline {
       }
     }
 
-    if (request.refund) return this.refund(request, request.refund, path, done);
+    if (request.refund) return this.refund(request, request.refund, cite, path, done);
 
     const doc = getDoc(best.doc);
     const reason = doc ? blockReason(request, doc) : undefined;
@@ -638,6 +650,7 @@ export class SupportPipeline {
   private refund(
     request: SupportRequest,
     ask: RefundAsk,
+    cite: string,
     path: StageId[],
     done: (fields: Omit<RequestResult, 'request' | 'path' | 'status'>) => RequestResult,
   ): RequestResult {
@@ -661,7 +674,7 @@ export class SupportPipeline {
             : `The tool ran the ${amount} refund for order ${ask.order} at once, though ${ask.reason}.`,
       });
     }
-    const cites = [request.hits[0]?.doc ?? ''];
+    const cites = [cite];
     if (duplicate) {
       path.push('tool');
       return done({

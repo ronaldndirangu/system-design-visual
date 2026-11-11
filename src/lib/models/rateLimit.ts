@@ -96,6 +96,8 @@ export interface ClientTotals {
 
 interface LimiterState {
   tokens: number;
+  /** Model time in seconds that `tokens` is current to. */
+  refilledAt: number;
   windowIndex: number;
   count: number;
   slots: number[];
@@ -166,9 +168,12 @@ function windowTicks(limiter: LimiterConfig, tickSeconds: number): number {
   return 1;
 }
 
-function freshState(limiter: LimiterConfig, tickSeconds: number): LimiterState {
+type TokenBucket = Extract<LimiterConfig, { kind: 'tokenBucket' }>;
+
+function freshState(limiter: LimiterConfig, tickSeconds: number, now = 0): LimiterState {
   return {
     tokens: limiter.kind === 'tokenBucket' ? limiter.burst : 0,
+    refilledAt: now,
     windowIndex: 0,
     count: 0,
     slots: new Array<number>(windowTicks(limiter, tickSeconds)).fill(0),
@@ -176,6 +181,18 @@ function freshState(limiter: LimiterConfig, tickSeconds: number): LimiterState {
 }
 
 const mod = (value: number, n: number) => ((value % n) + n) % n;
+
+/**
+ * Adds the tokens earned since the last refill. Refilling at each request's
+ * own time keeps the admitted rate equal to the refill rate at any tick length.
+ */
+function refillTokens(state: LimiterState, limiter: TokenBucket, now: number) {
+  if (now <= state.refilledAt) return;
+  const earned = state.tokens + limiter.rate * (now - state.refilledAt);
+  // Rounding stops float drift from leaving 0.999999 tokens where 1 is due.
+  state.tokens = Math.min(limiter.burst, Math.round(earned * 1e9) / 1e9);
+  state.refilledAt = now;
+}
 
 export class RateLimitModel implements ModelAdapter<RateLimitCommand, RateLimitTick, RateLimitCheckpoint> {
   readonly config: RateLimitConfig;
@@ -245,10 +262,12 @@ export class RateLimitModel implements ModelAdapter<RateLimitCommand, RateLimitT
     }
     const previous = this.limiter;
     const next = command.limiter;
+    const now = this.tickCount * this.config.tickSeconds;
     this.limiter = next;
     this.limiterStates = this.limiterStates.map((state) => {
-      const fresh = freshState(next, this.config.tickSeconds);
+      const fresh = freshState(next, this.config.tickSeconds, now);
       if (previous.kind === 'tokenBucket' && next.kind === 'tokenBucket') {
+        refillTokens(state, previous, now);
         fresh.tokens = Math.min(state.tokens, next.burst);
       }
       return fresh;
@@ -289,7 +308,7 @@ export class RateLimitModel implements ModelAdapter<RateLimitCommand, RateLimitT
       if (!counts || !totals) continue;
       counts.attempts += 1;
       totals.attempts += 1;
-      const waitTicks = this.decide(entry.client, tick);
+      const waitTicks = this.decide(entry.client, tick, entry.key);
       if (waitTicks === 0) {
         counts.admitted += 1;
         totals.admitted += 1;
@@ -337,6 +356,12 @@ export class RateLimitModel implements ModelAdapter<RateLimitCommand, RateLimitT
     this.peak = Math.max(this.peak, load);
 
     this.tickCount += 1;
+    // Bring every bucket up to the end of the tick, so the reported allowance is current.
+    const limiter = this.limiter;
+    if (limiter.kind === 'tokenBucket') {
+      const end = this.tickCount * tickSeconds;
+      for (const state of this.limiterStates) refillTokens(state, limiter, end);
+    }
     const sum = (key: keyof ClientTick) => perClient.reduce((total, counts) => total + counts[key], 0);
     return {
       tick,
@@ -391,12 +416,11 @@ export class RateLimitModel implements ModelAdapter<RateLimitCommand, RateLimitT
     return offsets.includes(mod(tick, periodTicks)) ? burst : 0;
   }
 
+  /** Rolls the windows forward. Token buckets refill lazily, in `decide`. */
   private refill(tick: number) {
     const limiter = this.limiter;
     for (const state of this.limiterStates) {
-      if (limiter.kind === 'tokenBucket') {
-        state.tokens = Math.min(limiter.burst, state.tokens + limiter.rate * this.config.tickSeconds);
-      } else if (limiter.kind === 'fixedWindow') {
+      if (limiter.kind === 'fixedWindow') {
         const index = Math.floor(tick / state.slots.length);
         if (index !== state.windowIndex) {
           state.windowIndex = index;
@@ -408,12 +432,16 @@ export class RateLimitModel implements ModelAdapter<RateLimitCommand, RateLimitT
     }
   }
 
-  /** Returns 0 to admit, or the ticks until this client may send again. */
-  private decide(client: number, tick: number): number {
+  /**
+   * Returns 0 to admit, or the ticks until this client may send again.
+   * `offset` places the request inside its tick, from 0 (start) to 1 (end).
+   */
+  private decide(client: number, tick: number, offset: number): number {
     const limiter = this.limiter;
     const state = this.limiterStates[client];
     if (!state || limiter.kind === 'none') return 0;
     if (limiter.kind === 'tokenBucket') {
+      refillTokens(state, limiter, (tick + offset) * this.config.tickSeconds);
       if (state.tokens >= 1) {
         state.tokens -= 1;
         return 0;

@@ -72,8 +72,8 @@ function LanePane({
         ]}
       />
       <p className="sdv-sim__note">
-        Finished requests awaiting a decision: {count(totals.pending)}. Spans held in memory:{' '}
-        {count(totals.buffered)} now, {count(peak)} at the peak
+        Failed or slow requests dropped: {count(totals.missed)}. Finished requests awaiting a decision:{' '}
+        {count(totals.pending)}. Spans held in memory: {count(totals.buffered)} now, {count(peak)} at the peak
       </p>
     </section>
   );
@@ -83,7 +83,7 @@ export default function SamplingDuelWidget({
   scenarios = ['incident', 'quiet', 'budget'],
   initial,
   title = 'Head sampling against tail sampling',
-  instructions = 'Pick a scenario, then press Play. Both samplers watch the exact same requests; only the rule for keeping a trace differs.',
+  instructions = 'Pick a scenario, then press Play. Both samplers watch the exact same requests and may store the same share of them. Head sampling flips a coin when a request starts; tail sampling waits for the request to finish, then fills its quota with failures first.',
 }: Props) {
   const hydrated = useHydrated();
   const [scenarioId, setScenarioId] = useState<SamplingDuelId>(initial ?? scenarios[0] ?? 'incident');
@@ -118,8 +118,14 @@ export default function SamplingDuelWidget({
   const baseRows: CompareRow[] = [
     { label: 'Requests finished (same traffic)', values: totals.map((t) => t.completed) },
     { label: 'Traces stored', values: totals.map((t) => t.kept) },
+    {
+      label: 'Share of decided requests stored',
+      values: totals.map((t) => (t.kept + t.dropped > 0 ? t.kept / (t.kept + t.dropped) : 0)),
+      format: (value) => `${(value * 100).toFixed(1)}%`,
+    },
     { label: 'Failed requests you can open', values: totals.map((t) => t.errorsKept), better: 'higher' },
     { label: 'Slow requests you can open', values: totals.map((t) => t.slowKept), better: 'higher' },
+    { label: 'Failed or slow requests dropped', values: totals.map((t) => t.missed), better: 'lower' },
     { label: 'Spans written to storage', values: totals.map((t) => t.spansStored), better: 'lower' },
     {
       label: 'Peak spans held awaiting a decision',

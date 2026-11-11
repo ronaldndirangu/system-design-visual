@@ -9,6 +9,7 @@ import {
   type FunnelResult,
   finishedResults,
   formatMs,
+  isKnownGood,
   items,
   REC_BUDGET_MS,
   RELEVANT_TOTAL,
@@ -44,7 +45,7 @@ const allResults = finishedResults();
 const fixtureOrder = new Map(items.map((item, index) => [item.id, index]));
 const itemLookup = new Map(items.map((item) => [item.id, item]));
 const allIds = items.map((item) => item.id);
-const knownGood = items.filter((item) => item.relevant);
+const knownGood = items.filter(isKnownGood);
 
 const COL_X = [56, 188, 320, 452, 584] as const;
 const BAND_W = 70;
@@ -225,7 +226,9 @@ function FunnelChart({ run }: { run: RecRun }) {
                       {item?.best && <circle className="sdv-rec-funnel__best" cx={x} cy={y} r={6.2} />}
                       <circle
                         className={
-                          item?.relevant ? 'sdv-rec-funnel__dot--good' : 'sdv-rec-funnel__dot--other'
+                          item && isKnownGood(item)
+                            ? 'sdv-rec-funnel__dot--good'
+                            : 'sdv-rec-funnel__dot--other'
                         }
                         cx={x}
                         cy={y}

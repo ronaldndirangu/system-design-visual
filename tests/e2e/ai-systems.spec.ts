@@ -286,8 +286,8 @@ test.describe('/ai-systems/llm-serving', () => {
     await chooseScenario(sim, /^Mixed lengths/);
     await skipToEnd(sim);
     const ttft = row(sim, 'Time to first token, median');
-    await expect(ttft).toContainText('249 ms');
-    await expect(ttft).toContainText('57 ms');
+    await expect(ttft).toContainText('201 ms');
+    await expect(ttft).toContainText('17 ms');
     const idle = row(sim, 'Idle slot steps while requests wait');
     await expect(idle.getByRole('cell').first()).toHaveText(/179/);
     await expect(idle.getByRole('cell').last()).toHaveText(/^0/);
@@ -309,14 +309,16 @@ test.describe('/ai-systems/llm-serving', () => {
     const sim = await openSimulation(page, 'One long prompt, with and without chunked prefill');
     await skipToEnd(sim);
     const gap = row(sim, 'Longest wait between tokens');
-    await expect(gap).toContainText('113 ms');
-    await expect(gap).toContainText('17 ms');
+    await expect(gap).toContainText('34 ms');
+    await expect(gap).toContainText('11 ms');
+    await expect(row(sim, 'R7 (long prompt) time to first token')).toContainText('197 ms');
 
     const budget = sim.getByRole('radio', { name: '256 tokens' });
     await budget.check();
     await expect(sim.getByText('Ready', { exact: true })).toBeVisible();
     await skipToEnd(sim);
-    await expect(row(sim, 'Longest wait between tokens')).toContainText('36 ms');
+    await expect(row(sim, 'Longest wait between tokens').getByRole('cell').last()).toHaveText(/^11 ms/);
+    await expect(row(sim, 'R7 (long prompt) time to first token')).toContainText('55 ms');
   });
 
   test('steps by keyboard with reduced motion and stays axe clean in dark mode', async ({ page }) => {
@@ -403,8 +405,8 @@ test.describe('/ai-systems/recommendations', () => {
     await chooseScenario(sim, /^Funnel/);
     await expect(sim.getByText('Ready', { exact: true })).toBeVisible();
     await finishRun(sim);
-    await expect(row(sim, 'Total time so far')).toContainText('14.89 ms');
-    await expect(row(sim, 'Candidate generation')).toContainText('489');
+    await expect(row(sim, 'Total time so far')).toContainText('14.87 ms');
+    await expect(row(sim, 'Candidate generation')).toContainText('487');
 
     const board = sim.getByRole('table', { name: /^Scenarios you have finished/ });
     await expect(row(board, 'Verdict')).toContainText('Over budget');
@@ -418,7 +420,7 @@ test.describe('/ai-systems/recommendations', () => {
     await chooseScenario(sim, /^Too few candidates/);
     await finishRun(sim);
     await expect(sim.getByText('Fast, but 3 of 5 good', { exact: true }).first()).toBeVisible();
-    await expect(row(sim, 'Total time so far')).toContainText('7.25 ms');
+    await expect(row(sim, 'Total time so far')).toContainText('7.24 ms');
   });
 
   test('the candidate slider trades recall for time', async ({ page }) => {
@@ -429,7 +431,7 @@ test.describe('/ai-systems/recommendations', () => {
     await frame.scrollIntoViewIfNeeded();
     const slider = frame.getByRole('slider', { name: 'Candidates sent to the ranker' });
     await expect(slider).toBeEnabled();
-    await expect(row(frame, 'Total time')).toContainText('14.89 ms');
+    await expect(row(frame, 'Total time')).toContainText('14.87 ms');
 
     await slider.focus();
     await page.keyboard.press('End');
@@ -449,7 +451,7 @@ test.describe('/ai-systems/recommendations', () => {
     await sim.getByRole('button', { name: 'Step' }).focus();
     await page.keyboard.press('Enter');
     await expect(sim.getByText(/^Stage 1 of/).first()).toBeVisible();
-    await expect(row(sim, 'Candidate generation')).toContainText('489');
+    await expect(row(sim, 'Candidate generation')).toContainText('487');
     await finishRun(sim);
     expect(await axeViolations(page)).toEqual([]);
   });

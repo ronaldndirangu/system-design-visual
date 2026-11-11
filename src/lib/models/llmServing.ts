@@ -8,12 +8,16 @@ import { percentile } from './serverFarm';
 
 export const SEED = 42;
 
+/** Every step pays a fixed launch and scheduling cost. */
+export const STEP_OVERHEAD_MS = 2;
 /** Every step reads all the weights once, whatever the batch size. */
-export const WEIGHT_READ_MS = 10;
-/** Each decoding sequence adds its KV cache read and its share of compute. */
+export const WEIGHT_READ_MS = 8;
+/** Each decoding sequence adds its own KV cache read. */
 export const PER_SEQUENCE_MS = 0.15;
-/** Each prompt token in a prefill adds compute. */
-export const PER_PROMPT_TOKEN_MS = 0.1;
+/** Tokens the GPU computes per toy millisecond, decode and prompt tokens alike. */
+export const TOKENS_PER_MS = 32;
+/** Tokens in one step at which compute takes as long as the weight read. */
+export const RIDGE_TOKENS = WEIGHT_READ_MS * TOKENS_PER_MS;
 /** Tokens per KV cache block, as in vLLM's default. */
 export const BLOCK_TOKENS = 16;
 
@@ -21,10 +25,25 @@ function round(value: number): number {
   return Math.round(value * 1e6) / 1e6;
 }
 
-/** Toy time for one forward pass that decodes `decodeSequences` and prefills `prefillTokens`. */
+/** Time to move bytes in one step: the weights once, plus each decoding sequence's KV cache. */
+export function memoryMs(decodeSequences: number): number {
+  return round(WEIGHT_READ_MS + PER_SEQUENCE_MS * decodeSequences);
+}
+
+/** Time to do the math in one step: every decode token and every prompt token. */
+export function computeMs(decodeSequences: number, prefillTokens: number): number {
+  return round((decodeSequences + prefillTokens) / TOKENS_PER_MS);
+}
+
+/**
+ * Toy time for one forward pass that decodes `decodeSequences` and prefills `prefillTokens`.
+ * Memory traffic and math overlap, so the slower of the two sets the step time (a roofline).
+ */
 export function stepMs(decodeSequences: number, prefillTokens: number): number {
   if (decodeSequences <= 0 && prefillTokens <= 0) return 0;
-  return round(WEIGHT_READ_MS + PER_SEQUENCE_MS * decodeSequences + PER_PROMPT_TOKEN_MS * prefillTokens);
+  return round(
+    STEP_OVERHEAD_MS + Math.max(memoryMs(decodeSequences), computeMs(decodeSequences, prefillTokens)),
+  );
 }
 
 export interface BatchPoint {

@@ -45,7 +45,7 @@ export const steps = [
   },
   {
     title: 'Prefill: read the whole prompt in one pass',
-    text: 'The model processes every prompt token at once. That is a lot of math per weight read, so prefill keeps the GPU\u2019s math units busy. It writes each token\u2019s keys and values into KV blocks and produces the first output token.',
+    text: 'The model processes every prompt token at once. A long prompt is a lot of math per weight read, so its prefill keeps the GPU\u2019s math units busy. It writes each token\u2019s keys and values into KV blocks and produces the first output token.',
     nodes: ['scheduler', 'model', 'kv'],
     flows: ['scheduler>model', 'model>kv'],
   },
@@ -224,8 +224,8 @@ question needs a long answer, and anyone who arrives mid-batch waits for the who
   answer={1}
 >
 
-**It finishes sooner and cuts the tail.** In this run static batching takes 1,047 ms and continuous batching takes
-627 ms for the same 159 output tokens. The p95 time to first token falls from 650 ms to 222 ms, because a waiting
+**It finishes sooner and cuts the tail.** In this run static batching takes 920 ms and continuous batching takes
+521 ms for the same 159 output tokens. The p95 time to first token falls from 523 ms to 96 ms, because a waiting
 request takes a free slot at the next step instead of waiting for a whole batch to end. These numbers come from a toy
 model and are illustrative.
 
@@ -244,17 +244,19 @@ What to look for:
   request in its batch is done. On Mixed lengths the static server spends 179 slot steps idle while other requests
   wait. The continuous server spends none.
 - **Tokens per step.** Four slots allow up to 4 tokens per step. Static batching averages 1.79 and continuous batching
-  averages 3.38, so throughput rises from 152 to 253 tokens per second.
+  averages 3.18, so throughput rises from 173 to 305 tokens per second.
 - **Uniform lengths ties.** Every answer is 12 tokens and requests arrive in groups of four, so nothing finishes early.
-  Both servers run 48 steps in 632 ms. Continuous batching pays off because real answers vary in length.
+  Both servers run 48 steps in 607 ms. Continuous batching pays off because real answers vary in length.
 - **A burst narrows the gap.** When all 16 requests arrive at once, both servers start full. Continuous batching still
-  finishes sooner (803 ms against 1,053 ms) and cuts the p95 time to first token from 777 ms to 528 ms.
-- **Each token comes a little slower.** On Mixed lengths, continuous batching averages 12.22 ms per output token
-  against 10.45 ms for static batching. A step that admits a new request also runs that request's prefill, which
-  makes the step longer for everyone decoding. Chunked prefill, later in this lesson, works on that cost.
+  finishes sooner (686 ms against 941 ms) and cuts the p95 time to first token from 665 ms to 411 ms.
+- **Short prompts ride along almost free.** On Mixed lengths, continuous batching averages 10.49 ms per output token
+  against 10.45 ms for static batching. A step that admits a new request also runs that request's prefill, but a short
+  prompt's math fits inside the time the step already spends reading the weights. Only a long prompt stretches the step
+  for everyone decoding, and chunked prefill, later in this lesson, works on that cost.
 
-This is a **toy model**. Each scheduler step costs a fixed 10 ms to read the weights, plus 0.15 ms for each request
-decoding, plus 0.1 ms for each prompt token in the step. Prefill runs a whole prompt in one step and produces the first
+This is a **toy model**. Each scheduler step costs 2 ms of overhead plus the larger of two times: memory time (8 ms to
+read the weights, plus 0.15 ms for each request decoding) and math time (every token in the step, at 32 tokens per
+ms). The two overlap, so the slower one sets the step. Prefill runs a whole prompt in one step and produces the first
 token. The static server starts its next batch with whoever is waiting when the previous batch ends and never waits to
 fill it. Requests come from a seeded generator (seed 42). No model runs in your browser, and every number is
 illustrative.
@@ -281,11 +283,16 @@ is full, the last rider to board steps off with their bags and boards again late
 
 ### Prefill and decode cost different things
 
-During prefill the GPU pushes a whole prompt's worth of tokens through each weight it reads, so the math units stay
-busy: prefill is **compute bound**, and its time grows with the prompt length. During decode each request adds just one
-token per step, yet the step still reads all the weights and the requests' cached keys and values from memory. At
-small batches that read dominates, so decode is **memory-bandwidth bound**. Adding requests to the same step shares
-the weight read, which is why batching raises throughput.
+Every step does two jobs at once: it moves bytes (all the weights, plus each request's cached keys and values) and it
+does math (one pass through the weights for every token in the step). The GPU overlaps the two, so the slower job sets
+the step time. This is the **roofline** view of a step: step time = max(memory time, compute time).
+
+During decode each request adds just one token per step, yet the step still reads every weight. At small batches that
+read dominates, so decode is **memory-bandwidth bound**. Adding requests to the same step shares the weight read, which
+is why batching raises throughput. During prefill the GPU pushes a whole prompt's worth of tokens through each weight it
+reads. A short prompt's math hides under the weight read and costs almost nothing extra. Past the **ridge**, where the
+math takes as long as the read (256 tokens in this toy model), the step turns **compute bound** and its time grows with
+the prompt length: 512 prompt tokens take 18 ms and 1,024 take 34 ms, against 10 ms for anything up to 256.
 
 <ServingCostWidget client:visible />
 
@@ -353,12 +360,12 @@ What to look for:
   the run, only 34.3% of the token slots the reserve server has allocated hold tokens. Paged blocks reach 88.9%.
 - **Admission waits.** The reserve server needs room for the prompt plus 128 answer tokens before it admits anyone,
   so it never runs more than 4 of its 8 seats at once. Its transcript shows lines such as "R5 waits: it needs 10 blocks
-  and 3 are free." The paged server fills all 8 seats, and the median time to first token falls from 299 ms to 25 ms
-  (p95 from 1,073 ms to 313 ms).
+  and 3 are free." The paged server fills all 8 seats, and the median time to first token falls from 269 ms to 19 ms
+  (p95 from 1,016 ms to 277 ms).
 - **Memory squeeze preempts.** Ten long answers arrive within 0.1 s. The paged server admits eight, then runs out of blocks
-  as the answers grow. At step 65 it preempts R8, the latest arrival still running, and at step 79 it preempts R7.
-  Together they recompute 183 tokens. Even with that repeated work, the paged server finishes in 2,262 ms against
-  3,164 ms for the reserve server.
+  as the answers grow. At step 66 it preempts R8, the latest arrival still running, and at step 80 it preempts R7.
+  Together they recompute 183 tokens. Even with that repeated work, the paged server finishes in 2,214 ms against
+  3,134 ms for the reserve server.
 - **The last block is partly empty.** Each request's newest block fills one token at a time, so paged blocks stay
   below 100%. The toy model's requests are short, so that partial block weighs more here than in the paper.
 
@@ -388,8 +395,8 @@ tokens first. The Sarathi-Serve paper calls this stall-free batching.
 >
 
 **The longest wait shrinks, and R7 waits longer.** Without chunking, all 1,024 prompt tokens run in one step that takes
-113.3 ms, so every decoding chat stalls that long. With 64-token chunks the longest wait drops to 16.7 ms, but R7's
-prompt now spreads over many steps and its time to first token rises from 120 ms to 307 ms. These are toy model
+34.2 ms, so every decoding chat stalls that long. With 64-token chunks the longest wait drops to 11.2 ms, the same as a
+plain decode step, but R7's prompt now spreads over many steps and its time to first token rises from 35 ms to 197 ms. These are toy model
 numbers and are illustrative.
 
 </Predict>
@@ -399,19 +406,22 @@ numbers and are illustrative.
 What to look for:
 
 - **The spike.** In the whole prompt lane, the hatched step that runs R7's prompt towers over the decode steps around
-  it: 113.3 ms.
-- **The cost spreads out.** With 64-token chunks no step runs longer than 16.7 ms. The cost does not vanish: the p95
-  wait between tokens rises from 11.2 ms to 16.7 ms, because many steps now carry a chunk.
-- **Bigger chunks.** Switch to 256 tokens per step. The longest wait is 35.9 ms, and R7's first token comes 167 ms
-  after it arrives instead of 307 ms. A smaller budget protects the wait between tokens. A larger one protects time to
-  first token.
+  it: 34.2 ms, three times a plain decode step.
+- **The chunks hide under the weight read.** With 64-token chunks no step runs longer than 11.2 ms, the same as a step
+  with no prompt at all, and the p95 wait between tokens stays at 11.2 ms. Each chunk's math fits inside the time the
+  step already spends reading the weights.
+- **Size the chunk to the ridge.** Switch to 256 tokens per step. The longest wait stays at 11.2 ms, and R7's first
+  token comes 55 ms after it arrives instead of 197 ms. A 256-token step sits at the ridge, so it is the largest chunk
+  that still rides free. Past the ridge every extra token stretches the step: a 512-token chunk would take about 18 ms.
+  A chunk below the ridge spends extra steps on R7's prompt, and a chunk above it pauses every chat mid-answer.
 - **The queue behind the long prompt.** R8 arrives at 260 ms with a short prompt. Prompt chunks run first come, first
-  served, so R8 waits behind what is left of R7. Its time to first token is 25 ms without chunking, 57 ms at 256 tokens
-  per step, and 209 ms at 64 tokens per step.
+  served, so R8 waits behind what is left of R7. Its time to first token is 13 ms without chunking, 11 ms at 256 tokens
+  per step, and 98 ms at 64 tokens per step.
 
 This is a **toy model**. The chunked server fills each step with decode tokens first, then adds prompt tokens up to the
-budget. Every lane has spare blocks, so nothing is preempted, and all three settings finish the run at 1,104 ms in this
-toy model. Chunking moves the waiting around. Every number is illustrative.
+budget. Every lane has spare blocks, so nothing is preempted. The chunked lanes finish the run at 981 ms and the whole prompt
+lane at 1,004 ms: a chunk under the ridge costs almost nothing, while the whole prompt step pays for every token past
+it. Every number is illustrative.
 
 ### Reuse a shared prefix
 
@@ -432,13 +442,13 @@ and which server each request goes to, and how many requests each caller may sen
 | Choice | What it buys | What it costs |
 | --- | --- | --- |
 | Static batching | A simple scheduler and a fixed batch until every request ends | Finished requests hold their slots, and new arrivals wait for the whole batch |
-| Continuous batching | Freed slots refill every step, so throughput rises and queues shrink | A scheduling decision every step, and new prompts lengthen the steps they join |
+| Continuous batching | Freed slots refill every step, so throughput rises and queues shrink | A scheduling decision every step, and long new prompts lengthen the steps they join |
 | Bigger batch | More tokens per second from each weight read | Longer steps for everyone, more KV memory, and gains that flatten |
 | Smaller batch | Shorter steps, so each request streams faster | Fewer requests share each weight read, so throughput drops and queues grow |
 | Reserve maximum length | No growth mid-answer, so no preemption | Most reserved memory sits empty, which caps the batch and the answer length |
 | Paged blocks on demand | Far less empty memory, so more requests fit | The pool can run dry mid-answer, so you need preemption |
 | Small prefill chunk | Short, even gaps between tokens for chats mid-answer | Long prompts, and the requests behind them, wait longer for a first token |
-| Large prefill chunk | Faster first token for long prompts | Longer pauses for chats mid-answer |
+| Large prefill chunk | Faster first token for long prompts | Past the ridge, longer pauses for chats mid-answer |
 | Preempt by recompute | No CPU memory or copy traffic needed | The preempted request's prefill runs again |
 | Preempt by swap to CPU memory | Keeps the work already done | Copy time between CPU and GPU, and CPU memory to hold the blocks |
 
@@ -466,8 +476,9 @@ serving settings do you pick?
   requests than the worst case. Keep preemption by recompute as the safety net and watch the preemption count. A
   steady stream of preemptions means each replica admits more than its memory holds.
 - **Time to first token:** TTFT is queue wait plus prefill, and a 1,536-token prompt is a long prefill. Turn on
-  chunked prefill and tune the budget: smaller protects chats mid-answer, larger protects the first token. Cap the
-  queue per replica so waits stay inside 1 s.
+  chunked prefill and size the budget near the ridge, the largest chunk whose math still hides under the weight read.
+  A smaller budget delays the first token, and a larger one pauses chats mid-answer. Cap the queue per replica so waits
+  stay inside 1 s.
 - **Shared instructions:** prefix caching reuses the KV blocks for the instructions every request shares, which cuts
   prefill time and memory per request.
 - **Check it:** these are [estimates](../../thinking/requirements-and-estimates/). Load test at peak arrivals and
