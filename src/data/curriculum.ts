@@ -189,6 +189,7 @@ export const curriculum: CourseModule[] = [
         id: 'reliability/rate-limiting',
         title: 'Rate limiting',
         summary: 'Share capacity fairly with token buckets and sliding windows.',
+        minutes: 20,
       },
       {
         id: 'reliability/circuit-breakers',
@@ -199,6 +200,7 @@ export const curriculum: CourseModule[] = [
         id: 'reliability/observability',
         title: 'Observability',
         summary: 'Use logs, metrics, and traces to answer questions you did not plan for.',
+        minutes: 20,
       },
     ],
   },

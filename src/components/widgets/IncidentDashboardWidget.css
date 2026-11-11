@@ -1,0 +1,75 @@
+.sdv-pool {
+  margin-block: 0.75rem;
+}
+.sdv-pool__title {
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+  margin: 0 0 0.4rem;
+}
+.sdv-pool__row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  min-height: 2.6rem;
+}
+.sdv-pool__queue {
+  align-items: center;
+  display: flex;
+  flex: 1 1 8rem;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.sdv-pool__slots {
+  border: 2px solid var(--sdv-db);
+  border-radius: 0.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.3rem;
+}
+.sdv-pool__slot {
+  border: 2px solid var(--sdv-db);
+  border-radius: 0.2rem;
+  display: inline-block;
+  height: 1.1rem;
+  transition: background-color 120ms ease-out;
+  vertical-align: middle;
+  width: 1.1rem;
+}
+.sdv-pool__slot[data-busy="true"] {
+  background: var(--sdv-db);
+}
+.sdv-pool__waiter {
+  background: var(--sdv-warn);
+  border-radius: 50%;
+  display: inline-block;
+  height: 0.7rem;
+  vertical-align: middle;
+  width: 0.7rem;
+}
+.sdv-pool__more {
+  color: var(--sdv-warn);
+  font-size: var(--sl-text-xs);
+  font-weight: 700;
+}
+.sdv-pool__legend {
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-xs);
+  margin: 0.4rem 0 0;
+}
+.sdv-pool__legend .sdv-pool__slot {
+  height: 0.8rem;
+  width: 0.8rem;
+}
+.sdv-pool__legend .sdv-pool__waiter,
+.sdv-pool__legend .sdv-pool__slot:not(:first-child) {
+  margin-inline-start: 0.5rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sdv-pool__slot {
+    transition: none;
+  }
+}

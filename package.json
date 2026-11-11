@@ -31,7 +31,7 @@
     "@astrojs/starlight": "^0.42.10",
     "astro": "^7.4.7",
     "matter-js": "^0.20.0",
-    "motion": "^14.9.0",
+    "motion": "^14.10.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "sharp": "^0.35.5"
@@ -39,7 +39,7 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.12",
     "@axe-core/playwright": "^4.14.0",
-    "@biomejs/biome": "^2.6.4",
+    "@biomejs/biome": "^2.6.6",
     "@playwright/test": "^1.65.0",
     "@types/matter-js": "^0.20.2",
     "@types/react": "^19.3.0",
