@@ -85,10 +85,30 @@ describe('ReplicationSim', () => {
     }
   });
 
-  it('counts reads that find a link and then lose it on a more lagging replica', () => {
-    const result = totals(new ReplicationSim({ replicas: 2, lagTicks: 5 }));
-    expect(result.timeTravel).toBeGreaterThan(0);
-    expect(result.timeTravel).toBeLessThanOrEqual(result.stale);
+  it('counts a stale read as time travel only when an earlier read found the link', () => {
+    const sim = new ReplicationSim({
+      replicas: 2,
+      lagTicks: 5,
+      writesPerTick: 1,
+      readsPerTick: 7,
+      freshReadShare: 0.9,
+    });
+    const found = new Set<number>();
+    let timeTravel = 0;
+    let staleBeforeFound = 0;
+    for (let i = 0; i < 300; i += 1) {
+      const tick = sim.step();
+      const reads = tick.sample.filter((event) => event.kind === 'read');
+      expect(reads).toHaveLength(tick.reads);
+      for (const read of reads) {
+        expect(read.timeTravel).toBe(read.stale && found.has(read.key));
+        if (read.timeTravel) timeTravel += 1;
+        else if (read.stale) staleBeforeFound += 1;
+        if (!read.stale) found.add(read.key);
+      }
+    }
+    expect(timeTravel).toBeGreaterThan(0);
+    expect(staleBeforeFound).toBeGreaterThan(0);
   });
 
   it('the read-your-writes token removes stale and time-travel reads', () => {
