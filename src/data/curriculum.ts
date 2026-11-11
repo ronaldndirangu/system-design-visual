@@ -316,7 +316,7 @@ export const curriculum: CourseModule[] = [
         title: 'Search',
         summary: 'Trade retrieval quality against index freshness, then add typeahead as an extension.',
         status: 'ready',
-        minutes: 22,
+        minutes: 25,
         bestAfter: 'scaling',
       },
       {
@@ -332,7 +332,7 @@ export const curriculum: CourseModule[] = [
         summary:
           'Store large files in object storage, upload them in parts, transcode a bitrate ladder, and pay for bandwidth wisely.',
         status: 'ready',
-        minutes: 22,
+        minutes: 25,
         bestAfter: 'reliability',
       },
       {
@@ -370,7 +370,7 @@ export const curriculum: CourseModule[] = [
         title: 'Ride sharing',
         summary: 'Index fast-changing locations with one geospatial scheme and match riders to drivers.',
         status: 'ready',
-        minutes: 30,
+        minutes: 25,
         bestAfter: 'async',
       },
       {
@@ -387,7 +387,7 @@ export const curriculum: CourseModule[] = [
         title: 'Collaborative editor',
         summary: 'Merge concurrent edits so every copy of the document converges.',
         status: 'ready',
-        minutes: 25,
+        minutes: 20,
         bestAfter: 'distributed-data',
       },
     ],
