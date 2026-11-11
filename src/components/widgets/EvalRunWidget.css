@@ -1,0 +1,123 @@
+.sdv-eval__now {
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 0.4rem;
+  margin-block: 0.75rem;
+  min-height: 5.5rem;
+  padding: 0.6rem 0.8rem;
+}
+.sdv-eval__now-title {
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin: 0;
+  text-transform: uppercase;
+}
+.sdv-eval__now-body {
+  display: grid;
+  gap: 0.4rem;
+}
+.sdv-eval__question {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  margin: 0;
+}
+.sdv-eval__qid {
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-xs);
+  font-weight: 700;
+}
+.sdv-eval__category {
+  border: 1px solid var(--sdv-border);
+  border-radius: 999px;
+  font-size: var(--sl-text-xs);
+  padding: 0 0.45rem;
+}
+.sdv-eval__category[data-category="decline"] {
+  border-style: dashed;
+  font-weight: 700;
+}
+.sdv-eval__grades {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-eval__grades li {
+  margin: 0;
+}
+/* The stage rule sizes every svg to 100%, so pin the badge icons back to badge size. */
+.sdv-eval__grades .sdv-badge svg {
+  display: inline;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.sdv-eval__lanes {
+  margin-bottom: 0.75rem;
+}
+.sdv-eval__lane-meta {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0.4rem 0 0;
+}
+.sdv-eval__track {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+.sdv-eval__row-label {
+  fill: var(--sl-color-white);
+  font-size: 13px;
+  font-weight: 600;
+}
+.sdv-eval__row-rule {
+  stroke: var(--sdv-border);
+  stroke-width: 1;
+}
+.sdv-eval__dot {
+  fill: var(--sdv-ok);
+  fill-opacity: 0.8;
+  stroke: var(--sl-color-black);
+  stroke-width: 0.75;
+}
+.sdv-eval__fail {
+  fill: none;
+  stroke: var(--sdv-bad);
+  stroke-linecap: round;
+  stroke-width: 2.5;
+}
+.sdv-eval__budget {
+  stroke: var(--sdv-warn);
+  stroke-dasharray: 5 4;
+  stroke-width: 2;
+}
+.sdv-eval__budget-label {
+  fill: var(--sl-color-gray-2);
+  font-size: 11px;
+}
+.sdv-eval__p95 {
+  stroke: var(--sl-color-white);
+  stroke-width: 3;
+}
+.sdv-eval__p95-label {
+  fill: var(--sl-color-white);
+  font-size: 11px;
+  font-weight: 700;
+}
+.sdv-eval__legend-p95 {
+  background: var(--sl-color-white);
+  display: inline-block;
+  height: 0.9rem;
+  vertical-align: middle;
+  width: 3px;
+}
+.sdv-eval__table td {
+  vertical-align: top;
+}

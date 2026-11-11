@@ -1,3 +1,4 @@
+import './aiKinds.css';
 import { KindIcon, StatusBadge } from './icons';
 import { type ComponentKind, kinds, type NodeStatus } from './kinds';
 
@@ -139,6 +140,28 @@ function Shape({ kind, w, h }: { kind: ComponentKind; w: number; h: number }) {
           className="sdv-node__shape"
           transform={`scale(${sx} ${sy})`}
           d="M-38 30H40A17 17 0 0 0 46 -2A24 24 0 0 0 2 -26A19 19 0 0 0 -32 -12A21 21 0 0 0 -38 30Z"
+        />
+      );
+    }
+    case 'model': {
+      const pin = 6;
+      const rows = [-0.25, 0, 0.25].map((f) => f * h);
+      return (
+        <>
+          <rect className="sdv-node__shape" x={left + pin} y={top} width={w - pin * 2} height={h} rx={8} />
+          <path
+            className="sdv-node__detail"
+            d={rows.map((dy) => `M${left} ${dy}h${pin} M${-left - pin} ${dy}h${pin}`).join(' ')}
+          />
+        </>
+      );
+    }
+    case 'vectorIndex': {
+      const slant = 12;
+      return (
+        <polygon
+          className="sdv-node__shape"
+          points={`${left + slant},${top} ${-left},${top} ${-left - slant},${-top} ${left},${-top}`}
         />
       );
     }

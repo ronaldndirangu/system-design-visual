@@ -397,7 +397,8 @@ export const curriculum: CourseModule[] = [
         title: 'Evaluation and budgets',
         summary:
           'Define the task, build an evaluation set, and set quality, latency, and cost budgets before choosing a model.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'ai-systems/gateway',
