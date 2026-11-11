@@ -127,6 +127,33 @@ describe('security model', () => {
     }
   });
 
+  it('lets a listener read only requests that leave the device as plain HTTP', () => {
+    for (let seed = 1; seed <= 12; seed += 1) {
+      for (const id of ids) {
+        const duel = new SecDuel(secScenarios[id], seed);
+        while (!duel.done) {
+          duel.step();
+          for (const lane of duel.lanes) {
+            if (!lane.seen) continue;
+            const request = duel.requests[lane.seen.id - 1];
+            expect(lane.seen.readable).toBe(request?.plain === true && !lane.defenses.tls);
+          }
+        }
+      }
+    }
+  });
+
+  it('upgrades the bookmarked http:// requests through HSTS in the defended lane', () => {
+    const plain = runToEnd(new SecDuel(secScenarios.plainHttp));
+    const bookmarked = plain.requests.filter((request) => request.plain && request.hsts);
+    expect(bookmarked).toHaveLength(5);
+    for (const request of bookmarked) {
+      expect(plain.lanes[1].results[request.id - 1]?.verdict).toBe('allowedCorrect');
+    }
+    expect(plain.lanes[1].seen?.readable).toBe(false);
+    expect(plain.events.some((event) => /HSTS/.test(event.text))).toBe(true);
+  });
+
   it('pins the seed 42 numbers the lesson quotes', () => {
     const ownership = runToEnd(new SecDuel(secScenarios.ownership));
     expect(ownership.requests).toHaveLength(33);

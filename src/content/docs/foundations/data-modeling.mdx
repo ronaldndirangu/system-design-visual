@@ -138,7 +138,7 @@ document by its `_id`. Then the first short link goes out in a newsletter, and t
 **Every user document.** The redirect knows the code, and the documents are keyed by user. With no index on
 `links.code`, the database opens all **300 documents (981 KB)** to return one URL. At 20,000 redirects a second, the toy
 model below moves **19.6 GB/s**. Meanwhile user 1, the busiest account, owns 469 links in one **148 KB** document that
-every new link rewrites, and MongoDB refuses any document over 16 MB.
+every new link makes bigger, and MongoDB refuses any document over 16 MB.
 
 </Predict>
 
@@ -198,7 +198,9 @@ What to look for:
 - **Redirect.** Tables and Key-value each read one record in 0.51 toy ms. Documents scan all 300 documents in 11.8 ms,
   which at 20,000 a second would move 19.6 GB/s.
 - **Create a link.** All three write by key. Tables write one row plus 2 index entries; Key-value puts the code only if
-  it is absent. Documents rewrite user 1's whole document, 149 KB with the new link, to add 0.2 KB.
+  it is absent. Documents update user 1's document by `_id`, and the toy charges all 149 KB of it to add 0.2 KB. That
+  whole-document charge is a toy assumption: real engines apply targeted updates such as MongoDB's `$push`. The
+  document still grows with every link, and every write for that user lands on it.
 - **Dashboard.** Tables walk the owner index: 20 index entries and 49 rows (20 links plus their 29 daily rows) in 0.89
   ms. Documents read one 148 KB document to show 20 of its 469 links. Key-value pages through 3,300 keys in 33 round
   trips, 42.8 ms.
@@ -377,7 +379,7 @@ one partition can answer.
 | Choice                                 | What it buys                                                                  | What it costs                                                                          |
 | -------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | Tables with indexes                    | Any query with a matching index takes a few reads; constraints and transactions keep links consistent | Every index adds work to each write; joins, migrations, and sharding need planning |
-| Documents, one per user                | One read returns a user with everything shown beside them; a typical dashboard is one 1.5 KB read | Lookups by any other field scan unless indexed; a big account's document grows, and each write rewrites it |
+| Documents, one per user                | One read returns a user with everything shown beside them; a typical dashboard is one 1.5 KB read | Lookups by any other field scan unless indexed; a big account's document grows toward the size cap, and all its writes land on that one document |
 | Key-value by code                      | The cheapest known-key read and write, and easy to spread across machines     | Any question other than "get this key" scans every key or needs a copy you maintain    |
 | Denormalized copies (owner name, click total) | Reads skip a join; the dashboard reads 20 rows instead of 49           | Every change writes each copy (a rename rewrites 469 rows, clicks double to 40,000 writes a second); copies can drift |
 | Tables plus a key-value redirect copy  | Each query gets a shape that fits it                                          | Two systems to run, and every edit and takedown must reach both copies                 |
@@ -400,10 +402,10 @@ them from redirecting.
 1. **All three scan.** No table index covers `expires_at`, so Tables read all 3,000 link rows. Documents open all 300
    documents, since expiry sits inside each links array. Key-value pages through all 3,300 keys.
 2. **Tables:** add `CREATE INDEX links_expiring ON links (expires_at) WHERE expires_at IS NOT NULL;` and the job reads 9
-   index entries and 9 rows. **Documents:** add an index on `links.expires_at`; each deletion still rewrites the
-   owner's document. **Key-value:** let the store do it with a time to live (Redis `EXPIRE`, DynamoDB TTL) set from
-   `expires_at` at create time, or keep a bucket key such as `expires:2024-06-01` that lists the codes expiring that
-   day.
+   index entries and 9 rows. **Documents:** add an index on `links.expires_at`; each deletion still updates the
+   owner's document (a `$pull` from its links array). **Key-value:** let the store do it with a time to live (Redis
+   `EXPIRE`, DynamoDB TTL) set from `expires_at` at create time, or keep a bucket key such as `expires:2024-06-01` that
+   lists the codes expiring that day.
 3. **Delete every copy.** Tables are the source of truth, so delete there, then remove the key-value redirect entry.
    TTL deletes can lag (DynamoDB may take days), so the redirect should still check `expires_at` on every read and
    answer 410 Gone when it has passed.

@@ -31,7 +31,7 @@ export const edges = [
 export const steps = [
   {
     title: 'Is the channel private?',
-    text: "Ben's browser opens a TLS connection to the HTTPS edge. The edge proves it holds the certificate for sho.rt, and from then on the request, cookie and all, crosses the cafe Wi-Fi as ciphertext. The edge refuses plain HTTP.",
+    text: "Ben's browser opens a TLS connection to the HTTPS edge. The edge proves it holds the certificate for sho.rt, and from then on the request, cookie and all, crosses the cafe Wi-Fi as ciphertext. The edge sends an HSTS header, so the browser uses https:// for this site from then on, even when a link or bookmark says http://.",
     nodes: ['client', 'edge'],
     flows: ['client>edge'],
   },
@@ -151,7 +151,11 @@ Every request has to answer four questions before the handler touches data. Each
 other three cannot stand in for a missing one.
 
 1. **Is the channel private?** TLS (HTTPS) encrypts traffic between the client and the server and proves the server
-   owns the domain. Without it, anyone on a shared network can read the request, cookies included.
+   owns the domain. Without it, anyone on a shared network can read the request, cookies included. A server that
+   refuses plain HTTP acts too late: by the time it says no, the cookie has already crossed the network. Two settings
+   keep the cookie off plain HTTP in the first place. An HSTS header (Strict-Transport-Security) tells the browser to
+   rewrite every http:// URL for the site to https:// before sending, and the HSTS preload list covers the very first
+   visit. The `Secure` flag on the session cookie stops the browser from attaching it to a plain HTTP request at all.
 2. **Who is calling?** This is authentication. The server checks a credential: a session cookie that maps to a session
    it stores, or a signed token whose signature and expiry it verifies on every request. Passwords live only as slow,
    salted hashes such as bcrypt or Argon2, and multi-factor authentication (MFA) means a stolen password alone gets
@@ -196,9 +200,11 @@ What to look for:
   The right lane stops the same 10 with 403 Forbidden. Both lanes allow the same 15 legitimate deletes.
 - **Expired tokens accepted.** Ten requests carry tokens that expired days ago. Their signatures still verify, so the
   left lane lets all 10 delete links. The right lane answers 401 Unauthorized, and each holder has to sign in again.
-- **Plain HTTP on the cafe Wi-Fi hop.** At 2.6 s, Ben's delete crosses the cafe network in plain text, and the wire
-  panel shows his readable headers. Later, someone on that network reuses Ben's session, and the left lane allows 6
-  deletes, because sign-in and ownership both see Ben. On the right, the same listener saw only ciphertext and gets 401.
+- **Plain HTTP on the cafe Wi-Fi hop.** Ben follows an old http:// bookmark. At 2.6 s, his delete crosses the cafe
+  network in plain text, and the wire panel shows his readable headers. Later, someone on that network reuses Ben's
+  session, and the left lane allows 6 deletes, because sign-in and ownership both see Ben. On the right, the API sent an
+  HSTS header on Ben's earlier visits, so his browser switches the bookmark to https:// before anything leaves the
+  laptop. The listener sees only ciphertext and gets 401.
 - **Admin key in the repo.** Anyone who can read the repo holds the key. The left lane allows 3 deletes by repo
   readers before the team notices at 10 s and revokes the key at 12 s. The rotation also breaks the cleanup job, whose
   key lives in its code: 2 of its runs fail with 401 until a new build ships at 16 s. The right lane's repo holds no
@@ -301,6 +307,7 @@ sets up the private channel, see the handshake in [What happens when you click a
 | Roles such as admin                   | Simple rules for broad powers                          | Coarse; an admin account or key becomes the prize worth stealing      |
 | Secret manager with injection         | One place to store, rotate, revoke, and audit          | A startup dependency and some setup work                              |
 | TLS on every hop, internal included   | Privacy and tamper protection everywhere               | Certificates to issue and renew; a small handshake cost               |
+| HSTS and `Secure` cookies             | Cookies stay off plain HTTP, even from old links       | An HTTPS mistake locks users out until the HSTS max-age expires       |
 
 </TradeoffTable>
 

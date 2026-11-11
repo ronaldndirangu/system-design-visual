@@ -486,7 +486,8 @@ export const ccClients: CcClient[] = [
   {
     id: 'web',
     name: 'Current web app',
-    detail: 'Ships in the same deploy as the API, so it changes in lockstep.',
+    detail:
+      'Ships in the same deploy as the API. Tabs opened before a deploy keep the old code until they reload.',
     reads: ['code', 'url', 'clicks'],
     sends: ['url'],
   },
@@ -532,7 +533,7 @@ export const ccChanges: Record<CcChangeId, CcChange> = {
     diff: '"clicks" moves out of the link to GET /v1/links/{code}/stats.',
     expandSteps: [
       'Expand: add GET /v1/links/{code}/stats and keep "clicks" on the link.',
-      'Migrate: clients read the stats endpoint. Logs show who still reads "clicks".',
+      'Migrate: clients call the stats endpoint. Stats traffic per client and app version shows who has moved.',
       'Contract: /v2 links omit "clicks". /v1 keeps it until its traffic reaches zero.',
     ],
   },
@@ -583,8 +584,8 @@ const CC_RULES: Record<CcChangeId, Record<CcMode, CcRule>> = {
         mobile: breaks(
           'Reads "url", which is gone. Every link shows a blank destination, and its creates fail with 400.',
         ),
-        web: migrate(
-          'Ships in the same deploy. Tabs opened before the deploy keep sending "url" until they reload.',
+        web: breaks(
+          'The new code ships in the same deploy, yet tabs opened before it still send "url". Their creates fail with 400 until the user reloads.',
         ),
         partner: breaks('Sends "url" on every create. Each one fails with 400 until they ship a fix.'),
       },
@@ -594,7 +595,9 @@ const CC_RULES: Record<CcChangeId, Record<CcMode, CcRule>> = {
       addsField: 'destination',
       verdicts: {
         mobile: migrate('Keeps reading "url" from /v1, which still returns it, until /v1 retires.'),
-        web: migrate('Switches to "destination" in the same deploy.'),
+        web: migrate(
+          'Switches to "destination" in the same deploy. Old tabs keep working, since /v1 still returns "url".',
+        ),
         partner: migrate('Keeps working on /v1 and moves to "destination" on its own schedule.'),
       },
     },
@@ -607,7 +610,9 @@ const CC_RULES: Record<CcChangeId, Record<CcMode, CcRule>> = {
         mobile: breaks(
           'Decodes "clicks" as a number. The string "1,204" fails to parse and the list screen errors.',
         ),
-        web: migrate('Updates its parser in the same deploy.'),
+        web: breaks(
+          'The new parser ships in the same deploy, yet tabs opened before it still expect a number. Their list screen errors until the user reloads.',
+        ),
         partner: ok('Never reads "clicks".'),
       },
     },
@@ -629,7 +634,9 @@ const CC_RULES: Record<CcChangeId, Record<CcMode, CcRule>> = {
         mobile: breaks(
           'Reads "clicks", which is missing. The app shows 0 or crashes, depending on its parser.',
         ),
-        web: migrate('Calls the stats endpoint from the same deploy.'),
+        web: breaks(
+          'New code calls the stats endpoint, yet tabs opened before the deploy still read "clicks" from the link and show nothing until the user reloads.',
+        ),
         partner: ok('Never reads "clicks".'),
       },
     },
@@ -649,7 +656,9 @@ const CC_RULES: Record<CcChangeId, Record<CcMode, CcRule>> = {
       addsField: null,
       verdicts: {
         mobile: breaks('Never sends "domain". Every create fails with 400.'),
-        web: migrate('Sends "domain" from the same deploy.'),
+        web: breaks(
+          'New code sends "domain", yet tabs opened before the deploy still omit it. Their creates fail with 400 until the user reloads.',
+        ),
         partner: breaks('Never sends "domain". Every create fails with 400 until they ship.'),
       },
     },
@@ -669,9 +678,11 @@ const CC_RULES: Record<CcChangeId, Record<CcMode, CcRule>> = {
       addsField: null,
       verdicts: {
         mobile: silent(
-          'No error anywhere. Browsers cache the 301 and skip the server, so the clicks it shows stop growing.',
+          'No error anywhere. Browsers may cache the 301 and skip the server, so the clicks it shows stop growing.',
         ),
-        web: silent('Same quiet undercount: repeat visitors never reach the server again.'),
+        web: silent(
+          'Same quiet undercount: repeat visitors whose browsers cached the 301 never reach the server again.',
+        ),
         partner: ok('Never reads "clicks".'),
       },
     },

@@ -15,7 +15,7 @@ export const quiz = [
       {
         text: 'Server-sent events',
         correct: true,
-        why: 'The data flows one way, from server to browser, which is exactly what SSE does. It runs over plain HTTP, and the browser reconnects on its own and resumes from the last event it saw.',
+        why: 'The data flows one way, from server to browser, which is exactly what SSE does. It runs over plain HTTP, and the browser reconnects on its own. Give each event an id and keep recent events on the server, and a reconnecting browser picks up where it left off.',
       },
       {
         text: 'WebSocket',
@@ -106,8 +106,9 @@ late at worst.
    at the cost of one held request per viewer and one new request per message.
 3. **Server-sent events (SSE).** The browser opens one HTTP request with `EventSource`, and the server never finishes
    the response. It writes a `data:` line for every click. Messages flow from server to browser only. When the stream
-   drops, the browser reconnects on its own and sends a `Last-Event-ID` header, so the server can replay what it
-   missed.
+   drops, the browser reconnects on its own. Resuming takes server work too: tag each event with an `id:` line, and the
+   browser sends the last id it saw in a `Last-Event-ID` header. The server can then replay the events after it, as
+   long as it still keeps them.
 4. **WebSocket.** The browser sends an HTTP request with `Upgrade: websocket`, the server answers
    `101 Switching Protocols`, and the connection becomes a two-way channel of text or binary frames. Either side can
    send at any moment. Your code handles reconnects and resuming.
@@ -152,7 +153,7 @@ What to look for:
 | Delay to show a click | Up to one poll interval | About one network trip | About one network trip | About one network trip |
 | Requests in the quiet minute (toy) | 12 | 7 | 1 | 1 |
 | Held on the server | Nothing between polls | One request per viewer, until news or timeout | One response per viewer, for the session | One connection per viewer, for the session |
-| Reconnect | The next poll | The next request | Built in, resumes with `Last-Event-ID` | Your code |
+| Reconnect | The next poll | The next request | Built in; resuming needs event ids and server replay | Your code |
 | Payload | Any HTTP body | Any HTTP body | UTF-8 text events | Text or binary frames |
 
 ## What the table leaves out

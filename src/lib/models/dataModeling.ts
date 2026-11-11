@@ -521,7 +521,7 @@ function createPlan(data: DmDataset, shape: DmShapeId): DmPlan {
     return makePlan(shape, {
       access: 'key',
       accessLabel: 'Update by _id',
-      note: `Appends to user ${link.owner + 1}'s document. The toy charges all ${formatKb(kb)} KB because the engine stores a document as one unit.`,
+      note: `Appends to user ${link.owner + 1}'s document. Toy assumption: the write costs all ${formatKb(kb)} KB of the document. Real engines apply targeted updates such as $push, yet the document keeps growing.`,
       touched: [range],
       kb,
     });

@@ -219,7 +219,7 @@ test('apis: offset pages repeat and skip, and expand-then-contract breaks no cli
   await contract.getByRole('radio', { name: /^Add an optional field/ }).focus();
   await page.keyboard.press('ArrowRight');
   await expect(contract.getByRole('radio', { name: /^Rename a field/ })).toBeChecked();
-  await expect(contract.getByText('2 clients broken', { exact: true })).toBeVisible();
+  await expect(contract.getByText('3 clients broken', { exact: true })).toBeVisible();
 
   await contract.getByRole('radio', { name: 'Change in place' }).focus();
   await page.keyboard.press('ArrowRight');

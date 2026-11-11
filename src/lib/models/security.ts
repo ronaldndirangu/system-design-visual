@@ -36,8 +36,13 @@ export interface SecRequest {
   code: string;
   arriveAt: number;
   credential: SecCredential;
-  /** The client tries plain HTTP, whatever the server allows. */
+  /** The client starts from an http:// URL, whatever the server allows. */
   plain: boolean;
+  /**
+   * The client is a browser that kept this site's HSTS header from an earlier HTTPS visit. When the
+   * server sends that header, the browser rewrites http:// to https:// before anything leaves the device.
+   */
+  hsts: boolean;
   /** The request crosses the cafe Wi-Fi hop, where anyone on the network can listen. */
   cafe: boolean;
   /** What a fully defended server does: true when it should delete the link. */
@@ -135,7 +140,7 @@ const USERS = ['Ana', 'Ben', 'Chen', 'Dee'];
 const CODE_CHARS = 'abcdefghjkmnpqrstuvwxyz23456789';
 
 export const SEC_DEFENSES: { id: SecDefense; gate: SecGate; on: string; off: string }[] = [
-  { id: 'tls', gate: 'tls', on: 'HTTPS only', off: 'Plain HTTP allowed' },
+  { id: 'tls', gate: 'tls', on: 'HTTPS only, with HSTS', off: 'Plain HTTP allowed' },
   { id: 'expiry', gate: 'authn', on: 'Expiry checked', off: 'Expiry ignored' },
   { id: 'secretManager', gate: 'authn', on: 'Key in a secret manager', off: 'Key in the repo' },
   { id: 'ownership', gate: 'authz', on: 'Ownership checked', off: 'No ownership check' },
@@ -161,6 +166,8 @@ interface Wave {
   at?: number[];
   user?: string;
   cafe?: boolean;
+  /** A signed-in browser follows an old http:// bookmark. */
+  bookmark?: boolean;
 }
 
 function pick<T>(rng: SeededRng, items: readonly T[]): T {
@@ -181,7 +188,8 @@ function caller(rng: SeededRng, wave: Wave, arriveAt: number): Omit<SecRequest, 
     code: linkCode(rng),
     arriveAt,
     credential: 'session' as SecCredential,
-    plain: false,
+    plain: wave.bookmark ?? false,
+    hsts: wave.bookmark ?? false,
     cafe: wave.cafe ?? false,
     legit: LEGIT[wave.caller],
   };
@@ -264,13 +272,13 @@ export const secScenarios: Record<SecScenarioId, SecScenario> = {
   plainHttp: {
     id: 'plainHttp',
     label: 'Plain HTTP on the cafe Wi-Fi hop',
-    diff: "Ben deletes links from a cafe. The API accepts plain HTTP, so anyone on that Wi-Fi can read Ben's request headers.",
+    diff: 'Ben deletes links from a cafe through an old http:// bookmark. The API accepts plain HTTP and sends no HSTS header, so his browser sends the request and its session cookie as plain text.',
     missing: 'tls',
     focus: 'observer',
     lanes: ['Plain HTTP allowed', 'All defenses'],
     generate: (seed) =>
       stream(seed, [
-        { caller: 'owner', count: 5, user: 'Ben', cafe: true, from: 0, to: 100 },
+        { caller: 'owner', count: 5, user: 'Ben', cafe: true, bookmark: true, from: 0, to: 100 },
         { caller: 'owner', count: 7 },
         { caller: 'other', count: 4 },
         { caller: 'expired', count: 3 },
@@ -440,7 +448,7 @@ export class SecDuel {
   }
 
   private checkChannel(lane: SecLane, request: SecRequest, tick: number): void {
-    if (lane.defenses.tls && request.plain) {
+    if (lane.defenses.tls && request.plain && !request.hsts) {
       this.finish(
         lane,
         request,
@@ -451,8 +459,16 @@ export class SecDuel {
       );
       return;
     }
+    if (lane.defenses.tls && request.plain) {
+      this.flag(
+        lane,
+        'upgraded',
+        tick,
+        `${lane.label}: ${request.who}'s bookmark says http://, and the browser kept the HSTS header from an earlier visit. It switches to https:// before the request leaves the laptop.`,
+      );
+    }
     if (!request.cafe) return;
-    const readable = !lane.defenses.tls;
+    const readable = request.plain && !lane.defenses.tls;
     lane.seen = { id: request.id, tick, who: request.who, user: request.user, code: request.code, readable };
     if (!readable || lane.exposed.includes(request.user)) return;
     lane.exposed.push(request.user);

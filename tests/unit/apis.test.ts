@@ -197,4 +197,14 @@ describe('apis contract change model', () => {
       expect(mobile?.outcome === 'ok').toBe(change === 'addOptional');
     }
   });
+
+  it('breaks web tabs opened before the deploy for every loud in place change', () => {
+    for (const change of ['rename', 'typeChange', 'remove', 'requiredParam'] as const) {
+      const web = (mode: 'inPlace' | 'expand') =>
+        evaluateChange(change, mode, false).find((verdict) => verdict.client.id === 'web')?.outcome;
+      expect(web('inPlace')).toBe('breaks');
+      expect(web('expand')).not.toBe('breaks');
+    }
+    expect(ccSummary('rename', 'inPlace', false).broken).toBe(3);
+  });
 });

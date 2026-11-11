@@ -70,8 +70,8 @@ export const quiz = [
   {
     prompt: 'The marketing team wants every click on a short link counted. Which status should the redirect GET /{code} return?',
     options: [
-      { text: '301 Moved Permanently', why: 'Browsers cache a 301 and go straight to the destination next time. Repeat clicks never reach the server, so the count falls short.' },
-      { text: '302 Found', correct: true, why: 'A 302 tells the browser the move is temporary, so it asks the server on every click. Each click gets counted, and the owner can still change the destination.' },
+      { text: '301 Moved Permanently', why: 'Browsers may cache a 301 with no expiry and go straight to the destination next time. Those repeat clicks never reach the server, so the count falls short.' },
+      { text: '302 Found, with Cache-Control: no-store', correct: true, why: 'A 302 marks the move as temporary, and no-store forbids every browser and proxy from keeping a copy. Each click reaches the server and gets counted, and the owner can still change the destination.' },
       { text: '200 OK with a page that redirects', why: 'An HTML page with a refresh works in some browsers, but it adds a full page load, and API clients and crawlers do not treat it as a redirect.' },
       { text: '404 Not Found', why: '404 tells the client the link does not exist. The browser shows an error page and goes nowhere.' },
     ],
@@ -91,7 +91,7 @@ export const quiz = [
       { text: 'Add an optional "title" field', correct: true, why: 'A tolerant reader skips fields it does not know. Old clients keep working, and new ones can start reading "title".' },
       { text: 'Rename "url" to "destination"', why: 'Every client that reads "url" finds nothing there, and every client that sends "url" on create gets rejected.' },
       { text: 'Send "clicks" as the string "1,204"', why: 'Clients that decode "clicks" as a number fail to parse it. Same name, different type, still a breaking change.' },
-      { text: 'Switch the redirect default from 302 to 301', why: 'No client sees an error, which makes it worse. Browsers cache the 301 and click counts quietly stop growing.' },
+      { text: 'Switch the redirect default from 302 to 301', why: 'No client sees an error, which makes it worse. Browsers may cache the 301, and click counts quietly stop growing.' },
     ],
   },
   {
@@ -106,8 +106,8 @@ export const quiz = [
   {
     prompt: 'The redirect service reports every click to your own analytics service, about 5,000 calls a second. Which style fits that call best?',
     options: [
-      { text: 'A public REST endpoint with JSON', why: 'It works, but text JSON costs more to encode at this rate, and nothing checks at build time that both services agree on the message shape.' },
-      { text: 'gRPC with a shared .proto file', correct: true, why: 'Both sides compile stubs from one typed schema, so a mismatch fails the build. Messages are small and binary, and one HTTP/2 connection carries many calls.' },
+      { text: 'A public REST endpoint with JSON', why: 'It works, but text JSON costs more to encode at this rate, and no shared schema gives both services typed code for the message.' },
+      { text: 'gRPC with a shared .proto file', correct: true, why: 'Both sides generate typed code from one schema, so a call with the wrong shape fails to compile. Messages are small and binary, and one HTTP/2 connection carries many calls. The services still deploy separately, so each .proto change must stay compatible with the version already running.' },
       { text: 'GraphQL', why: 'GraphQL shines when callers pick which fields to read. This call is one fixed write, so the query layer adds work without any benefit.' },
       { text: 'A GET request cached by a CDN', why: 'Recording a click is a write. A cache would answer repeat requests itself, and those clicks would never reach analytics.' },
     ],
@@ -226,17 +226,20 @@ GET    /v1/links/{code}        read one link           200 OK
 PATCH  /v1/links/{code}        change fields           200 OK with the updated link
 DELETE /v1/links/{code}        delete it               204 No Content
 GET    /v1/users/{id}/links    the dashboard list      200 OK with one page and a next cursor
-GET    /{code}                 the redirect            302 Found, Location: the long URL
+GET    /{code}                 the redirect            302 Found, Location: the long URL, Cache-Control: no-store
 ```
 
 Use plural nouns and stable identifiers. Avoid verbs in paths such as `/createLink` or `/getLinksForUser`; the method
 already carries the verb. `PATCH` sends only the fields that change, so two editors who change different fields do not
 erase each other. The `Location` header on a `201` tells the client where the new link lives.
 
-**The redirect: 301 or 302?** A `301 Moved Permanently` lets browsers cache the answer. The second click from the same
-browser skips your server entirely: fast and cheap, but the click never reaches your counter, and the owner can no
-longer change where that browser goes. A `302 Found` (or `307 Temporary Redirect`) makes the browser ask every time, so
-every click counts and edits take effect at once. A shortener that sells click analytics answers `302`.
+**The redirect: 301 or 302?** The status code says whether the move is permanent, and the `Cache-Control` header says
+who may remember it. Browsers may cache a `301 Moved Permanently` with no expiry, and many do. Once a browser holds it,
+later clicks from that browser skip your server: fast and cheap, yet those clicks never reach your counter, and the
+owner can no longer change where that browser goes. A `302 Found` (or `307 Temporary Redirect`) marks the move as
+temporary, so browsers keep it only when headers allow. Send `Cache-Control: no-store` with it, and no browser or proxy
+keeps a copy, so every click reaches the server and edits take effect at once. A shortener that sells click analytics
+answers `302` with `no-store`.
 
 ## Status codes say what happened
 
@@ -313,17 +316,18 @@ partner's integration changes on the partner's schedule.
 Some changes are safe for any client that ignores fields it does not know: adding an optional response field, adding an
 optional request parameter, adding a new endpoint. Others break clients the moment they deploy: renaming or removing a
 field, changing its type, making a parameter required. The worst ones break nothing loudly. Change the redirect default
-from `302` to `301`, and every client still gets a valid response while click counts quietly stop.
+from `302` to `301`, and every client still gets a valid response while click counts quietly fall short.
 
 <ContractChangeWidget client:visible />
 
 What to look for:
 
-- **Rename a field, in place.** The old mobile app and the partner both read `url`, so both break on deploy. Switch to
-  **Expand, then contract**: nobody breaks, and the price is running `/v1` and `/v2` side by side until the old clients
-  retire.
-- **Change a default, in place.** No client sees an error, yet two of them are now wrong: browsers cache the `301`, and
-  the dashboards undercount clicks. A silent break is harder to catch than a crash.
+- **Rename a field, in place.** The old mobile app and the partner both use `url`, so both break on deploy. The web app
+  breaks too: its new code ships in the same deploy, yet every tab opened before the deploy still runs the old code until
+  the user reloads. Switch to **Expand, then contract**: nobody breaks, and the price is running `/v1` and `/v2` side by
+  side until the old clients retire.
+- **Change a default, in place.** No client sees an error, yet two of them are now wrong: browsers that cache the `301`
+  skip the server, and the dashboards undercount clicks. A silent break is harder to catch than a crash.
 - **Add an optional field, with the strict parser on.** The safest change on the list breaks the partner, because its
   parser rejects any field it does not know. Turn the toggle off to see the same change break nobody.
 
@@ -332,8 +336,9 @@ missing optional field as absent. Then the server can add fields freely. Most JS
 default; strict schema validation on responses turns every addition into an outage.
 
 **Expand, then contract** turns one breaking change into three safe steps. Expand: add the new shape next to the old one
-and accept both. Migrate: move clients over, and watch the logs for who still uses the old shape. Contract: remove the
-old shape, but only in a new version, so clients that never migrate keep working on the old one.
+and accept both. Migrate: move clients over, and track traffic per version and per client (an app version header makes
+this easy) to see who still calls the old shape. Contract: remove the old shape, but only in a new version, so clients
+that never migrate keep working on the old one.
 
 ## Versioning
 
@@ -403,10 +408,14 @@ query {
 a page that needs links, owners, and click stats may make several calls, or push you to add endpoints shaped for one
 screen.
 
-**gRPC** gives both sides generated code from one schema, so a mismatch fails at build time, long before production. Messages
-are small and binary, and one HTTP/2 connection carries many calls at once, plus streams. Protobuf identifies fields by
-number, so renaming a field in the `.proto` is safe on the binary wire, while reusing a number for a new meaning breaks
-old readers. Browsers cannot call gRPC directly without a gRPC-Web proxy, and you cannot try it with plain `curl`.
+**gRPC** gives both sides generated code from one schema, so a call with the wrong field or type fails to compile inside
+each service. That check ends at the build: the two services deploy separately, so old and new versions talk to each
+other during every rollout. Protobuf makes careful evolution possible. It identifies fields by number, so adding a
+field with a new number is safe, renaming a field is safe on the binary wire, and reusing a number for a new meaning
+breaks old readers. A breaking change check in CI, such as `buf breaking`, compares each `.proto` edit against the last
+release, and a rollout test with old and new versions side by side catches the rest. Messages are small and binary, and
+one HTTP/2 connection carries many calls at once, plus streams. Browsers cannot call gRPC directly without a gRPC-Web
+proxy, and you cannot try it with plain `curl`.
 
 **GraphQL** lets the dashboard fetch exactly the fields one screen needs in one round trip, and the server can see which
 fields clients still request before it removes one. One innocent query can fan out into thousands of database reads,
@@ -424,8 +433,8 @@ gathers data from several services for one rich frontend.
 | ---------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | Offset pagination (`?page=3&size=10`)    | Jump to any page; easy totals; simple SQL                            | Repeats and skips on a changing list; deep pages walk every earlier row        |
 | Cursor pagination (`?after=<cursor>`)    | Stable pages while the list changes; each page costs one index seek  | No jumping to page 37; no cheap total; needs a unique, indexed sort key        |
-| `302` redirect                           | Every click reaches the server and counts; owners can edit the target | Every click costs a round trip to your server                                  |
-| `301` redirect                           | Browsers cache it; repeat clicks skip your servers                   | Repeat clicks go uncounted; a cached destination cannot be changed             |
+| `302` redirect with `no-store`           | Every click reaches the server and counts; owners can edit the target | Every click costs a round trip to your server                                  |
+| `301` redirect                           | Browsers may cache it; repeat clicks can skip your servers           | Cached clicks go uncounted; you cannot change or expire a cached destination   |
 | Change the contract in place             | One version to run; fast to ship                                     | Old clients break on deploy, or worse, keep running and quietly go wrong       |
 | Expand, then contract, with `/v2`        | No client breaks; each one moves on its own schedule                 | Two versions to run, test, and document until the old one retires              |
 | REST                                     | Works with every HTTP tool; `GET` responses cache in browsers and CDNs | Rich screens need several calls or custom endpoints                          |

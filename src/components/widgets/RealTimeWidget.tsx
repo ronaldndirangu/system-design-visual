@@ -95,7 +95,7 @@ function LaneTrack({ plan, now, width, x }: { plan: RtPlan; now: number; width: 
   const pushes = plan.exchanges.some((exchange) => exchange.stream)
     ? plan.deliveries
         .filter((delivery) => delivery.deliveredAt <= now)
-        .map((delivery) => delivery.deliveredAt)
+        .map((delivery) => ({ key: delivery.clickId, at: delivery.deliveredAt }))
     : [];
   const lags = plan.deliveries
     .filter((delivery) => delivery.at <= now)
@@ -149,12 +149,12 @@ function LaneTrack({ plan, now, width, x }: { plan: RtPlan; now: number; width: 
           transition={{ duration: 0.2 }}
         />
       ))}
-      {pushes.map((at) => (
+      {pushes.map((push) => (
         <m.path
-          key={at}
+          key={push.key}
           className="sdv-rt__answer"
           data-state="data"
-          d={diamond(x(at), BAR_Y + BAR_HEIGHT / 2, 4.5)}
+          d={diamond(x(push.at), BAR_Y + BAR_HEIGHT / 2, 4.5)}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.2 }}

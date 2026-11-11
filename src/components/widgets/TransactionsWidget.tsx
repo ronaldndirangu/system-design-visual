@@ -206,7 +206,7 @@ function Timeline({
             width={Math.max(2, bar.width - 2)}
             height={ROW_HEIGHT}
             rx="3"
-            fill={bar.state === 'harm' ? `url(#${hatchId})` : undefined}
+            style={bar.state === 'harm' ? { fill: `url(#${hatchId})` } : undefined}
           />
         ))}
         {now > 0 && <line className="sdv-tx__now" x1={x(now)} x2={x(now)} y1={0} y2={height} />}
