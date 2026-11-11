@@ -1,12 +1,33 @@
 /*
+ * Design tokens for the whole site. Starlight's variables map onto the --sdv- tokens,
+ * so docs chrome and widgets share one palette, type scale and spacing ladder.
  * Visual language: every component kind has a fixed color, shape, and icon.
  * Colors never carry meaning alone; shapes, icons, and text labels repeat it.
  */
 
 :root {
-  --sl-color-accent-low: #1f1b4d;
-  --sl-color-accent: #7064ff;
-  --sl-color-accent-high: #cdc9ff;
+  /* Neutrals: bg, then the surface ladder, then borders and text. */
+  --sdv-bg: #0b0c10;
+  --sdv-bg-subtle: #0f1115;
+  --sdv-surface-1: #14161b;
+  --sdv-surface-2: #1b1e25;
+  --sdv-surface-3: #242832;
+  --sdv-sunken: #0e1013;
+  --sdv-border-subtle: #262a33;
+  --sdv-border-strong: #343945;
+  --sdv-border-control: #6b7180;
+  --sdv-text-1: #eceef2;
+  --sdv-text-2: #b3b8c4;
+  --sdv-text-3: #8d93a1;
+  /* Disabled text only: exempt from contrast minimums. */
+  --sdv-text-4: #5f6573;
+  --sdv-grid: #1f232b;
+
+  --sdv-accent: #5e5ce6;
+  --sdv-accent-hover: #4f46e5;
+  --sdv-accent-text: #a5b4fc;
+  --sdv-accent-subtle: #1c1d3f;
+  --sdv-accent-border: #3b3a85;
 
   --sdv-client: #60a5fa;
   --sdv-dns: #2dd4bf;
@@ -20,22 +41,147 @@
   --sdv-ok: #4ade80;
   --sdv-warn: #fbbf24;
   --sdv-bad: #f87171;
+  --sdv-ok-soft: #0f2a1b;
+  --sdv-warn-soft: #2d1d0e;
+  --sdv-bad-soft: #2d1416;
   --sdv-ink-on-status: #0b0f19;
   --sdv-series-a: #60a5fa;
   --sdv-series-b: #fb923c;
   --sdv-series-c: #e879f9;
 
-  --sdv-surface: color-mix(in oklab, var(--sl-color-gray-6) 70%, var(--sl-color-black));
-  --sdv-surface-raised: var(--sl-color-gray-6);
-  --sdv-border: var(--sl-color-gray-5);
-  --sdv-radius: 0.75rem;
-  --sdv-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.25);
+  --sdv-shadow-overlay: 0 12px 32px rgb(0 0 0 / 0.35);
+
+  /* Type */
+  --sdv-font-sans: "Inter Variable", "Inter Fallback", system-ui, sans-serif;
+  --sdv-font-mono: "JetBrains Mono Variable", "JetBrains Mono Fallback", ui-monospace, monospace;
+  --sdv-text-2xs: 0.75rem;
+  --sdv-text-xs: 0.8125rem;
+  --sdv-text-sm: 0.875rem;
+  --sdv-text-md: 0.9375rem;
+  --sdv-text-base: 1rem;
+  --sdv-text-lg: 1.125rem;
+  --sdv-text-xl: 1.375rem;
+  --sdv-text-2xl: 1.75rem;
+  --sdv-text-3xl: clamp(2rem, 1.55rem + 1.6vw, 2.5rem);
+  --sdv-text-display: clamp(2.25rem, 1.6rem + 3.4vw, 3.5rem);
+  --sdv-text-stat: 1.5rem;
+  --sdv-weight-body: 400;
+  --sdv-weight-ui: 500;
+  --sdv-weight-heading: 650;
+  --sdv-weight-hero: 700;
+  --sdv-leading-display: 1.08;
+  --sdv-leading-heading: 1.25;
+  --sdv-leading-ui: 1.45;
+  --sdv-leading-prose: 1.65;
+  --sdv-tracking-display: -0.03em;
+  --sdv-tracking-heading: -0.02em;
+  --sdv-tracking-overline: 0.07em;
+  --sdv-measure: 68ch;
+
+  /* Spacing (4px base) */
+  --sdv-space-0_5: 0.125rem;
+  --sdv-space-1: 0.25rem;
+  --sdv-space-1_5: 0.375rem;
+  --sdv-space-2: 0.5rem;
+  --sdv-space-3: 0.75rem;
+  --sdv-space-4: 1rem;
+  --sdv-space-5: 1.25rem;
+  --sdv-space-6: 1.5rem;
+  --sdv-space-8: 2rem;
+  --sdv-space-10: 2.5rem;
+  --sdv-space-12: 3rem;
+  --sdv-space-16: 4rem;
+  --sdv-space-24: 6rem;
+
+  --sdv-radius-xs: 4px;
+  --sdv-radius-sm: 6px;
+  --sdv-radius-md: 10px;
+  --sdv-radius-lg: 14px;
+  --sdv-radius-xl: 20px;
+  --sdv-radius-pill: 999px;
+
+  --sdv-z-sticky: 10;
+  --sdv-z-header: 50;
+  --sdv-z-dialog: 100;
+
+  --sdv-duration-fast: 120ms;
+  --sdv-duration-base: 200ms;
+  --sdv-duration-slow: 320ms;
+  --sdv-duration-pulse: 1200ms;
+  --sdv-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --sdv-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* Legacy names stay until the widget migration waves move to the tokens above. */
+  --sdv-surface: var(--sdv-sunken);
+  --sdv-surface-raised: var(--sdv-surface-2);
+  --sdv-border: var(--sdv-border-strong);
+  --sdv-radius: var(--sdv-radius-lg);
+  --sdv-shadow: var(--sdv-shadow-overlay);
+
+  /* Starlight mapping */
+  --sl-color-accent-low: var(--sdv-accent-subtle);
+  --sl-color-accent: var(--sdv-accent);
+  --sl-color-accent-high: var(--sdv-accent-text);
+  --sl-color-white: #eceef2;
+  --sl-color-gray-1: #eceef2;
+  --sl-color-gray-2: #b3b8c4;
+  --sl-color-gray-3: #8d93a1;
+  --sl-color-gray-4: #6b7180;
+  --sl-color-gray-5: #343945;
+  --sl-color-gray-6: #1b1e25;
+  --sl-color-black: #0b0c10;
+  --sl-color-text-accent: var(--sdv-accent-text);
+  --sl-color-bg: var(--sdv-bg);
+  --sl-color-bg-nav: var(--sdv-bg-subtle);
+  --sl-color-bg-sidebar: var(--sdv-bg-subtle);
+  --sl-color-bg-inline-code: var(--sdv-surface-3);
+  --sl-color-hairline: var(--sdv-border-subtle);
+  --sl-color-hairline-light: var(--sdv-border-strong);
+  --sl-color-hairline-shade: var(--sdv-bg);
+
+  --sl-font: var(--sdv-font-sans);
+  --sl-font-mono: var(--sdv-font-mono);
+  --sl-text-body: var(--sdv-text-base);
+  --sl-text-h1: var(--sdv-text-3xl);
+  --sl-text-h2: var(--sdv-text-2xl);
+  --sl-text-h3: var(--sdv-text-xl);
+  --sl-text-h4: var(--sdv-text-lg);
+  --sl-line-height: var(--sdv-leading-prose);
+  --sl-line-height-headings: var(--sdv-leading-heading);
+}
+
+/* Starlight enlarges headings at 50em, so the mapping repeats there. */
+@media (min-width: 50em) {
+  :root {
+    --sdv-text-base: 1.0625rem;
+    --sl-text-h1: var(--sdv-text-3xl);
+    --sl-text-h2: var(--sdv-text-2xl);
+    --sl-text-h3: var(--sdv-text-xl);
+    --sl-text-h4: var(--sdv-text-lg);
+  }
 }
 
 :root[data-theme="light"] {
-  --sl-color-accent-low: #e4e1ff;
-  --sl-color-accent: #4c3fd1;
-  --sl-color-accent-high: #241a78;
+  --sdv-bg: #ffffff;
+  --sdv-bg-subtle: #f7f7f9;
+  --sdv-surface-1: #ffffff;
+  --sdv-surface-2: #f4f5f7;
+  --sdv-surface-3: #eceef2;
+  --sdv-sunken: #f7f8fa;
+  --sdv-border-subtle: #e3e5ea;
+  --sdv-border-strong: #cfd3db;
+  --sdv-border-control: #767c8c;
+  --sdv-text-1: #0e1014;
+  --sdv-text-2: #3d4250;
+  --sdv-text-3: #5d6373;
+  --sdv-text-4: #9096a5;
+  --sdv-grid: #eceef2;
+
+  --sdv-accent: #4f46e5;
+  --sdv-accent-hover: #4338ca;
+  --sdv-accent-text: #4338ca;
+  --sdv-accent-subtle: #eef0ff;
+  --sdv-accent-border: #c7cbfd;
 
   --sdv-client: #1d4ed8;
   --sdv-dns: #0f766e;
@@ -49,15 +195,53 @@
   --sdv-ok: #15803d;
   --sdv-warn: #b45309;
   --sdv-bad: #b91c1c;
+  --sdv-ok-soft: #ecfdf3;
+  --sdv-warn-soft: #fff7ed;
+  --sdv-bad-soft: #fef2f2;
   --sdv-ink-on-status: #ffffff;
   --sdv-series-a: #1d4ed8;
   --sdv-series-b: #c2410c;
   --sdv-series-c: #a21caf;
 
-  --sdv-surface: var(--sl-color-gray-7);
-  --sdv-surface-raised: var(--sl-color-black);
-  --sdv-border: var(--sl-color-gray-5);
-  --sdv-shadow: 0 1px 2px rgb(15 23 42 / 0.08), 0 8px 24px rgb(15 23 42 / 0.08);
+  --sdv-shadow-overlay: 0 12px 32px rgb(16 24 40 / 0.12);
+
+  /* Light widgets have always raised onto white, so the legacy alias keeps that. */
+  --sdv-surface-raised: var(--sdv-surface-1);
+
+  --sl-color-white: #0e1014;
+  --sl-color-gray-1: #0e1014;
+  --sl-color-gray-2: #3d4250;
+  --sl-color-gray-3: #5d6373;
+  --sl-color-gray-4: #767c8c;
+  --sl-color-gray-5: #cfd3db;
+  --sl-color-gray-6: #eceef2;
+  --sl-color-gray-7: #f7f7f9;
+  --sl-color-black: #ffffff;
+  --sl-color-bg-nav: var(--sdv-bg-subtle);
+  --sl-color-bg-sidebar: var(--sdv-bg);
+  --sl-color-hairline-light: var(--sdv-border-subtle);
+  --sl-color-hairline-shade: var(--sdv-border-subtle);
+}
+
+body {
+  font-feature-settings: "cv11", "ss03";
+}
+
+:where(.sl-markdown-content) :is(h1, h2, h3, h4, h5, h6):not(:where(.not-content *)) {
+  font-weight: var(--sdv-weight-heading);
+  letter-spacing: var(--sdv-tracking-heading);
+}
+
+/* Starlight's primary link button pairs accent-high with black text; this keeps white on the accent fill. */
+.sl-link-button.primary {
+  background: var(--sdv-accent);
+  border-color: var(--sdv-accent);
+  color: #ffffff;
+}
+.sl-link-button.primary:hover {
+  background: var(--sdv-accent-hover);
+  border-color: var(--sdv-accent-hover);
+  color: #ffffff;
 }
 
 /* ---------- Diagram nodes ---------- */
@@ -231,34 +415,35 @@
 .sdv-button {
   align-items: center;
   background: var(--sdv-surface-raised);
-  border: 1px solid var(--sdv-border);
-  border-radius: 999rem;
+  border: 1px solid var(--sdv-border-control);
+  border-radius: var(--sdv-radius-sm);
   color: var(--sl-color-white);
   cursor: pointer;
   display: inline-flex;
   font: inherit;
-  font-size: var(--sl-text-sm);
-  font-weight: 600;
+  font-size: var(--sdv-text-sm);
+  font-weight: var(--sdv-weight-ui);
   gap: 0.4rem;
   line-height: 1.2;
   min-height: var(--sdv-target);
   min-width: var(--sdv-target);
-  padding: 0.4rem 0.9rem;
+  padding: 0.25rem 0.875rem;
 }
 .sdv-button:hover:not(:disabled) {
-  border-color: var(--sl-color-text-accent);
+  border-color: var(--sdv-accent-text);
 }
 .sdv-button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 .sdv-button--primary {
-  background: var(--sl-color-text-accent);
-  border-color: var(--sl-color-text-accent);
-  color: var(--sl-color-black);
+  background: var(--sdv-accent);
+  border-color: var(--sdv-accent);
+  color: #ffffff;
 }
 .sdv-button--primary:hover:not(:disabled) {
-  border-color: var(--sl-color-white);
+  background: var(--sdv-accent-hover);
+  border-color: var(--sdv-accent-hover);
 }
 .sdv-button svg {
   width: 1rem;
@@ -267,13 +452,13 @@
 
 :where(.sdv-button, .sdv-choice, .sdv-segmented label, input[type="range"], summary):focus-visible,
 .sdv-segmented input:focus-visible + span {
-  outline: 3px solid var(--sl-color-text-accent);
+  outline: 3px solid var(--sdv-accent-text);
   outline-offset: 2px;
 }
 
 .sdv-badge {
   align-items: center;
-  border-radius: 999rem;
+  border-radius: var(--sdv-radius-pill);
   display: inline-flex;
   font-size: var(--sl-text-xs);
   font-weight: 600;

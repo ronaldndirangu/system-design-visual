@@ -1,0 +1,9 @@
+---
+import Default from '@astrojs/starlight/components/Head.astro';
+import interLatin from '@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url';
+---
+
+<Default />
+<link rel="preload" href={interLatin} as="font" type="font/woff2" crossorigin />
+<meta name="theme-color" content="#0b0c10" media="(prefers-color-scheme: dark)" />
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />

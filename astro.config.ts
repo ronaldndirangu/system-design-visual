@@ -24,7 +24,7 @@ export default defineConfig({
       social: [{ icon: 'github', label: 'GitHub repository', href: repository }],
       editLink: { baseUrl: `${repository}/edit/main/` },
       lastUpdated: false,
-      customCss: ['./src/styles/theme.css', './src/styles/components.css'],
+      customCss: ['./src/styles/fonts.css', './src/styles/theme.css', './src/styles/components.css'],
       expressiveCode: { defaultProps: { wrap: true } },
       head: [
         { tag: 'script', content: earlyClickReplay },
@@ -37,6 +37,7 @@ export default defineConfig({
       sidebar: buildSidebar(),
       routeMiddleware: './src/routeData.ts',
       components: {
+        Head: './src/components/overrides/Head.astro',
         Hero: './src/components/overrides/Hero.astro',
         PageTitle: './src/components/overrides/PageTitle.astro',
         MarkdownContent: './src/components/overrides/MarkdownContent.astro',
