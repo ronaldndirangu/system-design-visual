@@ -1,0 +1,371 @@
+---
+title: Stream processing
+description: Count the click stream in windows without letting a restart or a late click wreck the dashboard. Event time and processing time, tumbling and sliding windows, watermarks and late data, and when a nightly batch job beats a stream.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import TimeDuelWidget from '../../../components/widgets/TimeDuelWidget';
+import WindowShapesWidget from '../../../components/widgets/WindowShapesWidget';
+import WatermarkDuelWidget from '../../../components/widgets/WatermarkDuelWidget';
+
+export const nodes = [
+  { id: 'redirect', kind: 'server', x: 70, y: 80, label: 'Redirect server', sublabel: 'stamps clickedAt' },
+  { id: 'topic', kind: 'queue', x: 270, y: 80, label: 'clicks topic' },
+  { id: 'job', kind: 'server', x: 470, y: 80, label: 'Stream job', sublabel: 'windows by clickedAt' },
+  { id: 'counts', kind: 'database', x: 690, y: 80, label: 'Window counts', sublabel: 'feeds the dashboard' },
+  { id: 'side', kind: 'database', x: 470, y: 250, label: 'Late clicks', sublabel: 'side table' },
+  { id: 'batch', kind: 'server', x: 690, y: 250, label: 'Nightly batch', sublabel: 'exact recount' },
+];
+
+export const edges = [
+  { from: 'redirect', to: 'topic' },
+  { from: 'topic', to: 'job' },
+  { from: 'job', to: 'counts' },
+  { from: 'job', to: 'side', dashed: true },
+  { from: 'side', to: 'batch' },
+  { from: 'batch', to: 'counts', dashed: true },
+];
+
+export const steps = [
+  {
+    title: 'Stamp the event time',
+    text: 'The redirect server handles the click and writes clickedAt into the event before the click waits in any buffer or crosses any network. That timestamp never changes, however late the click reaches the job.',
+    nodes: ['redirect'],
+    flows: [],
+  },
+  {
+    title: 'Write to the topic',
+    text: 'The event joins the clicks topic. Most clicks arrive within 0.3 s. A retried send arrives a few seconds late, and an edge region that loses its link sends its whole buffer when it reconnects.',
+    nodes: ['redirect', 'topic'],
+    flows: ['redirect>topic'],
+  },
+  {
+    title: 'Window by event time',
+    text: 'The stream job reads each click and adds it to the 2 s window that holds clickedAt, whenever it reads it. A restart delays the count, and every click still lands in the window it happened in.',
+    nodes: ['topic', 'job'],
+    flows: ['topic>job'],
+  },
+  {
+    title: 'Publish when the watermark passes',
+    text: 'The job tracks a watermark: the newest clickedAt it has seen, minus a wait. When the watermark passes the end of a window, the job assumes the window is complete and publishes its count.',
+    nodes: ['job', 'counts'],
+    flows: ['job>counts'],
+  },
+  {
+    title: 'Handle late clicks',
+    text: 'A click whose window already has a result is late. The job drops it, sends an updated count, or writes it to a side table that the nightly batch job folds into the exact counts.',
+    nodes: ['job', 'side', 'batch', 'counts'],
+    flows: ['job>side', 'side>batch', 'batch>counts'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'A dashboard counts clicks in 2 s windows by the time the stream job reads them. A deploy stops the job for 4 s. What does the first window after the restart show?',
+    options: [
+      { text: 'About its normal count, since the job reads at its usual pace', why: 'The job reads up to five times the arrival rate after a restart, so the backlog drains in under a second and lands in one window.' },
+      { text: 'Zero, since the clicks during the stop are lost', why: 'The topic keeps every click while the job is down. The job reads them all when it starts again.' },
+      { text: 'Far more than happened, because the backlog lands in the window that holds the read time', correct: true, why: 'In the widget, 8 to 10 s shows 98 clicks where 36 happened, and the spike alert pages on-call for a deploy.' },
+      { text: 'Half its normal count, since the window was half over', why: 'That describes the window the job stopped in. The window it starts again in gets the whole backlog on top of its own clicks.' },
+    ],
+  },
+  {
+    prompt: 'A stream job reports a watermark of 12 s. What does that mean?',
+    options: [
+      { text: 'The job assumes it has seen every click from before 12 s, and publishes windows that end by then', correct: true, why: 'A watermark is the job’s guess about completeness. Windows that end at or before it get a result, and any older click that still arrives is late.' },
+      { text: 'Every click from before 12 s has arrived, guaranteed', why: 'A watermark is a guess. In the widget, an edge region that reconnects after an outage still sends older clicks after the watermark passed them.' },
+      { text: 'The clock on the job’s server reads 12 s', why: 'That is processing time. The watermark follows event times: the newest clickedAt the job has seen, minus a wait.' },
+      { text: 'The job drops every click older than 12 s', why: 'The watermark only decides when a window publishes. The late policy decides what happens to a click that arrives after that: drop it, update the count, or set it aside.' },
+    ],
+  },
+  {
+    prompt: 'You raise the watermark wait from 0.5 s to 3 s. What changes?',
+    options: [
+      { text: 'Late clicks disappear, since every click now arrives in time', why: 'A wait only covers delays shorter than itself. In the widget, a 6 s edge outage still makes 12 clicks late with a 3 s wait.' },
+      { text: 'Nothing visible, since both waits see the same clicks', why: 'Both lanes read the same clicks, and they disagree about which ones are late: 36 against 12 in the widget.' },
+      { text: 'Results arrive sooner, since fewer late clicks need updates', why: 'Each window waits for the watermark to pass its end, so a longer wait delays every first result: a mean of 3.1 s against 0.6 s.' },
+      { text: 'Fewer clicks arrive late, and every window publishes about 2.5 s later', correct: true, why: 'The wait trades speed for completeness. In the widget, late clicks drop from 36 to 12, and the mean wait for a first result grows from 0.6 s to 3.1 s.' },
+    ],
+  },
+  {
+    prompt: 'An alert should fire when any 10 s span holds more than 40 clicks. Tumbling 10 s windows count 17, 32, and 29. What do you know?',
+    options: [
+      { text: 'No 10 s span held more than 40 clicks', why: 'Tumbling windows check only three of the possible spans. In the widget, the span from 12 to 22 s holds 44.' },
+      { text: 'A span may still hold more than 40, because a burst can straddle a window boundary', correct: true, why: 'The burst from 19 to 21 s splits between the second and third windows. Sliding windows that start every 2 s find 44 in 12 to 22 s.' },
+      { text: 'The tumbling windows double count the burst', why: 'Tumbling windows never overlap, so each click lands in exactly one. The sum, 78, is every click in the 30 s.' },
+      { text: 'The threshold is too high, so lower it to 30', why: 'A lower threshold would page on normal traffic too. The problem is where the window boundaries fall, which a sliding window fixes.' },
+    ],
+  },
+  {
+    prompt: 'Finance needs exact monthly click totals for invoices, and some clicks arrive a day late from phones that were offline. Which design fits?',
+    options: [
+      { text: 'A stream job with 30 days of allowed lateness', why: 'The job would hold a month of windows in memory for every short code, and any click later than 30 days still goes missing.' },
+      { text: 'Processing-time windows, since an invoice can count a click when it arrives', why: 'Then a deploy or an outage moves clicks between months, and the invoice depends on when you shipped code.' },
+      { text: 'A batch job over the stored log after late clicks land, with the stream feeding the live dashboard', correct: true, why: 'The batch job reads a bounded month of clicks by event time after the stragglers arrive, so its count is exact. The stream keeps the dashboard fast.' },
+      { text: 'Drop late clicks, since they are rare', why: 'Each dropped click is an unbilled click. Rare is fine for a dashboard and wrong for an invoice.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain why counting by processing time misplaces clicks after a restart or an outage, and count by event time instead.
+- Choose between tumbling, sliding, and session windows for a question, and weigh what each one costs.
+- Use a watermark to decide when a window is done, and choose a policy for late clicks: drop, update, or a side table.
+- Decide when a batch job beats a stream job, and combine the two.
+
+</Objectives>
+
+## The failure: a deploy pages on-call
+
+The link owners' dashboard shows clicks per 2 s window, read from the clicks topic from the
+[log lesson](../logs-and-pubsub/). A stream job keeps the counts, and it pages on-call when a window holds more than
+60 clicks, 1.5 times the normal 40. The first version picks each click's window the obvious way: from the clock on the
+server that runs the job.
+
+```ts
+for await (const click of clicksTopic) {
+  const window = Math.floor(Date.now() / 2000); // the moment the job reads the click
+  const count = await counts.increment(window);
+  if (count > SPIKE_ALERT) await pageOnCall(window, count);
+}
+```
+
+That time is the **processing time**. It works while the job keeps up. Then a deploy stops the job at 5 s, and it
+starts again at 9 s. The topic keeps every click during the stop, so nothing is lost.
+
+<Predict
+  client:visible
+  question="About 36 clicks happen between 8 and 10 s. The job starts again at 9 s with the clicks from the stop waiting in the topic. What does the dashboard show for 8 to 10 s?"
+  options={[
+    'About 36, since the topic lost nothing',
+    'About 0, since the job was down for most of the window',
+    'About 98, which crosses the spike alert',
+    'About 18, since the job ran for half the window',
+  ]}
+  answer={2}
+>
+
+**98 clicks where 36 happened, and the spike alert pages on-call. The window before it, 6 to 8 s, shows 0 where 38
+happened.** When the job starts again at 9 s, 85 clicks wait in the topic, and it reads all of them in under a second.
+Each one lands in the window that holds the moment it was read. Nothing is lost, and every window around the restart
+shows the wrong count.
+
+</Predict>
+
+## The idea: count by when the click happened
+
+Every click has two times. The **event time** is when the redirect server handled the click. The **processing time**
+is when the stream job reads it. A restart, a slow network, or an edge region that buffers clicks moves the processing
+time and leaves the event time alone. So stamp the event time into the click, and pick the window from it.
+
+```ts
+const window = Math.floor(click.clickedAt / 2000); // the moment the redirect server handled the click
+```
+
+That fixes where a click goes. It raises a new question: when is a window done, so the job can publish its count? A
+late click can still belong to a window that ended seconds ago.
+
+<StepDiagram
+  client:visible
+  title="Stamp, window by event time, publish at the watermark, handle late clicks"
+  nodes={nodes}
+  edges={edges}
+  steps={steps}
+  height={320}
+/>
+
+<Analogy>
+
+An election office counts each mail-in ballot by its postmark. A ballot postmarked on election day counts even when it
+reaches the office three days later: the postmark is its event time, and the day it arrives is its processing time.
+The office also has to finish counting, so it sets a deadline for arrivals and certifies the result after it. That
+deadline plays the role of a watermark, and a ballot that arrives after it is late data.
+
+</Analogy>
+
+## Try it: processing time against event time
+
+Both lanes read the same seeded partition of clicks, at the same moments, through the same failures. The lane on the
+left adds each click to the window that holds the time the job reads it. The lane on the right adds it to the window
+that holds clickedAt. Each column is one 2 s window: the solid bar is the count, the dashed outline is the clicks that
+happened in that window so far, and the horizontal line is the spike alert at 60. Open the table under the lanes for
+every number. This is a toy model of one partition at about 20 clicks a second, and the numbers are illustrative.
+
+<TimeDuelWidget client:visible />
+
+What to look for:
+
+- **Consumer restart.** The job starts again at 9 s with **85** clicks waiting. The processing-time lane shows **0**
+  for 6 to 8 s and **98** for 8 to 10 s. At 9.7 s it has counted 70 clicks in 8 to 10 s, where only 33 had happened,
+  and it pages on-call. Over the run it puts **80** clicks in the wrong window. The event-time lane fires no alert and
+  ends the run **2** clicks short, both still on their way to the topic.
+- **Edge region cut off.** The region that serves 40% of clicks buffers them from 4 to 10 s, then sends the **42** it
+  held. The processing-time lane counts **81** for 10 to 12 s, where 39 happened: another false page, and **60**
+  clicks in the wrong window.
+- **Steady traffic.** With no failure at all, **20** clicks still land in the wrong processing-time window, because a
+  click from 1.9 s can reach the job at 2.1 s. No alert fires, and the first window reads 52 where 58 happened.
+- **Event time pays in waiting.** While the job is stopped, both lanes show 0 for 6 to 8 s. The event-time lane fixes
+  that window when the backlog arrives. Over the restart run it adds **80** clicks to windows that had already ended,
+  so a dashboard that read 6 to 8 s at 8 s showed a number that later grew.
+
+## Window shapes: tumbling, sliding, and session
+
+The windows so far are **tumbling windows**: fixed length, back to back, no overlap. Each click lands in exactly one,
+and the job emits one result per window. They answer "how many clicks per minute" well.
+
+A **sliding window** has a fixed length too, and a new one starts every slide interval, so windows overlap. Kafka
+Streams calls these hopping windows. They catch a burst that tumbling windows split across a boundary. A burst no
+longer than the window minus the slide (8 s for a 10 s window that slides every 2 s) lands whole in some window. A
+longer spread can still fall between windows, and a shorter slide narrows that gap at the cost of more windows.
+
+A **session window** has no fixed length. It groups one visitor's clicks until a gap with no clicks, such as 30
+minutes, closes it. Sessions answer "how many links does a visitor open in one sitting". Since the gap ends a session,
+the job only knows a session is over once the gap passes, and a late click can merge two sessions into one.
+
+The widget counts one set of clicks two ways: 10 s tumbling windows, and 10 s sliding windows that start every 2 s. A
+burst of 24 extra clicks lands over 2 s on top of about 2 clicks a second. This is a toy model, and the numbers are
+illustrative.
+
+<WindowShapesWidget client:visible />
+
+What to look for:
+
+- **Burst across a boundary.** The burst runs from 19 to 21 s, so the tumbling windows count **17**, **32**, and
+  **29**, and no alert fires. The sliding window from 12 to 22 s holds **44**, and **3** of the 11 sliding windows
+  cross 40. A window that holds exactly 40 does not page.
+- **Burst inside a window.** Move the burst to 13 to 15 s and the tumbling windows count **17**, **43**, and **18**. The
+  alert fires either way with sliding windows.
+- **The cost.** Tumbling windows emit **6** results a minute. Sliding windows emit **30**, and each click lands in
+  **5** of them, so the job does five times the counting and keeps five times the state per short code.
+
+## Watermarks and late data
+
+Event-time windows need a rule for when to publish. The job cannot wait for every click, since an edge region can
+always send something older. So it keeps a **watermark**: the newest event time it has seen, minus a fixed wait. When
+the watermark passes the end of a window, the job publishes that window's count. A click whose window already has a
+result is **late**, and a late policy decides what happens to it:
+
+- **Drop it.** The published count stays as it is, and the click is gone for good.
+- **Allow lateness and update.** The job keeps the window in memory for a while after it publishes, and sends an
+  updated count for each late click. Flink and Beam call this allowed lateness.
+- **Side table.** The job writes the click to a separate table, and a batch job adds it back later.
+
+<Predict
+  client:visible
+  question="One click in ten needs a retry and arrives 0.5 to 2.5 s late. An edge region that serves 40% of clicks buffers them from 4 to 10 s. One job waits 0.5 s, another waits 3 s. How many clicks does each mark late?"
+  options={[
+    'Neither marks any late, since the watermark waits for them',
+    'The 0.5 s wait marks about three times as many late',
+    'Both mark the same clicks late, since the clicks are the same',
+    'The 3 s wait marks more late, since its windows stay open longer',
+  ]}
+  answer={1}
+>
+
+**The 0.5 s wait marks 36 clicks late, and the 3 s wait marks 12.** The short wait misses 10 retried sends and 26
+buffered edge clicks. The 3 s wait catches every retried send, since none arrives more than 2.5 s late, and still
+misses 12 clicks from the outage. No wait you would accept on a live dashboard covers a 6 s outage.
+
+</Predict>
+
+Both lanes count the same clicks by event time, through the retries and the outage above. The lane on the left waits
+0.5 s; the lane on the right waits 3 s. Each column is one 2 s window: hatched while it waits for the watermark, solid
+once it has a result, and late clicks drawn in the pattern of the chosen policy. The dotted vertical line is the
+watermark. This is a toy model, and the numbers are illustrative.
+
+<WatermarkDuelWidget client:visible />
+
+What to look for:
+
+- **A short wait answers fast and misses more.** The 0.5 s lane publishes 0 to 2 s at 2.6 s with **56** clicks,
+  where 58 happened. The 3 s lane publishes **58** at 5.0 s. Over the run the mean wait for a first result is **0.6
+  s** against **3.1 s**.
+- **The policy decides what late clicks cost.** All three policies publish the same first results and see the same
+  late clicks. Drop loses them. Allow 10 s of lateness sends **18** updated results for the short wait's 36 late
+  clicks, and **4** for the long wait's 12, so every reader downstream must accept a count that changes. Side table
+  keeps the 36 or the 12 for the nightly batch job.
+- **Lateness costs memory.** With updates, the job keeps each window until the watermark passes the window's end plus
+  10 s of allowed lateness, so a stalled watermark holds windows longer. At the end of the
+  run the 0.5 s lane holds **6** windows in memory with updates, against **1** when it drops late clicks.
+
+Three things the widget leaves out matter in production:
+
+- **One watermark per partition.** A real job tracks a watermark for each partition it reads and uses the smallest. One
+  idle partition holds every window open, so engines add an idle timeout that ignores a quiet partition.
+- **Updates must replace, never add.** Downstream stores each window's count keyed by short code and window, and an
+  update overwrites it. A retried update then changes nothing. Idempotency covers the technique in depth.
+- **Window state survives restarts.** The job checkpoints its open windows together with the offsets it has read, as
+  in the [delivery semantics lesson](../delivery-semantics/), so a restart neither loses a window nor counts a click
+  twice.
+
+## When batch beats stream
+
+A stream job answers in seconds with counts that are almost right. A **batch job** reads a bounded set of clicks, such
+as yesterday's slice of the log, after the stragglers have arrived, and computes an exact answer. Batch wins when:
+
+- **The answer must be exact.** Invoices for link owners on a paid plan count every click, including the ones a phone
+  sends a day late. A nightly job can wait for them.
+- **The logic changes.** A new bot filter has to apply to last month's clicks. A batch job reruns over stored history.
+- **The join is big.** Matching every click against the full table of link owners and plans is cheaper as one bulk
+  join than as millions of lookups from a running job.
+- **Nobody needs it in seconds.** A weekly report does not justify a job that runs and holds state all day.
+
+Many pipelines run both. The **Lambda architecture** runs a stream layer for fast, approximate counts and a batch
+layer that recomputes exact counts, and serves both. Its cost is the same logic written and tested twice. The **Kappa
+architecture** keeps one stream job and reprocesses history by replaying the log through a new version of it, which
+needs a log that keeps months of clicks. In the click pipeline, the stream job feeds the live dashboard and the spike
+alert, the side table catches late clicks, and the nightly batch job writes the exact counts that billing reads.
+
+## Trade-offs
+
+<TradeoffTable title="Stream processing choices">
+
+| Choice | What it buys | What it costs |
+| --- | --- | --- |
+| Processing-time windows | Simple, and results right away | A restart or an outage moves clicks into the wrong window and fires false alerts |
+| Event-time windows | Each click lands in the window it happened in, whatever the delay | The job has to decide when a window is done, and hold windows until then |
+| Tumbling windows | One result per window, and each click counted once | A burst that straddles a boundary splits in two |
+| Sliding windows | Catch a short burst wherever it lands | Each click counted in several windows: five times the work and state here |
+| Session windows | Group activity the way visitors behave | No fixed length, and a session ends only after a gap passes |
+| Short watermark wait | Fast results and alerts | More late clicks to drop, update, or set aside |
+| Long watermark wait | Fewer late clicks and more complete first results | Slower dashboards and alerts, and more windows in memory |
+| Allowed lateness with updates | Published counts catch up with the truth | Downstream sees numbers change, and windows stay in memory longer |
+| Batch recount | Exact answers, and easy reruns over history | Answers arrive hours later |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+Link owners want a dashboard of clicks per minute for each short code, and owners on a paid plan get a monthly invoice
+per click. The mobile app buffers clicks while a phone is offline and sends them up to 24 hours later. On-call wants a
+page within 30 seconds when a code gets more than 10 times its usual traffic. Design the windows, the watermark, the
+late policy, and the path to exact invoices.
+
+<div slot="answer">
+
+- **Count by event time.** The redirect server stamps clickedAt. The app stamps its own clicks, and the server also
+  records when it received them, since phone clocks drift: treat a clickedAt far ahead of the receive time as wrong.
+- **Alert on sliding windows.** Use a 10 s window that slides every 2 s, and compare it with 10 times the code's usual
+  10 s count. An 11 times jump crosses that threshold once it fills 9 s of a window. Add up to 2 s for the next window
+  to end and a 3 s watermark wait, and the page lands within about 15 s. A 1 minute window would need 54 s, and
+  bigger spikes fire sooner. Require a minimum count too, since short windows are noisy for codes with little traffic.
+- **Keep the live path short.** A wait of a few seconds covers retried sends. Allow a minute or two of lateness with
+  updates for the dashboard, and store each count keyed by code and window so an update replaces the old one.
+- **Send the long tail to batch.** Clicks from offline phones arrive hours late, past any wait the dashboard can
+  afford. Write them to a side table, or rely on the raw log, and never hold dashboard windows open for them.
+- **Invoice from batch.** A nightly job recounts each day by event time from the log once the 24 hour buffer limit has
+  passed, and writes exact counts keyed by code and day, so a rerun overwrites instead of adding. Close each month's
+  invoices a day after the month ends.
+
+</div>
+
+</Challenge>

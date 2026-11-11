@@ -1,0 +1,258 @@
+---
+title: Logs and pub/sub
+description: Stream every click into a partitioned log, split the reading across a consumer group, watch lag, crashes, and rebalancing, and see why order holds only within a partition.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import ConsumerGroupWidget from '../../../components/widgets/ConsumerGroupWidget';
+import OrderingDuelWidget from '../../../components/widgets/OrderingDuelWidget';
+
+export const nodes = [
+  { id: 'redirect', kind: 'server', x: 70, y: 160, label: 'Redirect service', sublabel: 'appends clicks' },
+  { id: 'topic', kind: 'queue', x: 290, y: 160, label: 'clicks topic', sublabel: '4 partitions' },
+  { id: 'a1', kind: 'server', x: 510, y: 60, label: 'Analytics 1', sublabel: 'reads P1, P2' },
+  { id: 'a2', kind: 'server', x: 510, y: 160, label: 'Analytics 2', sublabel: 'reads P3, P4' },
+  { id: 'spam', kind: 'server', x: 510, y: 270, label: 'Spam check', sublabel: 'its own group' },
+  { id: 'counts', kind: 'database', x: 720, y: 110, label: 'Click counts' },
+];
+
+export const edges = [
+  { from: 'redirect', to: 'topic' },
+  { from: 'topic', to: 'a1' },
+  { from: 'topic', to: 'a2' },
+  { from: 'topic', to: 'spam' },
+  { from: 'a1', to: 'counts' },
+  { from: 'a2', to: 'counts' },
+];
+
+export const steps = [
+  {
+    title: 'Append',
+    text: 'For every redirect, the service appends one click event to the end of a partition. The hash of the short code picks the partition, so every click for /cat lands in P1.',
+    nodes: ['redirect', 'topic'],
+    flows: ['redirect>topic'],
+  },
+  {
+    title: 'Keep',
+    text: 'The log keeps events for days, whether or not anyone has read them. Each event gets an offset: its position in its partition, counting from 0.',
+    nodes: ['topic'],
+    flows: [],
+  },
+  {
+    title: 'Split the reading',
+    text: 'The analytics consumer group shares the partitions. Each partition has exactly one reader in the group, and each reader works through its partitions in offset order.',
+    nodes: ['topic', 'a1', 'a2'],
+    flows: ['topic>a1', 'topic>a2'],
+  },
+  {
+    title: 'Save progress',
+    text: 'Readers update the click counts, and every few seconds they save (commit) the offset they reached. A new reader starts from the saved offset.',
+    nodes: ['a1', 'a2', 'counts'],
+    flows: ['a1>counts', 'a2>counts'],
+  },
+  {
+    title: 'Publish once, subscribe many',
+    text: 'A second group, the spam check, reads the same events with its own offsets and its own pace. Adding a subscriber never slows the redirect service or the other group.',
+    nodes: ['topic', 'spam'],
+    flows: ['topic>spam'],
+  },
+  {
+    title: 'Lag',
+    text: 'Lag is how far a group trails the newest event: the newest offset minus the read position, added up over every partition. Rising lag means the dashboard shows older and older numbers.',
+    nodes: ['topic', 'a1', 'a2'],
+    flows: [],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'A topic has 4 partitions, and you start 6 consumers in one group. What do the last 2 consumers do?',
+    options: [
+      { text: 'Split the busiest partitions with the others', why: 'A partition has exactly one reader per group, so its events stay in order. Two readers cannot share one partition.' },
+      { text: 'Read every event a second time as a backup', why: 'Consumers in the same group divide the work. A full second copy needs a second group.' },
+      { text: 'Sit idle until a partition frees up', correct: true, why: 'With 4 partitions, at most 4 consumers in a group have work. The extras wait as hot spares and take over when a reader crashes.' },
+      { text: 'Make the group 50% faster', why: 'Throughput tops out at one reader per partition. To read faster you need more partitions.' },
+    ],
+  },
+  {
+    prompt: 'A consumer saves its offset every 5 s. It crashes 3 s after its last save. What happens to the events it read in those 3 s?',
+    options: [
+      { text: 'They are lost for good', why: 'The log still holds them. Nothing is deleted when a consumer reads or crashes.' },
+      { text: 'The new owner reads them again', correct: true, why: 'The new owner starts from the saved offset, so it repeats everything read since then. That is why consumers must handle duplicates.' },
+      { text: 'The broker skips them because they were read', why: 'The broker only knows the saved offset. Reads after it never reached the broker.' },
+      { text: 'The crashed consumer finishes them when it restarts', why: 'Its partitions moved to other consumers during the rebalance, and they start from the saved offset.' },
+    ],
+  },
+  {
+    prompt: 'The dashboard keeps a "last clicked" time per link and must never move it backward. Which partition key fits?',
+    options: [
+      { text: 'Round robin, for the most even spread', why: 'Round robin scatters one link\'s clicks over every partition, and parallel readers apply them in any order.' },
+      { text: 'The short code', correct: true, why: 'All clicks for a link land in one partition, and one reader applies them in offset order.' },
+      { text: 'The visitor\'s IP address', why: 'Clicks for one link come from many visitors, so they still scatter over many partitions.' },
+      { text: 'The click timestamp', why: 'Each timestamp hashes somewhere different, so one link\'s clicks scatter and can race each other.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Describe a partitioned log: appends, offsets, retention, and many independent subscribers.
+- Explain consumer groups and consumer lag, and why consumers beyond the partition count sit idle.
+- Predict what a crash does: a pause while the group rebalances, then reads repeated since the last saved offset.
+- Explain why order holds only within a partition, and pick a key that keeps related events together.
+
+</Objectives>
+
+## The failure: the dashboard falls behind
+
+Every redirect on the shortener produces a click event: which link, when, and from where. The analytics pipeline turns
+those events into per-link counts for the owner's dashboard. Counting inside the redirect would slow every redirect, so
+the redirect service writes the event to a **log** and moves on. Analytics workers read the log at their own pace.
+
+At launch, one worker reads everything. In this toy model, clicks arrive at about 80 per second and one worker handles
+50 per second.
+
+<Predict
+  client:visible
+  question="Clicks arrive at about 80 per second. One consumer processes 50 per second. What happens to the unread backlog over 20 seconds?"
+  options={[
+    'It stays near zero',
+    'It grows to a few dozen, then levels off',
+    'It grows steadily, by about 30 every second',
+    'The log drops the extra clicks',
+  ]}
+  answer={2}
+>
+
+It **grows steadily**. In the simulation below, the backlog (the **lag**) reaches **637** events after 20 seconds, and it
+keeps growing as long as the gap lasts. The log drops nothing: every click is safe, but the dashboard shows older and
+older numbers. More consumers fix it, with a catch you will find in the simulation.
+
+</Predict>
+
+## The idea: a log that many readers share
+
+A **log** is an append-only list of events. Producers add to the end. Readers keep a bookmark, the **offset**, and move
+it forward as they go. Reading deletes nothing: the log keeps events for a retention period, such as 7 days. A classic
+work queue deletes each message once a worker acknowledges it. A log keeps it, so a new reader can replay history.
+
+One log on one machine has a speed limit, so a **topic** splits into **partitions**. Each partition is its own log on
+its own disk. A **consumer group** is a set of workers that shares the partitions: each partition has exactly one
+reader in the group at a time.
+
+<StepDiagram client:visible title="How a partitioned log carries clicks" nodes={nodes} edges={edges} steps={steps} height={330} />
+
+This is **publish/subscribe** (pub/sub): the producer publishes once, and any number of groups subscribe. Each group sees
+every event and keeps its own offsets.
+
+<Analogy>
+
+Picture a mail room with four conveyor belts. Letters for the same street always go onto the same belt. Each clerk
+takes one or more belts and handles their letters in order, sliding a bookmark along the belt after every batch. If a
+clerk walks out, a colleague takes over the belt at the last bookmark and handles a few letters twice. Hiring a fifth
+clerk for four belts just adds someone standing around.
+
+</Analogy>
+
+## Try it: scale the group, then crash it
+
+The topic has 4 partitions and two short codes per partition. Each track shows the newest events of one partition:
+the pale part is read, the hatched part is lag, the solid bar is the read position, and the dashed line marks the last
+saved offset. Start with one consumer, then switch scenarios. During a run, **Add consumer** and **Crash** change the
+group live.
+
+<ConsumerGroupWidget client:visible />
+
+What to look for:
+
+- **One consumer** reads all four partitions and falls further behind every second, to a lag of 637.
+- **Four consumers** each own one partition and handle about 20 clicks per second. Lag stays at 0 or 1.
+- **A consumer crashes** at 8 s. The whole group pauses for 2 s to reassign partitions (a **rebalance**), so lag
+  peaks at 222. The crashed consumer last saved its offset at 5 s, so the new owner of P2 reads 58 events a second time.
+  Three consumers then drain the backlog.
+- **Six consumers** for four partitions: consumers 5 and 6 process nothing. The partition count sets the ceiling
+  on parallel reads.
+
+Repeated reads are normal in a log, so the counter must tolerate them. The next lesson,
+[Delivery semantics and the outbox](../delivery-semantics/), shows how to make a repeat harmless.
+
+This toy model uses an **eager** rebalance: every consumer stops while the group reassigns partitions. Newer clients
+offer **cooperative** rebalancing, which pauses only the partitions that move.
+
+## Order holds only within a partition
+
+A partition is one log with one reader, so its events come out in the order they went in. Across partitions there is
+no order at all: two consumers run at their own speeds, and a slow one falls behind.
+
+Plain counts do not care. Five clicks counted in any order still add up to five. Per-link state does care: a
+"last clicked" time, a "first click" alert, or a running streak breaks when an older click arrives after a newer one.
+
+The fix is a **partition key**. Hash the short code to pick the partition, as the sharding lesson does with shard keys,
+and every click for one link lands in one partition and reaches one reader in order.
+
+<Predict
+  client:visible
+  question="The same clicks go into two setups: keyed by short code, or spread round robin over the partitions. Consumer 2 then stalls for 1.5 s. Which setup counts clicks for the same link out of order?"
+  options={['Keyed by short code', 'Round robin', 'Both, equally', 'Neither, since the log keeps order']}
+  answer={1}
+>
+
+**Round robin.** Its clicks for /cat sit in all four partitions, so whenever one reader runs ahead of another, an older
+click lands after a newer one. It happens a little even without the stall, and the stall makes it much worse: by the
+end of the run, **104** of 840 clicks arrive out of order. Keyed by short code, the count stays at **0**: the stall
+only delays the links in partition P2.
+
+</Predict>
+
+<OrderingDuelWidget client:visible />
+
+What to look for:
+
+- **Round robin spreads load perfectly** and gives up order for every link.
+- **Keyed by short code** keeps each link in order. The cost is balance: one viral link sends all its clicks to one
+  partition, the same hot key problem as in [sharding](../../scaling/sharding/).
+- **The stall is local when keyed.** Only the links in the stalled partition wait. Every other link stays current.
+
+## Trade-offs
+
+<TradeoffTable title="Log design choices">
+
+| Choice                       | What it buys                                          | What it costs                                                 |
+| ---------------------------- | ----------------------------------------------------- | ------------------------------------------------------------- |
+| More partitions              | More consumers can read in parallel                   | More files and connections, and slower rebalances             |
+| Key by short code            | Every link's clicks stay in order on one reader       | A viral link makes one partition hot                          |
+| Round robin                  | Even load on every partition                          | No order for any link                                         |
+| Save offsets often           | Fewer repeated reads after a crash                    | More writes to the offset store                               |
+| Save offsets rarely          | Fewer writes                                          | More repeated reads after a crash                             |
+| Cooperative rebalancing      | Only the moved partitions pause                       | A more complex protocol that takes longer to settle           |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+A shop streams order events (created, paid, shipped) to a topic. Shipping must never see "shipped" before "paid" for
+the same order. One big seller makes 30% of all orders, and the team expects to need 12 readers at peak. Pick a
+partition key and a partition count, and name the risk you accept.
+
+<div slot="answer">
+
+- **Key by order id.** Every event for one order lands in one partition and reaches one reader in order. Events for
+  different orders need no order between them.
+- Keying by seller id would also keep each order in order, but the big seller would put 30% of all traffic on one
+  partition and one reader.
+- **Start with more partitions than readers**, for example 24 or 48. Adding partitions later changes `hash mod N`, so
+  some orders would move partitions mid-flight and lose their ordering guarantee during the switch.
+- The risk you accept: an order's events wait behind any slow event in the same partition, and every reader must handle
+  repeated reads after a crash.
+
+</div>
+
+</Challenge>
