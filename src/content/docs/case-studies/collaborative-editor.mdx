@@ -1,0 +1,477 @@
+---
+title: Collaborative editor
+description: Merge concurrent edits so every copy of a shared document converges, using character ids, tombstones, and causal buffering.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import ConvergenceWidget from '../../../components/widgets/ConvergenceWidget';
+
+export const nodes = [
+  { id: 'ada', kind: 'client', x: 70, y: 50, label: "Ada's editor" },
+  { id: 'ben', kind: 'client', x: 70, y: 150, label: "Ben's editor" },
+  { id: 'cy', kind: 'client', x: 70, y: 250, label: "Cy's editor" },
+  { id: 'relay', kind: 'server', x: 300, y: 150, label: 'Relay server', sublabel: 'WebSockets' },
+  { id: 'log', kind: 'database', x: 530, y: 60, label: 'Op log' },
+  { id: 'snap', kind: 'database', x: 530, y: 240, label: 'Snapshots' },
+];
+export const edges = [
+  { from: 'ada', to: 'relay' },
+  { from: 'ben', to: 'relay' },
+  { from: 'cy', to: 'relay' },
+  { from: 'relay', to: 'log' },
+  { from: 'relay', to: 'snap' },
+  { from: 'log', to: 'snap', dashed: true },
+];
+export const steps = [
+  {
+    title: 'Ada types, and her screen updates at once',
+    text: 'Ada adds an s to the end of cat. Her editor applies it to her own copy right away, with no round trip, and names the new character a4: site a, counter 4.',
+    nodes: ['ada'],
+  },
+  {
+    title: 'The op goes to the relay',
+    text: 'Her editor sends one small op over a WebSocket: insert s, id a4, right after a3. It names the left neighbor, never an index.',
+    nodes: ['ada', 'relay'],
+    flows: ['ada>relay'],
+  },
+  {
+    title: 'The relay logs it',
+    text: 'The relay stamps the op with the next sequence number for this document, appends it to the op log, and acks Ada. The edit is now durable.',
+    nodes: ['relay', 'log'],
+    flows: ['relay>log'],
+  },
+  {
+    title: "Ben's copy places it by id",
+    text: 'The relay forwards the op to Ben. His editor finds a3 in its own copy and places the s after it, wherever a3 sits now.',
+    nodes: ['relay', 'ben'],
+    flows: ['relay>ben'],
+  },
+  {
+    title: 'Edits cross on the wire',
+    text: "Ben had already typed an h and sent it before Ada's s arrived. The relay forwards it to Ada. The two copies apply the same two ops in opposite orders and still both read chats.",
+    nodes: ['ada', 'ben', 'relay'],
+    flows: ['ben>relay', 'relay>ada'],
+  },
+  {
+    title: 'Fold the log into a snapshot',
+    text: 'Every so often, a background job folds the logged ops into a snapshot of the whole character list, tombstones included, and records the last sequence number it covers.',
+    nodes: ['log', 'snap'],
+    flows: ['log>snap'],
+  },
+  {
+    title: 'A late joiner loads the snapshot',
+    text: 'Cy opens the document. The relay sends the latest snapshot plus only the ops logged after it, then streams new ops live.',
+    nodes: ['snap', 'relay', 'cy'],
+    flows: ['snap>relay', 'relay>cy'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: "Ada and Ben send ops that name an index, and each copy applies the other's ops as written. Why do the copies drift apart?",
+    options: [
+      {
+        text: 'The network corrupts some ops',
+        why: 'Every op arrives intact. The trouble is what an index means once the receiving copy has changed.',
+      },
+      {
+        text: 'An index points at a different character once the receiving copy has its own concurrent edit',
+        correct: true,
+        why: "Ben's o shifted every later letter one step right, so index 2 on his copy pointed at the a instead of the s.",
+      },
+      {
+        text: 'The ops arrive too slowly',
+        why: 'Any delay at all leaves room for two edits to cross, and then the indexes shift. Faster delivery shrinks the window without closing it.',
+      },
+      {
+        text: 'Inserts and deletes cannot mix in one document',
+        why: 'They mix fine once each op names a character by id. Naming a spot by index is the problem.',
+      },
+    ],
+  },
+  {
+    prompt: 'Why does the CRDT keep a deleted character as a tombstone instead of removing it?',
+    options: [
+      {
+        text: 'So that undo can bring it back',
+        why: 'Undo is a side benefit at most. The reason is that other ops may still name the character as their anchor.',
+      },
+      {
+        text: 'Delayed or concurrent ops may still say they go right after it',
+        correct: true,
+        why: 'An insert typed after the s on another copy still points at a3. The tombstone gives that insert somewhere to land on every copy.',
+      },
+      {
+        text: 'To keep the document small',
+        why: 'Tombstones make it bigger. They are the main source of growth in the estimates.',
+      },
+      {
+        text: 'Removing an item from a list is slow',
+        why: 'Removing an item is cheap. Removing an anchor that other ops still reference is what breaks.',
+      },
+    ],
+  },
+  {
+    prompt: 'Ada and Ben each type a character right after the same character at the same moment. How does every copy agree on their order?',
+    options: [
+      {
+        text: 'Whichever op reaches the relay first goes first',
+        why: 'Copies receive ops in different orders, and peers can sync without a relay. The CRDT rule uses only the ids, which every copy sees the same way.',
+      },
+      {
+        text: 'The character with the larger id sits closer to the shared neighbor',
+        correct: true,
+        why: 'Ids compare by counter, then by site, so every copy reaches the same decision without asking anyone.',
+      },
+      {
+        text: 'Each copy puts its own character first',
+        why: "Then Ada's copy and Ben's copy would each put a different character first and disagree forever.",
+      },
+      {
+        text: 'The edit with the later wall clock time wins',
+        why: 'Wall clocks drift between machines, and two edits can carry the same reading. Counters and site letters give a total order without clocks.',
+      },
+    ],
+  },
+  {
+    prompt: 'A new editor opens a document with two years of edit history. What keeps the load fast?',
+    options: [
+      {
+        text: 'Replaying every op from the log',
+        why: 'That works, and its cost grows with the whole history. Snapshots exist to avoid this slow path.',
+      },
+      {
+        text: 'Loading the latest snapshot plus the ops logged after it',
+        correct: true,
+        why: 'The snapshot holds the character list as of one sequence number, so only a short tail of ops remains to apply.',
+      },
+      {
+        text: "Copying another editor's browser state",
+        why: 'Other editors may be offline or behind. The server holds the durable copy, so new editors load from it.',
+      },
+      {
+        text: 'Sending only the visible text',
+        why: 'Plain text drops the ids and tombstones, so the new copy could not place any later op that names them.',
+      },
+    ],
+  },
+];
+
+This case study builds on the **Distributed data** module, especially Consistency models. In
+[Read replicas](../../scaling/read-replicas/), one primary took every write and the replicas copied it. Here every copy
+takes writes at the same time, and the copies must still end up identical.
+
+<Objectives>
+
+- Explain why edits that name an index diverge when two copies change at once.
+- Name every character with an id and every insert with its left neighbor, so an op lands in the same place on every
+  copy.
+- Use tombstones and causal buffering to apply deletes and early ops safely.
+- Weigh this CRDT against operational transformation and locking.
+
+</Objectives>
+
+## The failure: two people, one word
+
+Ada and Ben share a document that reads "cast". At the same moment, Ada deletes the s (she wants "cat") and Ben types an
+o after the c (he wants "coast"). Each editor applies its own edit instantly and then sends it to the other. The naive
+design describes each edit by position: Ada sends "delete the character at index 2", and Ben sends "insert o at index
+1". Each copy applies the incoming op exactly as written.
+
+<Predict
+  client:visible
+  question="Ada's copy now reads cat and Ben's reads coast. Ada's copy inserts o at index 1, and Ben's copy deletes the character at index 2. What does each copy show afterwards?"
+  options={[
+    'Both show coat',
+    'Ada sees coat, Ben sees cost',
+    'Ada sees cost, Ben sees coat',
+    'Both show cost',
+  ]}
+  answer={1}
+>
+
+**Ada sees coat, Ben sees cost.** Ada's copy puts the o at index 1 of "cat" and gets "coat", which is what both people
+meant. On Ben's copy, his own o already pushed every later letter one step right, so index 2 now holds the a, and the a
+disappears. Nobody sees an error. The copies drift apart silently, and every later edit builds on two different texts.
+The widget further down replays this exact duel.
+
+</Predict>
+
+## The constraint: every copy applies edits in a different order
+
+Waiting a network round trip on every keystroke would make typing feel broken, so each editor applies its own edits
+first and everyone else's later, in whatever order the network delivers them. The design must still bring every copy to
+the same text once the edits stop, without losing anyone's edit. A **CRDT** (conflict-free replicated data type) is a
+data structure built for exactly this: copies that apply the same ops, in any order that respects their dependencies,
+end in the same state.
+
+The rest of this lesson walks the [design checklist](../../thinking/design-checklist/).
+
+## Requirements
+
+**Functional**
+
+- Several people type in one document at the same time.
+- Each person sees their own keystroke immediately.
+- Every copy ends with the same text, and nobody's edit disappears.
+- An editor that drops offline catches up when it reconnects.
+- A newcomer opens a long-lived document quickly.
+
+**Non-functional** (illustrative targets)
+
+- Local echo inside one screen frame, with no network wait.
+- Remote edits visible on other screens within about 200 ms.
+- An acknowledged edit survives a server crash.
+- 2 to 100 people editing one document at once.
+
+## Estimates
+
+These numbers are illustrative. In this toy, a person typing produces about 5 ops per second, one per keystroke. The
+relay receives every op once and forwards it to every other editor of the document.
+
+| Quantity                               | Illustrative value                                                       |
+| -------------------------------------- | ------------------------------------------------------------------------ |
+| Ops per typist                         | 5 per second                                                             |
+| 2 editors                              | 10 ops per second in, 10 out                                             |
+| 10 editors                             | 50 in, 450 out (50 × 9)                                                  |
+| 100 editors                            | 500 in, 49,500 out (500 × 99, about 49.5K)                               |
+| Bytes per character in the CRDT        | 18: 1 for the character, 8 for its id, 8 for its origin, 1 for a flag   |
+| 50 KB of visible text                  | 900 KB of CRDT state                                                     |
+| The same text plus 50 KB of tombstones | 1.8 MB of CRDT state                                                     |
+
+Two things stand out. First, forwarding grows with the square of the editor count: 10 times the editors means more than
+100 times the forwarded ops (450 to 49,500). Most documents have a handful of editors, so one relay can host many
+documents. Shard documents across relays by doc id, as in [Sharding](../../scaling/sharding/), so every editor of one
+document meets on the same relay. Second, metadata dominates: each character costs 18× its own size. Real libraries
+store a run of typed characters as one item with one starting id, which shrinks that overhead sharply.
+
+## API
+
+```text
+GET  /docs/{docId}
+     returns { snapshot, uptoSeq, opsAfter: [...] }
+
+WS   /docs/{docId}/live?after={seq}
+     server to client   { type: "hello", site: "b" }
+     client to server   { type: "insert", id: "b3", origin: "a2", char: "y" }
+     client to server   { type: "delete", target: "a3" }
+     server to client   { type: "op", seq: 1042, op: {...} }     to every other editor
+     server to client   { type: "ack", id: "b3", seq: 1042 }     to the sender
+```
+
+The server hands each editor a site letter when it joins. An insert names its own id and its origin, the character to
+its left (an origin of `null` means the start of the document). A delete names its target. Neither op mentions an
+index. The live channel is a WebSocket; the Real-time transport lesson compares it with polling and server-sent events.
+
+## Data model
+
+| Table     | Key                  | Holds                                                                              |
+| --------- | -------------------- | ---------------------------------------------------------------------------------- |
+| documents | `doc_id`             | Title, owner, latest sequence number                                               |
+| ops       | `(doc_id, seq)`      | Each op as sent, with a unique `(doc_id, site, counter)` so a resent op lands once |
+| snapshots | `(doc_id, upto_seq)` | The full character list, with ids, origins, and tombstones                         |
+| sites     | `(doc_id, site)`     | Which session owns each site letter, and the last counter it used                  |
+
+Every id is unique by construction, so a client that reconnects can resend anything the relay never acked: the unique
+key turns a duplicate into a no-op. The Idempotency lesson covers this pattern in depth.
+
+## High-level design
+
+Each editor keeps a full local copy and applies its own edits instantly. A relay server forwards every op to the other
+editors of the same document and appends it to an op log, which makes the edit durable. The relay never needs to
+understand text: it orders, stores, and forwards. Now and then, a background job folds the log into a snapshot, so a
+new editor loads one snapshot plus a short tail of ops instead of the document's whole history.
+
+<StepDiagram client:visible title="How an edit travels" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy title="Sticky notes that point at each other">
+
+Ada and Ben each hold a copy of the same row of sticky notes, one letter per note, and they mail each other new notes.
+Every note carries its author's letter and a number, plus one instruction: "goes right after note a2". Notes can arrive
+in any order, and each person still knows where to stick them. When two notes claim the same spot, the one with the
+higher number sits closer to its anchor (on a tie, the letter later in the alphabet wins), so every row ends in the same
+order. A removed note gets a big cross instead of going in the bin, because other notes may still say "goes right
+after" it.
+
+</Analogy>
+
+## Deep dive: name the neighbor, never the index
+
+### Every character gets a name
+
+Index 2 means a different letter on each copy as soon as edits cross. So every character gets a permanent **id**: the
+site that typed it plus a counter, written here as a3 (site a, counter 3). A copy sets the counter one higher than the
+largest counter it has seen from anyone, so a character always gets a larger counter than the characters already beside
+it. Two ids compare by counter first, then by site letter, so every copy agrees on which of two ids is larger.
+
+### An insert names its left neighbor
+
+An insert op carries its new id, its character, and its **origin**: the id of the character to its left when it was
+typed. Ben's o in "cast" (a1 to a4) becomes "insert o, id b5, after a1". On every copy, a1 is the c, wherever the c has
+moved.
+
+### Two inserts at the same spot
+
+Origins leave one question open: two characters typed right after the same neighbor. Every copy runs the same rule to
+place a remote insert:
+
+```text
+1. Find the origin (or the start of the document).
+2. Look at the character just right of it.
+3. If that character's id is larger than the new id, step over it and repeat step 2.
+4. Otherwise, place the new character here.
+```
+
+Step 3 also steps over the characters typed after that larger neighbor, since they carry even larger counters. Here is
+the rule on the Same-spot inserts scenario, where both copies start with Hi (a1, a2):
+
+```text
+Start, both copies            H a1   i a2
+Ada types !                   H a1   i a2   ! a3
+Ben types y, then a           H a1   i a2   y b3   a b4
+
+Ben's copy receives ! (a3, after a2)
+  right of a2 sits y b3. b3 is larger than a3 (same counter, and b beats a), so step over it.
+  next sits a b4. b4 is larger, so step over it.
+  end of the text, so ! goes here.
+                              H a1   i a2   y b3   a b4   ! a3
+
+Ada's copy receives y (b3, after a2)
+  right of a2 sits ! a3. a3 is smaller than b3, so y goes here.
+                              H a1   i a2   y b3   ! a3
+Ada's copy receives a (b4, after b3)
+  right of b3 sits ! a3. a3 is smaller than b4, so a goes here.
+                              H a1   i a2   y b3   a b4   ! a3
+```
+
+Both copies read "Hiya!". The index design ends with "Hiya!" on Ada's copy and "Hi!ya" on Ben's, because Ben's copy put
+the ! at index 2, between his i and his y.
+
+### Deletes leave tombstones
+
+A delete names its target: Ada's delete of the s in "cast" becomes "delete a3". If a copy removed a3 outright, any op
+that says "after a3" would have nowhere to go. So a deleted character stays in the list as a **tombstone**: hidden from
+the text, still in place as an anchor. In the Insert beside a delete scenario, both copies end with "coat", and each
+keeps one tombstone (2 across both copies).
+
+### Ops that arrive early wait
+
+Ids fix where an op goes, but an op can only go somewhere its anchor already exists. Ada types an s and then a ! at the
+end of "cat" while Ben types an h after the c, and the network hands Ben's copy the ! first. Its origin, a4, is the s,
+which Ben's copy has not seen yet.
+
+<Predict
+  client:visible
+  question="Ben's copy receives Ada's ! (id a5, after a4) before it has received a4, the s. What should Ben's editor do?"
+  options={[
+    'Place the ! at the end for now',
+    'Hold the ! until the s arrives',
+    'Drop the ! and ask Ada to send it again',
+    'Reload the whole document from the relay',
+  ]}
+  answer={1}
+>
+
+**Hold the ! until the s arrives.** The op says "after a4", and Ben's copy has no a4 yet. A guess can put the ! ahead of
+the s, and later ops never move a character once it is placed. So Ben's editor parks the op in a small buffer. When a4
+arrives, the editor places the s and retries the buffer, which now succeeds. A delete waits the same way until its
+target exists. This is **causal buffering**: apply an op only after everything it depends on. Dropping the op or
+reloading the document also recovers, at the cost of a round trip for every reordered op.
+
+</Predict>
+
+One honest note: with a single relay that forwards ops over ordered WebSocket connections, ops already arrive in an order
+that respects these dependencies, because the relay acts as a sequencer. Buffering earns its keep when copies sync peer
+to peer, through several relays, or by replaying a backlog after a reconnect. The toy lets the network reorder ops so
+you can watch the buffer work.
+
+### Try it
+
+The widget opens on Delivery order swapped, the case you just predicted. Both lanes get the same edits and the same
+deliveries. Press Step to move one edit or delivery at a time, or Play to run it all. Then pick Insert beside a delete
+to replay the "cast" duel from the top of the lesson.
+
+<ConvergenceWidget
+  client:visible
+  initial="reordered"
+  instructions="Toy model: Ada and Ben edit one short word at the same moment, and the network may reorder their ops. Pick a scenario, guess both final texts, then press Play or Step. Both designs get the same edits and the same deliveries; only the way an op names its spot differs."
+/>
+
+What to look for:
+
+- **The badges.** Index positions ends with Copies differ in every scenario. CRDT ids ends with Copies match.
+- **An id on every tile.** Under CRDT ids, each character shows its id. A delete hatches and strikes through its tile and
+  labels it deleted, without removing it.
+- **The buffer.** In Delivery order swapped, Ben's copy holds the ! after steps 4 and 5 (the Ops buffered row reads 1),
+  then places the s and the ! together on step 6.
+- **Same ops, different texts.** The index lane ends with "chats!" on Ada's copy and "chast!" on Ben's: the s landed at
+  index 3 of "chat!", which on Ben's copy sits between the a and the t.
+
+## Trade-offs
+
+**Operational transformation (OT)** is the other main approach, and the one Google Docs uses. Ops keep plain indexes,
+and a central server transforms each incoming op against the concurrent ops it has already applied. If Ben inserted a
+character before index 2, Ada's "delete at index 2" becomes "delete at index 3" on Ben's copy. That shift is exactly
+what the index lane was missing. OT keeps the document free of per-character ids, and it needs a central server to pick
+one order plus a transform for every pair of op types, which is notoriously hard to get right.
+
+<TradeoffTable title="Ways to merge concurrent edits">
+
+| Design                           | What it buys                                                     | What it costs                                                                    |
+| -------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Index positions, applied as sent | Tiny ops and trivial code                                        | Copies diverge as soon as two edits cross                                        |
+| Locks or turn taking             | One writer at a time, so nothing conflicts                       | Typing waits on the lock, and one slow editor blocks everyone                    |
+| OT with a central server         | Compact ops, no per-character metadata, mature in production     | Transform functions are hard to get right, and every op must pass the server     |
+| CRDT, RGA style (this lesson)    | Any copy merges ops in any causal order, offline or peer to peer | An id and an origin on every character, and tombstones that grow until collected |
+
+</TradeoffTable>
+
+## Honest simplifications
+
+This lesson's model is a toy. Here is what it leaves out:
+
+- **Tombstones never go away.** Real systems collect a tombstone once every copy has seen the delete, which requires
+  knowing every copy and what each has seen. The toy keeps every tombstone.
+- **Plain characters only.** No bold, links, or comments. Rich text needs ids for formatting ranges too.
+- **One op per character.** Real editors send a run of typed characters as one op and store it as one item, which cuts
+  the 18 bytes per character sharply.
+- **Interleaving.** In this toy, two runs typed forward at the same spot stay together: abc and xyz merge to "xyzabc" on
+  both copies. If each person types backward (c, then b to its left, then a), the runs interleave as "xaybzc". The
+  copies still agree, and the text reads oddly. Some newer sequence CRDTs add rules to avoid even this.
+- **The server still matters.** The CRDT removes the need for a server to decide the order, yet this design still uses
+  one to relay ops, persist the log, hand out site letters, and serve snapshots.
+- **No presence.** Cursors, selections, and who is here indicators travel on a separate, lossy channel and are out of
+  scope.
+- **Two copies and short words.** The widget runs two copies so you can read every tile. The unit tests also check 300
+  seeded random sessions across two and three copies, and every one converges.
+
+## Check yourself
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+A class of 20 students edits one shared outline during a lecture, each typing about 5 ops per second at peak. By the end
+of term the outline shows 20,000 characters, and students have deleted 60,000 more along the way. Using this lesson's
+illustrative numbers, how many ops per second does the relay receive and send at peak? How big is the CRDT state,
+compared with the plain text? What would you change first?
+
+<div slot="answer">
+
+- Relay in: 20 × 5 = **100 ops per second**. Relay out: each op goes to the 19 other students, so 100 × 19 = **1,900
+  ops per second**.
+- CRDT state: (20,000 + 60,000) characters × 18 bytes = **1,440,000 bytes, about 1.44 MB**, against **20 KB** of
+  visible text. That is **72×** the text.
+- First changes: store each run of typed characters as one item, collect tombstones once every copy has acknowledged
+  the deletes (or compact them when writing a snapshot), and batch outgoing ops into one message per short window. If
+  many classes edit at once, shard relays by doc id.
+
+</div>
+
+</Challenge>
