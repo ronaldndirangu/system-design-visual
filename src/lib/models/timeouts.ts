@@ -338,7 +338,7 @@ export class TimeoutServer implements ModelAdapter<TimeoutCommand, TimeoutTick, 
   }
 }
 
-/* ---------- Two policies side by side on the same traffic ---------- */
+/* Two policies side by side on the same traffic */
 
 export type TimeoutScenarioId = 'healthy' | 'hang' | 'long' | 'nocancel';
 export type TimeoutMetric = 'workers' | 'connections';
@@ -565,7 +565,7 @@ function describeTimeoutCommand(command: TimeoutCommand): string {
   }
 }
 
-/* ---------- One request crossing three hops toward a 1 s deadline ---------- */
+/* One request crossing three hops toward a 1 s deadline */
 
 export type BudgetMode = 'fixed' | 'propagate';
 export type HopId = 'client' | 'gateway' | 'server' | 'database';

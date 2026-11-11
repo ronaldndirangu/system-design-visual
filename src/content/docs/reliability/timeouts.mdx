@@ -237,7 +237,7 @@ along. Java and .NET use interrupts and cancellation tokens for the same job. Ma
 query when the context ends. A query that nobody tells to stop keeps running.
 
 Cancelling a **write** is harder: the write may already have reached the database when the cancel arrives, so the
-caller cannot know whether it happened. The Idempotency lesson shows how to make that uncertainty safe.
+caller cannot know whether it happened. The [Idempotency](../idempotency/) lesson shows how to make that uncertainty safe.
 
 ## One deadline for the whole trip
 

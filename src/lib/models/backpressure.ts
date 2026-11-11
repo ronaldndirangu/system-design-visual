@@ -49,7 +49,7 @@ const MEAN_WORK_MS = 100;
 /** Weight of the newest work time in the shedding policy's running average. */
 const EWMA_WEIGHT = 0.1;
 
-/* ---------- One shared workload per traffic shape ---------- */
+/* One shared workload per traffic shape */
 
 export type TrafficShape = 'steady' | 'burst' | 'viral';
 
@@ -95,7 +95,7 @@ export function generateWorkload(shape: TrafficShape, seed: number, seconds: num
   return list;
 }
 
-/* ---------- The server ---------- */
+/* The server */
 
 export type QueueCommand = { type: 'slow'; factor: number } | { type: 'recover' };
 
@@ -350,7 +350,7 @@ export class QueueServer implements ModelAdapter<QueueCommand, QueueTick, QueueC
   }
 }
 
-/* ---------- Two policies side by side on the same traffic ---------- */
+/* Two policies side by side on the same traffic */
 
 export type QueueScenarioId = 'steady' | 'burst' | 'viral' | 'slow';
 export type QueueMetric = 'queued' | 'rejected' | 'goodput';

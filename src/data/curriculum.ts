@@ -192,7 +192,8 @@ export const curriculum: CourseModule[] = [
         id: 'reliability/idempotency',
         title: 'Idempotency',
         summary: 'Make "do it again" safe so a repeated request never double charges anyone.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'reliability/retries',

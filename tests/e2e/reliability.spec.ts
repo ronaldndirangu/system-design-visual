@@ -151,3 +151,57 @@ test.describe('Queues and backpressure', () => {
     await expect(duel.getByRole('row', { name: /Answered in time/ })).toContainText('657');
   });
 });
+
+test.describe('Idempotency', () => {
+  test('a claimed key stops double charges on a lossy network and is axe clean in both themes', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+    await page.goto('reliability/idempotency/');
+    const duel = page.getByRole('region', { name: 'Simulation: Same purchases, with and without a key' });
+    await duel.scrollIntoViewIfNeeded();
+    const skip = duel.getByRole('button', { name: 'Skip to the end' });
+    const twice = duel.getByRole('row', { name: /Orders charged twice/ });
+
+    await expect(skip).toBeEnabled();
+    await skip.focus();
+    await page.keyboard.press('Enter');
+    await expect(duel.getByRole('row', { name: /Card charges/ })).toContainText('73');
+    await expect(twice).toContainText('9');
+    await expect(twice).toContainText('Better');
+    await expect(duel.getByRole('row', { name: /Money taken by mistake/ })).toContainText('$45');
+    await expect(duel.getByText('Run complete')).toBeVisible();
+    await expect(duel.getByText(/No key: Order #21 is charged twice/)).toBeVisible();
+    await expect(
+      duel.getByRole('region', { name: 'No key' }).getByText('9 orders charged twice'),
+    ).toBeVisible();
+    expect(await axeViolations(page)).toEqual([]);
+    await page.emulateMedia({ colorScheme: 'light' });
+    expect(await axeViolations(page)).toEqual([]);
+
+    const calm = duel.getByRole('radio', { name: /Healthy network/ });
+    await duel.getByRole('radio', { name: /Lossy mobile network/ }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(calm).toBeChecked();
+    await expect(calm).toBeFocused();
+    await expect(duel.getByText('Ready', { exact: true })).toBeVisible();
+    await skip.click();
+    await expect(duel.getByRole('row', { name: /Card charges/ })).toContainText('64');
+    await expect(twice).not.toContainText('Better');
+    expect(errors).toEqual([]);
+  });
+
+  test('a key claimed first answers 409 to retries that arrive mid payment', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('reliability/idempotency/');
+    const duel = page.getByRole('region', { name: 'Simulation: A retry that arrives too early' });
+    await duel.scrollIntoViewIfNeeded();
+    const skip = duel.getByRole('button', { name: 'Skip to the end' });
+    await expect(skip).toBeEnabled();
+    await skip.click();
+    await expect(duel.getByRole('row', { name: /Orders charged twice/ })).toContainText('10');
+    await expect(duel.getByRole('row', { name: /Retries answered 409/ })).toContainText('16');
+    await expect(duel.getByRole('row', { name: /Attempts sent/ })).toContainText('91');
+  });
+});
