@@ -3,6 +3,7 @@ import react from '@astrojs/react';
 import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';
 import { buildSidebar } from './src/data/sidebar';
+import { scrollableTables } from './src/lib/scrollableTables';
 
 const repository = 'https://github.com/ronaldndirangu/system-design-visual';
 const earlyClickReplay = readFileSync(
@@ -42,6 +43,7 @@ export default defineConfig({
         MarkdownContent: './src/components/overrides/MarkdownContent.astro',
       },
     }),
+    scrollableTables(),
     react(),
   ],
 });
