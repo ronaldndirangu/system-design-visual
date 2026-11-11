@@ -305,7 +305,8 @@ export const curriculum: CourseModule[] = [
       {
         id: 'case-studies/search',
         title: 'Search',
-        summary: 'Trade retrieval quality against index freshness, then add typeahead as an extension.',
+        summary:
+          'Keep a news index fresh, give each ranking signal its own clock, then add typeahead as an extension.',
         minutes: 25,
         bestAfter: 'scaling',
       },

@@ -70,6 +70,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'reliability/observability/q1',
     prompt: 'Your manager asks: "How many checkout requests failed in the last 15 minutes, and is that more than yesterday?" Which signal answers fastest?',
     options: [
       { text: 'Metrics', correct: true, why: 'A counter of requests by route and status answers this with one query, and metrics keep weeks of history cheaply.' },
@@ -79,6 +80,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/observability/q2',
     prompt: 'You want one dashboard for the database connection pool itself. Which method fits best?',
     options: [
       { text: 'RED: rate, errors, duration', why: 'RED describes request-driven services from the caller\u2019s side. A pool is a resource, and RED would miss how full it is.' },
@@ -88,6 +90,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/observability/q3',
     prompt: 'In a trace, api.browse lasts 750 ms. Its children are cache.get (3 ms), db.pool.acquire (727 ms), and db.query products (20 ms). Where did the request spend its time?',
     options: [
       { text: 'In api.browse, the longest span', why: 'A parent span\u2019s duration includes its children. Its children account for all 750 ms, so its own work is 0 ms.' },
@@ -97,6 +100,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/observability/q4',
     prompt: 'The payments service logs "charge declined" without the trace ID. What can you no longer do?',
     options: [
       { text: 'Count how many charges were declined', why: 'You can still count those lines. The ID matters for joining a line to one request.' },
@@ -106,6 +110,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/observability/q5',
     prompt: 'You can afford to store about 10% of traces. During an incident, 1 request in 50 fails. Why might tail sampling beat head sampling here?',
     options: [
       { text: 'Tail sampling stores fewer spans', why: 'It usually stores more, because it keeps every error and slow trace on top of its baseline.' },
@@ -135,6 +140,7 @@ takes about 500 ms. Browse pages never run that query.
 
 <Predict
   client:visible
+  id="reliability/observability/predict-1"
   question="Deploy v42 slows only the checkout query. What happens to the browse page?"
   options={[
     'Nothing, because browse never runs the new query',
@@ -221,6 +227,7 @@ branch leaves the parent just as slow.
 
 <Predict
   client:visible
+  id="reliability/observability/predict-2"
   question="A browse request at 35.7 s took 771 ms. Browse runs only the fast products query. Where will its trace show the time going?"
   options={[
     'In db.query products, which must have slowed down too',
@@ -274,6 +281,7 @@ within a budget, such as "store 10% of requests". Two policies can spend the sam
 
 <Predict
   client:visible
+  id="reliability/observability/predict-3"
   question="Head sampling keeps a random 10% of traces. During the incident, 50 requests fail. About how many of those failures will have a trace you can open?"
   options={[
     'All 50, because errors matter most',

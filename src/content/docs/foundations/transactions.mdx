@@ -55,6 +55,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'foundations/transactions/q1',
     prompt: 'The launch row holds clicks = 7. Two handlers each run SELECT clicks, then UPDATE ... SET clicks = 8, at the same moment. What does the row hold afterward?',
     options: [
       { text: '9', why: 'Each handler computed 7 + 1 from its own read. Neither saw the other, so neither wrote 9.' },
@@ -64,6 +65,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/transactions/q2',
     prompt: 'Which change fixes the click counter with the least new code?',
     options: [
       { text: 'UPDATE links SET clicks = clicks + 1 WHERE alias = :alias', correct: true, why: 'The database reads and writes the current value in one step while it holds the row, so concurrent increments queue up and all count.' },
@@ -73,6 +75,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/transactions/q3',
     prompt: 'An editor saves with UPDATE ... WHERE version = 4, and the database reports 0 rows updated. What should the API do?',
     options: [
       { text: 'Report success, since the request was valid', why: 'Nothing was saved. Reporting success hides the conflict and loses the editor\'s change.' },
@@ -82,6 +85,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/transactions/q4',
     prompt: 'Why is a unique key a better guard for new custom aliases than SELECT ... FOR UPDATE?',
     options: [
       { text: 'A new alias has no row yet, so there is nothing to lock', correct: true, why: 'Row locks protect rows that exist. Both claims check, find nothing, and insert. The unique key checks at the moment of insert, so the second one fails.' },
@@ -91,6 +95,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/transactions/q5',
     prompt: 'Your team switches PostgreSQL to Serializable isolation to protect a read, decide, write flow. What new work does the application take on?',
     options: [
       { text: 'None. Serializable fixes it with no code changes', why: 'Serializable stops the anomaly by aborting one of the conflicting transactions. Somebody has to handle that abort.' },
@@ -118,6 +123,7 @@ falls behind the real traffic. Nothing crashes, and no log line mentions it.
 
 <Predict
   client:visible
+  id="foundations/transactions/predict-1"
   question="30 clicks hit sho.rt/launch, and 25 of them arrive while another click's handler is still running. Each handler reads clicks, then writes the value it read plus 1. What does the counter show when every handler finishes?"
   options={['Exactly 30', 'Fewer than 30', 'More than 30', 'An error, since two writes collided']}
   answer={1}
@@ -211,6 +217,7 @@ The shortener lets people pick a custom alias. The handler checks whether the al
 
 <Predict
   client:visible
+  id="foundations/transactions/predict-2"
   question="Three people claim the alias sale within half a second. Each handler checks that sale is free, then inserts it. How many sale rows can end up in the table?"
   options={['Exactly 1', 'Up to 3', 'None, since the checks cancel out']}
   answer={1}

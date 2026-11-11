@@ -63,6 +63,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'distributed-data/cqrs/q1',
     prompt: 'A shopper adds a mug, and the cart page that loads right after shows the cart without it. What is the most likely cause?',
     options: [
       { text: 'The cart page view has not applied the ItemAdded event yet', correct: true, why: 'Read models catch up with the log after the write succeeds. In the normal run, 19 of 95 page loads landed in that gap.' },
@@ -72,6 +73,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'distributed-data/cqrs/q2',
     prompt: 'During the flash sale, top items falls 42 events behind. What happens to checkout?',
     options: [
       { text: 'It keeps running at full speed', correct: true, why: 'The write model appends events without waiting for any projection. All 156 events reach the log while top items drains its backlog.' },
@@ -81,6 +83,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'distributed-data/cqrs/q3',
     prompt: 'You fix a bug that left wrong totals in a projection. What is the safest way to correct the existing rows?',
     options: [
       { text: 'Replay the log from position 0 through the fixed code into a new table, then switch reads to it', correct: true, why: 'The log still holds every event the old code mishandled, so the fixed code produces correct rows for all of them. The old table keeps serving until the new one catches up.' },
@@ -90,6 +93,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'distributed-data/cqrs/q4',
     prompt: 'While the cart page view rebuilds, how do you keep shoppers from getting a second receipt?',
     options: [
       { text: 'The email sender keeps its own position and takes no part in the rebuild', correct: true, why: 'A rebuild resets only the view being rebuilt. An idempotency key on each email, such as the event position, also guards against retries after a crash.' },
@@ -99,6 +103,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'distributed-data/cqrs/q5',
     prompt: 'Which statement about CQRS and event sourcing is true?',
     options: [
       { text: 'You can use either one without the other', correct: true, why: 'CQRS can feed read models from ordinary tables through an outbox or change data capture. Event sourcing can answer reads by folding a stream of events directly.' },
@@ -136,6 +141,7 @@ bring a new cost: the read side runs behind the writes.
 
 <Predict
   client:visible
+  id="distributed-data/cqrs/predict-1"
   question="The cart page moves to its own table, which a background reader updates from the stream of changes every 300 ms. Shoppers open the cart page 100 to 500 ms after each change. What share of page loads miss the shopper’s latest change?"
   options={[
     'None, because the change is saved first',
@@ -198,6 +204,7 @@ $12 mug, the page still adds $12 to the total. Predict before you run it.
 
 <Predict
   client:visible
+  id="distributed-data/cqrs/predict-2"
   question="Cart page v1 has shown wrong totals for a while. You deploy v2 with the fix. How do you correct the carts v1 already got wrong?"
   options={[
     'Run an UPDATE that subtracts removed items',

@@ -85,6 +85,7 @@ export const steps = [
 ];
 export const quiz = [
   {
+    id: 'case-studies/ride-sharing/q1',
     prompt: "A rider stands 20 m from the east edge of their geohash cell. Why does the matcher also search the 8 cells around the rider's own?",
     options: [
       {
@@ -107,6 +108,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/ride-sharing/q2',
     prompt: 'A driver sends a ping from inside the same geohash cell as the last one. What does the geo index do?',
     options: [
       {
@@ -129,6 +131,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/ride-sharing/q3',
     prompt: 'Two riders tap Request at the same moment, and both matchers pick the same driver. What prevents a double booking?',
     options: [
       {
@@ -151,6 +154,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/ride-sharing/q4',
     prompt:
       'Two points about 31 m apart, one just north east of 0°, 0° and one just south west of it, encode to s0000 and 7zzzz. What does this pair teach?',
     options: [
@@ -200,6 +204,7 @@ every free driver. The other looks only in the rider's cell and the 8 cells arou
 
 <Predict
   client:visible
+  id="case-studies/ride-sharing/predict-1"
   question="The first ride request arrives while all 600 drivers are free. How many distances does each lane measure: the scan first, then the cell search?"
   options={[
     '600 and 600',
@@ -394,6 +399,7 @@ of their cell.
 
 <Predict
   client:visible
+  id="case-studies/ride-sharing/predict-2"
   question="Every rider stands within 40 m of an edge of their cell. Over 15 requests, how often is the nearest free driver in a different cell from the rider?"
   options={[
     'Almost never',
@@ -554,8 +560,12 @@ storage. Fares, receipts, and disputes read a trip's route from it later.
 
 Geohash is one of several ways to bucket a map. Its strength is simplicity: a cell is a string, any key-value store can
 index it, and a shared prefix names a whole area, which makes partitioning easy. Its cells are rectangles that change
-shape with latitude, and finding neighbors takes a little arithmetic. **H3**, the hexagonal grid Uber published, gives
-every cell 6 neighbors at the same distance from its center, so rings and distances come out more even. A **quadtree**
+shape with latitude, and finding neighbors takes a little arithmetic. **H3**, the hexagonal grid Uber published, tiles
+the globe with mostly hexagonal cells, so most cells have 6 neighbors at fairly even distances and rings come out
+smoother than a rectangle's 8 neighbors. The grid is not perfectly uniform: every resolution has 12 pentagons with only
+5 neighbors, and cell size and shape distort a little across the globe because H3 projects an icosahedron onto the
+sphere. Code should walk cells with the library's traversal calls, such as `gridDisk`, and never assume 6 neighbors at
+one fixed distance. A **quadtree**
 splits only crowded areas, so cells adapt to density, at the cost of a tree to rebalance as drivers move. A database
 spatial index, covered in the [Indexes](../../foundations/indexes/) lesson, answers radius queries directly and pays for it on every write.
 
@@ -566,7 +576,7 @@ spatial index, covered in the [Indexes](../../foundations/indexes/) lesson, answ
 | Scan every driver                        | No index to maintain and trivial code                                            | Work per request grows with every online driver in the city                            |
 | Database spatial index                   | Radius queries in SQL, next to the driver rows                                   | Every location write updates a disk index, 50,000 times a second                       |
 | Geohash cell + 8 neighbors (this lesson) | Cells are plain strings, prefixes give partitions, most pings skip the cell sets | Rectangles that vary with latitude, and one cell size for dense and sparse areas alike |
-| Hexagonal grid (H3)                      | Every neighbor sits the same distance away, smooth rings                         | A library to encode and walk cells, and child cells only roughly fill a parent         |
+| Hexagonal grid (H3)                      | Fairly even neighbor distances and smooth rings in most cells                    | A library to walk cells, 12 pentagons per resolution, and children only roughly fill   |
 | Quadtree                                 | Small cells where drivers crowd, large cells where they are sparse               | A tree to split and merge as drivers move, and harder to partition                     |
 
 </TradeoffTable>

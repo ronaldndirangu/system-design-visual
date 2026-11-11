@@ -66,6 +66,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'ai-systems/evaluation-and-budgets/q1',
     prompt: 'A demo shows Small answering five questions perfectly. Why is that weak evidence for shipping it?',
     options: [
       {
@@ -88,6 +89,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/evaluation-and-budgets/q2',
     prompt: 'Why write the budgets before you run the candidates?',
     options: [
       {
@@ -110,6 +112,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/evaluation-and-budgets/q3',
     prompt: 'Medium passes 21 of 24 questions (87.5%) against an 85% floor. What should you conclude?',
     options: [
       {
@@ -132,6 +135,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/evaluation-and-budgets/q4',
     prompt: 'The product team cuts the p95 latency budget to 1.2 s and no candidate fits. What is the best next move?',
     options: [
       {
@@ -177,6 +181,7 @@ answer, or how much it may cost.
 
 <Predict
   client:visible
+  id="ai-systems/evaluation-and-budgets/predict-1"
   question="On a fuller set of 24 questions, including hard and must decline cases, which candidates meet all four default budgets (85% pass, every must decline case declined, p95 at most 2 s, at most 6,000 units per 1,000 questions)?"
   options={['All three', 'Small only', 'Medium only', 'None of them']}
   answer={2}
@@ -255,6 +260,7 @@ budget and the set of models that fit can go empty.
 
 <Predict
   client:visible
+  id="ai-systems/evaluation-and-budgets/predict-2"
   question="The product team cuts the p95 latency budget from 2 s to 1.2 s and keeps the rest. Which candidates fit now?"
   options={['Small', 'Medium', 'Small and Medium', 'None']}
   answer={3}

@@ -65,6 +65,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'reliability/retries/q1',
     prompt: 'During the slowdown, the lane that retries with backoff and jitter confirmed far fewer clicks than the lane that never retries. Why?',
     options: [
       { text: 'The backoff waits were too long, so clicks ran out of time', why: 'On a normal day the same waits confirm every click. The waits are a few hundred milliseconds at most; the problem is the extra load.' },
@@ -74,6 +75,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/retries/q2',
     prompt: 'Forty senders lose their connection at the same instant and retry with doubling backoff and no jitter. The service can take 3 attempts every 50 ms. What happens?',
     options: [
       { text: 'They retry in waves of almost all of them at once; each wave gets 3 in, and the service sits idle between waves', correct: true, why: 'Identical waits keep the senders in lockstep. In the toy model, 28 of 40 are still waiting after 6 s, while the service sat idle for 106 of the 110 steps after it came back.' },
@@ -83,6 +85,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/retries/q3',
     prompt: 'A retry budget allows retries up to 10% of fresh requests. On a normal day, 2% of attempts hit a transient error. What does the budget change?',
     options: [
       { text: 'It turns away 10% of fresh clicks', why: 'A budget only limits retries. Fresh clicks always go out, and each one adds to the budget.' },
@@ -92,6 +95,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/retries/q4',
     prompt: 'Which call is safe to retry automatically after a timeout?',
     options: [
       { text: 'POST /purchases without an idempotency key', why: 'The first attempt may have charged the card before its answer got lost. A retry would charge it again.' },
@@ -123,6 +127,7 @@ into confirmed clicks. Then, one afternoon, a slow disk makes every attempt take
 
 <Predict
   client:visible
+  id="reliability/retries/predict-1"
   question="Both lanes get the exact same 3,018 clicks over 20 s. From 3 s to 6 s, every attempt takes twice as long. One lane never retries. The other retries timed out and rejected attempts with backoff and jitter, up to 4 attempts per click. Which lane confirms more clicks?"
   options={[
     'Backoff with jitter, by a wide margin',
@@ -205,6 +210,8 @@ compute the same wait and come back at the same moment.
 
 <Predict
   client:visible
+  id="reliability/retries/predict-2"
+  ordered
   question="Forty redirect servers lose their connection when the ingest service restarts. Each one retries with doubling backoff (100 ms, 200 ms, 400 ms, up to 1.6 s) and no jitter. The service is back after 500 ms and takes 3 attempts every 50 ms. After 6 s, how many senders are still waiting?"
   options={['None', 'A handful', 'Most of them', 'All forty']}
   answer={2}

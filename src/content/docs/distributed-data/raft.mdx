@@ -62,6 +62,7 @@ export const steps = [
 ];
 export const quiz = [
   {
+    id: 'distributed-data/raft/q1',
     prompt: 'A five-server Raft cluster loses two servers. Can it still commit new chat messages?',
     options: [
       {
@@ -84,6 +85,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'distributed-data/raft/q2',
     prompt: 'Why does Raft draw each election timeout at random?',
     options: [
       {
@@ -106,6 +108,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'distributed-data/raft/q3',
     prompt:
       'Node 4 has already voted for Node 5 in term 7. Node 2 then asks Node 4 for a vote in term 7, and Node 2 has the longer log. What does Node 4 do?',
     options: [
@@ -129,6 +132,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'distributed-data/raft/q4',
     prompt:
       'The leader stores a new chat message and sends it out. Two of its four followers store it, and the other two are cut off. Is the message committed?',
     options: [
@@ -152,6 +156,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'distributed-data/raft/q5',
     prompt:
       'A partition heals. The old leader holds two entries from its old term that the new leader does not have. What happens to them?',
     options: [
@@ -201,6 +206,7 @@ keeps believing it leads, and keeps accepting messages.
 
 <Predict
   client:visible
+  id="distributed-data/raft/predict-1"
   question="The chat leader crashes. Each follower waits a random 150 to 300 ms without a heartbeat, then asks the others for votes, and a follower needs 3 of 5 votes to lead. What happens if two followers run out of time together?"
   options={[
     'Both win, and the chat history forks',

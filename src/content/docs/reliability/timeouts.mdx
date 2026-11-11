@@ -66,6 +66,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'reliability/timeouts/q1',
     prompt: 'One of three database replicas hangs, and the sho.rt server has no timeouts. Why do redirects for links stored on the two healthy replicas fail too?',
     options: [
       { text: 'The healthy replicas slow down in sympathy with the broken one', why: 'The healthy replicas keep answering quickly. The damage happens inside the sho.rt server, before a request ever reaches them.' },
@@ -75,6 +76,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/timeouts/q2',
     prompt: 'Healthy link lookups take at most 30 ms. Which timeout fits best?',
     options: [
       { text: 'Exactly 30 ms', why: 'A timeout right at the healthy maximum fails ordinary requests on any small hiccup, such as a pause for garbage collection.' },
@@ -84,6 +86,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/timeouts/q3',
     prompt: 'The server times out after 150 ms but does not cancel the database query. Replica C hangs. What runs out first?',
     options: [
       { text: 'Server workers', why: 'The timeout frees each worker at 150 ms. The query it started is what stays behind.' },
@@ -93,6 +96,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/timeouts/q4',
     prompt: 'The client app waits 1 s, the gateway waits 3 s for the server, and the server waits 5 s for the database. One query takes 4 s. What goes wrong?',
     options: [
       { text: 'Nothing, because each layer has a timeout', why: 'Each layer has one, yet the inner timeouts are longer than the outer one. They keep working long after the client stopped listening.' },
@@ -120,6 +124,7 @@ and never replies. A third of all lookups go to C.
 
 <Predict
   client:visible
+  id="reliability/timeouts/predict-1"
   question="The server has no timeouts. What happens to redirects for links that live on replicas A and B?"
   options={[
     'They keep working, since only replica C is broken',
@@ -174,6 +179,7 @@ because a worker stays trapped for the whole wait.
 
 <Predict
   client:visible
+  id="reliability/timeouts/predict-2"
   question="Replica C hangs again, and the timeout is 2 s instead of 150 ms. Do the 16 workers still fill up?"
   options={['Yes, all 16 fill up', 'No, a 2 s timeout frees them in time', 'Only about half of them fill up']}
   answer={0}
@@ -208,6 +214,7 @@ and runs until it finishes or someone cancels it.
 
 <Predict
   client:visible
+  id="reliability/timeouts/predict-3"
   question="Both lanes time out after 150 ms. One also cancels the database query; the other just walks away. Does skipping the cancel matter?"
   options={[
     'No, the timeout already freed the worker',
@@ -251,6 +258,7 @@ machines do not matter. When the deadline passes, every hop stops together.
 
 <Predict
   client:visible
+  id="reliability/timeouts/predict-4"
   question="The client gives up at 1 s. The gateway waits up to 3 s for the server, the server waits up to 5 s for the database, and this query takes 2.5 s. When does the last hop stop working?"
   options={[
     'At 1 s, together with the client',

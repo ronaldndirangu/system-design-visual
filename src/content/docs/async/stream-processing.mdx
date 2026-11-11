@@ -67,6 +67,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'async/stream-processing/q1',
     prompt: 'A dashboard counts clicks in 2 s windows by the time the stream job reads them. A deploy stops the job for 4 s. What does the first window after the restart show?',
     options: [
       { text: 'About its normal count, since the job reads at its usual pace', why: 'The job reads up to five times the arrival rate after a restart, so the backlog drains in under a second and lands in one window.' },
@@ -76,6 +77,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'async/stream-processing/q2',
     prompt: 'A stream job reports a watermark of 12 s. What does that mean?',
     options: [
       { text: 'The job assumes it has seen every click from before 12 s, and publishes windows that end by then', correct: true, why: 'A watermark is the job’s guess about completeness. Windows that end at or before it get a result, and any older click that still arrives is late.' },
@@ -85,6 +87,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'async/stream-processing/q3',
     prompt: 'You raise the watermark wait from 0.5 s to 3 s. What changes?',
     options: [
       { text: 'Late clicks disappear, since every click now arrives in time', why: 'A wait only covers delays shorter than itself. In the widget, a 6 s edge outage still makes 12 clicks late with a 3 s wait.' },
@@ -94,6 +97,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'async/stream-processing/q4',
     prompt: 'An alert should fire when any 10 s span holds more than 40 clicks. Tumbling 10 s windows count 17, 32, and 29. What do you know?',
     options: [
       { text: 'No 10 s span held more than 40 clicks', why: 'Tumbling windows check only three of the possible spans. In the widget, the span from 12 to 22 s holds 44.' },
@@ -103,6 +107,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'async/stream-processing/q5',
     prompt: 'Finance needs exact monthly click totals for invoices, and some clicks arrive a day late from phones that were offline. Which design fits?',
     options: [
       { text: 'A stream job with 30 days of allowed lateness', why: 'The job would hold a month of windows in memory for every short code, and any click later than 30 days still goes missing.' },
@@ -142,6 +147,7 @@ starts again at 9 s. The topic keeps every click during the stop, so nothing is 
 
 <Predict
   client:visible
+  id="async/stream-processing/predict-1"
   question="About 36 clicks happen between 8 and 10 s. The job starts again at 9 s with the clicks from the stop waiting in the topic. What does the dashboard show for 8 to 10 s?"
   options={[
     'About 36, since the topic lost nothing',
@@ -259,6 +265,7 @@ result is **late**, and a late policy decides what happens to it:
 
 <Predict
   client:visible
+  id="async/stream-processing/predict-2"
   question="One click in ten needs a retry and arrives 0.5 to 2.5 s late. An edge region that serves 40% of clicks buffers them from 4 to 10 s. One job waits 0.5 s, another waits 3 s. How many clicks does each mark late?"
   options={[
     'Neither marks any late, since the watermark waits for them',

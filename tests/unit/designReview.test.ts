@@ -91,6 +91,18 @@ describe('design review content', () => {
     }
   });
 
+  it('teaches a durable outbox with at least once delivery and idempotent consumers', () => {
+    const byFix = (fixId: string) => REVIEW_ITEMS.find((item) => item.fixId === fixId);
+    const outbox = byFix('outbox')?.fixDetail ?? '';
+    expect(outbox).toMatch(/same transaction/);
+    expect(outbox).toMatch(/at least once/);
+    expect(outbox).toMatch(/idempotent/);
+    const queue = byFix('bound')?.fixDetail ?? '';
+    expect(queue).toMatch(/durable/);
+    expect(queue).toMatch(/keep every order event/);
+    expect(JSON.stringify({ REVIEW_ITEMS, FIXES, EVENTS })).not.toMatch(/never lose/i);
+  });
+
   it('writes every string without dashes used as punctuation', () => {
     const text = JSON.stringify({ REVIEW_ITEMS, FIXES, EVENTS });
     expect(text).not.toMatch(/[\u2013\u2014]| - |--/);

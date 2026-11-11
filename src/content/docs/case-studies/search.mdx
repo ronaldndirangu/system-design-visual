@@ -1,6 +1,6 @@
 ---
 title: Search
-description: Keep a news search index fresh without losing the ranking signals a full rebuild computes, then add typeahead.
+description: Keep a news search index fresh while each ranking signal updates on its own schedule, then add typeahead.
 ---
 
 import Objectives from '../../../components/lesson/Objectives.astro';
@@ -22,7 +22,7 @@ export const nodes = [
   { id: 'queue', kind: 'queue', x: 70, y: 250, label: 'New docs' },
   { id: 'indexer', kind: 'server', x: 230, y: 250, label: 'Indexer', sublabel: 'flush every 1 s' },
   { id: 'live', kind: 'database', x: 390, y: 250, label: 'Live segments', sublabel: 'text match only' },
-  { id: 'build', kind: 'server', x: 550, y: 250, label: 'Nightly build', sublabel: 'clicks + quality' },
+  { id: 'build', kind: 'server', x: 550, y: 250, label: 'Nightly build', sublabel: 'bakes in signals' },
 ];
 export const edges = [
   { from: 'reader', to: 'cache' },
@@ -61,13 +61,14 @@ export const steps = [
   },
   {
     title: 'The nightly build folds everything in',
-    text: 'At 02:00 a batch job recomputes popularity and quality over the whole corpus and writes new shards. The build takes 3 h, so the shards go live at 05:00, and the live tier drops every document the build now covers.',
+    text: "At 02:00 a batch job writes new shards for every document so far, with each document's current popularity and quality scores baked in. The build takes 3 h, so the shards go live at 05:00, and the live tier drops every document the build now covers.",
     nodes: ['build', 'shards', 'live'],
     flows: ['build>shards', 'build>live'],
   },
 ];
 export const quiz = [
   {
+    id: 'case-studies/search/q1',
     prompt: "An editor fixes a typo in one story's headline. The index is built from immutable segments. What happens?",
     options: [
       {
@@ -90,6 +91,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/search/q2',
     prompt: 'The index is sharded by document across 18 shards. A reader searches for storm coast. Which shards does the query touch?',
     options: [
       {
@@ -112,6 +114,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/search/q3',
     prompt: 'A recipe site mostly gets searches for recipes that are years old. Judging by the evergreen run, should it add a real-time tier?',
     options: [
       {
@@ -134,6 +137,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/search/q4',
     prompt: 'Why does each node of the typeahead trie store its top 3 completions ahead of time?',
     options: [
       {
@@ -165,16 +169,16 @@ which documents contain them, and which of those are best?
 <Objectives>
 
 - Build an inverted index and answer a query by intersecting posting lists.
-- Explain why the best ranking signals make a full index build slow and rare.
-- Compare a nightly rebuild with a real-time tier on freshness, recall, fan-out, and write work.
+- Separate index refresh, signal updates, signal freshness, and model training, each with its own clock.
+- Compare a nightly rebuild with batch plus delta (a real-time tier) on freshness, recall, fan-out, and write work.
 - Serve typeahead from a trie whose nodes store precomputed top completions.
 
 </Objectives>
 
 ## The failure: a storm the index has never heard of
 
-The first design builds one index each night. A batch job reads every document, computes ranking signals over the whole
-corpus and the day's clicks, and writes a fresh index that goes live by morning. Searches for anything older than the
+The first design builds one index each night. A batch job reads every document, attaches its ranking signals, including
+the day's clicks, and writes a fresh index that goes live by morning. Searches for anything older than the
 build get excellent results. Then a storm makes landfall at 00:30. Thousands of readers search for it within minutes,
 and the index has never seen a single word about it.
 
@@ -187,6 +191,8 @@ is searchable within 1 s. Recall@10 compares each lane's top 10 with an ideal ra
 
 <Predict
   client:visible
+  id="case-studies/search/predict-1"
+  ordered
   question="Over the whole day, what share of queries does the nightly rebuild answer without the ideal top result?"
   options={[
     'About 5%',
@@ -225,18 +231,28 @@ What to look for:
 The real-time tier still stops at 75%. In this toy its live documents rank on text match alone, so a keyword-stuffed page
 about the storm can outrank the story everyone reads until the next full build scores both.
 
-## The constraint: the best ranking needs the whole corpus
+## The constraint: freshness runs on four clocks
 
 Text match alone ranks badly. A page that repeats "storm" three times beats the story everyone reads. Good ranking adds
 signals that come from outside the document: how often readers click it, how trusted its source is, whether a spam
-model flags it. The strongest of these, such as click popularity, come from the whole click log or the whole corpus, so
-a batch job computes them, and the full build that bakes them into the index takes hours. A source's trust score or a
-trained spam model could score a new story as it arrives; this lesson's toy bakes every signal in at build time to keep
-the duel simple. Clicks stay slow either way: a brand-new story has none until readers find it, however fresh the index.
+model flags it. New documents arrive every second, and a reader searching for breaking news wants them ranked well now.
+"Fresh" means four different things here, and each runs on its own clock:
 
-New documents arrive every second, and a reader searching for breaking news wants them now. So the design trades
-**retrieval quality** against **index freshness**: rebuild rarely and rank well, or index at once and rank on less.
-The answer in this lesson keeps both by running two indexes side by side.
+- **Index refresh.** How soon a new document becomes searchable. Lucene-style engines open a new small segment about
+  once a second.
+- **Signal updates.** How soon a stored signal changes. A click count is a running sum, so a stream job can add each
+  click within seconds. A source's trust score and a trained spam model can score a story as it arrives.
+- **Signal freshness.** How much evidence a signal holds. A brand-new story has no clicks yet, however fast the counter
+  updates, so ranking leans on text match and source trust until readers find it.
+- **Model training.** How often the ranking model that weighs the signals learns new weights. It trains offline on days
+  of click logs and ships daily or weekly.
+
+The nightly design ties the first two clocks to one build. It bakes the signals into the index files, so a document
+becomes searchable, and its popularity changes, only when a build rewrites its shard. Ranking itself never forces that
+coupling. One option keeps the nightly build and adds a small real-time tier for new documents: **batch plus delta**,
+two indexes side by side. Another keeps signals in a separate store that a stream job updates incrementally, and the
+search servers read the latest values at query time. Real systems often run both. This lesson builds batch plus delta,
+and its toy bakes every signal in at build time to keep the duel simple.
 
 The rest of this lesson walks the [design checklist](../../thinking/design-checklist/).
 
@@ -309,7 +325,7 @@ touches the search index.
 | --------------- | ----------- | -------------------------------------------------------------------------------------- |
 | Posting lists   | `term`      | Sorted document ids with term frequency, one list per term in each segment             |
 | Document store  | `docId`     | Title, body, and publish time, for snippets and for the next build                     |
-| Ranking signals | `docId`     | Popularity from clicks, source quality, and spam score, computed by the batch job      |
+| Ranking signals | `docId`     | Click popularity updated as clicks stream in, source quality, and spam score           |
 | Live segments   | `segmentId` | Small inverted indexes for documents since the last build, plus a set of tombstones    |
 | Typeahead trie  | `prefix`    | The top completions under that prefix, counted from the query log                      |
 
@@ -357,7 +373,7 @@ What to look for:
 - **A signal from outside the text fixes it.** Turn on the popularity signal and d1 leads with 1.78, then d2 at 1.48 and
   d3 at 1.19.
 
-### Ranking: text match, then signals from the whole corpus
+### Ranking: text match, then signals from outside the text
 
 The widget scores text with a simplified BM25, a standard relevance formula. Each query term adds to the score. A rare
 term adds more than a common one, because it says more about the document. A term that repeats adds more, with
@@ -365,11 +381,11 @@ diminishing returns: the third "storm" in d3 counts for less than the first. Rea
 length, which the toy skips.
 
 Text relevance cannot tell a trusted story from a page that repeats the right words. So the score adds signals: click
-popularity, source quality, spam scores, often combined by a learned ranking model. Click popularity needs the whole
-click log, which is why the full build runs as a batch job and takes hours. Source quality and a trained spam model can
-score a document the moment it arrives, and real systems apply them at ingest; the duel skips that and computes every
-signal at build time. A brand-new story has no clicks yet anyway. In the duel, a live document gets a neutral quality
-score until the next build measures the real one.
+popularity, source quality, spam scores, often combined by a learned ranking model. A stream job keeps click popularity
+current by adding each click to a running count. Source quality and a trained spam model score a document the moment it
+arrives, so real systems apply them at ingest. Only the ranking model's weights come from a slow offline job. The duel
+skips all of that and computes every signal at build time, so a live document gets a neutral quality score until the
+next build measures the real one. A brand-new story has no clicks yet anyway.
 
 ### Why one new document is expensive: immutable segments
 
@@ -389,6 +405,7 @@ documents, is one of those rewrites. Log-structured storage engines use the same
 
 <Predict
   client:visible
+  id="case-studies/search/predict-2"
   question="Now flip the day: only 5% of queries chase a breaking story, and the rest look for older documents. How does the real-time tier compare with the nightly rebuild?"
   options={[
     'It still wins recall by a wide margin',
@@ -450,17 +467,19 @@ so hot queries get a short time to live, a few seconds to a minute, and the cach
 ## Trade-offs
 
 The nightly rebuild is simple and ranks well, and it is blind to anything newer than its last build. Rebuilding more
-often narrows that window at the cost of rewriting the whole corpus each time. The real-time tier closes the window
-almost completely, and every query pays for the extra segments.
+often narrows that window at the cost of rewriting the whole corpus each time. Batch plus delta, one design with a full
+build and a real-time tier, closes the window almost completely, and every query pays for the extra segments. Signal
+freshness is a separate dial: an incrementally updated signal store keeps popularity current under any index design.
 
 <TradeoffTable title="Keeping a search index fresh">
 
-| Design                       | What it buys                                                               | What it costs                                                                                    |
-| ---------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Nightly rebuild only         | One index, full signals on every document, 1 segment per query             | New documents hidden for hours: 38% recall, 9.5 h unsearchable on average in the toy breaking day |
-| Rebuild every few hours      | Fresher results with the same simple serving path                         | Rewrites the whole corpus each time: 6 builds and 11,355 writes in the toy, still hours behind   |
-| Batch index + real-time tier | New documents searchable within 1 s, full signals for everything older     | 5.5 segments per query in the toy, merge work, text-only ranking for new documents, two paths    |
-| Sharding by term             | A query touches only the shards that hold its terms                        | Hot shards for popular terms, intersections across machines, many shards per indexed document    |
+| Design                            | What it buys                                                           | What it costs                                                                                            |
+| --------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Nightly rebuild only              | One index, full signals on every document, 1 segment per query         | New documents hidden for hours: 38% recall, 9.5 h unsearchable on average in the toy breaking day        |
+| Rebuild every few hours           | Fresher results with the same simple serving path                      | Rewrites the whole corpus each time: 6 builds and 11,355 writes in the toy, still hours behind           |
+| Batch plus delta (real-time tier) | New documents searchable within 1 s, full signals for everything older | 5.5 segments per query in the toy, merge work, text-only ranking for new documents, two paths            |
+| Incremental signal store          | Click counts current within seconds for every document, old or new     | A second store to keep consistent, a lookup per candidate at query time, still no clicks for new stories |
+| Sharding by term                  | A query touches only the shards that hold its terms                    | Hot shards for popular terms, intersections across machines, many shards per indexed document            |
 
 </TradeoffTable>
 
@@ -504,6 +523,8 @@ This lesson's model is a toy. Here is what it leaves out:
   cost of fan-out.
 - **A neutral score for new documents.** Live documents get a flat quality score. Real systems guess better from the
   source's reputation or a fast spam classifier.
+- **Signals change only at build time.** The duel bakes popularity and quality into each build, so an older document's
+  score stays fixed all day. Real systems update click counts incrementally and often read them at query time.
 - **No edits or deletes in the duel.** Documents only arrive; tombstones appear in the prose only.
 - **Toy scores.** Each document's text relevance and quality are seeded random draws, and spam is a share of documents
   with high text scores and low quality.

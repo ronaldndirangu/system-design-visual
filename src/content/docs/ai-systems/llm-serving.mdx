@@ -71,6 +71,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'ai-systems/llm-serving/q1',
     prompt: 'A server answers one request at a time, and the GPU\u2019s math units sit mostly idle while an answer streams. What explains this?',
     options: [
       {
@@ -93,6 +94,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/llm-serving/q2',
     prompt: 'On Uniform lengths, static and continuous batching finish at the same time. Why?',
     options: [
       {
@@ -115,6 +117,8 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/llm-serving/q3',
+    ordered: true,
     prompt: 'Llama 3 8B stores 128 KiB of KV cache per token. About how many 8,192-token conversations fit in 20 GiB of KV memory?',
     options: [
       {
@@ -137,6 +141,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/llm-serving/q4',
     prompt: 'A paged server has no free blocks, and a running request needs one more to store its next token. What does the scheduler do?',
     options: [
       {
@@ -159,6 +164,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/llm-serving/q5',
     prompt: 'Chunked prefill at 64 tokens per step cuts the longest wait between tokens from 113.3 ms to 16.7 ms in the toy model. What does it cost?',
     options: [
       {
@@ -207,6 +213,7 @@ question needs a long answer, and anyone who arrives mid-batch waits for the who
 
 <Predict
   client:visible
+  id="ai-systems/llm-serving/predict-1"
   question="Sixteen chats arrive over about 0.3 s with answers of 3 to 28 tokens, and the server has four batch slots. Compared with static batching, what does continuous batching (refill a slot the moment it frees) do?"
   options={[
     'About the same, since both use four slots',
@@ -376,6 +383,7 @@ tokens first. The Sarathi-Serve paper calls this stall-free batching.
 
 <Predict
   client:visible
+  id="ai-systems/llm-serving/predict-2"
   question="Six short chats are decoding when R7 arrives with a 1,024-token prompt. With chunked prefill at 64 tokens per step, what happens to the longest wait between tokens, and to R7's own time to first token?"
   options={[
     'Both get shorter',

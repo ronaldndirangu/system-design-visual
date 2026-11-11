@@ -14,6 +14,7 @@ import DesignReviewWidget from '../../../components/widgets/DesignReviewWidget';
 
 export const quiz = [
   {
+    id: 'practice/design-review/q1',
     prompt: 'Checkout writes the order row, then publishes OrderPlaced to the broker in a second call. The process crashes between the two calls. What breaks, and what fixes it?',
     options: [
       { text: 'The order exists and no event ever goes out. Write the event to an outbox table in the same transaction, and let a relay publish it', correct: true, why: 'The order row and the outbox row commit together or not at all. A relay reads the outbox and publishes until the broker confirms, so a crash can delay the event and can never lose it.' },
@@ -23,6 +24,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'practice/design-review/q2',
     prompt: 'Payment calls retry with exponential backoff, and every client uses the same delays. Why add jitter as well?',
     options: [
       { text: 'Clients that failed together retry together. Jitter randomizes each delay so the retries spread out instead of landing in waves', correct: true, why: 'Backoff lowers the average retry rate. Without jitter, every client that failed at the same moment wakes at the same moment, and each wave hits the provider at full strength.' },
@@ -32,6 +34,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'practice/design-review/q3',
     prompt: 'The home page joins order rows across all 8 shards on every view to list best sellers. What is the strongest fix?',
     options: [
       { text: 'Compute best sellers in a background job every minute or so, and serve the stored result', correct: true, why: 'Best sellers can be a minute old. Moving the join off the request path turns 8 shard reads per page view into one cheap read, and the join runs once per refresh.' },
@@ -41,6 +44,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'practice/design-review/q4',
     prompt: 'An in-memory event queue has no length limit, and the consumer falls behind during the sale. What happens?',
     options: [
       { text: 'The queue grows until the process runs out of memory, crashes, and loses every event it held', correct: true, why: 'Nothing tells producers to slow down, so the backlog only grows. A bounded queue that rejects or delays producers when full keeps the failure small and visible.' },
@@ -72,6 +76,7 @@ mid checkout, and the retry storm of fresh logins keeps it down for twenty minut
 
 <Predict
   client:visible
+  id="practice/design-review/predict-1"
   question="Which review question would have caught the session store?"
   options={[
     'Is there a box for sessions?',
@@ -126,6 +131,7 @@ Each finding cites the rule that fixes it. A design review works the same way, w
 
 <Predict
   client:visible
+  id="practice/design-review/predict-2"
   question="A reviewer flags all 10 items to be safe. Why is that a weak review?"
   options={[
     'It is a strong review, since it misses nothing',
@@ -167,14 +173,14 @@ minutes are illustrative, and every run plays the same fixed script.
 
 <TradeoffTable title="How to run a design review">
 
-| Choice                                   | What it buys                                                  | What it costs                                              |
-| ---------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------- |
-| Walk the request path, part by part      | Covers every part, in the order a request touches them         | Can miss problems that span parts, such as a dual write    |
-| Walk a list of anti-patterns             | Catches the known failure modes fast                          | Misses a flaw that fits no pattern on the list             |
-| Flag broadly                             | Fewer misses                                                  | More false alarms, and the real risks get diluted          |
-| Flag only what you can explain           | A short list the team trusts                                  | You may hold back on a real risk you cannot yet put into words |
-| Propose a fix with every flag            | Turns findings into work the team can start                   | Slower, and a weak fix can anchor the discussion           |
-| List findings first, fix later           | A faster review that stays on risks                           | Findings without fixes tend to sit in the backlog          |
+| Choice                              | What it buys                                           | What it costs                                                  |
+| ----------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------- |
+| Walk the request path, part by part | Covers every part, in the order a request touches them | Can miss problems that span parts, such as a dual write        |
+| Walk a list of anti-patterns        | Catches the known failure modes fast                   | Misses a flaw that fits no pattern on the list                 |
+| Flag broadly                        | Fewer misses                                           | More false alarms, and the real risks get diluted              |
+| Flag only what you can explain      | A short list the team trusts                           | You may hold back on a real risk you cannot yet put into words |
+| Propose a fix with every flag       | Turns findings into work the team can start            | Slower, and a weak fix can anchor the discussion               |
+| List findings first, fix later      | A faster review that stays on risks                    | Findings without fixes tend to sit in the backlog              |
 
 </TradeoffTable>
 
@@ -190,10 +196,15 @@ Find the flaws, propose a fix for each, and name the part that holds.
 
 <div slot="answer">
 
-1. **Photos on one server's disk.** A single point of failure, and a disk failure loses every photo since the last
-   nightly copy. Write uploads straight to replicated object storage before the request returns.
+1. **Photos on one server's disk, behind one web server.** The server is a single point of failure, and a disk failure
+   loses every photo since the last nightly copy. Run two or more stateless web servers behind a load balancer, sized
+   so the others carry the peak when one fails, and write each upload straight to replicated object storage.
 2. **Notifications inside the upload request.** A user with many followers makes every upload slow, and a slow push
-   service fails uploads. Put a notification job on a bounded queue and return as soon as the photo is stored.
+   service fails uploads. Report success once the photo is in object storage and the transaction that saves its row
+   commits; if that commit fails, the upload fails and a cleanup job deletes the stored object. In the same
+   transaction, insert a notification row into an outbox. A relay publishes outbox rows to a durable queue at least
+   once, so a relay crash can send a row twice, and the notification workers skip any upload id they have already
+   sent.
 3. **Read, add one, write back on the like count.** Two likes at the same moment both read 10 and both write 11, so
    one like vanishes. Use an atomic increment in the database, or split a hot counter across several rows and sum them.
 4. **The CDN with content-hashed names holds.** A new photo gets a new name, so a cached copy never goes stale, and

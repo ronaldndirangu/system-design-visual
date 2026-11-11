@@ -72,6 +72,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'ai-systems/support-assistant/q1',
     prompt:
       'The prototype caches answers keyed on the question text. A Pine Street customer gets Harbor\u2019s 30 day return answer. What is the right fix?',
     options: [
@@ -95,6 +96,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/support-assistant/q2',
     prompt: 'Where should the store id that filters search come from?',
     options: [
       {
@@ -117,6 +119,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/support-assistant/q3',
     prompt:
       'In Weak evidence, the model answers W5 and cites pine/student-discount. Search never returned that document. What should the checks do?',
     options: [
@@ -140,6 +143,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/support-assistant/q4',
     prompt: 'In Refund requests, the customer double submits the valid refund for order 2201. What stops the second refund?',
     options: [
       {
@@ -162,6 +166,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/support-assistant/q5',
     prompt:
       'With 10 units per store, the brake recall uses up Harbor\u2019s share while Pine has unused units left. How would you improve the split without losing isolation?',
     options: [
@@ -210,6 +215,8 @@ never decided who may see what, what counts as evidence, who approves money movi
 
 <Predict
   client:visible
+  id="ai-systems/support-assistant/predict-1"
+  ordered
   question="The Tenant leak probe sends 6 requests through the prototype. How many of its answers expose data the asker must not see?"
   options={['None', '2', '4', 'All 6']}
   answer={2}
@@ -349,6 +356,7 @@ point of [agents and tools](../agents/): a model may propose an action, and code
 
 <Predict
   client:visible
+  id="ai-systems/support-assistant/predict-2"
   question="In Budget runs out, a brake recall sends Harbor 6 questions while Pine asks 3, and each model call costs 3 units of a 20 unit pool. Whose customers does the prototype, with one shared pool, refuse?"
   options={['Only Harbor customers', 'Only Pine customers', 'One Harbor customer and two Pine customers', 'Nobody']}
   answer={2}

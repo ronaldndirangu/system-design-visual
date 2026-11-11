@@ -52,15 +52,20 @@ test('case-studies/payments/ idempotency keys stop double charges', async ({ pag
   await expectRow(duel, 'Bank took more than the ledger shows', [null, '$95']);
 });
 
-test('case-studies/payments/ reconciliation settles unknown payments', async ({ page }) => {
+test('case-studies/payments/ reconciliation settles unknown payments only from evidence', async ({
+  page,
+}) => {
   const duel = await openDuel(page, 'case-studies/payments/', 'Same outage, two ways to settle the books');
   await expect(duel.getByRole('radio', { name: /^Bank outage/ })).toBeChecked();
   await finish(duel);
   await expectRow(duel, 'Paid, per the ledger', ['114', '119']);
-  await expectRow(duel, 'Unknown outcome now', ['6', null]);
+  await expectRow(duel, 'Unknown outcome now', ['6', '0']);
   await expectRow(duel, 'Completed by reconciliation', [null, '5']);
-  await expectRow(duel, 'Confirmed failed, shopper can pay again', [null, '1']);
+  await expectRow(duel, 'Confirmed failed by a status lookup', [null, '1']);
   await expectRow(duel, 'Bank took more than the ledger shows', ['$195', '$0']);
+  await expect(
+    duel.getByText(/1 payment stays unknown because the bank is still processing it/),
+  ).toBeVisible();
 });
 
 test('case-studies/ticketing/ conditional writes never sell a seat twice', async ({ page }) => {

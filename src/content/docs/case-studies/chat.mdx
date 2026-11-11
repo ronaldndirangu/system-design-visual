@@ -72,6 +72,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'case-studies/chat/q1',
     prompt: 'Two people in a group chat send messages within the same second. Who decides which one every phone shows first?',
     options: [
       {
@@ -94,6 +95,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/chat/q2',
     prompt: 'The reorder buffer cuts out-of-order messages from 25 to 0 in the busy group run. What does it cost?',
     options: [
       {
@@ -116,6 +118,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/chat/q3',
     prompt: 'After the tunnel, the push lane shows 84 of 96 messages with a 1.1 s average delay. The catch-up lane shows all 96 with a 1.7 s average. Why is the push lane faster?',
     options: [
       {
@@ -138,6 +141,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/chat/q4',
     prompt: 'A faster heartbeat timeout (3 s to 1 s) cuts the lost messages from 12 to 3. Why add a cursor as well?',
     options: [
       {
@@ -183,6 +187,8 @@ deliver in parallel, and a phone's connection can die without telling anyone.
 
 <Predict
   client:visible
+  id="case-studies/chat/predict-1"
+  ordered
   question="In the toy run below, a group chat receives 96 messages in 20 s. Four push workers deliver them, and 15% of messages meet a worker that stalls for 1 to 2.5 s. The phone shows each message the moment it lands. How many land out of order?"
   options={['None: one conversation keeps its order', 'About 1 in 20', 'About 1 in 4', 'About 3 in 4']}
   answer={2}

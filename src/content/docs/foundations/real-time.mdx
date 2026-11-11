@@ -9,6 +9,7 @@ import RealTimeWidget from '../../../components/widgets/RealTimeWidget';
 
 export const quiz = [
   {
+    id: 'foundations/real-time/q1',
     prompt:
       'The shortener dashboard only receives click updates. The browser sends nothing back over the live channel. Which transport fits best?',
     options: [
@@ -32,6 +33,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/real-time/q2',
     prompt:
       'Dashboards on quiet links lose their stream after exactly 60 seconds without a click. Busy links never drop. What is the likely cause?',
     options: [
@@ -55,6 +57,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/real-time/q3',
     prompt:
       '50,000 people keep the dashboard open. What cost does a stream add that polling every 5 seconds does not?',
     options: [
@@ -86,6 +89,8 @@ hold open on the server.
 
 <Predict
   client:visible
+  id="foundations/real-time/predict-1"
+  ordered
   question="On a quiet link, 4 clicks arrive in one minute. The dashboard polls every 5 seconds, so it sends 12 requests. How many of those 12 come back with nothing new?"
   options={['2', '6', '10', '12']}
   answer={2}
@@ -115,6 +120,7 @@ late at worst.
 
 <Predict
   client:visible
+  id="foundations/real-time/predict-2"
   question="On a steady link, 20 clicks arrive spread across the minute. Which transport sends the most requests?"
   options={['Polling', 'Long polling', 'Server-sent events', 'WebSocket']}
   answer={1}

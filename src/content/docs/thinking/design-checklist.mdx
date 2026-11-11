@@ -8,6 +8,7 @@ import Quiz from '../../../components/lesson/Quiz';
 
 export const quiz = [
   {
+    id: 'thinking/design-checklist/q1',
     prompt: 'A teammate opens a design review by asking "Postgres or Cassandra?" Which steps did they skip?',
     options: [
       { text: 'Requirements, estimates, and the data model', correct: true, why: 'A storage choice depends on what you store, how you read it, and how much of it there is. Without those answers, both databases look equally good.' },
@@ -17,6 +18,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'thinking/design-checklist/q2',
     prompt: 'Your high-level design is on the board. How do you choose what to deep dive on?',
     options: [
       { text: 'Pick the part your estimates say breaks first, or the one you are least sure about', correct: true, why: 'Depth on the riskiest part tells you the most about whether the design survives. Hot keys and growth were that part for the URL shortener.' },

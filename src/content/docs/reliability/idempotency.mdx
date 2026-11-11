@@ -63,6 +63,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'reliability/idempotency/q1',
     prompt: 'The sho.rt app sent a purchase and heard nothing back for 1 s. What does the app know about the charge?',
     options: [
       { text: 'The charge failed, so a retry is safe', why: 'Silence is not a failure report. The charge may have succeeded and only the receipt got lost.' },
@@ -72,6 +73,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/idempotency/q2',
     prompt: 'Where should the idempotency key for a purchase come from?',
     options: [
       { text: 'The server generates it when the request arrives', why: 'Each retry reaches the server as a fresh request, so it would get a fresh key, and the server could never match it to the first attempt.' },
@@ -81,6 +83,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/idempotency/q3',
     prompt: 'The server saves each key together with its receipt, after the charge finishes. A retry arrives while the first payment is still running. What happens?',
     options: [
       { text: 'The server replays the saved receipt', why: 'There is no saved receipt yet. The first payment has not finished, so the key store has nothing under that key.' },
@@ -90,6 +93,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/idempotency/q4',
     prompt: 'A server first checks whether the key exists, and if not, inserts it in a second query and charges. Two copies of a purchase arrive in the same millisecond. What can happen?',
     options: [
       { text: 'Both checks find no key, so both copies charge the card', correct: true, why: 'Check, then insert is two steps, and both copies can pass the check before either inserts. Make the insert itself the claim: one atomic statement that reports whether it added the row, and only the copy that added it charges.' },
@@ -118,6 +122,7 @@ the server, the second request looks like a brand new purchase.
 
 <Predict
   client:visible
+  id="reliability/idempotency/predict-1"
   question="On a lossy mobile network, 15% of receipts get lost. The app sends a purchase again whenever it sees no receipt within 1 s. Out of 64 purchases, how many customers pay twice?"
   options={[
     'None, because the retry replaces the first attempt',
@@ -183,6 +188,7 @@ the retry arrives, the receipt is in the store. A retry that arrives sooner is a
 
 <Predict
   client:visible
+  id="reliability/idempotency/predict-2"
   question="The server saves each key with its receipt after the charge. From 4 s to 10 s, 40% of payments take 1.2 to 2 s, longer than the 1 s the app waits. Does the saved key still stop double charges?"
   options={[
     'Yes, every retry carries the same key',

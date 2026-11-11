@@ -70,6 +70,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'distributed-data/sagas/q1',
     prompt: 'Inventory reserved the stock and Payments charged the card. Then Shipping finds no courier. What does the saga do about the two finished steps?',
     options: [
       { text: 'Runs a compensation for each one, newest first: refund the card, then release the stock', correct: true, why: 'Each finished step has a matching undo, and the saga unwinds like a stack. In the simulation, Payments refunds $75 before Inventory releases the item.' },
@@ -79,6 +80,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'distributed-data/sagas/q2',
     prompt: 'Why must Payments look up the order id before it charges?',
     options: [
       { text: 'Retries can deliver the same charge request twice', correct: true, why: 'A lost reply looks exactly like a lost request, so the sender tries again. Without the lookup, order 2 paid $90 twice in both lanes.' },
@@ -88,6 +90,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'distributed-data/sagas/q3',
     prompt: 'Which question gets harder to answer with choreography?',
     options: [
       { text: 'Where is order 3 right now?', correct: true, why: 'The saga state is spread across four services. The orchestration lane answers from one saga log, and the choreography lane makes you ask four places.' },
@@ -97,6 +100,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'distributed-data/sagas/q4',
     prompt: 'Checkout runs as a saga, and stock reads go straight to the Inventory database. A shopper sees a sneaker sell out and come back a second later. What happened?',
     options: [
       { text: 'Another checkout held it, then compensated', correct: true, why: 'Sagas give up isolation. The hold was a real, committed step that everyone could see, and the release was a second step. Order 3 kept 1 item off sale for 800 ms.' },
@@ -106,6 +110,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'distributed-data/sagas/q5',
     prompt: 'The store adds a confirmation email, which no one can take back once sent. Where should the saga send it?',
     options: [
       { text: 'After the last step that can fail', correct: true, why: 'Once the courier is booked, nothing left can fail the order, so the email never needs taking back. Retry it until it goes out.' },
@@ -145,6 +150,7 @@ You have two obvious options, and both hurt:
 
 <Predict
   client:visible
+  id="distributed-data/sagas/predict-1"
   question="Checkout calls Inventory, then Payments, then Shipping, with no plan for failure. Inventory holds 1 item and Payments charges $75. Then Shipping finds no courier. What does the customer see?"
   options={[
     'An error, and nothing else changes',
@@ -194,6 +200,7 @@ Messages get lost, so both styles retry. Commit to a guess before you run the la
 
 <Predict
   client:visible
+  id="distributed-data/sagas/predict-2"
   question="Payments charges order 2 ($90), and its reply gets lost. After 400 ms of silence, the request arrives at Payments again. Payments does not check whether it already charged that order. The six carts are worth $490 in total. How much does the store charge?"
   options={['$490', '$400', '$580', '$980']}
   answer={2}

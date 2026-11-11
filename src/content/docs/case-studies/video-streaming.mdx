@@ -76,6 +76,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'case-studies/video-streaming/q1',
     prompt: 'Why does the transcoder put a keyframe at the same timestamps in every rung of the ladder?',
     options: [
       {
@@ -98,6 +99,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/video-streaming/q2',
     prompt: 'Why does the API server hand the client pre-signed URLs for the upload parts?',
     options: [
       {
@@ -120,6 +122,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/video-streaming/q3',
     prompt: 'Your monthly egress bill climbed while views and minutes watched stayed flat. What most likely changed?',
     options: [
       {
@@ -142,6 +145,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/video-streaming/q4',
     prompt: 'When does an adaptive bitrate ladder help least?',
     options: [
       {
@@ -194,6 +198,7 @@ than a blurry picture.
 
 <Predict
   client:visible
+  id="case-studies/video-streaming/predict-1"
   question="The fixed 1080p player streams through all three tunnels in those first 90 s. How many times does it stall?"
   options={[
     'Never: the buffer covers each tunnel',
