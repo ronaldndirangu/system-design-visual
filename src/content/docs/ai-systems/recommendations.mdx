@@ -135,7 +135,7 @@ export const quiz = [
       {
         text: 'Each source sees a different signal, so items one source misses can still arrive through another',
         correct: true,
-        why: 'Embeddings find similar descriptions, bought together finds what customers pair, and category lists find what sells. In the toy model the hose and reel cart arrives only through bought together.',
+        why: 'Embeddings find similar descriptions, bought together finds what customers pair, and category lists find what sells. In the toy model the hose and reel cart arrives only through bought together. The eligibility filter drops it here because it does not ship to this customer. For a customer it ships to, embedding neighbors alone would never find it.',
       },
       {
         text: 'The ranker needs exactly three inputs',
@@ -172,16 +172,16 @@ export const quiz = [
   },
   {
     id: 'ai-systems/recommendations/q5',
-    prompt: 'In the toy model, recall is 90% at 500 candidates and 100% at 2,000, and total time crosses the 50 ms budget near 2,700. Which candidate count fits best?',
+    prompt: 'In the toy model, recall is 89% at 500 candidates and 100% at 2,000, and total time crosses the 50 ms budget near 2,700. Which candidate count fits best?',
     options: [
       {
         text: '10, because speed matters most',
-        why: 'At 10 candidates recall is 30% and the best replacement never reaches the ranker. The reply is fast and poor.',
+        why: 'At 10 candidates recall is 33% and the best replacement never reaches the ranker. The reply is fast and poor.',
       },
       {
         text: 'A few hundred, where recall has mostly flattened and the reply keeps room under the budget',
         correct: true,
-        why: 'At 500 the toy model reaches 90% recall in 14.89 ms. Going to 2,000 buys the last 10 points for 24 more milliseconds.',
+        why: 'At 500 the toy model reaches 89% recall in 14.87 ms. Going to 2,000 buys the last 11 points for 24 more milliseconds.',
       },
       {
         text: '20,000, because more candidates are always better',

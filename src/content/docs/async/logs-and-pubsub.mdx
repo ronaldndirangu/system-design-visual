@@ -96,9 +96,9 @@ export const quiz = [
     prompt: 'The dashboard keeps a "last clicked" time per link and must never move it backward. Which partition key fits?',
     options: [
       { text: 'Round robin, for the most even spread', why: 'Round robin scatters one link\'s clicks over every partition, and parallel readers apply them in any order.' },
-      { text: 'The short code', correct: true, why: 'All clicks for a link land in one partition, and one reader applies them in offset order.' },
-      { text: 'The visitor\'s IP address', why: 'Clicks for one link come from many visitors, so they still scatter over many partitions.' },
-      { text: 'The click timestamp', why: 'Each timestamp hashes somewhere different, so one link\'s clicks scatter and can race each other.' },
+      { text: 'The short code, and keep the newest click time', correct: true, why: 'All clicks for a link land in one partition, and one reader applies them in append order. A delayed producer can append an older click after a newer one, so the reader moves "last clicked" only when the event\'s click time is newer than the stored one.' },
+      { text: 'The visitor\'s IP address, to spread the load', why: 'Clicks for one link come from many visitors, so they still scatter over many partitions.' },
+      { text: 'The click timestamp, to keep time order', why: 'Each timestamp hashes somewhere different, so one link\'s clicks scatter and can race each other.' },
     ],
   },
 ];
