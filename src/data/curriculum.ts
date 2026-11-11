@@ -419,27 +419,31 @@ export const curriculum: CourseModule[] = [
         title: 'Serving models',
         summary:
           'See why prefill and decode behave differently, and how batching and KV cache memory set throughput.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
       },
       {
         id: 'ai-systems/agents',
         title: 'Agents and tools',
         summary:
           'Let a model call tools with authorization, injection boundaries, budgets, and cancellation.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
       },
       {
         id: 'ai-systems/recommendations',
         title: 'Recommendation systems',
         summary: 'Narrow millions of items to a handful with candidate generation, then ranking.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'ai-systems/support-assistant',
         title: 'Capstone: support assistant',
         summary:
           'Design a multi-tenant assistant with citations, an abstention path, one approved action, and a fixed budget.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
       },
     ],
   },
