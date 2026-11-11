@@ -52,7 +52,7 @@ function LanePane({
       <p className="sdv-wstrat__path">{strategyPaths[lane.strategy]}</p>
       <div className="sdv-wstrat__gauge">
         <p className="sdv-wstrat__label">
-          Cache: {lane.cached} of {lane.capacity} links
+          Cache: {lane.cached} of {lane.capacity} entries
           {dirty > 0 && `, ${dirty} changed and not saved`}
         </p>
         <div className="sdv-wstrat__track" aria-hidden="true">
@@ -246,7 +246,7 @@ export default function WriteStrategyWidget({
       </div>
       <ul className="sdv-qtracks__legend" aria-label="How to read the gauges">
         <li>
-          <span className="sdv-wstrat__key" aria-hidden="true" /> A cached link
+          <span className="sdv-wstrat__key" aria-hidden="true" /> A cached entry: a link, or a click count
         </li>
         <li>
           <span className="sdv-wstrat__key" data-dirty="" aria-hidden="true" /> Changed in the cache, not
