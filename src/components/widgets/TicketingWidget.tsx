@@ -39,7 +39,7 @@ const copy: Record<TicketDuelId, { title: string; instructions: string; chart: s
   holds: {
     title: 'Same crowd, two hold rules',
     instructions:
-      'Pick a scenario, then press Play. Both lanes get the same buyers, and the same buyers walk away at checkout. Only the hold rule differs.',
+      'Pick a scenario, then press Play. Both lanes get the same buyers, who pay or walk away at the same moments. Only the hold rules differ.',
     chart: 'Tickets sold, running total',
   },
 };
@@ -86,7 +86,7 @@ function LanePane({
     `${people.checkout} paying`,
     `${people.ticketed} with a ticket`,
   );
-  if (holdsDuel) peopleParts.push(`${people.abandoned} walked away`);
+  if (holdsDuel) peopleParts.push(`${people.abandoned} walked away`, `${people.lost} lost their hold`);
   peopleParts.push(`${people.soldOut} told sold out`);
   return (
     <section className="sdv-duel__lane" aria-label={lane.config.label}>
@@ -130,6 +130,7 @@ export default function TicketingWidget({ duel: duelId, title, instructions }: P
   };
 
   const holdsDuel = duelId === 'holds';
+  const bankDelay = duel.scenario.workload.paymentSeconds !== undefined;
   const [first, second] = duel.lanes;
   const sums = [summarize(first), summarize(second)] as const;
   const seconds = duel.ticks * duel.tickSeconds;
@@ -146,6 +147,15 @@ export default function TicketingWidget({ duel: duelId, title, instructions }: P
           better: 'lower',
         },
         { label: 'Holds released by expiry', values: [sums[0].released, sums[1].released] },
+        ...(bankDelay
+          ? [
+              {
+                label: 'Approved payments voided',
+                values: [sums[0].voided, sums[1].voided],
+                better: 'lower',
+              } satisfies CompareRow,
+            ]
+          : []),
         { label: 'Buyers who walked away at checkout', values: [sums[0].abandoned, sums[1].abandoned] },
         { label: 'Buyers told sold out', values: [sums[0].soldOut, sums[1].soldOut], better: 'lower' },
       ]
@@ -169,7 +179,9 @@ export default function TicketingWidget({ duel: duelId, title, instructions }: P
   const describeLane = (lane: TicketLane, index: 0 | 1) => {
     const sum = sums[index];
     return holdsDuel
-      ? `${lane.config.label}: ${sum.ticketed} tickets sold, ${sum.stuck} seats held for buyers who left`
+      ? bankDelay
+        ? `${lane.config.label}: ${sum.ticketed} tickets sold, ${sum.voided} approved payments voided`
+        : `${lane.config.label}: ${sum.ticketed} tickets sold, ${sum.stuck} seats held for buyers who left`
       : `${lane.config.label}: ${sum.ticketed} tickets for ${SEATS} seats, ${sum.doubledSeats} seats promised to 2+ buyers`;
   };
   const summary = `${seconds.toFixed(1)} s of ${runSeconds} s. ${describeLane(first, 0)}. ${describeLane(second, 1)}.`;

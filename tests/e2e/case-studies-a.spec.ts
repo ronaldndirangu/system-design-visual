@@ -87,6 +87,13 @@ test('case-studies/ticketing/ expiring holds return abandoned seats', async ({ p
   await expectRow(duel, 'Seats held for buyers who left', ['27', '3']);
   await expectRow(duel, 'Holds released by expiry', [null, '40']);
   await expectRow(duel, 'Buyers told sold out', ['300', '260']);
+
+  await duel.getByRole('radio', { name: /^Slow bank approvals/ }).check();
+  await expect(duel.getByText('Ready', { exact: true })).toBeVisible();
+  await finish(duel);
+  await expectRow(duel, 'Tickets sold', ['90', '100']);
+  await expectRow(duel, 'Holds released by expiry', ['61', '0']);
+  await expectRow(duel, 'Approved payments voided', ['59', '0']);
 });
 
 test('case-studies/chat/ a per conversation sequence fixes the order', async ({ page }) => {

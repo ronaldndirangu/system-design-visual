@@ -556,3 +556,187 @@ export class RideMatchDuel {
     });
   }
 }
+
+/**
+ * Driver reservations as fenced leases. Reserving bumps the driver's version
+ * and sets an expiry. Accept, renew and release change the driver only while
+ * the caller's ride id and version still hold it, so a late reply or a
+ * delayed timer from an older reservation cannot touch a newer one.
+ */
+export const OFFER_SECONDS = 15;
+
+export type DriverStatus = 'free' | 'reserved' | 'on-trip';
+
+export interface Reservation {
+  driverId: string;
+  rideId: string;
+  version: number;
+  expiresAt: number;
+}
+
+interface DriverLease {
+  status: DriverStatus;
+  rideId: string | null;
+  version: number;
+  expiresAt: number;
+}
+
+export class DriverReservations {
+  private readonly leases = new Map<string, DriverLease>();
+
+  constructor(driverIds: readonly string[]) {
+    for (const id of driverIds)
+      this.leases.set(id, { status: 'free', rideId: null, version: 0, expiresAt: 0 });
+  }
+
+  /** A reservation past its expiry counts as free. */
+  statusAt(driverId: string, now: number): DriverStatus {
+    const lease = this.lease(driverId);
+    return lease.status === 'reserved' && now >= lease.expiresAt ? 'free' : lease.status;
+  }
+
+  rideOf(driverId: string): string | null {
+    return this.lease(driverId).rideId;
+  }
+
+  versionOf(driverId: string): number {
+    return this.lease(driverId).version;
+  }
+
+  /** Compare and set: succeeds only while the driver is free or the last lease has expired. */
+  reserve(driverId: string, rideId: string, now: number, ttl = OFFER_SECONDS): Reservation | null {
+    if (this.statusAt(driverId, now) !== 'free') return null;
+    const lease = this.lease(driverId);
+    lease.status = 'reserved';
+    lease.rideId = rideId;
+    lease.version += 1;
+    lease.expiresAt = now + ttl;
+    return { driverId, rideId, version: lease.version, expiresAt: lease.expiresAt };
+  }
+
+  accept(reservation: Reservation, now: number): boolean {
+    const lease = this.live(reservation, now);
+    if (!lease) return false;
+    lease.status = 'on-trip';
+    return true;
+  }
+
+  renew(reservation: Reservation, now: number, ttl = OFFER_SECONDS): Reservation | null {
+    const lease = this.live(reservation, now);
+    if (!lease) return null;
+    lease.expiresAt = now + ttl;
+    return { ...reservation, expiresAt: lease.expiresAt };
+  }
+
+  /** A decline and the matcher's offer timer both release. */
+  release(reservation: Reservation): boolean {
+    const lease = this.lease(reservation.driverId);
+    if (!this.holds(lease, reservation)) return false;
+    lease.status = 'free';
+    lease.rideId = null;
+    return true;
+  }
+
+  private live(reservation: Reservation, now: number): DriverLease | null {
+    const lease = this.lease(reservation.driverId);
+    return this.holds(lease, reservation) && now < lease.expiresAt ? lease : null;
+  }
+
+  private holds(lease: DriverLease, reservation: Reservation): boolean {
+    return (
+      lease.status === 'reserved' &&
+      lease.rideId === reservation.rideId &&
+      lease.version === reservation.version
+    );
+  }
+
+  private lease(driverId: string): DriverLease {
+    const lease = this.leases.get(driverId);
+    if (!lease) throw new Error(`Unknown driver ${driverId}`);
+    return lease;
+  }
+}
+
+export interface ReservationStep {
+  at: number;
+  ride: string;
+  action: 'reserve' | 'release' | 'accept';
+  /** The version the caller named, or null when reserving. */
+  named: number | null;
+  /** The driver's version after the step. */
+  driverVersion: number;
+  ok: boolean;
+}
+
+/**
+ * A late accept after reassignment. Ride A reserves driver d7 and hears
+ * nothing, so the lease expires at 15 s and ride B reserves d7. Matcher A,
+ * back from a pause, fires its old timer, and the driver's accept for A
+ * arrives late. Both name version 1 and change nothing; B's accept wins.
+ */
+export function lateAcceptTimeline() {
+  const driver = 'd7';
+  const table = new DriverReservations([driver]);
+  const steps: ReservationStep[] = [];
+  const record = (
+    at: number,
+    ride: string,
+    action: ReservationStep['action'],
+    named: number | null,
+    ok: boolean,
+  ) => steps.push({ at, ride, action, named, driverVersion: table.versionOf(driver), ok });
+
+  const a = table.reserve(driver, 'A', 0);
+  record(0, 'A', 'reserve', null, a !== null);
+  if (!a) throw new Error('Ride A must reserve a free driver');
+  const freeAtExpiry = table.statusAt(driver, a.expiresAt) === 'free';
+  const b = table.reserve(driver, 'B', 16);
+  record(16, 'B', 'reserve', null, b !== null);
+  if (!b) throw new Error('Ride B must reserve after A expires');
+  record(17, 'A', 'release', a.version, table.release(a));
+  record(18, 'A', 'accept', a.version, table.accept(a, 18));
+  record(20, 'B', 'accept', b.version, table.accept(b, 20));
+
+  return {
+    driver,
+    leaseSeconds: OFFER_SECONDS,
+    freeAtExpiry,
+    steps,
+    final: {
+      status: table.statusAt(driver, 20),
+      ride: table.rideOf(driver),
+      version: table.versionOf(driver),
+    },
+  };
+}
+
+/** A ping's place in its driver's stream: the sign-in session, then a counter the app raises by one per ping. */
+export interface PingStamp {
+  session: number;
+  seq: number;
+}
+
+export function pingIsNewer(next: PingStamp, last: PingStamp): boolean {
+  return next.session > last.session || (next.session === last.session && next.seq > last.seq);
+}
+
+/**
+ * The index's per driver memory. Every addition and removal carries its
+ * ping's stamp, and the index drops anything no newer than the last stamp it
+ * applied for that driver, removals included.
+ */
+export class DriverPositions {
+  private readonly last = new Map<string, { stamp: PingStamp; cell: string | null }>();
+
+  /** `cell` null removes the driver. Returns false when the update is stale or a repeat. */
+  apply(driverId: string, stamp: PingStamp, cell: string | null): boolean {
+    const seen = this.last.get(driverId);
+    if (seen && !pingIsNewer(stamp, seen.stamp)) return false;
+    this.last.set(driverId, { stamp, cell });
+    return true;
+  }
+
+  cellOf(driverId: string): string | null {
+    return this.last.get(driverId)?.cell ?? null;
+  }
+}
