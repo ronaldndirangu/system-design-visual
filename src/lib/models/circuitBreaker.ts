@@ -1,4 +1,4 @@
-import { createRng, poisson, randomInt, type SeededRng } from '../rng';
+import { createRng, hashString, poisson, randomInt, type SeededRng } from '../rng';
 import { type ModelAdapter, type ScheduledCommand, stepScheduled } from './adapter';
 import { percentile } from './serverFarm';
 
@@ -92,6 +92,25 @@ interface CallRecord {
   failed: boolean;
 }
 
+/** One change of breaker state, at the exact millisecond it happened. */
+export interface BreakerTransition {
+  at: number;
+  from: BreakerState;
+  state: BreakerState;
+  /** Failures and calls in the window, for an open from closed. */
+  trip?: { failures: number; calls: number };
+}
+
+/**
+ * How long a healthy ingest takes to answer this redirect's call, and whether
+ * it fails by chance. Keyed by redirect, so a redirect meets the same luck
+ * under every policy, whether or not the other lane short circuits it.
+ */
+export function ingestDraws(seed: number, redirectId: number): { callMs: number; transient: boolean } {
+  const rng = createRng(hashString(`${seed}:ingest:${redirectId}`));
+  return { callMs: SUBSTEP_MS * randomInt(rng, 3, 5), transient: rng() < TRANSIENT_RATE };
+}
+
 interface Breaker {
   state: BreakerState;
   /** Outcomes of calls that finished while the breaker was closed, newest last. */
@@ -152,18 +171,17 @@ export interface BreakerTick {
 
 interface BreakerServerState {
   ticks: number;
-  nextRedirect: number;
   ingest: IngestHealth;
   queue: Redirect[];
   working: Job[];
   breaker: Breaker;
+  transitions: BreakerTransition[];
   totals: BreakerTotals;
 }
 
 export interface BreakerCheckpoint {
   state: BreakerServerState;
   arrivals: number;
-  work: number;
 }
 
 /** Busy means a lookup, a buffer write, or a call under 100 ms. Stuck means waiting on ingest longer. */
@@ -205,17 +223,13 @@ export class BreakerServer implements ModelAdapter<BreakerCommand, BreakerTick, 
   readonly config: BreakerServerConfig;
   /** Drives redirect arrivals only, so every policy sees the same traffic. */
   private readonly arrivals: SeededRng;
-  /** Drives call times and transient errors. */
-  private readonly work: SeededRng;
   private state: BreakerServerState;
 
   constructor(config: Partial<BreakerServerConfig> = {}) {
     this.config = { ...defaultBreakerConfig, ...config };
     this.arrivals = createRng(this.config.seed);
-    this.work = createRng(this.config.seed ^ 0x5bd1e995);
     this.state = {
       ticks: 0,
-      nextRedirect: 0,
       ingest: 'healthy',
       queue: [],
       working: [],
@@ -229,6 +243,7 @@ export class BreakerServer implements ModelAdapter<BreakerCommand, BreakerTick, 
         tripFailures: 0,
         tripCalls: 0,
       },
+      transitions: [],
       totals: emptyBreakerTotals(),
     };
   }
@@ -239,6 +254,11 @@ export class BreakerServer implements ModelAdapter<BreakerCommand, BreakerTick, 
 
   get totals(): Readonly<BreakerTotals> {
     return this.state.totals;
+  }
+
+  /** Every state change so far. The breaker starts closed at 0 ms. */
+  get transitions(): readonly BreakerTransition[] {
+    return this.state.transitions;
   }
 
   /** Redirects the server holds: queued or on a worker. */
@@ -312,18 +332,13 @@ export class BreakerServer implements ModelAdapter<BreakerCommand, BreakerTick, 
   }
 
   checkpoint(): BreakerCheckpoint {
-    return structuredClone({
-      state: this.state,
-      arrivals: this.arrivals.getState(),
-      work: this.work.getState(),
-    });
+    return structuredClone({ state: this.state, arrivals: this.arrivals.getState() });
   }
 
   restore(checkpoint: BreakerCheckpoint): void {
     const copy = structuredClone(checkpoint);
     this.state = copy.state;
     this.arrivals.setState(copy.arrivals);
-    this.work.setState(copy.work);
   }
 
   private complete(now: number, latencies: number[]): void {
@@ -377,15 +392,22 @@ export class BreakerServer implements ModelAdapter<BreakerCommand, BreakerTick, 
       breaker.state = 'closed';
       breaker.window = [];
       this.state.totals.closes += 1;
+      this.state.transitions.push({ at: now, from: 'half-open', state: 'closed' });
     }
   }
 
   private open(now: number): void {
     const breaker = this.state.breaker;
+    const from = breaker.state;
     breaker.state = 'open';
     breaker.window = [];
     breaker.openUntil = now + COOLDOWN_MS;
     this.state.totals.opens += 1;
+    this.state.transitions.push(
+      from === 'closed'
+        ? { at: now, from, state: 'open', trip: { failures: breaker.tripFailures, calls: breaker.tripCalls } }
+        : { at: now, from, state: 'open' },
+    );
   }
 
   private coolDown(now: number): void {
@@ -395,19 +417,21 @@ export class BreakerServer implements ModelAdapter<BreakerCommand, BreakerTick, 
     breaker.round += 1;
     breaker.probesSent = 0;
     breaker.probeSuccesses = 0;
+    this.state.transitions.push({ at: now, from: 'open', state: 'half-open' });
   }
 
   private arrive(now: number): void {
     const state = this.state;
     const count = poisson(this.arrivals, (this.config.arrivalRate * SUBSTEP_MS) / 1000);
     for (let i = 0; i < count; i += 1) {
+      // Every arrival gets an id, even a rejected one, so ids match across lanes.
+      const id = state.totals.arrived;
       state.totals.arrived += 1;
       if (state.queue.length >= this.config.queueLimit) {
         state.totals.rejected += 1;
         continue;
       }
-      state.queue.push({ id: state.nextRedirect, arrivedAt: now });
-      state.nextRedirect += 1;
+      state.queue.push({ id, arrivedAt: now });
     }
   }
 
@@ -449,8 +473,9 @@ export class BreakerServer implements ModelAdapter<BreakerCommand, BreakerTick, 
         callMs = CALL_TIMEOUT_MS;
         outcome = 'timeout';
       } else if (state.ingest === 'healthy') {
-        callMs = SUBSTEP_MS * randomInt(this.work, 3, 5);
-        outcome = this.work() < TRANSIENT_RATE ? 'error' : 'ok';
+        const draws = ingestDraws(this.config.seed, redirect.id);
+        callMs = draws.callMs;
+        outcome = draws.transient ? 'error' : 'ok';
       }
       state.working.push({
         ...redirect,
@@ -484,6 +509,8 @@ export interface BreakerEvent {
   text: string;
   /** False for wrap up notes that belong in the transcript but not on the chart. */
   marker: boolean;
+  /** A repeat probe cycle: listed in the transcript, left off the chart so its markers stay readable. */
+  minor?: boolean;
 }
 
 export const BREAKER_RUN_SECONDS = 20;
@@ -542,11 +569,31 @@ export interface BreakerLane {
   /** Breaker state at the end of each tick. */
   states: BreakerState[];
   latencies: number[];
-  seen: { rejected: boolean; opened: boolean; halfOpen: boolean; failedProbe: boolean; closed: boolean };
+  /** Whether a 503 has already been logged for this lane. */
+  loggedRejection: boolean;
+  /** Transitions already turned into events. */
+  loggedTransitions: number;
   /** Set when ingest heals, cleared on the first tick that records nearly every click again. */
   recoveringSince: number | null;
   /** Seconds from ingest healing until clicks are recorded again, or null if they never are. */
   recoverySeconds: number | null;
+}
+
+function describeTransition(lane: BreakerLane, change: BreakerTransition, refused: boolean): string {
+  const cooldown = `${COOLDOWN_MS / 1000} s`;
+  if (change.state === 'open' && change.trip)
+    return `${lane.label}: the breaker opens after ${change.trip.failures} of the last ${change.trip.calls} calls failed. Redirects skip ingest and buffer the click.`;
+  if (change.state === 'open')
+    return lane.policy === 'flood'
+      ? `${lane.label}: a call in the flood ${refused ? 'is refused' : 'times out'}, so the breaker opens again for another ${cooldown}.`
+      : `${lane.label}: a probe ${refused ? 'is refused' : 'times out'}, so the breaker opens again for another ${cooldown}.`;
+  if (change.state === 'half-open')
+    return `${lane.label}: the ${cooldown} cooldown ends, so the half-open breaker ${
+      lane.policy === 'flood' ? 'lets every redirect call ingest' : `lets ${PROBES} probe calls through`
+    }.`;
+  return lane.policy === 'flood'
+    ? `${lane.label}: the first ${PROBES} calls of the flood succeed, so the breaker closes.`
+    : `${lane.label}: ${PROBES} probes succeed, so the breaker closes and redirects call ingest again.`;
 }
 
 export class BreakerDuel {
@@ -567,7 +614,8 @@ export class BreakerDuel {
       series: [],
       states: [],
       latencies: [],
-      seen: { rejected: false, opened: false, halfOpen: false, failedProbe: false, closed: false },
+      loggedRejection: false,
+      loggedTransitions: 0,
       recoveringSince: null,
       recoverySeconds: null,
     });
@@ -592,61 +640,29 @@ export class BreakerDuel {
         this.events.push({ tick, text: describeBreakerCommand(entry.command), marker: true });
     }
     const heals = schedule.some((entry) => entry.command.type === 'up' && entry.at === tick);
+    const refused = schedule.some((entry) => entry.command.type === 'down');
     for (const lane of this.lanes) {
-      const before = { ...lane.server.totals };
       const result = stepScheduled(lane.server, schedule);
-      const totals = lane.server.totals;
       lane.latencies.push(...result.latencies);
       lane.series.push((metric === 'calls' ? result.calls : result.answered) * perSecond);
       lane.states.push(result.state);
       const at = tick + 1;
-      if (!lane.seen.rejected && result.rejected > 0) {
-        lane.seen.rejected = true;
+      if (!lane.loggedRejection && result.rejected > 0) {
+        lane.loggedRejection = true;
         this.events.push({
           tick: at,
           text: `${lane.label}: every worker is waiting on ingest and the queue is full, so new redirects get a 503.`,
           marker: true,
         });
       }
-      if (!lane.seen.opened && totals.opens > 0) {
-        lane.seen.opened = true;
-        const trip = lane.server.lastTrip;
-        this.events.push({
-          tick: at,
-          text: `${lane.label}: the breaker opens after ${trip.failures} of the last ${trip.calls} calls failed. Redirects skip ingest and buffer the click.`,
-          marker: true,
-        });
+      const transitions = lane.server.transitions;
+      for (const [index, change] of transitions.entries()) {
+        if (index < lane.loggedTransitions) continue;
+        const reopened = (t: BreakerTransition) => t.state === 'open' && !t.trip;
+        const minor = change.state !== 'closed' && !change.trip && transitions.slice(0, index).some(reopened);
+        this.events.push({ tick: at, text: describeTransition(lane, change, refused), marker: true, minor });
       }
-      if (!lane.seen.halfOpen && totals.probes > 0) {
-        lane.seen.halfOpen = true;
-        const admits =
-          lane.policy === 'flood' ? 'lets every redirect call ingest' : `lets ${PROBES} probe calls through`;
-        this.events.push({
-          tick: at,
-          text: `${lane.label}: the ${COOLDOWN_MS / 1000} s cooldown ends, so the half-open breaker ${admits}.`,
-          marker: true,
-        });
-      }
-      if (!lane.seen.failedProbe && totals.failedProbes > 0) {
-        lane.seen.failedProbe = true;
-        const refused = schedule.some((entry) => entry.command.type === 'down');
-        this.events.push({
-          tick: at,
-          text: `${lane.label}: a probe ${refused ? 'is refused' : 'times out'}, so the breaker opens again for another ${COOLDOWN_MS / 1000} s.`,
-          marker: true,
-        });
-      }
-      if (!lane.seen.closed && totals.closes > before.closes) {
-        lane.seen.closed = true;
-        this.events.push({
-          tick: at,
-          text:
-            lane.policy === 'flood'
-              ? `${lane.label}: the first ${PROBES} calls of the flood succeed, so the breaker closes.`
-              : `${lane.label}: ${PROBES} probes succeed, so the breaker closes and redirects call ingest again.`,
-          marker: true,
-        });
-      }
+      lane.loggedTransitions = transitions.length;
       if (heals) lane.recoveringSince = tick;
       if (lane.recoveringSince !== null && result.answered > 0 && result.recorded / result.answered >= 0.9) {
         lane.recoverySeconds = ((at - lane.recoveringSince) * TICK_MS) / 1000;

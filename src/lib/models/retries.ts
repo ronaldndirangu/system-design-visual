@@ -1,4 +1,4 @@
-import { createRng, poisson, randomInt, type SeededRng } from '../rng';
+import { createRng, hashString, poisson, randomInt, type SeededRng } from '../rng';
 import { type ModelAdapter, type ScheduledCommand, stepScheduled } from './adapter';
 import { percentile } from './serverFarm';
 
@@ -84,6 +84,28 @@ interface Click {
 interface Attempt {
   id: number;
   clickId: number;
+  /** 1 for the first try, 2 for the first retry, and so on. */
+  try: number;
+}
+
+/**
+ * The service time and transient error for one try of one click. Keyed by
+ * click and try, so the same try meets the same luck under every policy.
+ */
+export function attemptDraws(
+  seed: number,
+  clickId: number,
+  attempt: number,
+): { serviceMs: number; transient: boolean } {
+  const rng = createRng(hashString(`${seed}:attempt:${clickId}:${attempt}`));
+  return { serviceMs: SUBSTEP_MS * randomInt(rng, 3, 5), transient: rng() < TRANSIENT_RATE };
+}
+
+/** The full jitter wait before a retry, keyed like attemptDraws and kept apart from it. */
+export function jitterWaitMs(seed: number, clickId: number, attempt: number): number {
+  const window = BACKOFF_BASE_MS * 2 ** (attempt - 1);
+  const rng = createRng(hashString(`${seed}:jitter:${clickId}:${attempt}`));
+  return SUBSTEP_MS * randomInt(rng, 1, window / SUBSTEP_MS);
 }
 
 interface Working extends Attempt {
@@ -146,7 +168,6 @@ interface RetryState {
 export interface RetryCheckpoint {
   state: RetryState;
   arrivals: number;
-  work: number;
 }
 
 export type RetryCellState = 'idle' | 'working' | 'nobody';
@@ -185,15 +206,12 @@ export class RetryServer implements ModelAdapter<RetryCommand, RetryTick, RetryC
   private readonly spec: RetryPolicySpec;
   /** Drives click arrivals only, so every policy sees the same clicks. */
   private readonly arrivals: SeededRng;
-  /** Drives service times, transient errors, and jitter. */
-  private readonly work: SeededRng;
   private state: RetryState;
 
   constructor(config: Partial<RetryServerConfig> = {}) {
     this.config = { ...defaultRetryConfig, ...config };
     this.spec = retryPolicySpecs[this.config.policy];
     this.arrivals = createRng(this.config.seed);
-    this.work = createRng(this.config.seed ^ 0x5bd1e995);
     this.state = {
       ticks: 0,
       nextClick: 0,
@@ -299,18 +317,13 @@ export class RetryServer implements ModelAdapter<RetryCommand, RetryTick, RetryC
   }
 
   checkpoint(): RetryCheckpoint {
-    return structuredClone({
-      state: this.state,
-      arrivals: this.arrivals.getState(),
-      work: this.work.getState(),
-    });
+    return structuredClone({ state: this.state, arrivals: this.arrivals.getState() });
   }
 
   restore(checkpoint: RetryCheckpoint): void {
     const copy = structuredClone(checkpoint);
     this.state = copy.state;
     this.arrivals.setState(copy.arrivals);
-    this.work.setState(copy.work);
   }
 
   private complete(now: number, latencies: number[]): void {
@@ -401,7 +414,7 @@ export class RetryServer implements ModelAdapter<RetryCommand, RetryTick, RetryC
     }
     click.attemptId = id;
     click.timeoutAt = now + Math.min(ATTEMPT_TIMEOUT_MS, click.deadline - now);
-    state.queue.push({ id, clickId: click.id });
+    state.queue.push({ id, clickId: click.id, try: click.attempts });
   }
 
   /** Decides what a sender does after an attempt fails: wait and retry, or give up. */
@@ -412,11 +425,8 @@ export class RetryServer implements ModelAdapter<RetryCommand, RetryTick, RetryC
       this.giveUp(click);
       return;
     }
-    let wait = SUBSTEP_MS;
-    if (spec.wait === 'jitter') {
-      const window = BACKOFF_BASE_MS * 2 ** (click.attempts - 1);
-      wait = SUBSTEP_MS * randomInt(this.work, 1, window / SUBSTEP_MS);
-    }
+    const wait =
+      spec.wait === 'jitter' ? jitterWaitMs(this.config.seed, click.id, click.attempts) : SUBSTEP_MS;
     if (now + wait >= click.deadline) {
       this.giveUp(click);
       return;
@@ -444,9 +454,8 @@ export class RetryServer implements ModelAdapter<RetryCommand, RetryTick, RetryC
     while (state.working.length < this.config.workers) {
       const attempt = state.queue.shift();
       if (!attempt) return;
-      const serviceMs = SUBSTEP_MS * randomInt(this.work, 3, 5) * (state.slow ? 2 : 1);
-      const transient = this.work() < TRANSIENT_RATE;
-      state.working.push({ ...attempt, doneAt: now + serviceMs, transient });
+      const { serviceMs, transient } = attemptDraws(this.config.seed, attempt.clickId, attempt.try);
+      state.working.push({ ...attempt, doneAt: now + serviceMs * (state.slow ? 2 : 1), transient });
     }
   }
 }
@@ -529,6 +538,9 @@ export interface RetryLane {
   /** One value per tick for the scenario's metric, per second. */
   series: number[];
   latencies: number[];
+  /** Attempts sent in each of the last ten ticks, for a rolling one second count. */
+  recentAttempts: number[];
+  /** Most attempts sent in any one second window of the run. */
   peakAttemptsPerSecond: number;
   seen: { timedOut: boolean; rejected: boolean; outage: boolean; budget: boolean };
   /** Set when the trigger ends, cleared on the first tick without timeouts or turned away attempts. */
@@ -554,6 +566,7 @@ export class RetryDuel {
       server: new RetryServer({ policy, seed }),
       series: [],
       latencies: [],
+      recentAttempts: [],
       peakAttemptsPerSecond: 0,
       seen: { timedOut: false, rejected: false, outage: false, budget: false },
       recoveringSince: null,
@@ -588,7 +601,10 @@ export class RetryDuel {
       lane.latencies.push(...result.latencies);
       const attemptsPerSecond = result.attempts * perSecond;
       lane.series.push(metric === 'attempts' ? attemptsPerSecond : result.confirmed * perSecond);
-      lane.peakAttemptsPerSecond = Math.max(lane.peakAttemptsPerSecond, attemptsPerSecond);
+      lane.recentAttempts.push(result.attempts);
+      if (lane.recentAttempts.length > perSecond) lane.recentAttempts.shift();
+      const lastSecond = lane.recentAttempts.reduce((sum, value) => sum + value, 0);
+      lane.peakAttemptsPerSecond = Math.max(lane.peakAttemptsPerSecond, lastSecond);
       const at = tick + 1;
       if (!lane.seen.timedOut && totals.timedOut > 0) {
         lane.seen.timedOut = true;

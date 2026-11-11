@@ -172,9 +172,12 @@ the average time each one spends there, W:
 
 **L = λ × W**
 
-It holds for averages over any long stretch of time, whatever the arrival pattern or the order of service. In the
-unbounded viral run with seed 42, the line averages L = 152.4 requests, λ = 61.1 requests enter it per second, and each
-waits W = 2.495 s on average: 61.1 × 2.495 ≈ 152.4. The last rows of the simulation table recompute all three live.
+It holds for averages over any long stretch of time, whatever the arrival pattern or the order of service. Over a
+finite run it holds exactly when W counts only the time spent in line during the run, so a request still waiting at
+the end counts its wait so far. In the unbounded viral run with seed 42, measured over the whole 20 s run, the line
+averages L = 152.4 requests, λ = 61.1 requests enter it per second, and each spends W = 2.495 s in line on average:
+61.1 × 2.495 ≈ 152.4. The requests still in line at 20 s keep waiting after the run stops, so their full waits run
+longer than this W shows. The last rows of the simulation table recompute all three live.
 
 The law turns a line limit into a promise about time. A request at the back of a full line waits about limit ÷ drain
 rate, then needs its own work. Size the limit so that sum stays under the client's deadline:

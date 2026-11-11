@@ -272,7 +272,7 @@ export default function BackpressureWidget({
       format: oneDecimal,
     },
     {
-      label: 'Average wait in line W',
+      label: 'Average wait in line so far W',
       values: [sums[0].averageWaitMs, sums[1].averageWaitMs],
       format: (value) => `${Math.round(value)} ms`,
     },

@@ -186,7 +186,7 @@ export default function RetriesWidget({
       better: bothConfirmed ? 'lower' : undefined,
     },
     {
-      label: 'Most attempts in one second',
+      label: 'Peak attempts in any 1 s window',
       values: [sums[0].peakAttemptsPerSecond, sums[1].peakAttemptsPerSecond],
       better: 'lower',
     },

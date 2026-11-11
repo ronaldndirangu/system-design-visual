@@ -10,6 +10,7 @@ import {
   breakerScenarios,
   COOLDOWN_MS,
   FAULT_TICK,
+  ingestDraws,
   PROBES,
   summarizeBreaker,
 } from '../../src/lib/models/circuitBreaker';
@@ -147,6 +148,41 @@ describe('Breaker states', () => {
       expect(breaker?.recoverySeconds).toBeGreaterThan(none?.recoverySeconds ?? 0);
     }
   });
+
+  it('records a legal chain of transitions that matches the totals', () => {
+    const legal = ['closed>open', 'open>half-open', 'half-open>open', 'half-open>closed'];
+    for (let seed = 1; seed <= 6; seed += 1) {
+      for (const id of scenarioIds) {
+        for (const policy of ['breaker', 'flood'] as const) {
+          const server = new BreakerServer({ policy, seed });
+          play(server, 200, breakerScenarios[id].schedule);
+          const changes = server.transitions;
+          let state = 'closed';
+          let at = 0;
+          for (const change of changes) {
+            expect(change.from).toBe(state);
+            expect(legal).toContain(`${change.from}>${change.state}`);
+            expect(change.at).toBeGreaterThanOrEqual(at);
+            expect(Boolean(change.trip)).toBe(change.from === 'closed');
+            state = change.state;
+            at = change.at;
+          }
+          const count = (to: string) => changes.filter((change) => change.state === to).length;
+          expect(count('open')).toBe(server.totals.opens);
+          expect(count('closed')).toBe(server.totals.closes);
+          expect(
+            changes.filter((change) => change.from === 'half-open' && change.state === 'open'),
+          ).toHaveLength(server.totals.failedProbes);
+        }
+      }
+    }
+  });
+
+  it('keys ingest luck by redirect, so both lanes meet the same draws', () => {
+    expect(ingestDraws(42, 99)).toEqual(ingestDraws(42, 99));
+    const calls = new Set(Array.from({ length: 60 }, (_, id) => ingestDraws(42, id).callMs));
+    expect([...calls].sort((a, b) => a - b)).toEqual([30, 40, 50]);
+  });
 });
 
 describe('Breaker duels on the same redirects', () => {
@@ -154,8 +190,8 @@ describe('Breaker duels on the same redirects', () => {
     const [hangNone, hangBreaker] = summaries('hang');
     expect(hangNone).toMatchObject({
       arrived: 3018,
-      answered: 1998,
-      recorded: 1665,
+      answered: 1997,
+      recorded: 1660,
       rejected: 1016,
       calls: 2002,
       timedOut: 288,
@@ -163,13 +199,13 @@ describe('Breaker duels on the same redirects', () => {
       recoverySeconds: 0.4,
     });
     expect(hangBreaker).toMatchObject({
-      answered: 2944,
-      recorded: 1391,
-      buffered: 1553,
+      answered: 2943,
+      recorded: 1382,
+      buffered: 1561,
       rejected: 70,
-      calls: 1469,
+      calls: 1472,
       timedOut: 41,
-      shortCircuited: 1479,
+      shortCircuited: 1476,
       opens: 4,
       probes: 12,
       openSeconds: 8,
@@ -178,11 +214,11 @@ describe('Breaker duels on the same redirects', () => {
     });
 
     const [refusedNone, refusedBreaker] = summaries('refused');
-    expect(refusedNone).toMatchObject({ answered: 3014, rejected: 0, calls: 3018, p95Ms: 60 });
+    expect(refusedNone).toMatchObject({ answered: 3013, rejected: 0, calls: 3018, p95Ms: 60 });
     expect(refusedBreaker).toMatchObject({
-      answered: 3014,
+      answered: 3013,
       rejected: 0,
-      calls: 1514,
+      calls: 1515,
       opens: 5,
       probes: 13,
       openSeconds: 10,
@@ -191,11 +227,11 @@ describe('Breaker duels on the same redirects', () => {
 
     const [flood, gentle] = summaries('probe');
     expect(gentle).toEqual(hangBreaker);
-    expect(flood).toMatchObject({ probes: 61, timedOut: 80, p95Ms: 460, rejected: 72, opens: 4 });
+    expect(flood).toMatchObject({ probes: 60, timedOut: 80, p95Ms: 460, rejected: 72, opens: 4 });
 
     const [normalNone, normalBreaker] = summaries('normal');
     expect(normalBreaker).toEqual(normalNone);
-    expect(normalNone).toMatchObject({ answered: 3013, recorded: 2944, buffered: 69, opens: 0 });
+    expect(normalNone).toMatchObject({ answered: 3013, recorded: 2937, buffered: 76, opens: 0 });
   });
 
   it('annotates the run in order and ends with a wrap up note', () => {
@@ -211,12 +247,20 @@ describe('Breaker duels on the same redirects', () => {
       '4.1 Breaker, 3 probes: the breaker opens after 18 of the last 20 calls failed. Redirects skip ingest and buffer the click.',
       '6.1 Breaker, 3 probes: the 2 s cooldown ends, so the half-open breaker lets 3 probe calls through.',
       '6.6 Breaker, 3 probes: a probe times out, so the breaker opens again for another 2 s.',
+      '8.6 Breaker, 3 probes: the 2 s cooldown ends, so the half-open breaker lets 3 probe calls through.',
+      '9.1 Breaker, 3 probes: a probe times out, so the breaker opens again for another 2 s.',
+      '11.1 Breaker, 3 probes: the 2 s cooldown ends, so the half-open breaker lets 3 probe calls through.',
+      '11.6 Breaker, 3 probes: a probe times out, so the breaker opens again for another 2 s.',
       '12.0 The analytics ingest service is healthy again.',
       '12.4 No breaker: clicks reach ingest again, 0.4 s after it heals.',
+      '13.6 Breaker, 3 probes: the 2 s cooldown ends, so the half-open breaker lets 3 probe calls through.',
       '13.7 Breaker, 3 probes: 3 probes succeed, so the breaker closes and redirects call ingest again.',
       '13.8 Breaker, 3 probes: clicks reach ingest again, 1.8 s after it heals.',
-      '20.0 Run ends. Redirects answered: No breaker 1998, Breaker, 3 probes 2944. Turned away with 503: 1016 and 70. Calls sent to ingest: 2002 and 1469. Breaker, 3 probes opened 4 times, sent 12 probes, and stayed open 8.0 s.',
+      '20.0 Run ends. Redirects answered: No breaker 1997, Breaker, 3 probes 2943. Turned away with 503: 1016 and 70. Calls sent to ingest: 2002 and 1472. Breaker, 3 probes opened 4 times, sent 12 probes, and stayed open 8.0 s.',
     ]);
+    expect(texts('probe')).toContain(
+      '13.7 Breaker, no probe limit: the first 3 calls of the flood succeed, so the breaker closes.',
+    );
     expect(texts('refused')).toContain(
       '5.6 Breaker, 3 probes: a probe is refused, so the breaker opens again for another 2 s.',
     );

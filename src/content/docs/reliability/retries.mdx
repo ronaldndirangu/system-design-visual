@@ -69,7 +69,7 @@ export const quiz = [
     options: [
       { text: 'The backoff waits were too long, so clicks ran out of time', why: 'On a normal day the same waits confirm every click. The waits are a few hundred milliseconds at most; the problem is the extra load.' },
       { text: 'Retries added load that kept the queue longer than the timeout, so almost every attempt failed', correct: true, why: 'Each failed attempt came back as another attempt in the same full queue. With a 750 ms queue and a 500 ms timeout, nearly every attempt timed out and turned into yet another retry.' },
-      { text: 'The ingest service crashed under the extra attempts', why: 'Nothing crashed. The workers stayed busy the whole time, finishing 2,962 attempts whose senders had already stopped waiting.' },
+      { text: 'The ingest service crashed under the extra attempts', why: 'Nothing crashed. The workers stayed busy the whole time, finishing 2,972 attempts whose senders had already stopped waiting.' },
       { text: 'Jitter made the retries arrive at the same moment', why: 'Jitter does the opposite: it spreads retries across the backoff window. Synchronized retries come from backoff without jitter, as the herd simulation shows.' },
     ],
   },
@@ -133,9 +133,9 @@ into confirmed clicks. Then, one afternoon, a slow disk makes every attempt take
   answer={3}
 >
 
-**No retries, by a wide margin.** In this toy model with seed 42, the lane without retries confirms 2,475 clicks and is
-healthy again 1.7 s after the slowdown ends. The lane with backoff and jitter sends 10,006 attempts, confirms only
-567 clicks, and is still failing when the run ends, 14 s after the service went back to full speed.
+**No retries, by a wide margin.** In this toy model with seed 42, the lane without retries confirms 2,485 clicks and is
+healthy again 1.8 s after the slowdown ends. The lane with backoff and jitter sends 10,002 attempts, confirms only
+574 clicks, and is still failing when the run ends, 14 s after the service went back to full speed.
 
 </Predict>
 
@@ -155,13 +155,13 @@ attempts are queued, a new attempt waits longer than its 500 ms timeout while th
 worse: with 150 attempts ahead of it, a new attempt waits about 750 ms even at full speed.
 
 From then on, almost every attempt in the retry lane times out. Each timeout becomes another attempt in the same queue,
-and each of those times out too. The sender sends 3.32 attempts for every click, and attempts peak at 840 a second
+and each of those times out too. The sender sends 3.31 attempts for every click, and attempts peak at 720 a second
 against a service that can finish about 200. When the disk recovers at 6 s, fresh clicks plus retries still exceed 200
 a second, so the queue never drains. The slowdown caused the overload, and the retries keep it going. Engineers call
 this a **metastable failure**: the system stays broken in a state the original trigger no longer explains.
 
-The wasted work is easy to see in the table. The workers finish 2,962 attempts whose senders had already given up on
-them, and the analytics store drops 1,182 late copies of clicks it already recorded. Without the click ID, those
+The wasted work is easy to see in the table. The workers finish 2,972 attempts whose senders had already given up on
+them, and the analytics store drops 1,198 late copies of clicks it already recorded. Without the click ID, those
 copies would have inflated the counts. The lane without retries suffers during the slowdown too, but its load stays at
 150 a second, so its queue drains as soon as the disk recovers.
 
@@ -193,9 +193,9 @@ connection for half a second. One lane retries at once, the other backs off with
   instructions="Press Play. Both lanes lose the same half second. Compare the attempts per second while the service is down, and the clicks each lane gives up."
 />
 
-Retrying at once burns through all four attempts in about 40 ms, long before the service is back, and 78 clicks give up
-for good. It also sends 860 attempts in the worst second. Backing off spreads the same attempts across the restart:
-the jitter lane sends 570 in its worst second, gets 190 attempts refused against 325, and loses only 9 clicks. Both
+Retrying at once burns through all four attempts in about 40 ms, long before the service is back, and 76 clicks give up
+for good. Its attempts peak at 403 a second. Backing off spreads the same attempts across the restart: the jitter
+lane peaks at 333 a second, gets 180 attempts refused against 317, and loses only 3 clicks. Both
 lanes are healthy 0.1 s after the service comes back, because nothing piled up in a queue.
 
 ## Jitter: do not retry in lockstep
@@ -232,8 +232,9 @@ fails, every failure earns another attempt, and the storm above happens anyway: 
 full jitter.
 
 A **retry budget** caps retries as a fraction of fresh traffic. Each fresh click adds 0.1 of a token, up to 10 tokens,
-and each retry spends one. With 150 clicks a second, the sender can retry at most 15 times a second, however bad things
-get. When the budget runs dry, failed clicks give up at once and add no load.
+and each retry spends one. With 150 clicks a second, the sender can sustain about 15 retries a second, plus one burst of
+up to 10 from tokens it banked earlier, however bad things get. When the budget runs dry, failed clicks give up at once
+and add no load.
 
 <RetriesWidget
   client:visible
@@ -242,8 +243,8 @@ get. When the budget runs dry, failed clicks give up at once and add no load.
   instructions="Press Play and watch the clicks each lane confirms per second after 3 s. The budget runs dry just over a second into the slowdown; compare attempts sent and the time each lane takes to recover."
 />
 
-With the budget, the sender retries only 104 times, sends 3,122 attempts, confirms 2,504 clicks, and recovers 2.1 s
-after the slowdown, while the budget denies 504 retries that would have fed the storm. On a normal day the budget
+With the budget, the sender retries only 103 times, sends 3,121 attempts, confirms 2,489 clicks, and recovers 2.2 s
+after the slowdown, while the budget denies 520 retries that would have fed the storm. On a normal day the budget
 changes nothing: only about 3 clicks a second fail, well inside 15 retries a second, so in the toy model a lane with a
 budget matches the plain jitter lane click for click. A budget lets retries do their job on a normal day and switches
 them off when they would make things worse.
@@ -265,7 +266,7 @@ sender stops calling a failing service entirely and probes it gently until it re
 1. In the first simulation, play **Slowdown at 3 s** and find the moment the retry lane's confirmed clicks collapse.
    Check that they stay low after 6 s, when the service is fast again. Then read **Attempts finished for nobody**: that
    is work the service did for senders who had already left.
-2. Play **Normal day**. The retry lane confirms 3,015 clicks to 2,945, and its attempts per click stay at 1.02. Retries
+2. Play **Normal day**. The retry lane confirms 3,015 clicks to 2,963, and its attempts per click stay at 1.02. Retries
    are cheap and useful when the service is healthy.
 3. In the restart simulation, compare **Clicks given up**. Retrying at once spends all four attempts inside the half
    second outage.
@@ -279,7 +280,7 @@ sender stops calling a failing service entirely and probes it gently until it re
 
 | Choice                          | What it buys                                                        | What it costs                                                                                |
 | ------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| No retries                      | Never adds load                                                     | Every transient error loses the request: 69 clicks on a normal day in the toy model          |
+| No retries                      | Never adds load                                                     | Every transient error loses the request: 52 clicks on a normal day in the toy model          |
 | Retry at once                   | The fastest answer when one attempt fails at random                 | Spends every attempt inside a short outage and adds load exactly when the service struggles  |
 | Exponential backoff, no jitter  | Fewer attempts the longer an outage lasts                           | Senders that failed together retry together, in waves                                        |
 | Backoff with full jitter        | Spreads retries across the window, so the service sees a trickle    | Some retries wait longer; total retries still grow without limit under sustained overload    |

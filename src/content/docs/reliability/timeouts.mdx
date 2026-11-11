@@ -303,17 +303,20 @@ wasted work.
 <Challenge>
 
 sho.rt serves 1,000 redirects per second with 200 workers. Each redirect also calls the click analytics service to
-record the click, with a 2 s timeout. One afternoon the analytics service hangs. How many analytics calls are stuck at
-once, and what would you change so that a broken analytics service never breaks redirects?
+record the click, with a 2 s timeout. One afternoon the analytics service hangs. How many calls would need to wait at
+once, what happens to redirects, and what would you change so that a broken analytics service never breaks redirects?
 
 <div slot="answer">
 
-- By Little's law, 1,000 calls per second × 2 s = **2,000 calls stuck at once**, ten times the 200 workers. Every
-  redirect fails, even though the redirect itself never needed analytics.
+- By Little's law, 1,000 calls per second × 2 s = **2,000 calls waiting at once**, ten times the 200 workers. Only 200
+  can actually wait: within 0.2 s every worker sits on a hung analytics call. Each worker then frees up only every 2 s,
+  so the server starts just 100 redirects a second. The other 900 a second pile up in the queue until it fills or the
+  visitors give up, and then fail. Almost every redirect fails or crawls, even though the redirect itself never needed
+  analytics.
 - **Take analytics off the critical path.** The visitor only needs the long URL. Record the click in the background, for
   example by writing it to a local buffer or queue that ships events later.
 - If the call must stay in the request, give it a **short timeout**, such as 50 ms (1,000 × 0.05 = 50 calls stuck at
-  most), **cancel** it when the timeout fires, and run it in its **own small pool** so it can never take the workers
+  most, well under the 200 workers), **cancel** it when the timeout fires, and run it in its **own small pool** so it can never take the workers
   that serve redirects.
 
 </div>

@@ -219,9 +219,9 @@ test.describe('Retries', () => {
     await skip.focus();
     await page.keyboard.press('Enter');
     const confirmed = duel.getByRole('row', { name: /Clicks confirmed/ });
-    await expect(confirmed).toContainText('2475');
-    await expect(confirmed).toContainText('567');
-    await expect(duel.getByRole('row', { name: /Attempts sent/ })).toContainText('10006');
+    await expect(confirmed).toContainText('2485');
+    await expect(confirmed).toContainText('574');
+    await expect(duel.getByRole('row', { name: /Attempts sent/ })).toContainText('10002');
     await expect(duel.getByText('Run complete')).toBeVisible();
     expect(await axeViolations(page)).toEqual([]);
     await page.emulateMedia({ colorScheme: 'light' });
@@ -260,8 +260,8 @@ test.describe('Circuit breakers', () => {
     await skip.focus();
     await page.keyboard.press('Enter');
     const answered = duel.getByRole('row', { name: /Redirects answered/ });
-    await expect(answered).toContainText('1998');
-    await expect(answered).toContainText('2944');
+    await expect(answered).toContainText('1997');
+    await expect(answered).toContainText('2943');
     const rejected = duel.getByRole('row', { name: /Turned away with 503/ });
     await expect(rejected).toContainText('1016');
     await expect(rejected).toContainText('70');
@@ -284,13 +284,13 @@ test.describe('Circuit breakers', () => {
     await refused.getByRole('button', { name: 'Skip to the end' }).click();
     const calls = refused.getByRole('row', { name: /Calls sent to ingest/ });
     await expect(calls).toContainText('3018');
-    await expect(calls).toContainText('1514');
+    await expect(calls).toContainText('1515');
 
     const probe = page.getByRole('region', { name: 'Simulation: Three probes or everyone' });
     await probe.scrollIntoViewIfNeeded();
     await probe.getByRole('button', { name: 'Skip to the end' }).click();
     const probes = probe.getByRole('row', { name: /Probe calls while half-open/ });
-    await expect(probes).toContainText('61');
+    await expect(probes).toContainText('60');
     await expect(probes).toContainText('12');
     expect(errors).toEqual([]);
   });

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { type ScheduledCommand, stepScheduled } from '../../src/lib/models/adapter';
 import {
+  attemptDraws,
   HERD_CAPACITY,
   HERD_CLIENTS,
   HerdDuel,
+  jitterWaitMs,
   type RetryCommand,
   RetryDuel,
   RetryHerd,
@@ -115,51 +117,71 @@ describe('RetryServer playback', () => {
 describe('Retry duels on the same clicks', () => {
   it('pins the illustrative numbers the lesson quotes for seed 42', () => {
     const [healthyNone, healthyJitter] = summaries('healthy');
-    expect(healthyNone).toMatchObject({ arrived: 3018, confirmed: 2945, gaveUp: 69, attempts: 3018 });
-    expect(healthyJitter).toMatchObject({ arrived: 3018, confirmed: 3015, gaveUp: 0, attempts: 3077 });
+    expect(healthyNone).toMatchObject({ arrived: 3018, confirmed: 2963, gaveUp: 52, attempts: 3018 });
+    expect(healthyJitter).toMatchObject({ arrived: 3018, confirmed: 3015, gaveUp: 0, attempts: 3072 });
 
     const [stormNone, stormJitter] = summaries('storm');
     expect(stormNone).toMatchObject({
-      confirmed: 2475,
-      gaveUp: 539,
+      confirmed: 2485,
+      gaveUp: 530,
       attempts: 3018,
-      timedOut: 482,
-      recoverySeconds: 1.7,
+      timedOut: 484,
+      recoverySeconds: 1.8,
     });
     expect(stormJitter).toMatchObject({
-      confirmed: 567,
-      gaveUp: 2255,
-      attempts: 10006,
-      rejected: 6306,
-      timedOut: 3027,
-      wasted: 2962,
-      duplicates: 1182,
-      peakAttemptsPerSecond: 840,
+      confirmed: 574,
+      gaveUp: 2245,
+      attempts: 10002,
+      rejected: 6288,
+      timedOut: 3034,
+      wasted: 2972,
+      duplicates: 1198,
+      peakAttemptsPerSecond: 720,
       recoverySeconds: null,
     });
-    expect(stormJitter?.amplification).toBeCloseTo(3.32, 2);
+    expect(stormJitter?.amplification).toBeCloseTo(3.31, 2);
 
     const [blipNow, blipJitter] = summaries('blip');
     expect(blipNow).toMatchObject({
-      confirmed: 2936,
-      gaveUp: 78,
-      attempts: 3334,
-      peakAttemptsPerSecond: 860,
+      confirmed: 2939,
+      gaveUp: 76,
+      attempts: 3312,
+      peakAttemptsPerSecond: 403,
     });
     expect(blipJitter).toMatchObject({
-      confirmed: 3005,
-      gaveUp: 9,
-      attempts: 3259,
-      peakAttemptsPerSecond: 570,
+      confirmed: 3012,
+      gaveUp: 3,
+      attempts: 3248,
+      peakAttemptsPerSecond: 333,
     });
     expect(blipNow?.recoverySeconds).toBe(0.1);
     expect(blipJitter?.recoverySeconds).toBe(0.1);
 
     const [budgetJitter, budget] = summaries('budget');
     expect(budgetJitter).toEqual(stormJitter);
-    expect(budget).toMatchObject({ confirmed: 2504, gaveUp: 510, attempts: 3122, duplicates: 53 });
-    expect(budget?.recoverySeconds).toBe(2.1);
+    expect(budget).toMatchObject({
+      confirmed: 2489,
+      gaveUp: 526,
+      attempts: 3121,
+      duplicates: 54,
+      peakAttemptsPerSecond: 179,
+    });
+    expect(budget?.recoverySeconds).toBe(2.2);
     expect(budget?.amplification).toBeCloseTo(1.03, 2);
+  });
+
+  it('keys each try by click and try number, so every policy meets the same luck', () => {
+    expect(attemptDraws(42, 17, 2)).toEqual(attemptDraws(42, 17, 2));
+    expect(jitterWaitMs(42, 17, 2)).toBe(jitterWaitMs(42, 17, 2));
+    const service = new Set(Array.from({ length: 60 }, (_, id) => attemptDraws(42, id, 1).serviceMs));
+    expect([...service].sort((a, b) => a - b)).toEqual([30, 40, 50]);
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      for (let id = 0; id < 50; id += 1) {
+        const wait = jitterWaitMs(42, id, attempt);
+        expect(wait).toBeGreaterThanOrEqual(10);
+        expect(wait).toBeLessThanOrEqual(200 * 2 ** (attempt - 1));
+      }
+    }
   });
 
   it('keeps a budget lane out of the metastable failure for other seeds', () => {
@@ -191,20 +213,20 @@ describe('Retry duels on the same clicks', () => {
     };
     expect(texts('storm')).toEqual([
       '3.0 The ingest service slows down: attempts take twice as long.',
-      '4.2 Backoff with jitter: the first attempt times out after 500 ms.',
       '4.3 No retries: the first attempt times out after 500 ms.',
+      '4.3 Backoff with jitter: the first attempt times out after 500 ms.',
       '4.7 Backoff with jitter: the queue is full, so new attempts get a 503.',
       '6.0 The ingest service runs at full speed again.',
       '6.1 No retries: the queue is full, so new attempts get a 503.',
-      '7.7 No retries: attempts stop failing, 1.7 s after the service is healthy again.',
-      '20.0 Run ends. Clicks confirmed: No retries 2475, Backoff with jitter 567. Attempts sent: 3018 and 10006. Backoff with jitter is still failing when the run ends.',
+      '7.8 No retries: attempts stop failing, 1.8 s after the service is healthy again.',
+      '20.0 Run ends. Clicks confirmed: No retries 2485, Backoff with jitter 574. Attempts sent: 3018 and 10002. Backoff with jitter is still failing when the run ends.',
     ]);
     expect(texts('budget')).toContain(
-      '4.3 Jitter and a budget: the retry budget runs dry, so failed clicks stop retrying.',
+      '4.4 Jitter and a budget: the retry budget runs dry, so failed clicks stop retrying.',
     );
     expect(texts('blip').slice(1, 3)).toEqual([
       '3.1 Retry at once: the first click gives up during the restart, because the service refused its attempts.',
-      '3.3 Backoff with jitter: the first click gives up during the restart, because the service refused its attempts.',
+      '3.4 Backoff with jitter: the first click gives up during the restart, because the service refused its attempts.',
     ]);
   });
 

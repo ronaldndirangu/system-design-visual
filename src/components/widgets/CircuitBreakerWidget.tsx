@@ -320,6 +320,7 @@ export default function CircuitBreakerWidget({
   const chartSummary = `${chartTitle}. ${first.label} now ${latest(first)}. ${second.label} now ${latest(second)}.`;
 
   const markerEvents = duel.events.filter((event) => event.marker);
+  const chartEvents = markerEvents.filter((event) => !event.minor);
   const notes = duel.events.filter((event) => !event.marker);
   const stripLanes = duel.lanes
     .map((lane, index) => ({ lane, variant: variants[index] ?? 'a' }))
@@ -417,7 +418,7 @@ export default function CircuitBreakerWidget({
         }))}
         length={duel.length}
         tickSeconds={duel.tickSeconds}
-        markers={markerEvents.map((event, index) => ({ tick: event.tick, number: index + 1 }))}
+        markers={chartEvents.map((event, index) => ({ tick: event.tick, number: index + 1 }))}
         minMax={200}
         summary={chartSummary}
       />
@@ -443,15 +444,25 @@ export default function CircuitBreakerWidget({
         )}
         {markerEvents.length > 0 && (
           <ol>
-            {markerEvents.map((event, index) => (
+            {markerEvents.map((event) => (
               <li key={`${event.tick}-${event.text}`}>
-                <span className="sdv-trace__num" aria-hidden="true">
-                  {index + 1}
-                </span>
+                {event.minor ? (
+                  <span className="sdv-trace__num sdv-cb__num--repeat" aria-hidden="true" />
+                ) : (
+                  <span className="sdv-trace__num" aria-hidden="true">
+                    {chartEvents.indexOf(event) + 1}
+                  </span>
+                )}
                 <time>{(event.tick * duel.tickSeconds).toFixed(1)} s</time> {event.text}
               </li>
             ))}
           </ol>
+        )}
+        {markerEvents.some((event) => event.minor) && (
+          <p className="sdv-trace__note">
+            Hollow circles mark repeat probe cycles. The chart leaves them out so its numbered markers stay
+            readable; the state strips under the chart show every cycle.
+          </p>
         )}
         {notes.map((event) => (
           <p key={`${event.tick}-${event.text}`} className="sdv-trace__note">

@@ -86,7 +86,7 @@ export const quiz = [
     prompt: 'A half-open breaker with no probe limit lets every redirect through until the round is decided. While ingest still hangs, what goes wrong?',
     options: [
       { text: 'The breaker can never close again', why: 'It closes once ingest heals, at about the same time as the gentle breaker. The damage happens during each half-open round.' },
-      { text: 'Every redirect in the round becomes a probe and a stuck worker, so redirects queue behind them again', correct: true, why: 'In the toy model it sends 61 probes against 12, 80 calls time out against 41, and the p95 time to answer a redirect rises from 60 ms to 460 ms.' },
+      { text: 'Every redirect in the round becomes a probe and a stuck worker, so redirects queue behind them again', correct: true, why: 'In the toy model it sends 60 probes against 12, 80 calls time out against 41, and the p95 time to answer a redirect rises from 60 ms to 460 ms.' },
       { text: 'It reconnects to ingest much sooner once ingest heals', why: 'Only 0.1 s sooner in the toy model: 1.7 s against 1.8 s. The cooldown decides when the breaker tries again; the probe count only decides how hard.' },
       { text: 'Nothing: probes are cheap because they are only health checks', why: 'Here a probe is a real click call. Against a hung service, each one holds a worker for the full 500 ms timeout.' },
     ],
@@ -97,7 +97,7 @@ export const quiz = [
       { text: 'Far fewer redirects turned away with a 503', why: 'Neither lane turns any away. A refusal frees the worker at once, so workers never get stuck.' },
       { text: 'Faster redirects', why: 'Both lanes answer 95% of redirects within 60 ms. A refused call costs 10 ms, about the same as writing to the buffer.' },
       { text: 'A faster return to recording clicks once ingest comes back', why: 'The opposite: the breaker lane takes 1.8 s against 0.1 s, because it waits out a cooldown before it tries ingest again.' },
-      { text: 'About half as many calls to a service that is trying to start', correct: true, why: 'The breaker lane sends 1,514 calls against 3,018. When the dependency fails fast, a breaker mainly protects the dependency.' },
+      { text: 'About half as many calls to a service that is trying to start', correct: true, why: 'The breaker lane sends 1,515 calls against 3,018. When the dependency fails fast, a breaker mainly protects the dependency.' },
     ],
   },
 ];
@@ -134,8 +134,8 @@ One afternoon at 3 s, the ingest service hangs. It accepts calls and never answe
 >
 
 **About 1,000.** In this toy model with seed 42, the lane without a breaker turns away 1,016 redirects and answers
-only 1,998, and its p95 time to answer a redirect reaches 2.5 s. The lane with a breaker turns away 70, all of them before
-it opens at 4.1 s, and answers 2,944.
+only 1,997, and its p95 time to answer a redirect reaches 2.5 s. The lane with a breaker turns away 70, all of them before
+it opens at 4.1 s, and answers 2,943.
 
 </Predict>
 
@@ -202,7 +202,7 @@ the first random error.
 
 A breaker helps only when the server has something useful to do while it is open. For sho.rt, the click can wait:
 the redirect server writes it to a local buffer and uploads it once ingest is back. Look at the table after the hang.
-The breaker lane records 1,391 clicks directly and buffers 1,553, so it keeps all 2,944 clicks behind the redirects it
+The breaker lane records 1,382 clicks directly and buffers 1,561, so it keeps all 2,943 clicks behind the redirects it
 answered. The lane without a breaker also buffers a click when its call fails, but each of its 1,016 turned away
 redirects loses both the redirect and the click. The toy model counts a buffered click as kept; it does not simulate
 the upload.
@@ -226,8 +226,8 @@ refuses every connection within 10 ms.
 />
 
 Here the breaker changes nothing for visitors. A refused call frees its worker in 10 ms, so no worker gets stuck: both
-lanes answer 3,014 redirects, turn none away, and answer 95% of them within 60 ms. The breaker opens about half a
-second after the crash and sends ingest 1,514 calls against 3,018, about half. For a service that is trying to restart, half the
+lanes answer 3,013 redirects, turn none away, and answer 95% of them within 60 ms. The breaker opens about half a
+second after the crash and sends ingest 1,515 calls against 3,018, about half. For a service that is trying to restart, half the
 connection attempts can be the difference between coming up and falling over again. The cost shows up at the end:
 when ingest returns at 12 s, the breaker lane takes 1.8 s to record clicks again against 0.1 s, because it waits out a
 cooldown before it tries. Against a slow dependency a breaker protects the caller; against a fast failure it mainly
@@ -245,7 +245,7 @@ empty connection pools. A breaker with no probe limit lets every redirect throug
   answer={2}
 >
 
-**It rises about sevenfold.** In the toy model, the lane with no probe limit sends 61 probes against 12. Each one
+**It rises about sevenfold.** In the toy model, the lane with no probe limit sends 60 probes against 12. Each one
 holds a worker for the full 500 ms timeout, so every half-open round fills up to all 16 workers again, and redirects
 queue behind them. Its p95 rises from 60 ms to 460 ms. It still stays far below the 2,530 ms of the lane without a
 breaker, because the breaker is open most of the time.
@@ -297,7 +297,7 @@ breaker hides a broken dependency from visitors and so from anyone watching only
 | Breaker that fails fast with a 503   | Frees workers at once and gives callers a clear signal                    | Requests that need the dependency still fail, just quickly                                         |
 | Low threshold or short window        | Opens sooner when the dependency breaks                                   | Opens on noise unless a minimum call count holds it back                                           |
 | Long cooldown                        | Fewer probes and less load on a struggling dependency                     | Slower to notice recovery: up to one full cooldown after the dependency heals                      |
-| No probe limit when half-open        | Nothing, apart from reconnecting a little sooner                          | Every caller becomes a probe: 61 against 12, and a p95 of 460 ms against 60 ms in the toy model     |
+| No probe limit when half-open        | Nothing, apart from reconnecting a little sooner                          | Every caller becomes a probe: 60 against 12, and a p95 of 460 ms against 60 ms in the toy model     |
 
 </TradeoffTable>
 
@@ -318,9 +318,14 @@ settings, and what a redirect does while the breaker is open.
   fail, cool down for a few seconds, then send a handful of probes and close only if they all succeed.
 - **Cap the workers that may wait on it** with a bulkhead, so a hang that the breaker has not yet caught still leaves
   most workers free.
-- **Fall back on cached verdicts.** Most clicks go to popular links, so cache each link's last verdict. While the
-  breaker is open, redirect links with a recent clean verdict, and show a warning page for links with no verdict or a
-  bad one. That keeps the product rule without a site-wide outage.
+- **Fall back on cached verdicts with a short expiry.** Most clicks go to popular links, so cache each link's last
+  verdict for a few minutes. While the breaker is open, redirect links with an unexpired clean verdict, and show a
+  warning page for links with no verdict, an expired one, or a bad one.
+- **Bound the staleness.** A cached clean verdict can be out of date: a link flagged during the outage still redirects
+  until its entry expires. Have the safety service push newly flagged links to every redirect server, so a fresh bad
+  verdict overrides the cache. If that feed stalls too, the expiry caps how long a newly flagged link can slip through.
+  Product must accept that window, or pick the strict fallback: a warning page on every redirect while the breaker is
+  open.
 - **Do not retry while the breaker is open**, and alert when it opens: visitors will barely notice, so the team must
   hear about it some other way.
 

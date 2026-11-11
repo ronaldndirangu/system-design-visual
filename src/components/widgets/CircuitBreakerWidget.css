@@ -192,3 +192,8 @@
     transition: transform 160ms ease-out;
   }
 }
+.sdv-trace__num.sdv-cb__num--repeat {
+  background: transparent;
+  border: 2px solid var(--sl-color-text-accent);
+  box-sizing: border-box;
+}
