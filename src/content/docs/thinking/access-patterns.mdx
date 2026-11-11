@@ -1,0 +1,246 @@
+---
+title: Access patterns and hot keys
+description: Find out who reads what and how often, then watch one viral link overload a single cache node while the rest sit idle.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import HotKeyWidget from '../../../components/widgets/HotKeyWidget';
+
+export const nodes = [
+  { id: 'client', kind: 'client', x: 70, y: 175, label: 'Clicks' },
+  { id: 'server', kind: 'server', x: 270, y: 175, label: 'App server' },
+  { id: 'c1', kind: 'cache', x: 500, y: 40, label: 'Cache 1' },
+  { id: 'c2', kind: 'cache', x: 500, y: 130, label: 'Cache 2', sublabel: 'abc123 home' },
+  { id: 'c3', kind: 'cache', x: 500, y: 220, label: 'Cache 3' },
+  { id: 'c4', kind: 'cache', x: 500, y: 310, label: 'Cache 4' },
+];
+export const edges = [
+  { from: 'client', to: 'server' },
+  { from: 'server', to: 'c1' },
+  { from: 'server', to: 'c2' },
+  { from: 'server', to: 'c3' },
+  { from: 'server', to: 'c4' },
+];
+export const steps = [
+  {
+    title: 'Count who reads what',
+    text: 'Log every click for one second and group the clicks by short code. Most links get a click now and then. A few get far more. That uneven spread is the access pattern.',
+    nodes: ['client', 'server'],
+    flows: ['client>server'],
+  },
+  {
+    title: 'Each code has one home',
+    text: 'The app server hashes the short code to pick a cache node, so abc123 always lands on Cache 2. With thousands of codes and no favorite, the hash spreads clicks evenly.',
+    nodes: ['server', 'c1', 'c2', 'c3', 'c4'],
+    flows: ['server>c1', 'server>c2', 'server>c3', 'server>c4'],
+  },
+  {
+    title: 'One code goes viral',
+    text: 'abc123 now draws about 240 of 400 clicks a second. Hashing sends all 240 to Cache 2, which serves 150. The other three nodes stay quiet.',
+    nodes: ['client', 'server', 'c2'],
+    flows: ['client>server', 'server>c2'],
+  },
+  {
+    title: 'Copy the hot key',
+    text: 'The server notices abc123 passing 50 clicks a second and copies it to every node. Its clicks now take turns across all four, about 60 each.',
+    nodes: ['server', 'c1', 'c2', 'c3', 'c4'],
+    flows: ['server>c1', 'server>c2', 'server>c3', 'server>c4'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'A shortener handles 4,000 reads and 40 writes a second. What should that ratio steer you toward first?',
+    options: [
+      { text: 'Serve reads from a cache or replicas', correct: true, why: 'Reads outnumber writes 100 to 1, so making reads cheap pays off the most. Caches and read replicas both multiply read capacity.' },
+      { text: 'Shard the database to spread writes', why: '40 writes a second fit on one modest database. Sharding for writes solves a problem this ratio says you do not have yet.' },
+      { text: 'Pick a database built for heavy writes', why: 'Writes are 1% of the traffic. A write-optimized store would speed up the smallest part of the load.' },
+      { text: 'Nothing; only the total matters', why: 'The same 4,040 requests a second need very different designs when they are mostly writes. The mix decides where the load lands.' },
+    ],
+  },
+  {
+    prompt: 'Four cache nodes serve 150 req/s each, 600 in total. Traffic is 400 req/s and one key gets 60% of it. What breaks first?',
+    options: [
+      { text: 'The node that holds the hot key', correct: true, why: 'Hashing sends every read of a key to one node. That node gets 240 req/s for the hot key alone, well past its 150.' },
+      { text: 'Nothing, since 400 is less than 600', why: 'Total capacity only helps when the load spreads. Here 60% of it lands on a single node.' },
+      { text: 'All four nodes slow down equally', why: 'That happens when load rises evenly. With a hot key, three nodes stay mostly idle while one overflows.' },
+      { text: 'The database behind the cache', why: 'The hot key is cached, so the database sees almost none of its reads. The cache node in front of it is what fills up.' },
+    ],
+  },
+  {
+    prompt: 'Which change relieves a hot read key on a hash-partitioned cache?',
+    options: [
+      { text: 'Add more cache nodes', why: 'The hot key still hashes to exactly one node. More nodes take cold keys away from it, yet its own reads stay put.' },
+      { text: 'Copy the key to several nodes and spread its reads', correct: true, why: 'Copies split one key\'s reads across many nodes, so no single node carries them all.' },
+      { text: 'Give the key a longer TTL', why: 'TTL decides how fresh the copy stays. Every read still goes to the same node.' },
+      { text: 'Switch to a different hash function', why: 'A new hash moves the key to some other single node. The overload moves with it.' },
+    ],
+  },
+  {
+    prompt: 'You copy hot links to every cache node. What new cost do you take on?',
+    options: [
+      { text: 'Deleting a link must reach every copy', correct: true, why: 'A scam link removed from one node can still redirect from the other copies. Invalidation now fans out to every node holding a copy.' },
+      { text: 'Reads of the hot link get slower', why: 'Each read still hits one node in memory. Reads get faster, because no node is queueing.' },
+      { text: 'Cold links can no longer be cached', why: 'Cold links keep their single home. Copies only use a little extra memory for the few hot keys.' },
+      { text: 'Hash routing stops working for other keys', why: 'Only reads of the copied keys change route. Every other key still goes to its home node.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Describe an access pattern: who reads what, how often, and the read to write ratio.
+- Explain skew, and why a few keys can draw most of the traffic.
+- Predict what a hot key does to one cache node or shard, even when total capacity looks fine.
+- Choose a fix for hot reads and hot writes, and name what each costs.
+
+</Objectives>
+
+## The failure: plenty of capacity, one node on fire
+
+The shortener's cache tier has four nodes, and each serves 150 redirects a second. On a normal evening clicks arrive at
+40 a second, spread over a thousand links. Then a celebrity posts `sho.rt/abc123`. Clicks jump to 400 a second, and 60%
+of them want that one link.
+
+On paper the tier has 600 requests a second of room. In practice, people start getting errors.
+
+<Predict
+  client:visible
+  question="abc123 goes viral: 400 clicks a second, 60% of them on that one link. Four cache nodes serve 150 a second each. What happens?"
+  options={[
+    'Nothing; 400 fits in 600',
+    'All four nodes slow down a little',
+    'One node overflows and turns clicks away while three sit mostly idle',
+    'The cache misses and the database takes the load',
+  ]}
+  answer={2}
+>
+
+**One node overflows.** The cache hashes each short code to one node, so all 240 clicks a second for abc123 land on the
+same node, plus that node's share of every other link. In the toy run below it receives about 294 a second, nearly
+twice what it serves. The other three get about 40 to 46. The tier as a whole runs under 70% busy, yet one node turns
+away 2,049 of 6,952 clicks.
+
+</Predict>
+
+## The idea: measure the access pattern first
+
+An **access pattern** describes how a system gets used. Before picking a design, answer four questions:
+
+- **What operations happen?** For the shortener: create a link (a write) and follow a link (a read).
+- **What is the read to write ratio?** Each link is created once and clicked many times, about 100 reads per write. In
+  [Requirements and estimates](../requirements-and-estimates/) that ratio turned 12 writes a second into 1,200 reads.
+- **How skewed is it?** Popularity follows a long tail. A handful of links draw most clicks, and most links are rarely
+  touched. The [caching lesson](../../scaling/caching/) uses this skew to answer 70% of clicks from 10% of links.
+- **How does it change over time?** Evenings, launches, and viral posts shift both the rate and the skew, sometimes in
+  seconds.
+
+Skew helps a cache and hurts a partition. A key that draws a large share of traffic is a **hot key**. Hashing gives each
+key one home, which spreads many keys evenly. A single key cannot be split by hashing, so its home node carries all of
+it. The same thing happens to a database shard: [sharding](../../scaling/sharding/) spreads many keys and leaves one viral
+link on one shard.
+
+<StepDiagram client:visible title="One hot key, one cache node" nodes={nodes} edges={edges} steps={steps} height={355} />
+
+<Analogy>
+
+A library shelves each book in exactly one spot, so anyone can find it. That works until one book becomes a bestseller
+and a line forms in one aisle while the rest of the library stays empty. More shelves do not shorten that line. The
+library buys extra copies of the bestseller and puts one on every floor.
+
+</Analogy>
+
+## Try it
+
+Both lanes below get the exact same clicks from a seeded generator. The left lane routes every click by hash. The right
+lane does the same until a link passes 50 clicks a second, then copies that link to every node and spreads its clicks in
+turn.
+
+<Predict
+  client:visible
+  question="Before you pick the third scenario: would doubling the cache to 8 nodes fix the hash only lane?"
+  options={[
+    'Yes; twice the nodes, half the load on each',
+    'Partly; the hot node drops to about half its load',
+    'No; the hot node keeps about the same load',
+  ]}
+  answer={2}
+>
+
+**No.** abc123 still hashes to one node, and its 240 clicks a second alone exceed that node's 150. Eight nodes take
+the cold links off it, so its rate drops only a little, to about 270 to 280 a second. The other seven fall to about 13 to
+31. In the toy run the hash only lane still turns away 1,724 clicks with a peak of 190%, while the copies lane turns
+away 2.
+
+</Predict>
+
+<HotKeyWidget client:visible />
+
+What to look for:
+
+- **Busy, no hot key.** Traffic grows tenfold, yet both lanes match exactly: every node handles about 90 to 115 clicks a
+  second, nothing gets turned away, and the busiest node peaks at 86%. Even growth is a capacity question.
+- **Viral link.** The access pattern panel shows abc123's share jump from about 5% to about 60%. In the hash only lane
+  Node 2 runs near 200% and turns away about 2,000 clicks. In the copies lane every node settles near 105 clicks a
+  second.
+- **Detection lag.** Copies arrive one tick late. Node 2 fills up at 3.3 s in both lanes, so the copies lane still turns
+  away 6 clicks before it spreads abc123.
+
+This widget is a **toy model**. The node capacity, the 30 request queue, the 50 a second threshold, and the click mix
+are illustrative numbers picked so the effect is easy to see. Real caches serve far more, and the shape of the problem
+stays the same.
+
+## Hot writes are harder
+
+Copies fix hot **reads**, because any copy can answer. Hot **writes** need something else, since every copy must change.
+Suppose the shortener counts clicks per link: abc123 now takes 240 counter increments a second, all on one key.
+
+- **Split the key.** Store the count as eight parts, `abc123#0` to `abc123#7`. Each click adds to a random part, so the
+  writes spread across nodes. Reading the total means adding up all eight.
+- **Batch the writes.** Each app server counts in memory and adds its total to the shared counter once a second. The
+  count trails by a second, and a crash loses the unsent part.
+
+## Trade-offs
+
+<TradeoffTable title="Handling a hot key">
+
+| Choice                               | What it buys                                        | What it costs                                              |
+| ------------------------------------ | --------------------------------------------------- | ---------------------------------------------------------- |
+| One home per key (hash only)         | Simple routing, one place to update or delete       | A hot key overloads its home node                          |
+| Copy hot keys to every node          | Hot reads spread across the whole tier              | Extra memory, and deletes must reach every copy            |
+| Near cache in each app server        | Hot reads never leave the server                    | Copies disagree for up to the TTL                          |
+| Split a hot key into parts           | Spreads writes as well as reads                     | Every read gathers and adds up all the parts               |
+| Add more nodes                       | More room for the long tail of cold keys            | The hot key still lands on one node                        |
+| Detect hot keys automatically        | Handles viral links nobody predicted                | Detection lags, so the first burst still hits one node     |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+A sports app shows a live score. During the final, the score key gets 50,000 reads a second and changes every few
+seconds. Each cache node serves 20,000 reads a second.
+
+1. How many nodes does hashing put the score key on, and what happens to them?
+2. How would you spread the reads, and how stale can the score get?
+3. The app also counts "cheers" on the score at 5,000 writes a second. Does your fix for question 2 help? What would?
+
+<div slot="answer">
+
+1. **One node.** It receives 50,000 reads a second against a capacity of 20,000, so it queues and starts turning reads
+   away while the other nodes idle.
+2. **Copy the key or cache it near the app.** Copies on at least three nodes, or a near cache in each app server with a
+   one second TTL, both work. Fans tolerate a score that trails by a second, so the TTL sets the staleness.
+3. **No.** Copies spread reads, and each cheer must change the count. Split the counter into parts so writes land on
+   different nodes, or batch cheers in each app server and add them once a second.
+
+</div>
+
+</Challenge>
