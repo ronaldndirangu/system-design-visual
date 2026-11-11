@@ -30,7 +30,7 @@ async function openSimulation(page: Page, title: string): Promise<Locator> {
 
 async function skipToEnd(sim: Locator) {
   await sim.getByRole('button', { name: 'Skip to the end' }).click();
-  await expect(sim.getByText(/^Run complete/)).toBeVisible();
+  await expect(sim.getByText(/^Run complete/).first()).toBeVisible();
 }
 
 async function chooseScenario(sim: Locator, name: RegExp) {
@@ -102,6 +102,178 @@ test.describe('/ai-systems/evaluation-and-budgets', () => {
     await page.keyboard.press('Enter');
     await expect(sim.getByText(/^Question 2 of|^Run complete/)).toBeVisible();
     await skipToEnd(sim);
+    expect(await axeViolations(page)).toEqual([]);
+  });
+});
+
+test.describe('/ai-systems/gateway', () => {
+  const pipeline = 'Requests from three stores through one gateway';
+
+  test('per store quotas protect the quiet stores from a noisy tenant', async ({ page }) => {
+    const errors = collectErrors(page);
+    await page.goto('ai-systems/gateway/');
+    const sim = await openSimulation(page, pipeline);
+    await chooseScenario(sim, /^Noisy tenant/);
+    await skipToEnd(sim);
+    await expect(sim.getByText('Run complete: 217 failed requests', { exact: true })).toBeVisible();
+    await expect(row(sim, 'Arrived').getByRole('cell').last()).toHaveText('617');
+    await expect(row(sim, 'Accounted for').getByRole('cell').last()).toHaveText('617');
+    const shared = row(sim, 'Failed: shared rate limit');
+    await expect(shared.getByRole('cell').nth(1)).toHaveText('27');
+    await expect(shared.getByRole('cell').last()).toHaveText('217');
+
+    const policies = sim.getByRole('switch', { name: /^Gateway policies/ });
+    await policies.focus();
+    await page.keyboard.press('Space');
+    await expect(policies).toBeChecked();
+    await expect(sim.getByText('Ready', { exact: true })).toBeVisible();
+    await skipToEnd(sim);
+    await expect(sim.getByText('Run complete: no failed requests', { exact: true })).toBeVisible();
+    const shed = row(sim, 'Shed by quota');
+    await expect(shed.getByRole('cell').first()).toHaveText('261');
+    await expect(shed.getByRole('cell').nth(1)).toHaveText('0');
+    await expect(row(sim, 'Failed: shared rate limit').getByRole('cell').last()).toHaveText('0');
+    expect(errors).toEqual([]);
+  });
+
+  test('the cascade wins on cost and misses the latency budget on easy questions', async ({ page }) => {
+    await page.goto('ai-systems/gateway/');
+    const sim = await openSimulation(page, 'Routing versus a cascade on the same questions');
+    await chooseScenario(sim, /^Mostly easy questions/);
+    await skipToEnd(sim);
+    const passed = row(sim, 'Passed the rubric');
+    await expect(passed).toContainText('53 (88.3%)');
+    await expect(passed).toContainText('59 (98.3%)');
+    await expect(row(sim, 'p95 latency')).toContainText('2.31 s');
+    const cost = row(sim, 'Cost per 1,000 requests');
+    await expect(cost).toContainText('1,870');
+    await expect(cost).toContainText('1,709');
+    await expect(cost).toContainText('3,949');
+    const verdicts = row(sim, 'Lesson 1 budgets').getByRole('cell');
+    await expect(verdicts.first()).toHaveText('Fits every budget');
+    await expect(verdicts.nth(1)).toContainText('Misses');
+  });
+
+  test('dropping the store from the cache key serves the wrong policy', async ({ page }) => {
+    await page.goto('ai-systems/gateway/');
+    const widget = page.getByRole('region', { name: 'Interactive: Two caches: answers versus prompt work' });
+    await widget.scrollIntoViewIfNeeded();
+    await expect(widget.getByText('Every hit is the right answer', { exact: true })).toBeVisible();
+    const store = widget.getByRole('switch', { name: 'Store (tenant)' });
+    await expect(store).toBeEnabled();
+    await store.focus();
+    await page.keyboard.press('Space');
+    await expect(store).not.toBeChecked();
+    await expect(widget.getByText('1 wrong answer served', { exact: true })).toBeVisible();
+    await expect(row(widget, 'Wrong hits')).toContainText('1');
+
+    await widget.getByRole('radio', { name: 'Prefix (KV) cache' }).check();
+    await expect(row(widget, 'Reused blocks')).toContainText('22 of 25');
+    await expect(row(widget, 'Time to first token')).toContainText('0.13 s');
+  });
+
+  test('steps by keyboard with reduced motion and stays axe clean in dark mode', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+    await page.goto('ai-systems/gateway/');
+    const sim = await openSimulation(page, pipeline);
+    await sim.getByRole('button', { name: 'Step' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(sim.getByText('0.1 s of 30.0 s', { exact: true })).toBeVisible();
+    await skipToEnd(sim);
+    const cascade = await openSimulation(page, 'Routing versus a cascade on the same questions');
+    await skipToEnd(cascade);
+    expect(await axeViolations(page)).toEqual([]);
+  });
+});
+
+test.describe('/ai-systems/retrieval', () => {
+  const hybrid = 'Fuse keyword and vector search with RRF';
+
+  /** The hybrid search ends on a verdict, so wait for its comparison table instead of Run complete. */
+  async function finishSearch(sim: Locator) {
+    await sim.getByRole('button', { name: 'Skip to the end' }).click();
+    await expect(row(sim, 'Rank of the right chunk')).toBeVisible();
+  }
+
+  test('no filter leaks the other store and the pre-filter cites only Harbor', async ({ page }) => {
+    const errors = collectErrors(page);
+    await page.goto('ai-systems/retrieval/');
+    const sim = await openSimulation(page, hybrid);
+    await chooseScenario(sim, /^Sale item return/);
+    const citations = sim.getByRole('list', { name: 'Citations' });
+
+    await sim.getByRole('radio', { name: 'No filter', exact: true }).check();
+    await finishSearch(sim);
+    await expect(citations.getByRole('listitem')).toHaveCount(2);
+    await expect(citations).toContainText('[pine-returns]');
+    await expect(citations).toContainText('Another store');
+    await expect(
+      sim.getByText('Leak: the model saw 1 chunk this customer may not read', { exact: true }).first(),
+    ).toBeVisible();
+
+    await sim.getByRole('radio', { name: 'Pre-filter', exact: true }).check();
+    await finishSearch(sim);
+    await expect(citations.getByRole('listitem')).toHaveCount(1);
+    await expect(citations).toHaveText('[harbor-returns-1]');
+    await expect(sim.getByText('Grounded in the right chunk', { exact: true }).first()).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test('the post-filter drops chunks and abstains on an answerable paraphrase', async ({ page }) => {
+    await page.goto('ai-systems/retrieval/');
+    const sim = await openSimulation(page, hybrid);
+    await chooseScenario(sim, /^Paraphrase/);
+    await sim.getByRole('radio', { name: 'Post-filter', exact: true }).check();
+    await finishSearch(sim);
+    await expect(sim.getByText('Dropped by post-filter', { exact: true })).toHaveCount(2);
+    await expect(
+      sim.getByText('Wrong abstention: the policy has the answer', { exact: true }).first(),
+    ).toBeVisible();
+    await expect(row(sim, 'Result').getByRole('cell').last()).toHaveText('Wrong');
+  });
+
+  test('overlap keeps the sale exception with the rule', async ({ page }) => {
+    await page.goto('ai-systems/retrieval/');
+    const widget = page.getByRole('region', { name: 'Interactive: Where does the exception land?' });
+    await widget.scrollIntoViewIfNeeded();
+    await expect(
+      widget.getByText('Exception missing from the sent chunk', { exact: true }).first(),
+    ).toBeVisible();
+    await expect(row(widget, 'Fixture answer')).toContainText('Wrong');
+    await expect(row(widget, 'Chunks')).toContainText('3');
+
+    await chooseScenario(widget, /^16 words, overlap 8/);
+    await expect(widget.getByText('Exception is in the sent chunk', { exact: true }).first()).toBeVisible();
+    await expect(row(widget, 'Fixture answer')).toContainText('Correct');
+    await expect(row(widget, 'Chunks')).toContainText('5');
+  });
+
+  test('a higher evidence bar trades the last wrong answer for a handoff', async ({ page }) => {
+    await page.goto('ai-systems/retrieval/');
+    const widget = page.getByRole('region', { name: 'Interactive: Set the evidence bar' });
+    await widget.scrollIntoViewIfNeeded();
+    await expect(row(widget, 'Correct answers')).toContainText('7 of 12');
+    await expect(row(widget, 'Wrong answers')).toContainText('1 of 12');
+    await expect(row(widget, 'Abstentions')).toContainText('4 of 12');
+    await expect(row(widget, 'Abstentions')).toContainText('3 of 4');
+
+    const slider = widget.getByRole('slider', { name: 'Evidence threshold' });
+    await expect(slider).toBeEnabled();
+    await slider.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(widget.getByText('No wrong answers at 0.85', { exact: true })).toBeVisible();
+    await expect(row(widget, 'Correct answers')).toContainText('6 of 12');
+    await expect(row(widget, 'Abstentions')).toContainText('6 of 12');
+  });
+
+  test('steps by keyboard with reduced motion and stays axe clean in dark mode', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+    await page.goto('ai-systems/retrieval/');
+    const sim = await openSimulation(page, hybrid);
+    await sim.getByRole('button', { name: 'Step' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(sim.getByText(/^Stage 1 of \d+$/).first()).toBeVisible();
+    await finishSearch(sim);
     expect(await axeViolations(page)).toEqual([]);
   });
 });

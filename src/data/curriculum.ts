@@ -405,14 +405,16 @@ export const curriculum: CourseModule[] = [
         title: 'The AI gateway',
         summary:
           'Route and cascade model calls, cache safely, enforce quotas, validate output, and fall back.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
       },
       {
         id: 'ai-systems/retrieval',
         title: 'Retrieval',
         summary:
           'Ground answers in your documents with chunking, hybrid search, tenant scoping, and citations.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
       },
       {
         id: 'ai-systems/llm-serving',
