@@ -165,16 +165,16 @@ export const quiz = [
   },
   {
     id: 'ai-systems/llm-serving/q5',
-    prompt: 'Chunked prefill at 64 tokens per step cuts the longest wait between tokens from 113.3 ms to 16.7 ms in the toy model. What does it cost?',
+    prompt: 'Chunked prefill at 64 tokens per step cuts the longest wait between tokens from 34.2 ms to 11.2 ms in the toy model. What does it cost?',
     options: [
       {
-        text: 'Nothing, since the whole run ends at the same time',
-        why: 'The run ends at the same time, but the waiting moves. The long prompt\u2019s first token comes 187 ms later, and the p95 wait between tokens rises.',
+        text: 'Nothing, since the whole run ends no later',
+        why: 'The run even ends a little sooner, at 981 ms instead of 1,004 ms, but the waiting moves. The long prompt\u2019s first token comes 162 ms later.',
       },
       {
-        text: 'The long prompt and the requests queued behind it wait longer for a first token, and typical gaps between tokens grow a little',
+        text: 'The long prompt and the requests queued behind it wait longer for a first token',
         correct: true,
-        why: 'R7\u2019s first token moves from 120 ms to 307 ms and R8\u2019s from 25 ms to 209 ms. The p95 wait rises from 11.2 ms to 16.7 ms because many steps now carry a chunk.',
+        why: 'R7\u2019s first token moves from 35 ms to 197 ms and R8\u2019s from 13 ms to 98 ms, because the prompt now spreads over many steps. The p95 wait between tokens stays at 11.2 ms: a 64-token chunk hides under the weight read.',
       },
       {
         text: 'Running requests get preempted to make room for the chunks',

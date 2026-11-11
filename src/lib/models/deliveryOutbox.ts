@@ -456,6 +456,11 @@ export interface ConsumerConfig {
   restartTicks: number;
   /** Clicks already in the log when the run starts, so the consumer always has a batch in hand. */
   initialBacklog: number;
+  /**
+   * Backlog offsets where the outbox relay published the previous event again, after a crash
+   * between publishing and marking the row sent. Each one carries the same click id as the offset before it.
+   */
+  relayDuplicateOffsets: number[];
   seed: number;
 }
 
@@ -466,20 +471,24 @@ export const defaultConsumerConfig: ConsumerConfig = {
   readPerTick: 6,
   restartTicks: 5,
   initialBacklog: 150,
+  relayDuplicateOffsets: [101],
   seed: 42,
 };
 
 export interface ConsumerTotals {
+  /** Entries in the log, relay duplicates included. */
   produced: number;
+  /** Distinct click ids in the log. */
+  clicks: number;
   /** The analytics count, with every double count included. */
   counted: number;
   /** Clicks counted at least once. */
   unique: number;
-  /** Clicks whose offset was committed and that nobody will ever count. */
+  /** Clicks whose every offset was committed unread, so nobody will ever count them. */
   lost: number;
-  /** Extra counts of clicks already counted. */
+  /** Extra counts of clicks already counted, from rereads or relay duplicates. */
   doubleCounted: number;
-  /** Rereads the consumer recognized and skipped. */
+  /** Reads the consumer recognized by click id and skipped. */
   skipped: number;
   crashes: number;
 }
@@ -503,8 +512,12 @@ interface ConsumerCheckpoint {
   batchEnd: number;
   downUntil: number;
   restarting: boolean;
-  timesCounted: number[];
+  clickOf: number[];
+  readFlags: boolean[];
+  extraCounts: number[];
   lostFlags: boolean[];
+  timesCounted: number[];
+  lastOffsetOf: number[];
   totals: ConsumerTotals;
   notes: RunEvent[];
 }
@@ -521,10 +534,20 @@ export class OffsetConsumer implements ModelAdapter<ConsumerCommand, ConsumerTic
   private batchEndOffset = 0;
   private downUntil = 0;
   private restarting = false;
-  private timesCounted: number[] = [];
+  private readonly relayCopies: ReadonlySet<number>;
+  /** Per offset: the click id the entry carries. */
+  private clickOf: number[] = [];
+  private readFlags: boolean[] = [];
+  /** Per offset: extra counts this entry caused because its click was already counted. */
+  private extraCounts: number[] = [];
   private lostFlags: boolean[] = [];
+  /** Per click id. */
+  private timesCounted: number[] = [];
+  /** Per click id: the last offset that carries it. */
+  private lastOffsetOf: number[] = [];
   private counts: ConsumerTotals = {
     produced: 0,
+    clicks: 0,
     counted: 0,
     unique: 0,
     lost: 0,
@@ -538,9 +561,29 @@ export class OffsetConsumer implements ModelAdapter<ConsumerCommand, ConsumerTic
     this.mode = mode;
     this.config = { ...defaultConsumerConfig, ...config };
     this.rng = createRng(this.config.seed);
-    this.timesCounted = new Array(this.config.initialBacklog).fill(0);
-    this.lostFlags = new Array(this.config.initialBacklog).fill(false);
-    this.counts.produced = this.config.initialBacklog;
+    this.relayCopies = new Set(
+      this.config.relayDuplicateOffsets.filter(
+        (offset) => Number.isInteger(offset) && offset > 0 && offset < this.config.initialBacklog,
+      ),
+    );
+    for (let offset = 0; offset < this.config.initialBacklog; offset += 1) {
+      if (this.relayCopies.has(offset)) this.appendEntry(this.clickOf[offset - 1]);
+      else this.appendEntry();
+    }
+  }
+
+  /** Adds one log entry, carrying a fresh click id unless the relay is repeating one. */
+  private appendEntry(click = this.timesCounted.length): void {
+    if (click === this.timesCounted.length) {
+      this.timesCounted.push(0);
+      this.counts.clicks += 1;
+    }
+    this.lastOffsetOf[click] = this.clickOf.length;
+    this.clickOf.push(click);
+    this.readFlags.push(false);
+    this.extraCounts.push(0);
+    this.lostFlags.push(false);
+    this.counts.produced += 1;
   }
 
   get ticks(): number {
@@ -571,7 +614,7 @@ export class OffsetConsumer implements ModelAdapter<ConsumerCommand, ConsumerTic
 
   /** Clicks nobody has counted or lost yet: the rest of the batch in hand plus the lag. */
   get uncounted(): number {
-    return this.counts.produced - this.counts.unique - this.counts.lost;
+    return this.counts.clicks - this.counts.unique - this.counts.lost;
   }
 
   /** The unprocessed part of the batch in hand, as [from, to). */
@@ -584,11 +627,15 @@ export class OffsetConsumer implements ModelAdapter<ConsumerCommand, ConsumerTic
     return this.counts.doubleCounted - this.counts.lost;
   }
 
+  /** The click id carried at an offset, or undefined past the end of the log. */
+  clickId(offset: number): number | undefined {
+    return this.clickOf[offset];
+  }
+
   offsetState(offset: number): OffsetState {
     if (this.lostFlags[offset]) return 'lost';
-    const times = this.timesCounted[offset] ?? 0;
-    if (times > 1) return 'double';
-    if (times === 1) return 'counted';
+    if ((this.extraCounts[offset] ?? 0) > 0) return 'double';
+    if (this.readFlags[offset]) return 'counted';
     if (offset >= this.cursorOffset && offset < this.batchEndOffset) return 'in-hand';
     return 'waiting';
   }
@@ -601,8 +648,10 @@ export class OffsetConsumer implements ModelAdapter<ConsumerCommand, ConsumerTic
     if (this.mode === 'ack-first') {
       for (let offset = this.cursorOffset; offset < this.batchEndOffset; offset += 1) {
         this.lostFlags[offset] = true;
+        const click = this.clickOf[offset] ?? -1;
+        // A click is gone only when its last copy in the log is skipped past without a count.
+        if (this.lastOffsetOf[click] === offset && this.timesCounted[click] === 0) this.counts.lost += 1;
       }
-      this.counts.lost += remainder;
       this.note(
         tick,
         remainder > 0
@@ -630,11 +679,7 @@ export class OffsetConsumer implements ModelAdapter<ConsumerCommand, ConsumerTic
   step(): ConsumerTick {
     const tick = this.tickCount;
     const arrivals = poisson(this.rng, this.config.clicksPerSecond * this.config.tickSeconds);
-    for (let index = 0; index < arrivals; index += 1) {
-      this.timesCounted.push(0);
-      this.lostFlags.push(false);
-    }
-    this.counts.produced += arrivals;
+    for (let index = 0; index < arrivals; index += 1) this.appendEntry();
     if (tick >= this.downUntil) {
       if (this.restarting) {
         this.restarting = false;
@@ -650,21 +695,39 @@ export class OffsetConsumer implements ModelAdapter<ConsumerCommand, ConsumerTic
     for (let budget = this.config.readPerTick; budget > 0; budget -= 1) {
       if (this.cursorOffset >= this.batchEndOffset && !this.poll()) return;
       const offset = this.cursorOffset;
-      const times = this.timesCounted[offset] ?? 0;
+      const click = this.clickOf[offset] ?? -1;
+      const times = this.timesCounted[click] ?? 0;
+      if (this.relayCopies.has(offset) && !this.readFlags[offset]) this.noteRelayCopy(offset, click, times);
+      this.readFlags[offset] = true;
       if (this.mode === 'dedupe' && times > 0) {
         this.counts.skipped += 1;
       } else {
         // The count and the seen click id commit together, which is what makes skipping safe.
-        this.timesCounted[offset] = times + 1;
+        this.timesCounted[click] = times + 1;
         this.counts.counted += 1;
-        if (times === 0) this.counts.unique += 1;
-        else this.counts.doubleCounted += 1;
+        if (times === 0) {
+          this.counts.unique += 1;
+        } else {
+          this.counts.doubleCounted += 1;
+          this.extraCounts[offset] = (this.extraCounts[offset] ?? 0) + 1;
+        }
       }
       this.cursorOffset += 1;
       if (this.cursorOffset >= this.batchEndOffset && this.mode !== 'ack-first') {
         this.committedOffset = this.batchEndOffset;
       }
     }
+  }
+
+  private noteRelayCopy(offset: number, click: number, times: number): void {
+    const intro = `Offset ${offset} carries click id ${click} again: the relay published that event twice.`;
+    const fate =
+      times === 0
+        ? 'Its first copy was lost, so this copy is the first count.'
+        : this.mode === 'dedupe'
+          ? 'The consumer finds the click id already counted and skips it.'
+          : 'Offset tracking cannot tell, so the consumer counts it again.';
+    this.note(this.tickCount, `${intro} ${fate}`);
   }
 
   /** Takes the next batch from the log. At most once commits its offset right here. */
@@ -691,8 +754,12 @@ export class OffsetConsumer implements ModelAdapter<ConsumerCommand, ConsumerTic
       batchEnd: this.batchEndOffset,
       downUntil: this.downUntil,
       restarting: this.restarting,
-      timesCounted: [...this.timesCounted],
+      clickOf: [...this.clickOf],
+      readFlags: [...this.readFlags],
+      extraCounts: [...this.extraCounts],
       lostFlags: [...this.lostFlags],
+      timesCounted: [...this.timesCounted],
+      lastOffsetOf: [...this.lastOffsetOf],
       totals: { ...this.counts },
       notes: this.notes,
     };
@@ -707,8 +774,12 @@ export class OffsetConsumer implements ModelAdapter<ConsumerCommand, ConsumerTic
     this.batchEndOffset = checkpoint.batchEnd;
     this.downUntil = checkpoint.downUntil;
     this.restarting = checkpoint.restarting;
-    this.timesCounted = [...checkpoint.timesCounted];
+    this.clickOf = [...checkpoint.clickOf];
+    this.readFlags = [...checkpoint.readFlags];
+    this.extraCounts = [...checkpoint.extraCounts];
     this.lostFlags = [...checkpoint.lostFlags];
+    this.timesCounted = [...checkpoint.timesCounted];
+    this.lastOffsetOf = [...checkpoint.lastOffsetOf];
     this.counts = { ...checkpoint.totals };
     this.noteLog = checkpoint.notes.map((note) => ({ ...note }));
   }

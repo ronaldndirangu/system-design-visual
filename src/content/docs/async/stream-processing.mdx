@@ -306,8 +306,22 @@ Three things the widget leaves out matter in production:
 
 - **One watermark per partition.** A real job tracks a watermark for each partition it reads and uses the smallest. One
   idle partition holds every window open, so engines add an idle timeout that ignores a quiet partition.
-- **Updates must replace, never add.** Downstream stores each window's count keyed by short code and window, and an
-  update overwrites it. A retried update then changes nothing. Idempotency covers the technique in depth.
+- **Updates must replace, and only forward.** Downstream stores each window's count keyed by short code and window,
+  and an update overwrites it. Overwriting alone is not retry safe: a delayed retry of an old result can land after a
+  newer one and roll the count back. So the job gives each window result a **revision** that goes up with every update,
+  and the store replaces a row only when the incoming revision is higher:
+
+  ```sql
+  INSERT INTO window_counts (short_code, window_start, clicks, revision)
+  VALUES ($1, $2, $3, $4)
+  ON CONFLICT (short_code, window_start) DO UPDATE
+  SET clicks = EXCLUDED.clicks, revision = EXCLUDED.revision
+  WHERE window_counts.revision < EXCLUDED.revision;
+  ```
+
+  Revision 7 writes 10 clicks, and revision 8 writes 12. Then a retry of revision 7 arrives late with 10. The revision
+  check fails, the row keeps 12, and the dashboard never moves back. [Idempotency](../../reliability/idempotency/)
+  covers retry safety in depth.
 - **Window state survives restarts.** The job checkpoints its open windows together with the offsets it has read, as
   in the [delivery semantics lesson](../delivery-semantics/), so a restart neither loses a window nor counts a click
   twice.
@@ -366,7 +380,8 @@ late policy, and the path to exact invoices.
   to end and a 3 s watermark wait, and the page lands within about 15 s. A 1 minute window would need 54 s, and
   bigger spikes fire sooner. Require a minimum count too, since short windows are noisy for codes with little traffic.
 - **Keep the live path short.** A wait of a few seconds covers retried sends. Allow a minute or two of lateness with
-  updates for the dashboard, and store each count keyed by code and window so an update replaces the old one.
+  updates for the dashboard, and store each count keyed by code and window with a revision, so a newer update replaces
+  the old one and a late retry changes nothing.
 - **Send the long tail to batch.** Clicks from offline phones arrive hours late, past any wait the dashboard can
   afford. Write them to a side table, or rely on the raw log, and never hold dashboard windows open for them.
 - **Invoice from batch.** A nightly job recounts each day by event time from the log once the 24 hour buffer limit has

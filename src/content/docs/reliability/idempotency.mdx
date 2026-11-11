@@ -218,8 +218,8 @@ step. A copy that finds "in progress" gets 409 Conflict and tries again later; a
 that receipt. In PostgreSQL, the claim can be a single insert:
 
 ```sql
-INSERT INTO idempotency_keys (user_id, key, request_hash, status)
-VALUES ($1, $2, $3, 'in_progress')
+INSERT INTO idempotency_keys (user_id, key, request_hash, status, token, lease_until)
+VALUES ($1, $2, $3, 'in_progress', 1, now() + interval '30 seconds')
 ON CONFLICT (user_id, key) DO NOTHING;
 ```
 
@@ -233,10 +233,55 @@ Claiming has costs of its own:
   attempts against 78 for the saved-after lane. Some servers hold the duplicate until the first request finishes and
   return its result instead.
 - **Stuck claims.** If the server crashes after claiming and before saving, the key says "in progress" forever. Give
-  each claim a lease that expires, and record how far the work got, so a later retry can finish or safely restart it.
+  each claim a lease that expires, so another server can recover it. The next section shows why expiry alone is not
+  safe.
 - **The next hop needs a key too.** The server's own call to the payment provider can time out just like the app's
   call to the server. Many payment APIs, Stripe among them, accept an idempotency key, so the server passes one along
   and its own retries stay safe. The toy model leaves this hop out.
+
+### When a claim expires
+
+A lease that runs out tells you the owner went quiet, and nothing more: the owner may still be running. Two cases break
+a naive takeover:
+
+- **The owner crashed after the charge.** The provider charged the card, and the server died before it saved the
+  receipt. A recovering server that charges again takes the money twice.
+- **The owner only paused.** A long garbage collection pause or a slow network froze it past the lease. It wakes up,
+  finishes its charge and saves its receipt, while the recovering server does the same.
+
+Expiry only lets recovery start. Two guards make recovery safe:
+
+- **Send the same idempotency key to the provider.** The original request and every recovery pass the client's key on
+  the charge call. The provider then returns the first charge instead of making a second, which is the only guard that
+  covers a charge that already happened.
+- **Fence the commit with a token.** Each takeover bumps a number on the claim, and the receipt save succeeds only
+  while the row still holds the saver's number. A paused owner with an old number cannot overwrite the recovery.
+
+```sql
+-- Take over an expired claim: the new owner gets the next token.
+UPDATE idempotency_keys
+SET token = token + 1, lease_until = now() + interval '30 seconds'
+WHERE user_id = $1 AND key = $2 AND status = 'in_progress' AND lease_until < now()
+RETURNING token;
+
+-- Save the receipt only while this owner still holds the claim.
+UPDATE idempotency_keys
+SET status = 'done', receipt = $3
+WHERE user_id = $1 AND key = $2 AND token = $4;
+```
+
+Walk through a crash after the charge:
+
+1. Server A claims key K with token 1 and charges $50 with key K. The provider charges the card.
+2. Server A crashes before it saves the receipt. The row still says "in progress" with token 1.
+3. The lease expires. The customer's retry reaches server B, which takes over the claim with token 2.
+4. Server B charges with the same key K. The provider recognizes K and returns the first charge, so the card is
+   charged once.
+5. Server B saves the receipt with token 2 and answers the customer.
+6. If server A had only paused, it wakes up and tries to save with token 1. The update matches no row, and server A
+   drops its result.
+
+The token number is called a **fencing token**: storage refuses any writer whose token is older than the latest one.
 
 ## How long to keep keys, and who owns them
 
@@ -283,7 +328,7 @@ event ID and skip IDs already seen. The lesson [Delivery semantics and the outbo
 | --------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | No key                                  | Nothing to store                                               | Every retry after a lost response repeats the work                                           |
 | Key saved after the work                | Retries after a finished request get the saved result          | A duplicate that arrives mid request runs the work twice                                     |
-| Key claimed before the work             | At most one run per key, even with overlapping duplicates      | Needs an atomic claim, a lease for crashed requests, and extra round trips for 409 answers  |
+| Key claimed before the work             | At most one run per key, even with overlapping duplicates      | An atomic claim, a lease with a fencing token, the key passed to the provider, extra 409s    |
 | Long key lifetime                       | Late retries stay safe                                         | The store grows with requests per second × lifetime                                          |
 | Short key lifetime                      | A small store                                                  | A retry after expiry looks new and runs again                                                |
 | Naturally idempotent operation          | No store at all: "set to X" is safe to repeat                  | Many operations, such as charging a card, cannot be phrased that way                         |

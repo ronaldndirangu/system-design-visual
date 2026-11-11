@@ -96,9 +96,9 @@ export const quiz = [
     prompt: 'The dashboard keeps a "last clicked" time per link and must never move it backward. Which partition key fits?',
     options: [
       { text: 'Round robin, for the most even spread', why: 'Round robin scatters one link\'s clicks over every partition, and parallel readers apply them in any order.' },
-      { text: 'The short code', correct: true, why: 'All clicks for a link land in one partition, and one reader applies them in offset order.' },
-      { text: 'The visitor\'s IP address', why: 'Clicks for one link come from many visitors, so they still scatter over many partitions.' },
-      { text: 'The click timestamp', why: 'Each timestamp hashes somewhere different, so one link\'s clicks scatter and can race each other.' },
+      { text: 'The short code, and keep the newest click time', correct: true, why: 'All clicks for a link land in one partition, and one reader applies them in append order. A delayed producer can append an older click after a newer one, so the reader moves "last clicked" only when the event\'s click time is newer than the stored one.' },
+      { text: 'The visitor\'s IP address, to spread the load', why: 'Clicks for one link come from many visitors, so they still scatter over many partitions.' },
+      { text: 'The click timestamp, to keep time order', why: 'Each timestamp hashes somewhere different, so one link\'s clicks scatter and can race each other.' },
     ],
   },
 ];
@@ -108,7 +108,7 @@ export const quiz = [
 - Describe a partitioned log: appends, offsets, retention, and many independent subscribers.
 - Explain consumer groups and consumer lag, and why consumers beyond the partition count sit idle.
 - Predict what a crash does: a pause while the group rebalances, then reads repeated since the last saved offset.
-- Explain why order holds only within a partition, and pick a key that keeps related events together.
+- Explain why a partition keeps append order only, and pick a key and an event version that keep related events in order.
 
 </Objectives>
 
@@ -191,14 +191,14 @@ offer **cooperative** rebalancing, which pauses only the partitions that move.
 
 ## Order holds only within a partition
 
-A partition is one log with one reader, so its events come out in the order they went in. Across partitions there is
-no order at all: two consumers run at their own speeds, and a slow one falls behind.
+A partition is one log with one reader, so its events come out in the order they were appended. Across partitions there
+is no order at all: two consumers run at their own speeds, and a slow one falls behind.
 
 Plain counts do not care. Five clicks counted in any order still add up to five. Per-link state does care: a
 "last clicked" time, a "first click" alert, or a running streak breaks when an older click arrives after a newer one.
 
 The fix is a **partition key**. Hash the short code to pick the partition, as the [sharding lesson](../../scaling/sharding/) does with shard keys,
-and every click for one link lands in one partition and reaches one reader in order.
+and every click for one link lands in one partition and reaches one reader in append order.
 
 <Predict
   client:visible
@@ -224,6 +224,27 @@ What to look for:
   partition, the same hot key problem as in [sharding](../../scaling/sharding/).
 - **The stall is local when keyed.** Only the links in the stalled partition wait. Every other link stays current.
 
+### Append order is not click order
+
+A partition keeps **append order**: the order in which writes reached the broker. Clicks can reach it in a different
+order from the one in which they happened. A redirect server whose network blips holds a 12:00:01 click, retries, and
+appends it after a 12:00:03 click that another server sent on time. Both clicks sit in the same partition, and the
+reader applies them in offset order. A "last clicked" time that copies each event moves backward.
+
+The key puts one link's clicks on one reader. To apply them in the right order, the event itself must say when it
+happened. The redirect server stamps each click with its **event time**, and the reader keeps the newest:
+
+```ts
+function applyClick(link: LinkState, click: Click) {
+  if (click.at > link.lastClickedAt) link.lastClickedAt = click.at;
+}
+```
+
+This is **last writer by version**: an update wins only when its version is newer than the stored one, so a late
+append changes nothing. Clocks on different servers drift by a few milliseconds, which a dashboard can live with.
+When the order must be exact, use a version that one writer assigns, such as a counter on the order row that goes up
+with every change. The widget's redirect servers never retry, so keyed partitions show 0 out of order there.
+
 ## Trade-offs
 
 <TradeoffTable title="Log design choices">
@@ -231,8 +252,9 @@ What to look for:
 | Choice                       | What it buys                                          | What it costs                                                 |
 | ---------------------------- | ----------------------------------------------------- | ------------------------------------------------------------- |
 | More partitions              | More consumers can read in parallel                   | More files and connections, and slower rebalances             |
-| Key by short code            | Every link's clicks stay in order on one reader       | A viral link makes one partition hot                          |
+| Key by short code            | Every link's clicks reach one reader in append order  | A viral link makes one partition hot                          |
 | Round robin                  | Even load on every partition                          | No order for any link                                         |
+| Version on every event       | A late append cannot roll a link's state back         | Every producer stamps events, and server clocks drift         |
 | Save offsets often           | Fewer repeated reads after a crash                    | More writes to the offset store                               |
 | Save offsets rarely          | Fewer writes                                          | More repeated reads after a crash                             |
 | Cooperative rebalancing      | Only the moved partitions pause                       | A more complex protocol that takes longer to settle           |
@@ -249,9 +271,13 @@ partition key and a partition count, and name the risk you accept.
 
 <div slot="answer">
 
-- **Key by order id.** Every event for one order lands in one partition and reaches one reader in order. Events for
-  different orders need no order between them.
-- Keying by seller id would also keep each order in order, but the big seller would put 30% of all traffic on one
+- **Key by order id.** Every event for one order lands in one partition and reaches one reader in append order.
+  Events for different orders need no order between them.
+- **Add a version to every event.** Append order alone can still put "shipped" before "paid": the payment service's
+  retry can append "paid" late. The order service writes created, paid and shipped as versions 1, 2 and 3 on the order
+  row and publishes them through an outbox, so one relay appends each order's events in version order. Shipping stores
+  the last version it applied per order and holds any event whose version is not the next one.
+- Keying by seller id would also keep each order on one reader, but the big seller would put 30% of all traffic on one
   partition and one reader.
 - **Start with more partitions than readers**, for example 24 or 48. Adding partitions later changes `hash mod N`, so
   some orders would move partitions mid-flight and lose their ordering guarantee during the switch.
