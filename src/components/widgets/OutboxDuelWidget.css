@@ -1,0 +1,137 @@
+/* Outbox duel widget: the database is green, the broker is a queue (cyan), the relay is a server (violet). Click cells use a pattern per state. */
+
+.sdv-outbox__path {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-outbox__nodes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-outbox__node {
+  align-items: center;
+  border: 1px solid var(--sdv-border);
+  border-inline-start: 4px solid var(--node);
+  border-radius: 0.5rem;
+  display: inline-flex;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.25rem 0.45rem;
+}
+.sdv-outbox__node[data-status="down"] {
+  background-image: repeating-linear-gradient(
+    45deg,
+    color-mix(in oklab, var(--sdv-bad) 18%, transparent) 0 2px,
+    transparent 2px 9px
+  );
+  border-inline-start-color: var(--sdv-bad);
+  border-style: dashed;
+}
+.sdv-outbox__node[data-status="down"] .sdv-outbox__icon {
+  opacity: 0.45;
+}
+/* Two classes outrank the shared stage rule that stretches every svg to full width. */
+.sdv-outbox__node .sdv-outbox__icon {
+  flex: none;
+  height: 1.1rem;
+  width: 1.1rem;
+}
+.sdv-outbox__node-name {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+}
+/* The shared stage rule stretches every svg to full width, so badge icons need their size back. */
+.sdv-outbox__node .sdv-badge svg,
+.sdv-outbox__verdict .sdv-badge svg {
+  display: inline-block;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.sdv-outbox__backlog {
+  display: grid;
+  gap: 0.2rem;
+}
+.sdv-outbox__backlog-label {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.sdv-outbox__bar {
+  background: var(--sdv-surface-raised);
+  border: 1px solid color-mix(in oklab, var(--sdv-db) 60%, var(--sdv-border));
+  border-radius: 999px;
+  display: block;
+  height: 0.75rem;
+  overflow: hidden;
+}
+.sdv-outbox__bar > span {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-queue) 0 4px,
+    color-mix(in oklab, var(--sdv-queue) 45%, var(--sl-color-bg)) 4px 8px
+  );
+  display: block;
+  height: 100%;
+}
+.sdv-outbox__strip {
+  display: grid;
+  gap: 2px;
+  grid-template-columns: repeat(20, minmax(0, 1fr));
+  min-height: 3.1rem;
+}
+.sdv-outbox__cell {
+  border: 1px solid transparent;
+  border-radius: 2px;
+  box-sizing: border-box;
+  display: block;
+  height: 0.9rem;
+}
+.sdv-outbox__key {
+  display: inline-block;
+  flex: none;
+  width: 1.1rem;
+}
+.sdv-outbox__cell[data-state="both"] {
+  background: var(--sdv-ok);
+}
+.sdv-outbox__cell[data-state="waiting"] {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-queue) 0 3px,
+    color-mix(in oklab, var(--sdv-queue) 35%, var(--sl-color-bg)) 3px 6px
+  );
+}
+.sdv-outbox__cell[data-state="lost"] {
+  background:
+    repeating-linear-gradient(45deg, var(--sdv-bad) 0 2px, transparent 2px 5px),
+    repeating-linear-gradient(-45deg, var(--sdv-bad) 0 2px, transparent 2px 5px),
+    color-mix(in oklab, var(--sdv-bad) 20%, var(--sl-color-bg));
+}
+.sdv-outbox__cell[data-state="phantom"] {
+  background: transparent;
+  border: 2px dashed var(--sdv-bad);
+}
+.sdv-outbox__cell[data-state="rejected"] {
+  background: radial-gradient(circle, var(--sl-color-gray-3) 1px, transparent 1.5px) 0 0 / 4px 4px;
+  border: 1px dotted var(--sl-color-gray-3);
+}
+.sdv-outbox__strip-text {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-outbox__verdict {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.sdv-outbox__verdict .sdv-badge {
+  white-space: normal;
+}

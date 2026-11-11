@@ -1,0 +1,148 @@
+/* Window bars: one column per tumbling window. The lane color comes from its series (blue for lane A, orange for lane B), and each way a click was counted has its own fill pattern so the bars read without color. */
+
+.sdv-wbars {
+  --lane: var(--sdv-series-a);
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.sdv-wbars[data-variant="b"] {
+  --lane: var(--sdv-series-b);
+}
+.sdv-wbars__plot {
+  background: var(--sdv-surface);
+  border-block-end: 1px solid var(--sl-color-gray-3);
+  border-radius: 0.35rem 0.35rem 0 0;
+  display: grid;
+  gap: 2px;
+  height: 7rem;
+  position: relative;
+}
+.sdv-wbars__col {
+  min-width: 0;
+  position: relative;
+}
+.sdv-wbars__stack {
+  display: flex;
+  flex-direction: column-reverse;
+  inset: 0;
+  position: absolute;
+}
+.sdv-wbars__part,
+.sdv-wbars__key {
+  box-sizing: border-box;
+  display: block;
+  flex: none;
+}
+.sdv-wbars__part[data-kind="counted"],
+.sdv-wbars__key[data-kind="counted"] {
+  background: var(--lane);
+}
+.sdv-wbars__part[data-kind="open"],
+.sdv-wbars__key[data-kind="open"] {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--lane) 0 3px,
+    color-mix(in oklab, var(--lane) 35%, var(--sl-color-bg)) 3px 6px
+  );
+}
+.sdv-wbars__part[data-kind="corrected"],
+.sdv-wbars__key[data-kind="corrected"] {
+  background: repeating-linear-gradient(
+    0deg,
+    var(--sdv-ok) 0 2px,
+    color-mix(in oklab, var(--sdv-ok) 30%, var(--sl-color-bg)) 2px 4px
+  );
+}
+.sdv-wbars__part[data-kind="side"],
+.sdv-wbars__key[data-kind="side"] {
+  background:
+    radial-gradient(circle, var(--sdv-warn) 1.2px, transparent 1.7px) 0 0 / 4px 4px,
+    color-mix(in oklab, var(--sdv-warn) 15%, var(--sl-color-bg));
+  border: 1px dashed var(--sdv-warn);
+}
+.sdv-wbars__part[data-kind="dropped"],
+.sdv-wbars__key[data-kind="dropped"] {
+  background:
+    linear-gradient(45deg, transparent 44%, var(--sdv-bad) 44% 56%, transparent 56%),
+    linear-gradient(-45deg, transparent 44%, var(--sdv-bad) 44% 56%, transparent 56%),
+    color-mix(in oklab, var(--sdv-bad) 10%, transparent);
+  border: 1px dashed var(--sdv-bad);
+}
+.sdv-wbars__truth {
+  border: 1.5px dashed var(--sl-color-white);
+  border-block-end: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  inset-inline: 0;
+  pointer-events: none;
+  position: absolute;
+}
+.sdv-wbars__alert {
+  border-block-start: 2px dashed var(--sdv-bad);
+  inset-inline: 0;
+  pointer-events: none;
+  position: absolute;
+}
+.sdv-wbars__now {
+  border-inline-start: 2px solid var(--sl-color-gray-2);
+  inset-block: 0;
+  pointer-events: none;
+  position: absolute;
+}
+.sdv-wbars__watermark {
+  border-inline-start: 2px dotted var(--sdv-warn);
+  inset-block: 0;
+  pointer-events: none;
+  position: absolute;
+}
+.sdv-wbars__axis {
+  color: var(--sl-color-gray-2);
+  display: flex;
+  font-size: var(--sl-text-xs);
+  font-variant-numeric: tabular-nums;
+  justify-content: space-between;
+}
+.sdv-wbars__key {
+  flex: none;
+  height: 0.8rem;
+  width: 1.1rem;
+}
+.sdv-wbars__key[data-kind="truth"] {
+  border: 1.5px dashed var(--sl-color-white);
+}
+.sdv-wbars__key[data-kind="alert"] {
+  border-block-start: 2px dashed var(--sdv-bad);
+  height: 0.45rem;
+  margin-block-start: 0.35rem;
+}
+.sdv-wbars__key[data-kind="now"] {
+  border-inline-start: 2px solid var(--sl-color-gray-2);
+  width: 0.5rem;
+}
+.sdv-wbars__key[data-kind="watermark"] {
+  border-inline-start: 2px dotted var(--sdv-warn);
+  width: 0.5rem;
+}
+.sdv-wbars__key[data-kind="counted"],
+.sdv-wbars__key[data-kind="open"] {
+  --lane: var(--sl-color-gray-2);
+}
+.sdv-wbars__details {
+  font-size: var(--sl-text-xs);
+  min-width: 0;
+}
+.sdv-wbars__details > summary {
+  color: var(--sl-color-gray-2);
+  cursor: pointer;
+  width: fit-content;
+}
+.sdv-wbars__table {
+  font-size: var(--sl-text-xs);
+  margin-block-start: 0.4rem;
+}
+.sdv-wbars__table th,
+.sdv-wbars__table td {
+  font-variant-numeric: tabular-nums;
+  width: auto;
+}

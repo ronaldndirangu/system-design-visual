@@ -14,6 +14,15 @@ const pages = [
   })),
 ];
 
+// Pull requests check the pages they change plus a fixed sample in dark mode; main and nightly runs check everything.
+const fullSweep = process.env.E2E_MODE !== 'pr';
+const changedPages = new Set((process.env.E2E_PAGES ?? '').split(',').filter(Boolean));
+const samplePages = new Set(['./', 'curriculum/', 'scaling/load-balancing/']);
+const selectedPages = fullSweep
+  ? pages
+  : pages.filter(({ path }) => changedPages.has(path) || samplePages.has(path));
+const colorSchemes = fullSweep ? (['light', 'dark'] as const) : (['dark'] as const);
+
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -30,16 +39,29 @@ function collectErrors(page: Page): string[] {
   return errors;
 }
 
-/** Scroll through the page so every client:visible island hydrates. */
+/** Bring every visible client:visible island into view and wait until Astro marks it hydrated. */
 async function hydrateAll(page: Page) {
-  await page.evaluate(async () => {
-    for (let y = 0; y < document.body.scrollHeight; y += window.innerHeight / 2) {
-      window.scrollTo(0, y);
-      await new Promise((resolve) => setTimeout(resolve, 60));
-    }
-    window.scrollTo(0, 0);
-  });
-  await page.waitForLoadState('networkidle');
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async () => {
+          const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+          // Astro removes the ssr attribute once an island hydrates. Islands with nothing rendered never enter view.
+          const pending = () =>
+            [...document.querySelectorAll('astro-island[ssr]')].filter((island) =>
+              [...island.children].some((child) => child.getClientRects().length > 0),
+            );
+          for (const island of pending()) {
+            island.firstElementChild?.scrollIntoView({ block: 'center' });
+            await nextFrame();
+            await nextFrame();
+          }
+          return pending().length;
+        }),
+      { message: 'islands still waiting to hydrate', timeout: 15_000 },
+    )
+    .toBe(0);
+  await page.evaluate(() => window.scrollTo(0, 0));
 }
 
 async function axeViolations(page: Page): Promise<string[]> {
@@ -53,8 +75,8 @@ async function axeViolations(page: Page): Promise<string[]> {
   );
 }
 
-for (const { path, heading } of pages) {
-  for (const colorScheme of ['light', 'dark'] as const) {
+for (const { path, heading } of selectedPages) {
+  for (const colorScheme of colorSchemes) {
     test(`${path} renders, hydrates, and passes axe in ${colorScheme} mode`, async ({ page }) => {
       const errors = collectErrors(page);
       await page.emulateMedia({ colorScheme });
@@ -65,36 +87,35 @@ for (const { path, heading } of pages) {
       expect(await axeViolations(page)).toEqual([]);
     });
   }
-}
 
-test('every page fits a phone screen without sideways scrolling', async ({ page }) => {
-  test.setTimeout(120_000);
-  await page.setViewportSize({ width: 375, height: 812 });
-  for (const { path } of pages) {
+  test(`${path} fits a phone screen without sideways scrolling`, async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(path);
     await hydrateAll(page);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
-    expect(overflow, path).toBeLessThanOrEqual(0);
-  }
-});
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+}
 
-test('every internal link stays under the base path and resolves', async ({ page, request }) => {
-  const seen = new Set<string>();
-  for (const { path } of pages.slice(0, 5)) {
-    await page.goto(path);
-    const hrefs = await page
-      .locator('a[href^="/"]')
-      .evaluateAll((links) => links.map((link) => link.getAttribute('href') ?? ''));
-    for (const href of hrefs) seen.add(href.split('#')[0] ?? href);
-  }
-  for (const href of seen) {
-    expect(href, href).toMatch(/^\/system-design-visual\//);
-    const response = await request.get(href);
-    expect(response.status(), href).toBe(200);
-  }
-});
+if (fullSweep) {
+  test('every internal link stays under the base path and resolves', async ({ page, request }) => {
+    const seen = new Set<string>();
+    for (const { path } of pages.slice(0, 5)) {
+      await page.goto(path);
+      const hrefs = await page
+        .locator('a[href^="/"]')
+        .evaluateAll((links) => links.map((link) => link.getAttribute('href') ?? ''));
+      for (const href of hrefs) seen.add(href.split('#')[0] ?? href);
+    }
+    for (const href of seen) {
+      expect(href, href).toMatch(/^\/system-design-visual\//);
+      const response = await request.get(href);
+      expect(response.status(), href).toBe(200);
+    }
+  });
+}
 
 test('the 404 page renders with working styles', async ({ page }) => {
   const response = await page.goto('does-not-exist/');
@@ -166,7 +187,6 @@ test('switching the duel scenario mid run pauses it and keeps focus', async ({ p
   await expect(equal).toBeChecked();
   await expect(equal).toBeFocused();
   await expect(duel.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
-  await page.waitForTimeout(600);
   await expect(duel.getByText('Ready', { exact: true })).toBeVisible();
 });
 

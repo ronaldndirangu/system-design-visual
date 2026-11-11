@@ -1,0 +1,111 @@
+/* Ordering duel: partition lag bars use the queue color; late clicks get a cross icon and a red label. */
+
+.sdv-order__route {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-order__parts {
+  display: grid;
+  gap: 0.3rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-order__part {
+  align-items: center;
+  display: grid;
+  gap: 0.2rem 0.5rem;
+  grid-template-columns: 1.75rem minmax(3rem, 1fr) auto;
+  margin: 0;
+}
+.sdv-order__part > .sdv-badge {
+  grid-column: 2 / -1;
+  justify-self: start;
+}
+/* The shared stage rule stretches every svg to full width, so badge icons need their size back. */
+.sdv-order__part .sdv-badge svg,
+.sdv-order__late .sdv-badge svg {
+  display: inline-block;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.sdv-order__part-name {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+}
+.sdv-order__bar {
+  background: var(--sdv-surface-raised);
+  border: 1px solid color-mix(in oklab, var(--sdv-queue) 60%, var(--sdv-border));
+  border-radius: 999px;
+  display: block;
+  height: 0.8rem;
+  overflow: hidden;
+}
+.sdv-order__bar > span,
+.sdv-order__key {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-queue) 0 4px,
+    color-mix(in oklab, var(--sdv-queue) 45%, var(--sl-color-bg)) 4px 8px
+  );
+  display: block;
+  height: 100%;
+}
+.sdv-order__key {
+  border-radius: 0.2rem;
+  display: inline-block;
+  flex: none;
+  height: 0.9rem;
+  width: 1.4rem;
+}
+.sdv-order__part-meta {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-variant-numeric: tabular-nums;
+  min-width: 3.5rem;
+  text-align: end;
+}
+.sdv-order__late {
+  border-top: 1px solid var(--sdv-border);
+  display: grid;
+  gap: 0.3rem;
+  justify-items: start;
+  padding-top: 0.5rem;
+}
+.sdv-order__late-title {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+  margin: 0;
+}
+.sdv-order__late-list {
+  display: grid;
+  font-size: var(--sl-text-xs);
+  gap: 0.2rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-order__late-list li {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+  margin: 0;
+}
+.sdv-order__late-mark {
+  color: var(--sdv-bad);
+  display: inline-flex;
+  flex: none;
+  height: 0.9rem;
+  width: 0.9rem;
+}
+.sdv-order__late-mark svg {
+  height: 100%;
+  width: 100%;
+}
+.sdv-order__late > .sdv-badge {
+  max-width: 100%;
+  white-space: normal;
+}

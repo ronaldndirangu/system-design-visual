@@ -1,0 +1,12 @@
+/* Time duel widget: component chips come from NodeChip.css, window bars from WindowBars.css. This file only spaces the lane text. */
+
+.sdv-tduel__path,
+.sdv-tduel__gap {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-tduel__gap {
+  color: var(--sl-color-white);
+  font-variant-numeric: tabular-nums;
+}
