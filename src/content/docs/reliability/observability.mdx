@@ -1,0 +1,346 @@
+---
+title: Observability
+description: Watch a deploy break a page it never touched, then use metrics, traces, and logs to find out why. Covers RED and USE dashboards, correlation IDs, and head versus tail sampling.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import IncidentDashboardWidget from '../../../components/widgets/IncidentDashboardWidget';
+import SamplingDuelWidget from '../../../components/widgets/SamplingDuelWidget';
+import TraceHuntWidget from '../../../components/widgets/TraceHuntWidget';
+
+export const nodes = [
+  { id: 'client', kind: 'client', x: 70, y: 150, label: 'Shopper', sublabel: 'GET /browse' },
+  { id: 'gateway', kind: 'loadBalancer', x: 240, y: 150, label: 'Gateway', sublabel: 'starts the trace' },
+  { id: 'api', kind: 'server', x: 410, y: 150, label: 'Shop API', sublabel: 'browse, checkout' },
+  { id: 'db', kind: 'database', x: 580, y: 150, label: 'Orders DB', sublabel: 'pool of 5' },
+  { id: 'collector', kind: 'server', x: 410, y: 300, label: 'Collector', sublabel: 'logs, metrics, traces' },
+];
+export const edges = [
+  { from: 'client', to: 'gateway' },
+  { from: 'gateway', to: 'api' },
+  { from: 'api', to: 'db' },
+  { from: 'gateway', to: 'collector' },
+  { from: 'api', to: 'collector' },
+  { from: 'db', to: 'collector' },
+];
+export const steps = [
+  {
+    title: 'The gateway names the request',
+    text: 'A shopper opens the browse page. The gateway creates trace ID 3c11a85c0587 and sends it onward in the traceparent header. Every service that touches this request will stamp its telemetry with that ID.',
+    nodes: ['client', 'gateway'],
+    flows: ['client>gateway'],
+  },
+  {
+    title: 'Each hop opens a span',
+    text: 'The API reads the header and opens a span, api.browse, as a child of the gateway span. A span records a name, a start time, a duration, and its parent, so the spans of one request form a tree.',
+    nodes: ['gateway', 'api'],
+    flows: ['gateway>api'],
+  },
+  {
+    title: 'Waiting is work too',
+    text: 'The cache misses, so the API asks the pool for a database connection. All 5 are busy. The span db.pool.acquire records 727 ms of waiting before the 20 ms products query even starts.',
+    nodes: ['api', 'db'],
+    flows: ['api>db'],
+  },
+  {
+    title: 'Three signals leave every service',
+    text: 'Each service writes log lines tagged with trace ID 3c11a85c0587, bumps counters and latency histograms, and reports its finished spans. A collector receives all three.',
+    nodes: ['gateway', 'api', 'db', 'collector'],
+    flows: ['gateway>collector', 'api>collector', 'db>collector'],
+  },
+  {
+    title: 'Metrics say something is wrong',
+    text: 'Histograms from thousands of requests roll up into one number per second: browse p99 is now over 1 s. Metrics are cheap to keep for months, and they tell you when and where, never which request.',
+    nodes: ['collector'],
+    flows: [],
+  },
+  {
+    title: 'The trace and its logs say why',
+    text: 'You open one slow trace, see the 727 ms wait, and search the logs for trace ID 3c11a85c0587. Every line from every service for that one request comes back together.',
+    nodes: ['collector', 'db'],
+    flows: [],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'Your manager asks: "How many checkout requests failed in the last 15 minutes, and is that more than yesterday?" Which signal answers fastest?',
+    options: [
+      { text: 'Metrics', correct: true, why: 'A counter of requests by route and status answers this with one query, and metrics keep weeks of history cheaply.' },
+      { text: 'Logs', why: 'You could count error lines, but scanning millions of lines is slow and costly, and teams often keep logs for only a few days.' },
+      { text: 'Traces', why: 'Traces are sampled, so counting them undercounts. They explain one request in depth; they are poor at totals.' },
+      { text: 'None of them; you need a new dashboard first', why: 'A request counter with route and status labels already answers it. Good metrics anticipate questions like this.' },
+    ],
+  },
+  {
+    prompt: 'You want one dashboard for the database connection pool itself. Which method fits best?',
+    options: [
+      { text: 'RED: rate, errors, duration', why: 'RED describes request-driven services from the caller\u2019s side. A pool is a resource, and RED would miss how full it is.' },
+      { text: 'USE: utilization, saturation, errors', correct: true, why: 'USE is made for resources such as pools, CPUs, and disks. Saturation, the queue of requests waiting for a connection, is the early warning in this lesson\u2019s incident.' },
+      { text: 'Logs only', why: 'Logs record individual events. A pool needs continuous numbers: how many connections are busy and how many requests wait.' },
+      { text: 'Average latency of the API', why: 'An average hides the slow tail and says nothing about which resource is the bottleneck.' },
+    ],
+  },
+  {
+    prompt: 'In a trace, api.browse lasts 750 ms. Its children are cache.get (3 ms), db.pool.acquire (727 ms), and db.query products (20 ms). Where did the request spend its time?',
+    options: [
+      { text: 'In api.browse, the longest span', why: 'A parent span\u2019s duration includes its children. Its children account for all 750 ms, so its own work is 0 ms.' },
+      { text: 'Waiting for a database connection', correct: true, why: 'db.pool.acquire has the most self time: 727 ms waiting for a connection that other requests held.' },
+      { text: 'In the products query', why: 'The query itself took 20 ms. Making it faster would save almost nothing for this request.' },
+      { text: 'In the cache', why: 'The cache answered in 3 ms. It missed, which is why the request needed the database at all.' },
+    ],
+  },
+  {
+    prompt: 'The payments service logs "charge declined" without the trace ID. What can you no longer do?',
+    options: [
+      { text: 'Count how many charges were declined', why: 'You can still count those lines. The ID matters for joining a line to one request.' },
+      { text: 'Find which user request, and which trace, that decline belongs to', correct: true, why: 'Without a correlation ID, a line from one service cannot be joined to the request that caused it. Propagate the ID through every hop and every log call.' },
+      { text: 'Store the log line at all', why: 'Logs need no trace ID to be stored. They lose their link to the rest of the request.' },
+      { text: 'Nothing, the timestamp is enough', why: 'At 40 requests per second, many requests overlap in time. A timestamp narrows the search; it cannot pick one request out.' },
+    ],
+  },
+  {
+    prompt: 'You can afford to store about 10% of traces. During an incident, 1 request in 50 fails. Why might tail sampling beat head sampling here?',
+    options: [
+      { text: 'Tail sampling stores fewer spans', why: 'It usually stores more, because it keeps every error and slow trace on top of its baseline.' },
+      { text: 'Tail sampling decides after the request ends, so it can keep every failed and slow trace', correct: true, why: 'Head sampling decides at the start, before anyone knows the request will fail, so it keeps about 1 in 10 failures. The price is memory: tail sampling must hold spans until it decides.' },
+      { text: 'Head sampling cannot sample errors', why: 'It samples errors at the same rate as everything else. That is exactly the problem: rare failures stay rare in the sample.' },
+      { text: 'They keep the same traces', why: 'They tie only when nothing fails or runs slow. During an incident they diverge sharply.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Tell which questions logs, metrics, and traces each answer, and what each costs.
+- Read a RED dashboard for a service and a USE dashboard for a resource, and see why you need both.
+- Find the slow span in a trace waterfall by comparing self time with total time.
+- Follow one request across services with a correlation ID.
+- Compare head and tail sampling, and pick one for a given budget.
+
+</Objectives>
+
+## The failure: a deploy breaks a page it never touched
+
+A small shop serves 40 requests per second: three quarters are browse pages, one quarter are checkouts. Both routes
+share one database connection pool with 5 connections. A request that waits more than 1 s for a connection gives up with
+503. At 20 s, deploy v42 ships a new checkout query that forgot its index. The query used to take about 30 ms; now it
+takes about 500 ms. Browse pages never run that query.
+
+<Predict
+  client:visible
+  question="Deploy v42 slows only the checkout query. What happens to the browse page?"
+  options={[
+    'Nothing, because browse never runs the new query',
+    'Browse slows down and some browse requests fail with 503',
+    'Browse speeds up, because checkouts now leave the cache alone',
+  ]}
+  answer={1}
+>
+
+Browse breaks too. Slow checkout queries hold pool connections about 16 times longer, so the pool fills and every
+request that needs the database queues behind them, browse included. In this toy model with seed 42, checkout p99
+passes 500 ms at 20.7 s, the pool saturates at 21.2 s, browse p99 passes 1 s at 24.4 s, and the first 503 lands at
+24.5 s. Over the minute, 50 of 2,347 requests fail.
+
+</Predict>
+
+<IncidentDashboardWidget
+  client:visible
+  initial="deploy"
+  title="The shop's dashboard during deploy v42"
+  instructions="Press Play and watch the RED view. When browse p99 turns red, switch to the USE view of the database pool. Then pick Deploy v42, bigger pool: the 503s stop, yet checkout stays slow."
+/>
+
+This is a **toy model**: Poisson arrivals, fixed span lengths drawn from small ranges, and a first come, first served
+pool. The numbers are illustrative. Every scenario replays the identical stream of requests, so every difference comes
+from the deploy or the pool size.
+
+Nobody wrote an alert for "browse breaks when checkout gets slow". That is the point of **observability**: the ability
+to answer questions about your system that you did not plan for, from the telemetry it already emits. Monitoring
+checks the failures you predicted. Observability helps with the ones you did not.
+
+## Three signals, three questions
+
+<StepDiagram client:visible title="One request, three kinds of telemetry" nodes={nodes} edges={edges} steps={steps} height={360} />
+
+- **Metrics** are numbers aggregated over time: a request counter, a latency histogram, a gauge of busy connections.
+  They answer "is something wrong, when did it start, and where?" They cost the same at 10 or 10,000 requests per
+  second, so you can keep them for months. They cannot show you any single request.
+- **Traces** follow one request through every service as a tree of **spans**. They answer "where did this request
+  spend its time?" They are expensive per request, so most systems keep only a sample.
+- **Logs** are timestamped records of discrete events, such as "slow query 552 ms: orders by customer_id, no index".
+  They answer "what exactly happened, and with which values?" Write them as structured key and value pairs so you can
+  filter on fields instead of parsing text.
+
+The three meet through one field: the **correlation ID**, usually the trace ID. The gateway creates it, every service
+forwards it (the W3C `traceparent` header is the common format), and every log line and span carries it. With it, one
+search returns everything every service recorded about one request.
+
+<Analogy>
+
+Metrics are a hospital's ward board: how many patients, how many in pain, average wait. Traces are one patient's chart,
+showing every test in order with how long each took. Logs are the nurses' notes. The patient ID wristband is the
+correlation ID: without it, the notes and the chart could belong to anyone.
+
+</Analogy>
+
+## Two ways to read a dashboard: RED and USE
+
+Two short checklists keep dashboards focused.
+
+- **RED** for every service that handles requests: **Rate** (requests per second), **Errors** (failed requests per
+  second), and **Duration** (latency percentiles, never just the average). RED shows what callers feel.
+- **USE** for every resource: **Utilization** (how busy it is), **Saturation** (how much work waits for it), and
+  **Errors**. Pools, CPUs, disks, and queues are resources. USE shows why callers feel it.
+
+In the dashboard above, RED shows the symptom: browse latency climbs and 503s appear. USE points at the cause: the pool
+sits at 5 of 5 busy with a growing queue. Saturation is the earliest warning, because work queues before it fails. The
+[SLOs lesson](../../thinking/slos/) explains why dashboards track p99 rather than averages and how an error budget turns
+these numbers into decisions.
+
+Add labels such as route and status to metrics, and keep their values few. A label with one value per user or per
+request multiplies the number of time series until the metrics store struggles; the
+[metrics case study](../../case-studies/metrics/) covers that cardinality problem. Put per-request detail in traces and
+logs instead.
+
+## Finding the slow span
+
+A trace waterfall draws each span as a bar on one timeline, indented under its parent. A parent's bar covers its
+children, so the longest bar is rarely the culprit. Look for the span with the most **self time**: its duration minus
+the time its children account for.
+
+<Predict
+  client:visible
+  question="A browse request at 35.7 s took 771 ms. Browse runs only the fast products query. Where will its trace show the time going?"
+  options={[
+    'In db.query products, which must have slowed down too',
+    'In db.pool.acquire, waiting for a connection',
+    'In render, building the page',
+  ]}
+  answer={1}
+>
+
+It waited. In this run, the slow browse trace spends 727 ms in db.pool.acquire and 20 ms in its own query. The
+trace proves where the time went; it cannot say who held the connections. The logs written during that same second can:
+they show other requests' "slow query, no index (v42)" warnings.
+
+</Predict>
+
+<TraceHuntWidget
+  client:visible
+  initial="slowBrowse"
+  title="Find the slow span"
+  instructions="Select the span you blame for the delay. Compare the own time on the right; a long bar can belong to a parent that only waits. Then read the logs below and turn on the correlation ID filter."
+/>
+
+Try each trace. Before the deploy, a checkout spends most of its time in payments.charge, which is normal. Right after
+the deploy, the culprit is db.query orders, the unindexed query. Later, browse requests blame db.pool.acquire, and the
+failed browse waits the full 1 s before it gives up. With the filter off, the log panel mixes lines from every request
+running at that moment; with it on, you see only this request's story.
+
+Two habits make this work in a real system:
+
+- **Propagate context everywhere.** Pass the trace ID through HTTP headers, message queue metadata, and background
+  jobs. One service that drops it splits every trace in two.
+- **Link metrics to traces.** Many metrics stores attach an **exemplar**, a trace ID, to a histogram bucket, so you can
+  jump from the spike on a chart straight to a slow request inside it.
+
+The timeouts, retries, and circuit breakers lessons show what the shop should do next: stop waiting a full second for a
+connection, avoid retrying into a saturated pool, and cut off a dependency that keeps failing. Observability tells you
+which of those you need.
+
+## Sampling: which traces to keep
+
+Storing every span of every request costs a lot, often more than running the service. So tracing systems **sample**.
+
+- **Head sampling** decides when the request starts, usually with a hash of the trace ID, for example "keep 10%". Every
+  service makes the same decision without talking to each other, and nothing waits in memory. It also decides before
+  anyone knows whether the request will fail.
+- **Tail sampling** buffers every span until the trace finishes, then decides: keep every error, every request over
+  1 s, and a 10% baseline of the rest. It catches the interesting traces. The collector must hold every span in
+  memory until it decides, and all spans of one trace must reach the same collector.
+
+<Predict
+  client:visible
+  question="Head sampling keeps a random 10% of traces. During the incident, 50 requests fail. About how many of those failures will have a trace you can open?"
+  options={[
+    'All 50, because errors matter most',
+    'About 5, one in ten',
+    'None, because head sampling skips errors',
+  ]}
+  answer={1}
+>
+
+About one in ten: the coin flip happens before the request fails, so failures get the same 10% as everything else. In
+this run, head sampling keeps 262 traces and only 3 of the 50 failures. Tail sampling keeps 489 traces, including all
+50 failures, and holds up to 772 spans in memory while it waits to decide.
+
+</Predict>
+
+<SamplingDuelWidget
+  client:visible
+  initial="incident"
+  title="Head sampling against tail sampling"
+  instructions="Press Play and watch the failed requests chart. Then pick Quiet day: with no failures and no slow requests, both samplers keep the same traces. Finally try Tight budget."
+/>
+
+On a **quiet day** the two tie at 262 traces, because no request fails or runs slow; tail sampling still pays for its
+buffer. With a **tight budget** of 1%, head sampling keeps 31 traces and none of the 50 failures, while tail sampling
+still keeps all 50. Tail sampling only sees what reaches the collector, so every service must export every span. A
+head sampler in front of it would drop most failures before the tail sampler could judge them. Teams that need to cut
+export volume can head sample at the edge and accept that some failures go missing.
+
+## Trade-offs
+
+<TradeoffTable title="Which signal, and how much of it?">
+
+| Choice                  | What it buys                                           | What it costs                                                     |
+| ----------------------- | ------------------------------------------------------ | ----------------------------------------------------------------- |
+| Metrics                 | Cheap totals and trends, months of history, alerts      | No single request, and each new label multiplies series           |
+| Traces                  | Where one request spent its time, across services      | Costly per request, so sampled; needs context propagation         |
+| Structured logs         | Exact events and values, easy to filter                | Volume grows with traffic; useless across services without an ID |
+| RED dashboards          | What callers feel, per service                         | Shows symptoms; the cause may sit in a shared resource            |
+| USE dashboards          | Which resource is full or queueing                     | One per resource, and you must know which resources matter        |
+| Head sampling           | Simple, consistent, no buffering                       | Keeps rare failures at the same low rate as everything else       |
+| Tail sampling           | Keeps every error and slow trace                       | Every span exported, memory to buffer, routing to one collector    |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+## Mini design challenge
+
+<Challenge>
+
+The shop adds a recommendations service that browse calls on every page view. Support says about 1 browse page in 500
+now takes over 3 s, and nobody can reproduce it. Traffic is 400 requests per second across six services, and the
+budget allows storing about 5% of traces. Sketch the metrics and dashboards you add, how you find one of those slow
+requests, the sampling policy, and what every service must do for this to work.
+
+<div slot="answer">
+
+1. **RED per service and route.** Request counters and latency histograms labeled by service, route, and status (no
+   user IDs as labels). Dashboards show p50, p99, and p99.9: a 1 in 500 problem lives above p99, so p99 alone can miss
+   it.
+2. **USE per resource.** Pool utilization and waiters, CPU, and the recommendations service's own queue depth. If its
+   queue grows before the slow pages appear, that is the lead.
+3. **Exemplars.** Attach trace IDs to the latency histogram so a click on the p99.9 spike opens one of the slow traces.
+4. **Tail sampling at the collector.** Keep every error, every request over 1 s, and a 2% baseline. Route spans by
+   trace ID so each trace lands on one collector. Errors and slow requests normally make up well under 3% of traffic,
+   so the total stays near 5%. An outage can break that assumption, so add a per category rate cap: always keep
+   requests over 3 s, and sample the 1 s to 3 s band when its volume spikes. The cap gives up some moderately slow
+   traces to protect the budget.
+5. **Propagation everywhere.** Every service forwards `traceparent`, starts a span per outbound call, and writes
+   structured logs with the trace ID. In the slow trace, compare self times to find the span that owns the 3 s, then
+   search the logs for that trace ID.
+
+</div>
+
+</Challenge>

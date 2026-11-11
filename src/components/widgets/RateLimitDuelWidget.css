@@ -1,0 +1,5 @@
+.sdv-ratelimit__load {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
