@@ -27,7 +27,7 @@ const commitText: Record<AckMode, string> = {
   'ack-first': 'Commits the offset when it takes a batch, before counting it.',
   'ack-after': 'Counts the whole batch, then commits the offset.',
   dedupe:
-    'Counts the whole batch, then commits the offset. Saves each counted click id and skips ids it has seen.',
+    'Counts the whole batch, then commits the offset. Saves each counted click id and skips ids it has seen, at any offset.',
 };
 
 const stateText: Record<OffsetState, string> = {
@@ -128,8 +128,16 @@ export default function AckModeWidget({
   const error = model.countError;
   const errorText = error === 0 ? 'Exact' : error > 0 ? `${error} too high` : `${-error} too low`;
 
+  const relayCopies = t.produced - t.clicks;
   const stats: StatRow[] = [
-    { label: 'Clicks in the log', value: t.produced.toLocaleString('en-US') },
+    { label: 'Log entries', value: t.produced.toLocaleString('en-US') },
+    {
+      label: 'Distinct clicks',
+      value: t.clicks.toLocaleString('en-US'),
+      ...(relayCopies > 0
+        ? { note: `The relay published ${relayCopies === 1 ? 'one event' : `${relayCopies} events`} twice` }
+        : {}),
+    },
     { label: 'Analytics count', value: t.counted.toLocaleString('en-US') },
     {
       label: 'Lost: committed, never counted',
@@ -138,13 +146,13 @@ export default function AckModeWidget({
       ...(t.lost > 0 ? { note: 'Gone for good' } : {}),
     },
     {
-      label: 'Counted twice after a crash',
+      label: 'Counted twice',
       value: String(t.doubleCounted),
       tone: t.doubleCounted > 0 ? 'bad' : 'ok',
       ...(t.doubleCounted > 0 ? { note: 'Count too high' } : {}),
     },
     {
-      label: 'Rereads skipped as already counted',
+      label: 'Skipped: click id already counted',
       value: String(t.skipped),
       ...(t.skipped > 0 ? { tone: 'ok' as const, note: 'Duplicates absorbed' } : {}),
     },
@@ -156,7 +164,7 @@ export default function AckModeWidget({
     { label: 'Not counted yet (in hand or still in the log)', value: String(model.uncounted) },
   ];
 
-  const summary = `${seconds.toFixed(1)} s of ${ACK_SECONDS} s. ${ackScenarios[mode].label}. ${t.crashes} crashes. Lost ${t.lost}, counted twice ${t.doubleCounted}, skipped ${t.skipped}. Count error: ${errorText.toLowerCase()}.`;
+  const summary = `${seconds.toFixed(1)} s of ${ACK_SECONDS} s. ${ackScenarios[mode].label}. ${t.produced} log entries for ${t.clicks} clicks. ${t.crashes} crashes. Lost ${t.lost}, counted twice ${t.doubleCounted}, skipped ${t.skipped}. Count error: ${errorText.toLowerCase()}.`;
   const events = run.events;
 
   const status = run.done
@@ -270,7 +278,7 @@ export default function AckModeWidget({
         <p className="sdv-trace__log-title">What happened</p>
         {events.length === 0 ? (
           <p className="sdv-trace__empty">
-            Crashes and restarts appear here, numbered to match the chart, as the run plays.
+            The relay copy, crashes and restarts appear here, numbered to match the chart, as the run plays.
           </p>
         ) : (
           <ol>

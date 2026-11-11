@@ -159,8 +159,8 @@ A separate **relay** process then reads unsent outbox rows and publishes them.
 <StepDiagram client:visible title="How the transactional outbox carries a click" nodes={nodes} edges={edges} steps={steps} height={320} />
 
 The relay can still crash after publishing and before marking rows sent. It then publishes those rows again, so the
-outbox delivers **at least once**. That is the price of never losing an event, and the consumer pays it by skipping
-repeats.
+outbox delivers **at least once**. Each copy is a new append, so the same event can sit at offset 100 and again at
+offset 101. That is the price of never losing an event, and the consumer pays it by skipping repeats by event id.
 
 <Analogy>
 
@@ -203,12 +203,15 @@ The consumer faces the same two step problem from the other side. It **counts** 
 offset** in the log so a restart knows where to resume. Those are two writes again, and a crash can land between them.
 Where the consumer puts the commit decides what a crash costs:
 
-- **At most once**: commit the offset, then count. A crash loses the clicks in hand. Nothing is ever counted twice.
+- **At most once**: commit the offset, then count. A crash loses the clicks in hand. A crash never makes the consumer
+  count a click twice, though a relay duplicate at a new offset still gets counted again.
 - **At least once**: count, then commit. A crash makes the restarted consumer count the clicks since the last commit
   again. Nothing is ever lost.
 - **Effectively once**: count, then commit, and make a repeat harmless. The consumer records each click id it counted
-  **in the same transaction as the count**, and skips ids it has seen. Delivery is still at least once, and the effect
-  happens once. The [**Idempotency**](../../reliability/idempotency/) lesson covers this pattern in depth.
+  **in the same transaction as the count**, and skips ids it has seen. The click id comes from the source (the outbox
+  row id), so it catches both kinds of repeat: a reread after a consumer crash and a relay copy at a new offset.
+  Delivery is still at least once, and the effect happens once. The
+  [**Idempotency**](../../reliability/idempotency/) lesson covers this pattern in depth.
 
 <Predict
   client:visible
@@ -229,23 +232,31 @@ reads the same 16 clicks again and **skips** every one.
 
 </Predict>
 
-The simulation below is a toy model of one partition and one consumer, and its numbers are illustrative.
+The simulation below is a toy model of one partition and one consumer, and its numbers are illustrative. The relay
+upstream published one event twice, so click 100 sits at offset 100 and again at offset 101: the log holds **535**
+entries for **534** distinct clicks.
 
 <AckModeWidget client:visible />
 
 What to look for:
 
+- **The relay copy at offset 101** arrives first, at 1.6 s. At most once and at least once track offsets, and offset
+  101 is new to them, so both count click 100 a second time. Effectively once finds click id 100 already counted and
+  skips it.
 - **At most once** keeps the count too low after every crash. The lost cells sit behind the committed offset, so no
   restart ever reaches them.
-- **At least once** keeps the count too high after every crash, by the clicks counted since the last commit.
-- **Effectively once** rereads exactly as much as at least once, and its count error stays at **Exact**.
+- **At least once** keeps the count too high after every crash, by the clicks counted since the last commit. With the
+  relay copy, it ends **17** too high.
+- **Effectively once** rereads exactly as much as at least once, skips all **17** repeats, and its count error stays at
+  **Exact**.
 - **Crash it yourself** right after a batch starts and right before it ends. At most once loses more early in a batch,
   and at least once double counts more late in one.
 
 Two details make effectively once work in a real system:
 
 - **A stable id.** The id must be assigned once, at the source. The outbox row id works. A timestamp or a hash of the
-  payload can collide or change between retries.
+  payload can collide or change between retries. The log offset does not work: a consumer that only skips offsets at
+  or below its last commit absorbs its own rereads, and the relay's second copy at a new offset slips through.
 - **One transaction for the effect and the record.** If the consumer adds to the count and records the id in two
   separate writes, a crash between them reopens the gap. Without transactions, keep the count and the last applied
   offset per partition in one record, and update both in one atomic write, such as a conditional update that applies
@@ -269,7 +280,7 @@ atomic. The moment a consumer touches an outside database, you are back to an id
 | Dual write                      | Simple code, no extra table or process               | Lost or phantom events whenever a fault lands between the steps |
 | Transactional outbox, polling   | Every committed row is published, at least once      | An extra write per click, a relay to run, and poll latency      |
 | Outbox with change data capture | Low latency and no polling load                      | A CDC tool to run, tied to the database's log format            |
-| At most once                    | No duplicates, the simplest consumer                 | Every crash loses the batch in hand                             |
+| At most once                    | No crash rereads, the simplest consumer              | Every crash loses the batch in hand; relay copies still repeat  |
 | At least once                   | No loss                                              | Every crash repeats work since the last commit                  |
 | Effectively once                | No loss and no double counts                         | A stable id, a seen id store, and a transaction around both     |
 

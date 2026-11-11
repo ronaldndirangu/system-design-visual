@@ -80,17 +80,19 @@ test('delivery semantics: the dual write loses or invents events and the outbox 
 
   const ack = await simulation(page, 'When does the consumer commit its offset?');
   await skipToEnd(ack);
-  await expect(values(ack, 'Clicks in the log')).toHaveText(['535']);
-  await expect(values(ack, 'Counted twice after a crash')).toHaveText(['16']);
+  await expect(values(ack, 'Log entries')).toHaveText(['535']);
+  await expect(values(ack, 'Distinct clicks')).toHaveText(['534']);
+  await expect(values(ack, 'Counted twice')).toHaveText(['17']);
 
   await pick(ack, /^At most once/);
   await skipToEnd(ack);
   await expect(values(ack, 'Lost: committed, never counted')).toHaveText(['24']);
+  await expect(values(ack, 'Counted twice')).toHaveText(['1']);
 
   await pick(ack, /^Effectively once/);
   await skipToEnd(ack);
-  await expect(values(ack, 'Rereads skipped as already counted')).toHaveText(['16']);
-  await expect(values(ack, 'Counted twice after a crash')).toHaveText(['0']);
+  await expect(values(ack, 'Skipped: click id already counted')).toHaveText(['17']);
+  await expect(values(ack, 'Counted twice')).toHaveText(['0']);
 });
 
 test('event-driven design: a dead-letter queue unblocks the partition and schema changes break strict readers', async ({

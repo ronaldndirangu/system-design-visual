@@ -60,9 +60,15 @@ export const steps = [
   },
   {
     title: 'The fix is a promise',
-    text: 'A consistency model tells the router and the replicas what they may answer. Under causal consistency, Ben’s reply waits at R3 until the question lands there. Under linearizable consistency, every request goes to R1 and waits for a majority.',
+    text: 'A consistency model tells the router and the replicas what they may answer. Under causal consistency, Ben’s reply waits at R3 until the question lands there. Under linearizable consistency, every request goes to R1, and a write waits until a majority of replicas store it.',
     nodes: ['lb', 'r1', 'r2', 'r3'],
     flows: [],
+  },
+  {
+    title: 'Linearizable: Ben reads an empty chat',
+    text: 'Under linearizable consistency, Ana’s question reaches R1 at tick 1 and waits for a majority until tick 7. Ben reads R1 at tick 2 and gets an empty chat at once: a read of an unconfirmed write returns the last confirmed state. Only writes wait in this toy.',
+    nodes: ['ana', 'ben', 'lb', 'r1'],
+    flows: ['ben>lb', 'lb>r1'],
   },
 ];
 
@@ -245,7 +251,8 @@ What to look for on the first workload:
   Ana’s “Booked a table for two” for a tick until the reply it answers lands. No phone ever shows a reply before its
   question.
 - **Linearizable** sends every request to R1 and shows no anomalies at all, at the price of 14 ticks of waiting and one
-  replica serving 100% of the traffic.
+  replica serving 100% of the traffic. All 14 ticks are writes waiting for a majority. Reads answer at once with the
+  last confirmed messages, so Ben reads an empty chat at tick 2 while Ana’s question waits.
 
 Press **Next workload** to try different routes and delays. The counts change from workload to workload, but a promise
 never shows an anomaly it rules out.
@@ -314,7 +321,7 @@ Many databases let you pick the promise per request. Use that: pay for a strong 
 | Monotonic reads  | Nobody loses a message they already saw.                                      | Reads wait for a lagging replica or stick to one; own writes and message order stay unprotected.                     |
 | Read your writes | People always see what they just sent.                                        | Reads wait after a write or go to the replica that took it; other readers still see anomalies.                      |
 | Causal           | Replies never appear before questions, plus both session promises.            | Every write carries dependency metadata, replicas hold messages back, and stale reads remain.                        |
-| Linearizable     | The system acts like a single copy; every read sees the latest confirmed write. | Every request travels to the leader and waits on a majority; one replica carries the load, and a cut-off minority cannot answer. |
+| Linearizable     | The system acts like a single copy; every read sees the latest confirmed write. | Every request travels to the leader, and every write waits for a majority; a read of an unconfirmed write returns the last confirmed state. One replica carries the load, a real leader confirms it still leads before each read, and a cut-off minority cannot answer. |
 
 </TradeoffTable>
 

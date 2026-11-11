@@ -5,8 +5,10 @@ import {
   AckModeRun,
   ClickWriter,
   type ConsumerCommand,
+  type ConsumerConfig,
   type ConsumerTick,
   OffsetConsumer,
+  type OffsetState,
   OutboxDuel,
   type WriterCommand,
   type WriterMode,
@@ -249,27 +251,59 @@ describe('OffsetConsumer', () => {
     expect(consumer.committed).toBeLessThan(consumer.inHand[0]);
   });
 
-  it('accounts for every click across seeds and modes', () => {
+  it('accounts for every click across seeds, modes and relay copies', () => {
     for (let seed = 1; seed <= 12; seed += 1) {
+      const relayDuplicateOffsets = seed % 2 === 0 ? [5, 6, 60, 101, 149] : [101];
       for (const mode of ['ack-first', 'ack-after', 'dedupe'] as AckMode[]) {
-        const consumer = new OffsetConsumer(mode, { seed });
+        const consumer = new OffsetConsumer(mode, { seed, relayDuplicateOffsets });
         for (let i = 0; i < 100; i += 1) {
           stepScheduled(consumer, crashes);
           const t = consumer.totals;
           expect(t.counted).toBe(t.unique + t.doubleCounted);
           const states = { waiting: 0, 'in-hand': 0, counted: 0, double: 0, lost: 0 };
-          for (let offset = 0; offset < t.produced; offset += 1) states[consumer.offsetState(offset)] += 1;
-          expect(states.counted + states.double).toBe(t.unique);
-          expect(states.lost).toBe(t.lost);
-          expect(states.waiting + states['in-hand']).toBe(consumer.uncounted);
+          const byClick = new Map<number, OffsetState[]>();
+          for (let offset = 0; offset < t.produced; offset += 1) {
+            const state = consumer.offsetState(offset);
+            states[state] += 1;
+            const click = consumer.clickId(offset) ?? -1;
+            byClick.set(click, [...(byClick.get(click) ?? []), state]);
+          }
+          const clicks = [...byClick.values()];
+          const isCounted = (s: OffsetState[]) =>
+            s.some((state) => state === 'counted' || state === 'double');
+          const isLost = (s: OffsetState[]) => s.every((state) => state === 'lost');
+          expect(byClick.size).toBe(t.clicks);
+          expect(clicks.filter(isCounted)).toHaveLength(t.unique);
+          expect(clicks.filter(isLost)).toHaveLength(t.lost);
+          expect(clicks.filter((s) => !isCounted(s) && !isLost(s))).toHaveLength(consumer.uncounted);
+          expect(states.double).toBeLessThanOrEqual(t.doubleCounted);
           expect(consumer.committed).toBeLessThanOrEqual(t.produced);
         }
         const t = consumer.totals;
-        if (mode !== 'ack-after') expect(t.doubleCounted).toBe(0);
+        if (mode === 'dedupe') expect(t.doubleCounted).toBe(0);
         if (mode !== 'ack-first') expect(t.lost).toBe(0);
         if (mode !== 'dedupe') expect(t.skipped).toBe(0);
       }
     }
+  });
+
+  it('dedupes a relay duplicate by click id even though it sits at a new offset', () => {
+    const relayed = (mode: AckMode, config: Partial<ConsumerConfig> = {}) => {
+      const consumer = new OffsetConsumer(mode, config);
+      for (let i = 0; i < 17; i += 1) consumer.step();
+      return consumer;
+    };
+    const dedupe = relayed('dedupe');
+    expect(dedupe.clickId(101)).toBe(dedupe.clickId(100));
+    expect(dedupe.totals).toMatchObject({ counted: 101, unique: 101, doubleCounted: 0, skipped: 1 });
+    const offsetsOnly = relayed('ack-after');
+    expect(offsetsOnly.totals).toMatchObject({ counted: 102, unique: 101, doubleCounted: 1 });
+    expect(offsetsOnly.offsetState(100)).toBe('counted');
+    expect(offsetsOnly.offsetState(101)).toBe('double');
+    const clean = relayed('dedupe', { relayDuplicateOffsets: [] });
+    expect(clean.clickId(101)).not.toBe(clean.clickId(100));
+    expect(clean.totals).toMatchObject({ counted: 102, skipped: 0 });
+    expect(clean.totals.clicks).toBe(clean.totals.produced);
   });
 
   it('ignores a crash while it is already down', () => {
@@ -304,23 +338,37 @@ describe('AckModeRun', () => {
         return [mode, run];
       }),
     ) as Record<AckMode, AckModeRun>;
-    expect(runs['ack-first'].model.totals).toMatchObject({ produced: 535, lost: 24, doubleCounted: 0 });
-    expect(runs['ack-after'].model.totals).toMatchObject({ produced: 535, lost: 0, doubleCounted: 16 });
-    expect(runs.dedupe.model.totals).toMatchObject({ produced: 535, lost: 0, doubleCounted: 0, skipped: 16 });
+    for (const run of Object.values(runs))
+      expect(run.model.totals).toMatchObject({ produced: 535, clicks: 534 });
+    expect(runs['ack-first'].model.totals).toMatchObject({ lost: 24, doubleCounted: 1 });
+    expect(runs['ack-after'].model.totals).toMatchObject({ lost: 0, doubleCounted: 17 });
+    expect(runs.dedupe.model.totals).toMatchObject({ lost: 0, doubleCounted: 0, skipped: 17 });
+    expect(runs['ack-first'].model.countError).toBe(-23);
+    expect(runs['ack-after'].model.countError).toBe(17);
+    expect(runs.dedupe.model.countError).toBe(0);
     expect(runs['ack-first'].model.uncounted).toBe(0);
     expect(runs.dedupe.model.uncounted).toBe(11);
-    expect(runs['ack-first'].events[0]).toEqual({
+    for (const mode of ['ack-first', 'ack-after'] as AckMode[]) {
+      expect(runs[mode].events[0]).toEqual({
+        tick: 16,
+        text: 'Offset 101 carries click id 100 again: the relay published that event twice. Offset tracking cannot tell, so the consumer counts it again.',
+      });
+    }
+    expect(runs.dedupe.events[0]?.text).toBe(
+      'Offset 101 carries click id 100 again: the relay published that event twice. The consumer finds the click id already counted and skips it.',
+    );
+    expect(runs['ack-first'].events[1]).toEqual({
       tick: 32,
       text: 'The consumer crashes with 8 clicks in hand. Their offsets are already committed, so nobody will count them.',
     });
-    expect(runs['ack-after'].events[0]).toEqual({
+    expect(runs['ack-after'].events[1]).toEqual({
       tick: 32,
       text: 'The consumer crashes after counting 12 clicks it has not committed yet. It will count them again.',
     });
-    expect(runs.dedupe.events[0]?.text).toBe(
+    expect(runs.dedupe.events[1]?.text).toBe(
       'The consumer crashes after counting 12 clicks it has not committed yet. It will read them again and skip them.',
     );
-    expect(runs['ack-first'].series.at(-1)).toBe(24);
+    expect(runs['ack-first'].series.at(-1)).toBe(25);
     expect(runs.dedupe.series.every((value) => value === 0)).toBe(true);
   });
 
