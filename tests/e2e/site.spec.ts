@@ -7,6 +7,7 @@ const pages = [
   { path: 'start-here/', heading: /How this course works/i },
   { path: 'curriculum/', heading: /Course map/i },
   { path: 'visual-language/', heading: /Visual language/i },
+  { path: 'reference/', heading: /Reference sheet/i },
   ...readyLessons.map((lesson) => ({
     path: `${lesson.id}/`,
     heading: new RegExp(escapeRegExp(lesson.title), 'i'),
