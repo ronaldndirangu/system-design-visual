@@ -1,0 +1,157 @@
+---
+import { findLesson, type Lesson } from '../../data/curriculum';
+import { plannedMinutes, studyPlans } from '../../data/studyPlans';
+import { lessonHref } from '../../lib/paths';
+
+function resolve(id: string): Lesson {
+  const lesson = findLesson(id);
+  if (!lesson) throw new Error(`Study plan lists an unknown lesson: ${id}`);
+  return lesson;
+}
+
+const plans = studyPlans.map((plan) => {
+  const sessions = plan.sessions.map((session) => {
+    const lessons = session.lessons.map(resolve);
+    return {
+      label: session.label,
+      lessons,
+      minutes: lessons.reduce((sum, lesson) => sum + plannedMinutes(lesson), 0),
+    };
+  });
+  const lessons = sessions.flatMap((session) => session.lessons);
+  return {
+    ...plan,
+    sessions,
+    total: lessons.length,
+    ready: lessons.filter((lesson) => lesson.status === 'ready').length,
+  };
+});
+---
+
+<div class="sdv-plans not-content">
+  {
+    plans.map((plan) => (
+      <details class="sdv-plans__plan">
+        <summary>
+          <span class="sdv-plans__title">{plan.title}</span>
+          <span class="sdv-plans__pace">{plan.pace}</span>
+        </summary>
+        <div class="sdv-plans__body">
+          <p>{plan.audience}</p>
+          <p class="sdv-plans__status">
+            {plan.ready} of {plan.total} lessons are ready now. Lessons marked Coming soon open here as they ship.
+          </p>
+          <ol class="sdv-plans__sessions">
+            {plan.sessions.map((session) => (
+              <li class="sdv-plans__session">
+                <p class="sdv-plans__session-label">
+                  {session.label}
+                  <span class="sdv-plans__session-time">about {session.minutes} min</span>
+                </p>
+                <ul class="sdv-plans__lessons">
+                  {session.lessons.map((lesson) => (
+                    <li data-status={lesson.status}>
+                      {lesson.status === 'ready' ? (
+                        <a href={lessonHref(lesson.id)}>{lesson.title}</a>
+                      ) : (
+                        <span>{lesson.title}</span>
+                      )}
+                      {lesson.status === 'ready' ? (
+                        lesson.minutes && <span class="sdv-badge sdv-badge--neutral">{lesson.minutes} min</span>
+                      ) : (
+                        <span class="sdv-badge sdv-badge--neutral">Coming soon</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </details>
+    ))
+  }
+</div>
+
+<style>
+  .sdv-plans {
+    display: grid;
+    gap: 0.75rem;
+    margin-block: 1rem;
+  }
+  .sdv-plans__plan {
+    background: var(--sdv-surface);
+    border: 1px solid var(--sdv-border);
+    border-radius: var(--sdv-radius);
+  }
+  .sdv-plans__plan[open] {
+    border-color: var(--sl-color-text-accent);
+  }
+  summary {
+    cursor: pointer;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+    align-items: baseline;
+    padding: 0.85rem 1.1rem;
+  }
+  summary:focus-visible {
+    outline: 2px solid var(--sl-color-text-accent);
+    outline-offset: 2px;
+  }
+  .sdv-plans__title {
+    color: var(--sl-color-white);
+    font-weight: 600;
+  }
+  .sdv-plans__pace {
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+  }
+  .sdv-plans__body {
+    border-top: 1px solid var(--sdv-border);
+    padding: 0.75rem 1.1rem 1rem;
+  }
+  .sdv-plans__body p {
+    margin: 0 0 0.6rem;
+  }
+  .sdv-plans__status {
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+  }
+  .sdv-plans__sessions {
+    display: grid;
+    gap: 0.75rem;
+    list-style: none;
+    margin: 0.75rem 0 0;
+    padding: 0;
+  }
+  .sdv-plans__session-label {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.6rem;
+    align-items: baseline;
+    font-weight: 600;
+  }
+  .sdv-plans__session-time {
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+    font-weight: 400;
+  }
+  .sdv-plans__lessons {
+    display: grid;
+    gap: 0.35rem;
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0 0.9rem;
+    border-inline-start: 2px solid var(--sdv-border);
+  }
+  .sdv-plans__lessons li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
+    align-items: center;
+  }
+  .sdv-plans__lessons li[data-status='soon'] > span:first-child {
+    color: var(--sl-color-gray-2);
+  }
+</style>
