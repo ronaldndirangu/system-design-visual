@@ -75,10 +75,12 @@ describe('ticketing duel', () => {
             counts.checkout +
             counts.ticketed +
             counts.abandoned +
+            counts.lost +
             counts.soldOut;
           expect(accounted).toBe(lane.state.totals.arrived);
           expect(counts.ticketed).toBe(lane.state.totals.ticketed);
           expect(counts.soldOut).toBe(lane.state.totals.soldOut);
+          expect(counts.lost).toBe(lane.state.totals.lost);
         }
       }
     }
@@ -140,6 +142,50 @@ describe('ticketing duel', () => {
     }
   });
 
+  it('releases every hold at its deadline, whatever its buyer is doing', () => {
+    for (const id of duelScenarioIds.holds) {
+      const duel = new TicketDuel(ticketScenarios[id], 4);
+      while (!duel.done) {
+        duel.step();
+        const tick = duel.ticks - 1;
+        for (const lane of duel.lanes) {
+          const s = lane.state;
+          s.phase.forEach((phase, buyer) => {
+            if ((s.seat[buyer] ?? -1) < 0 || phase === 'ticketed' || phase === 'future') return;
+            const deadline = s.expiresAt[buyer] ?? -1;
+            if (deadline >= 0) expect(deadline).toBeGreaterThan(tick);
+          });
+        }
+      }
+    }
+  });
+
+  it('voids a slow payment once its hold has expired and keeps the seat when Pay claims the hold', () => {
+    for (let seed = 1; seed <= 12; seed += 1) {
+      const { duel, a, b } = finished('slow-pay', seed);
+      expect(a.voided).toBeGreaterThan(20);
+      expect(a.ticketed).toBeLessThan(SEATS);
+      expect(b.voided).toBe(0);
+      expect(b.ticketed).toBe(SEATS);
+      for (const lane of duel.lanes) {
+        expect(lane.state.holders.every((holders) => holders.length <= 1)).toBe(true);
+        expect(summarize(lane).ticketed).toBeLessThanOrEqual(SEATS);
+      }
+    }
+  });
+
+  it('voids a claimed checkout that outlasts its own deadline', () => {
+    const slower = {
+      ...ticketScenarios['slow-pay'],
+      workload: { ...ticketScenarios['slow-pay'].workload, paymentSeconds: { min: 11, max: 14 } },
+    };
+    const duel = run(new TicketDuel(slower, 42));
+    const claimed = summarize(duel.lanes[1]);
+    expect(claimed.ticketed).toBe(0);
+    expect(claimed.voided).toBeGreaterThan(0);
+    expect(claimed.voided).toBe(claimed.lost);
+  });
+
   it('pins the seed 42 numbers the lesson quotes', () => {
     const rush = finished('rush');
     expect([rush.a.ticketed, rush.a.doubledSeats, rush.a.peakQueries]).toEqual([243, 70, 411]);
@@ -162,6 +208,10 @@ describe('ticketing duel', () => {
     ]);
 
     expect(finished('all-pay').a.ticketed).toBe(100);
+
+    const slow = finished('slow-pay');
+    expect([slow.a.ticketed, slow.a.voided, slow.a.released]).toEqual([90, 59, 61]);
+    expect([slow.b.ticketed, slow.b.voided, slow.b.released]).toEqual([100, 0, 0]);
   });
 
   it('pins the illustrative estimates the lesson quotes', () => {
@@ -189,6 +239,12 @@ describe('ticketing duel', () => {
     expect(finished('all-pay').duel.events[0]?.text).toBe(
       'Holds never expire: the first buyer sees "sold out". Every held seat belongs to a buyer who is still paying.',
     );
+    expect(eventLines(finished('slow-pay').duel).slice(2)).toEqual([
+      '8.2 Holds expire after 8 s: the hold on A10 expires after 8 s, while its buyer still waits on the bank, so the seat goes back on sale.',
+      '8.3 Holds expire after 8 s: the bank approves a payment after its hold expired, so the system voids the authorization and that buyer gets no ticket.',
+      '16.1 Pay claims the hold: all 100 seats are paid for, as 100 tickets.',
+      '30.0 Run ends. Tickets sold: holds expire after 8 s 90, pay claims the hold 100. Approved payments voided because the hold expired first: 59 and 0.',
+    ]);
     expect(finished('trickle').duel.events.every((event) => !event.marker)).toBe(true);
   });
 
