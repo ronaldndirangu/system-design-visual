@@ -273,7 +273,8 @@ export const curriculum: CourseModule[] = [
         title: 'CAP and PACELC',
         summary:
           'See what a network partition forces you to choose, and what latency costs you the rest of the time.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'distributed-data/quorums',
