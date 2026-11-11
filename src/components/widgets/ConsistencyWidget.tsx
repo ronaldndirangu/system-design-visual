@@ -574,7 +574,8 @@ export default function ConsistencyWidget() {
       summary={summary}
       status={status}
       finished={ladder.done}
-      resetKey={String(seed)}
+      // Keying on the promise pauses the run and announces the newly selected promise's results.
+      resetKey={`${seed}:${choice}`}
       ticksPerSecond={4}
       controls={
         <div className="sdv-duel__extra">

@@ -330,7 +330,7 @@ function SettingsTable({ sim, now }: { sim: QuorumSim; now: number }) {
                   {id === sim.setting.id && (
                     <>
                       <span className="sdv-visually-hidden">, </span>
-                      <ToneBadge tone="neutral">Playing</ToneBadge>
+                      <ToneBadge tone="neutral">Showing</ToneBadge>
                     </>
                   )}
                 </span>

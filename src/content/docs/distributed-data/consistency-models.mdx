@@ -258,13 +258,13 @@ read your writes Ben still goes backwards. Causal consistency includes both sess
 reply never shows before the message it answers. Linearizable sits at the top: the system behaves as if one copy of the
 chat existed, and every read sees the latest confirmed write.
 
-| Promise          | Stale read | Own message missing | Went backwards | Reply before question |
-| ---------------- | ---------- | ------------------- | -------------- | --------------------- |
-| Eventual         | allowed    | allowed             | allowed        | allowed               |
-| Monotonic reads  | allowed    | allowed             | ruled out      | allowed               |
-| Read your writes | allowed    | ruled out           | allowed        | allowed               |
-| Causal           | allowed    | ruled out           | ruled out      | ruled out             |
-| Linearizable     | ruled out  | ruled out           | ruled out      | ruled out             |
+| Promise          | Rules out                                                   | Still allows                                                           |
+| ---------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Eventual         | nothing                                                     | stale reads, own message missing, going backwards, reply before question |
+| Monotonic reads  | going backwards                                             | stale reads, own message missing, reply before question                |
+| Read your writes | own message missing                                         | stale reads, going backwards, reply before question                    |
+| Causal           | own message missing, going backwards, reply before question | stale reads                                                            |
+| Linearizable     | all four anomalies                                          | none of the four                                                       |
 
 ## Causal still allows stale reads
 
