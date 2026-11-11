@@ -443,9 +443,25 @@ export class IncidentRun {
   }
 }
 
+/**
+ * Time a span spends outside its children: its duration minus the time its
+ * children cover. Parallel children overlap, so they count once, as a union.
+ */
 export function selfTime(trace: Trace, span: Span): number {
-  const children = trace.spans.filter((child) => child.parent === span.id);
-  return span.duration - children.reduce((sum, child) => sum + child.duration, 0);
+  const end = span.start + span.duration;
+  const covered = trace.spans
+    .filter((child) => child.parent === span.id)
+    .map((child) => [Math.max(span.start, child.start), Math.min(end, child.start + child.duration)] as const)
+    .filter(([from, to]) => to > from)
+    .sort((a, b) => a[0] - b[0]);
+  let total = 0;
+  let reached = span.start;
+  for (const [from, to] of covered) {
+    if (to <= reached) continue;
+    total += to - Math.max(from, reached);
+    reached = to;
+  }
+  return Math.max(0, span.duration - total);
 }
 
 export function slowestSelfSpan(trace: Trace): Span {
@@ -587,15 +603,21 @@ export function logsDuring(result: IncidentResult, trace: Trace, limit = 40): Lo
   return lines.filter((line) => keep.has(line));
 }
 
+/**
+ * Both samplers spend the same budget, a share of all requests. Head sampling spends it as a coin flip at the start.
+ * Tail sampling spends it as a quota per decision window: failed traces first, then slow ones, then ordinary ones.
+ */
 export type SamplerConfig =
   | { kind: 'head'; rate: number }
-  | { kind: 'tail'; baseline: number; slowMs: number; decisionWaitMs: number };
+  | { kind: 'tail'; budget: number; slowMs: number; decisionWaitMs: number; windowMs: number };
+
+export function samplerBudget(sampler: SamplerConfig): number {
+  return sampler.kind === 'head' ? sampler.rate : sampler.budget;
+}
 
 export function describeSampler(sampler: SamplerConfig): string {
-  const percent = (value: number) => `${Math.round(value * 100)}%`;
-  return sampler.kind === 'head'
-    ? `Head sampling, ${percent(sampler.rate)}`
-    : `Tail sampling: errors, over ${sampler.slowMs / 1000} s, plus ${percent(sampler.baseline)}`;
+  const percent = `${Math.round(samplerBudget(sampler) * 100)}%`;
+  return sampler.kind === 'head' ? `Head sampling, ${percent}` : `Tail sampling, ${percent}, errors first`;
 }
 
 /** A hash of the trace ID, so every service and both samplers agree on the same coin flip. */
@@ -603,9 +625,45 @@ export function sampleRoll(traceId: string): number {
   return (hashString(traceId) % 10_000) / 10_000;
 }
 
-export function keeps(sampler: SamplerConfig, trace: Trace): boolean {
-  if (sampler.kind === 'head') return sampleRoll(trace.id) < sampler.rate;
-  return trace.status === 503 || trace.duration > sampler.slowMs || sampleRoll(trace.id) < sampler.baseline;
+export interface SamplingDecision {
+  /** The request start for head sampling; the close of the trace's decision window for tail sampling. */
+  at: number;
+  kept: boolean;
+}
+
+/** Decides every trace in the run once. Tail sampling keeps the run total at the budget, rounded down. */
+export function decideSampling(sampler: SamplerConfig, traces: Trace[]): SamplingDecision[] {
+  if (sampler.kind === 'head') {
+    return traces.map((trace) => ({ at: trace.start, kept: sampleRoll(trace.id) < sampler.rate }));
+  }
+  const { budget, decisionWaitMs, slowMs, windowMs } = sampler;
+  const decisions = traces.map((trace) => ({
+    at: (Math.floor((trace.end + decisionWaitMs) / windowMs) + 1) * windowMs,
+    kept: false,
+  }));
+  const windows = new Map<
+    number,
+    { decision: SamplingDecision; rank: number; roll: number; index: number }[]
+  >();
+  traces.forEach((trace, index) => {
+    const decision = decisions[index] as SamplingDecision;
+    const rank = trace.status === 503 ? 0 : trace.duration > slowMs ? 1 : 2;
+    const members = windows.get(decision.at) ?? [];
+    members.push({ decision, rank, roll: sampleRoll(trace.id), index });
+    windows.set(decision.at, members);
+  });
+  let decided = 0;
+  let kept = 0;
+  for (const at of [...windows.keys()].sort((a, b) => a - b)) {
+    const members = windows.get(at) ?? [];
+    decided += members.length;
+    // Unused fractions of a slot carry into the next window, so the whole run keeps the budget, rounded down.
+    const slots = Math.floor(budget * decided + 1e-9) - kept;
+    members.sort((a, b) => a.rank - b.rank || a.roll - b.roll || a.index - b.index);
+    for (const member of members.slice(0, slots)) member.decision.kept = true;
+    kept += slots;
+  }
+  return decisions;
 }
 
 export interface SamplingTotals {
@@ -619,6 +677,8 @@ export interface SamplingTotals {
   slow: number;
   slowKept: number;
   baselineKept: number;
+  /** Failed or slow requests dropped: by the coin flip for head sampling, by a full budget for tail sampling. */
+  missed: number;
   spansStored: number;
   buffered: number;
   peakBuffered: number;
@@ -635,7 +695,7 @@ export interface SamplingScenario {
   chart: 'errorsKept' | 'kept';
 }
 
-const TAIL = { kind: 'tail', slowMs: SLOW_MS, decisionWaitMs: 2000 } as const;
+const TAIL = { kind: 'tail', slowMs: SLOW_MS, decisionWaitMs: 2000, windowMs: 1000 } as const;
 
 export const samplingScenarios: Record<SamplingDuelId, SamplingScenario> = {
   incident: {
@@ -645,7 +705,7 @@ export const samplingScenarios: Record<SamplingDuelId, SamplingScenario> = {
     incident: {},
     lanes: [
       { kind: 'head', rate: 0.1 },
-      { ...TAIL, baseline: 0.1 },
+      { ...TAIL, budget: 0.1 },
     ],
     chart: 'errorsKept',
   },
@@ -656,25 +716,30 @@ export const samplingScenarios: Record<SamplingDuelId, SamplingScenario> = {
     incident: { deployAtMs: null },
     lanes: [
       { kind: 'head', rate: 0.1 },
-      { ...TAIL, baseline: 0.1 },
+      { ...TAIL, budget: 0.1 },
     ],
     chart: 'kept',
   },
   budget: {
     id: 'budget',
     label: 'Tight budget',
-    diff: 'Sample rate: 10% to 1%',
+    diff: 'Budget: 10% to 1%',
     incident: {},
     lanes: [
       { kind: 'head', rate: 0.01 },
-      { ...TAIL, baseline: 0.01 },
+      { ...TAIL, budget: 0.01 },
     ],
     chart: 'errorsKept',
   },
 };
 
 /** Totals for one sampler at a moment in the run. Head sampling decides at the start, so it buffers nothing. */
-export function samplingTotals(sampler: SamplerConfig, traces: Trace[], now: number): SamplingTotals {
+export function samplingTotals(
+  sampler: SamplerConfig,
+  traces: Trace[],
+  now: number,
+  decisions: SamplingDecision[] = decideSampling(sampler, traces),
+): SamplingTotals {
   const totals: SamplingTotals = {
     completed: 0,
     pending: 0,
@@ -685,35 +750,37 @@ export function samplingTotals(sampler: SamplerConfig, traces: Trace[], now: num
     slow: 0,
     slowKept: 0,
     baselineKept: 0,
+    missed: 0,
     spansStored: 0,
     buffered: 0,
     peakBuffered: 0,
   };
-  const wait = sampler.kind === 'tail' ? sampler.decisionWaitMs : 0;
-  for (const trace of traces) {
-    if (sampler.kind === 'tail' && trace.start < now && now < trace.end + wait) {
+  traces.forEach((trace, index) => {
+    const decision = decisions[index] ?? { at: trace.start, kept: false };
+    if (sampler.kind === 'tail' && trace.start < now && now < decision.at) {
       totals.buffered += trace.spans.length;
     }
-    if (trace.end > now) continue;
+    if (trace.end > now) return;
     totals.completed += 1;
     const error = trace.status === 503;
     const slow = !error && trace.duration > SLOW_MS;
     if (error) totals.errors += 1;
     if (slow) totals.slow += 1;
-    if (trace.end + wait > now) {
+    if (decision.at > now) {
       totals.pending += 1;
-      continue;
+      return;
     }
-    if (!keeps(sampler, trace)) {
+    if (!decision.kept) {
       totals.dropped += 1;
-      continue;
+      if (error || slow) totals.missed += 1;
+      return;
     }
     totals.kept += 1;
     totals.spansStored += trace.spans.length;
     if (error) totals.errorsKept += 1;
     else if (slow) totals.slowKept += 1;
     else totals.baselineKept += 1;
-  }
+  });
   return totals;
 }
 
@@ -728,6 +795,7 @@ export class SamplingRun {
   readonly events: IncidentEvent[] = [];
   private tickCount = 0;
   private latest: [SamplingTotals, SamplingTotals];
+  private readonly decisions: [SamplingDecision[], SamplingDecision[]];
   private seenError = false;
   private readonly firstKept = [false, false];
 
@@ -736,9 +804,18 @@ export class SamplingRun {
     this.result = simulateIncident({ ...scenario.incident, seed });
     this.length = this.result.ticks.length;
     this.tickSeconds = this.result.config.tickMs / 1000;
-    this.latest = [
-      samplingTotals(scenario.lanes[0], this.result.traces, 0),
-      samplingTotals(scenario.lanes[1], this.result.traces, 0),
+    this.decisions = [
+      decideSampling(scenario.lanes[0], this.result.traces),
+      decideSampling(scenario.lanes[1], this.result.traces),
+    ];
+    this.latest = this.totalsAt(0);
+  }
+
+  private totalsAt(now: number): [SamplingTotals, SamplingTotals] {
+    const lanes = this.scenario.lanes;
+    return [
+      samplingTotals(lanes[0], this.result.traces, now, this.decisions[0]),
+      samplingTotals(lanes[1], this.result.traces, now, this.decisions[1]),
     ];
   }
 
@@ -766,11 +843,7 @@ export class SamplingRun {
     const tick = this.tickCount;
     // The last tick drains the run, so tail sampling decides every trace it still holds.
     const now = tick + 1 >= this.length ? Number.POSITIVE_INFINITY : (tick + 1) * this.result.config.tickMs;
-    const lanes = this.scenario.lanes;
-    this.latest = [
-      samplingTotals(lanes[0], this.result.traces, now),
-      samplingTotals(lanes[1], this.result.traces, now),
-    ];
+    this.latest = this.totalsAt(now);
     const deployAt = this.result.config.deployAtMs;
     if (deployAt !== null && tick === Math.round(deployAt / this.result.config.tickMs)) {
       this.events.push({ tick, text: 'Deploy v42 ships', marker: true });
@@ -784,16 +857,17 @@ export class SamplingRun {
       }
       if (totals.errorsKept > 0 && !this.firstKept[index]) {
         this.firstKept[index] = true;
-        this.events.push({ tick, text: `${this.labels[index]} keeps its first failed trace`, marker: true });
+        const name = this.scenario.lanes[index]?.kind === 'head' ? 'Head' : 'Tail';
+        this.events.push({ tick, text: `${name} sampling keeps its first failed trace`, marker: true });
       }
     });
     this.tickCount += 1;
     if (this.done) {
       const [a, b] = this.totals();
       const note =
-        a.kept === b.kept && a.errorsKept === b.errorsKept
-          ? `A tie: both kept the same ${a.kept} traces. Tail sampling still held up to ${b.peakBuffered} spans in memory while it waited to decide.`
-          : `Head kept ${a.errorsKept} of ${a.errors} failed requests; tail kept ${b.errorsKept} of ${b.errors}.`;
+        a.errors === 0 && a.slow === 0
+          ? `Both spent the budget on ordinary traces: head kept ${a.kept}, tail kept ${b.kept}. Tail sampling still held up to ${b.peakBuffered} spans in memory while it waited to decide.`
+          : `Same budget: head kept ${a.kept} traces, tail kept ${b.kept}. Head kept ${a.errorsKept} of ${a.errors} failed requests; tail kept ${b.errorsKept} of ${b.errors}. ${b.missed} failed or slow requests overflowed the tail budget.`;
       this.events.push({ tick: this.length, text: note, marker: false });
     }
   }

@@ -38,13 +38,20 @@ const summaries = (id: IdemScenarioId, seed = 42) =>
   run(new IdemDuel(idemScenarios[id], seed)).lanes.map(summarizeCheckout);
 
 describe('Checkout playback', () => {
-  it('feeds every policy the same orders', () => {
-    const counts = policies.map((policy) => {
-      const checkout = new Checkout(policy, orders42, slowStart);
-      return play(checkout, 200).map(() => checkout.totals.orders);
-    });
-    for (const other of counts.slice(1)) expect(other).toEqual(counts[0]);
-    expect(counts[0]?.at(-1)).toBe(orders42.length);
+  it('feeds every policy the same orders, tick by tick', () => {
+    for (const id of scenarioIds) {
+      const scenario = idemScenarios[id];
+      const counts = policies.map((policy) => {
+        const checkout = new Checkout(policy, orders42, scenario.conditions);
+        return Array.from({ length: 200 }, () => {
+          stepScheduled(checkout, scenario.schedule);
+          return checkout.totals.orders;
+        });
+      });
+      expect(new Set(counts[0]).size).toBeGreaterThan(30);
+      for (const other of counts.slice(1)) expect(other).toEqual(counts[0]);
+      expect(counts[0]?.at(-1)).toBe(orders42.length);
+    }
   });
 
   it('draws the same workload for the same seed', () => {
