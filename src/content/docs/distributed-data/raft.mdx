@@ -205,18 +205,18 @@ keeps believing it leads, and keeps accepting messages.
   options={[
     'Both win, and the chat history forks',
     'The lower-numbered server wins by rule',
-    'Neither reaches 3 votes, and new random timers pick a winner in the next term',
+    'At most one wins the term, and if the votes split, new random timers pick a winner in a later term',
     'The cluster stops until an operator picks a leader',
   ]}
   answer={2}
 >
 
-**Neither reaches 3 votes, and new random timers pick a winner.** In the Split vote scenario, Node 2 and Node 5 both
-ask for votes in term 2 at 1.14 s. Node 1 votes for Node 2, Node 4 votes for Node 5, and the crashed Node 3 votes for
-nobody, so each candidate holds 2 of 5 and term 2 ends without a leader. Each candidate then draws a fresh random
-timeout. The 180 ms timer of Node 2 runs out first, so it asks again in term 3 at 1.32 s and wins at 1.38 s. The
-randomness that allowed the tie also breaks it. Each server votes once per term, so two winners in one term are
-impossible.
+**At most one wins, and a split vote ends in a retry.** Each candidate votes for itself, and each server votes once
+per term, so two candidates cannot both collect 3 of 5. If both remaining followers vote for the same candidate, it
+wins at once. In the Split vote scenario they split: Node 2 and Node 5 both ask for votes in term 2 at 1.14 s, Node 1
+votes for Node 2, Node 4 votes for Node 5, and the crashed Node 3 votes for nobody. Each candidate holds 2 of 5, and
+term 2 ends without a leader. Each candidate then draws a fresh random timeout. The 180 ms timer of Node 2 runs out
+first, so it asks again in term 3 at 1.32 s and wins at 1.38 s. The randomness that allowed the tie also breaks it.
 
 </Predict>
 

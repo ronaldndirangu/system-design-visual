@@ -118,7 +118,7 @@ export const quiz = [
 
 <Objectives>
 
-- Explain why a lock or two-phase commit across services blocks checkouts, and what a saga does instead.
+- Explain why two-phase commit across services blocks checkouts, and what a saga does instead.
 - Design a compensation for each step, and run them in reverse order when a step fails mid saga.
 - Compare orchestration and choreography by messages sent, where the saga state lives, and how easily you can trace one order.
 - Explain why a saga gives up isolation and why every step must be safe to retry.
@@ -134,10 +134,13 @@ Nothing like that spans three databases.
 
 You have two obvious options, and both hurt:
 
-- **Lock everything.** Take a distributed lock, or run two-phase commit, so all three services commit together. Every
-  service holds its locks until all of them agree. When Shipping stalls for two seconds, the stock rows and payment
-  records stay locked, and every other checkout for the same items waits. Many outside services, such as card networks
-  and courier companies, cannot join a two-phase commit at all.
+- **Commit atomically.** Run a distributed transaction protocol such as two-phase commit: every service votes to
+  prepare, then a coordinator tells all three to commit or all three to abort. Each service holds its locks from its
+  vote until the decision arrives. When Shipping stalls for two seconds, the stock rows and payment records stay
+  locked, and every other checkout for the same items waits. If the coordinator crashes after the votes, the locks stay
+  held until it recovers. Many outside services, such as card networks and courier companies, cannot join a two-phase
+  commit at all. (A distributed lock alone gives no such promise: it stops two callers from running at once, and it
+  cannot undo a charge that Payments already committed.)
 - **Just call them in order.** Reserve, charge, book. That works until a step fails halfway.
 
 <Predict
@@ -277,7 +280,7 @@ it later. The Event-driven design lesson covers that pattern.
 
 | Choice                                | What it buys                                              | What it costs                                                                   |
 | ------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Distributed lock or two-phase commit  | All or nothing, and nobody sees in-between states         | Locks held across services, one stalled service blocks everyone, outside APIs cannot join |
+| Two-phase commit                      | All or nothing across services, and held locks keep other writers off half-done rows | Locks held across services, one stalled service or coordinator blocks everyone, outside APIs cannot join |
 | Saga with compensations               | Each service commits alone, with no cross-service locks   | No isolation, and a compensation to write and test for every step              |
 | Orchestration                         | One place holds the flow and every saga's state           | One more service to run, and it can grow to know too much                       |
 | Choreography                          | Loose coupling, and new listeners need no other changes   | The flow is spread across services, so tracing one order is hard                |

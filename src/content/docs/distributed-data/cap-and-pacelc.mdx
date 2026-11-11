@@ -278,8 +278,9 @@ The widget is a toy, and real systems differ from it in a few important ways:
 - **Merges need more than a union.** The accept lane keeps both versions and merges them with a union, so a removed
   item can come back. Amazon’s Dynamo paper reports exactly this for its shopping cart, and accepts it because a lost
   add costs more than a resurrected item. Better merges record removals: a tombstone marks an item as removed, and an
-  observed-remove set, a kind of CRDT (conflict-free replicated data type), keeps the remove unless the other side added
-  the item again after seeing it.
+  observed-remove set, a kind of CRDT (conflict-free replicated data type), tags every add with a unique ID. A remove
+  deletes only the add tags it has seen, so an add made on the other side during the cut survives the merge. Every
+  replica reaches the same answer, and a deliberate concurrent add wins.
 - **Many systems sit between the lanes.** [Quorums](../quorums/) let you choose how many copies each read and write
   must reach, which slides a store between PA/EL and PC/EC per request. [Read replicas](../../scaling/read-replicas/)
   are PA/EL for reads: they answer locally and lag behind the primary.
@@ -310,7 +311,7 @@ stock), and the order history page.
 <div slot="answer">
 
 - **Shopping cart: PA/EL.** A refused add loses a sale. Accept adds on both sides, store the cart as an observed-remove
-  set so removes stick, and settle any leftovers when the shopper checks out.
+  set so a remove deletes every add it saw, and settle any leftovers when the shopper checks out.
 - **Chat: PA/EL, with causal order.** A message sent during a cut shows up on the other side when the link heals. Use
   causal consistency within a conversation so a reply never appears before its question, and show a “sending” mark
   until the far side confirms.
