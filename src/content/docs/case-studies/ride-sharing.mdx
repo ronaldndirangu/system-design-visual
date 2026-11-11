@@ -1,0 +1,561 @@
+---
+title: Ride sharing
+description: Index fast-changing driver locations with geohash cells, search the rider's cell and its 8 neighbors, and reserve one driver per ride.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import DriverMatchWidget from '../../../components/widgets/DriverMatchWidget';
+import GeohashExplorerWidget from '../../../components/widgets/GeohashExplorerWidget';
+
+export const nodes = [
+  { id: 'driver', kind: 'client', x: 70, y: 60, label: 'Driver app' },
+  { id: 'rider', kind: 'client', x: 70, y: 240, label: 'Rider app' },
+  { id: 'gateway', kind: 'server', x: 300, y: 50, label: 'Location gateway' },
+  { id: 'log', kind: 'queue', x: 300, y: 150, label: 'Location log', sublabel: 'by driver id' },
+  { id: 'matcher', kind: 'server', x: 300, y: 250, label: 'Matcher' },
+  { id: 'history', kind: 'database', x: 530, y: 50, label: 'History store' },
+  { id: 'index', kind: 'database', x: 530, y: 150, label: 'Geo index', sublabel: 'in memory' },
+  { id: 'routing', kind: 'server', x: 530, y: 250, label: 'Routing service' },
+];
+export const edges = [
+  { from: 'driver', to: 'gateway' },
+  { from: 'gateway', to: 'log' },
+  { from: 'log', to: 'history' },
+  { from: 'log', to: 'index' },
+  { from: 'rider', to: 'matcher' },
+  { from: 'matcher', to: 'index' },
+  { from: 'matcher', to: 'routing' },
+  { from: 'matcher', to: 'driver', dashed: true },
+];
+export const steps = [
+  {
+    title: 'A driver app reports its position',
+    text: 'Every 4 s, each online driver app sends one small ping: driver id, latitude, longitude, and the time it was taken. The gateway answers at once and keeps nothing.',
+    nodes: ['driver', 'gateway'],
+    flows: ['driver>gateway'],
+  },
+  {
+    title: 'The gateway appends the ping to a log',
+    text: 'The gateway computes the geohash of the position and appends the ping to a log partitioned by driver id, so every ping from one driver lands on one partition in the order it was sent. A burst of pings waits in the log instead of swamping the index.',
+    nodes: ['gateway', 'log'],
+    flows: ['gateway>log'],
+  },
+  {
+    title: 'The index moves a driver only when the cell changes',
+    text: "A consumer reads the log and updates the in-memory geo index. It always overwrites the driver's last position. It moves the driver id from one cell's set to another only when the geohash changed, about 1 ping in 12.",
+    nodes: ['log', 'index'],
+    flows: ['log>index'],
+  },
+  {
+    title: 'History goes to cheap storage',
+    text: 'A second consumer copies every ping into append-only bulk storage. Fares, receipts, and disputes read it later. The matcher never touches it.',
+    nodes: ['log', 'history'],
+    flows: ['log>history'],
+  },
+  {
+    title: 'A rider asks for a ride',
+    text: 'The rider app sends a pickup point and a vehicle type. The matcher computes the geohash of the pickup point at the same precision as the index.',
+    nodes: ['rider', 'matcher'],
+    flows: ['rider>matcher'],
+  },
+  {
+    title: 'The matcher reads 9 cells',
+    text: "It reads the driver sets of the rider's cell and its 8 neighbors, a few dozen drivers in a busy area, and drops anyone busy or with the wrong vehicle type. If the cells come up empty, it widens one ring at a time.",
+    nodes: ['matcher', 'index'],
+    flows: ['matcher>index'],
+  },
+  {
+    title: 'Road ETA ranks the candidates',
+    text: 'The matcher asks a routing service for the driving time from each candidate to the pickup point. A driver 300 m away across a river can lose to one 600 m away on the same street.',
+    nodes: ['matcher', 'routing'],
+    flows: ['matcher>routing'],
+  },
+  {
+    title: 'Reserve one driver, then offer the ride',
+    text: 'The matcher flips the best driver from free to reserved with a conditional update, so no other ride can claim them, and offers the ride with a timeout. On a decline or a timeout, it frees the driver and tries the next candidate.',
+    nodes: ['matcher', 'driver'],
+    flows: ['matcher>driver'],
+  },
+];
+export const quiz = [
+  {
+    prompt: "A rider stands 20 m from the east edge of their geohash cell. Why does the matcher also search the 8 cells around the rider's own?",
+    options: [
+      {
+        text: "The rider's own cell is usually empty",
+        why: "In a busy area the rider's cell usually holds several drivers. The neighbors matter because a closer one can stand just across the edge.",
+      },
+      {
+        text: 'A driver just across the edge can be closer than anyone inside the cell',
+        correct: true,
+        why: 'Cells are boxes with hard edges. A driver 30 m away in the next cell beats one 400 m away in the same cell, and only the neighbor search sees it.',
+      },
+      {
+        text: "Neighbor cells share the rider's full geohash",
+        why: 'Each neighbor is a different cell with a different hash. Neighbors often share a prefix, and across some boundaries they share none at all.',
+      },
+      {
+        text: 'Searching 9 cells spreads the work across 9 servers',
+        why: 'Nearby cells usually share a prefix and live on the same index node. The neighbors are there so the search never misses a closer driver.',
+      },
+    ],
+  },
+  {
+    prompt: 'A driver sends a ping from inside the same geohash cell as the last one. What does the geo index do?',
+    options: [
+      {
+        text: 'Removes the driver from the cell and adds them back',
+        why: 'That is two set operations that change nothing. The index skips the cell sets when the cell is the same.',
+      },
+      {
+        text: 'Overwrites the stored position and leaves the cell sets alone',
+        correct: true,
+        why: 'Only the last position changes. Moving a driver between cell sets happens on a cell change, about 1 ping in 12 in this lesson.',
+      },
+      {
+        text: 'Ignores the ping entirely',
+        why: 'The stored position must stay fresh: the matcher measures from it, and the rider watches it on the map.',
+      },
+      {
+        text: "Rebuilds the cell's driver set from scratch",
+        why: 'A rebuild costs work for every driver in the cell, on every ping. A ping should cost the same small amount however busy the cell is.',
+      },
+    ],
+  },
+  {
+    prompt: 'Two riders tap Request at the same moment, and both matchers pick the same driver. What prevents a double booking?',
+    options: [
+      {
+        text: 'Each matcher reads the driver status and offers the ride only if it says free',
+        why: 'Both reads can see free before either matcher writes. A separate read and write leaves exactly this race open.',
+      },
+      {
+        text: 'A conditional update that sets the driver to reserved only while they are still free',
+        correct: true,
+        why: 'Only one update can find the driver free. The other changes zero rows and moves on to its next candidate.',
+      },
+      {
+        text: 'The driver app rejects the second offer',
+        why: 'The app may receive both offers at once or lose its connection. The server must settle the reservation before any offer goes out.',
+      },
+      {
+        text: 'Sorting requests by arrival time',
+        why: 'Order alone does not stop two matchers that run in parallel from reading the same free driver. The write itself must check the status.',
+      },
+    ],
+  },
+  {
+    prompt:
+      'Two points about 31 m apart, one just north east of 0°, 0° and one just south west of it, encode to s0000 and 7zzzz. What does this pair teach?',
+    options: [
+      {
+        text: 'Geohash breaks down near the equator',
+        why: 'Both hashes are correct. The points sit on opposite sides of 0°, 0°, and the first bit already splits them.',
+      },
+      {
+        text: 'Close points can share no prefix, so a prefix match alone can miss a nearby driver',
+        correct: true,
+        why: 'A shared prefix means nearby, and the reverse fails at cell boundaries. Searching the neighbor cells covers the gap.',
+      },
+      {
+        text: 'Longer hashes would bring the two points together',
+        why: 'More characters make smaller cells, and the two points still fall on opposite sides of the same boundary.',
+      },
+      {
+        text: 'The two points must sit in different cities',
+        why: 'They are 31 m apart. The very first bit splits the world at the prime meridian, and they sit on either side of it.',
+      },
+    ],
+  },
+];
+
+This case study builds on the **Async and streaming** module, especially Logs and pub/sub and Stream processing, and on
+Queues and backpressure from the **Reliability** module. In [Sharding and consistent hashing](../../scaling/sharding/), a
+key decided which shard held each row. Here the key is a place on the map, and every row moves every few seconds.
+
+<Objectives>
+
+- Explain why scanning every driver for every ride request stops scaling as a city grows.
+- Encode a location as a geohash, and read its precision and shared prefix.
+- Find the nearest driver by searching the rider's cell and its 8 neighbors, widening when the area is sparse.
+- Reserve exactly one driver per ride with a conditional update, an offer timeout, and a fallback.
+
+</Objectives>
+
+## The failure: measure the distance to every driver
+
+The naive design keeps one row per driver: driver id, latitude, longitude, and status. Every 4 s each driver app
+overwrites its row. When a rider asks for a ride, the server reads every free driver, computes the straight-line distance
+to each one, and picks the smallest. In a small town with 20 drivers, that is instant. A city at rush hour has thousands
+of drivers and a new ride request every few milliseconds, and every request pays for every driver.
+
+The widget below runs a toy downtown: 600 drivers on a grid of 10 × 10 geohash cells, about 6 per cell. One lane scans
+every free driver. The other looks only in the rider's cell and the 8 cells around it.
+
+<Predict
+  client:visible
+  question="The first ride request arrives while all 600 drivers are free. How many distances does each lane measure: the scan first, then the cell search?"
+  options={[
+    '600 and 600',
+    '600 and about 54',
+    '600 and 9',
+    '54 and 600',
+  ]}
+  answer={1}
+>
+
+**600 and about 54.** The scan measures every free driver, so its cost equals the driver count. The cell search reads
+9 cells holding about 6 drivers each: 9 × 6 = 54, and in this seeded run the first request measures exactly 54. It would
+measure 9 only if every cell held exactly 1 driver. Both lanes pick the same driver. Over the full run of 15 requests,
+the scan makes 8,940 distance checks and the cell search makes 646, 13.8× fewer. Add drivers in another part of town and
+the scan pays for every one of them, while the cell search never sees them.
+
+</Predict>
+
+<DriverMatchWidget
+  client:visible
+  scenarios={['dense']}
+/>
+
+The Index updates row shows the other side of the story. Of 4,500 location writes in this run, only 314 (7%) moved a
+driver into a new cell. The map draws 120 of the 600 drivers so it stays readable; every count includes all of them.
+
+## The constraint: drivers never stop moving
+
+Most systems in this course read far more than they write. Ride sharing turns that around. Every online driver reports a
+position every few seconds, whether or not anyone wants a ride. With this lesson's illustrative numbers, 200,000 online
+drivers send 50,000 location writes per second, against about 347 ride requests per second at peak: about 144 writes for
+every search. Any index on driver location has to absorb that write stream cheaply, or it costs more to maintain than it
+saves.
+
+The way out is that most pings change almost nothing. A driver at 36 km/h moves 40 m in 4 s, and a precision 6 geohash
+cell is about 610 m tall. So most pings land in the same cell as the last one: the index overwrites the stored position
+and leaves its cell sets alone. Only about 1 ping in 12 crosses into a new cell and moves the driver between sets.
+
+The rest of this lesson walks the [design checklist](../../thinking/design-checklist/).
+
+## Requirements
+
+**Functional**
+
+- Online drivers report their position every few seconds.
+- A rider requests a ride from a pickup point and gets one nearby driver of the right vehicle type.
+- No driver ever holds two rides at once.
+- A driver can decline an offer, and the rider still gets a ride.
+- Each trip keeps its route for the fare and the receipt.
+
+**Non-functional** (illustrative targets)
+
+- A rider sees a matched driver within a few seconds of tapping Request.
+- The index reflects a ping within a few seconds.
+- A lost ping costs nothing, because the next one replaces it 4 s later.
+- 50,000 location writes per second never slow down ride matching.
+
+## Estimates
+
+These numbers are illustrative. Assume 200,000 drivers online at once, each sending a ping every 4 s, and 10 million
+rides a day, with a peak 3 times the average.
+
+| Quantity                        | Illustrative value                                                     |
+| ------------------------------- | ---------------------------------------------------------------------- |
+| Location writes                 | 200,000 ÷ 4 s = 50,000 per second                                      |
+| Geo index memory                | 100 bytes per driver × 200,000 = 20 MB                                 |
+| Ride requests, average          | 10M ÷ 86,400 s, about 116 per second                                   |
+| Ride requests, peak (3×)        | about 347 per second                                                   |
+| Location writes per ride search | 50,000 ÷ 347, about 144                                                |
+| Naive scan at peak              | 200,000 drivers × 347 requests, about 69.4M distance checks per second |
+| Distance per ping               | 36 km/h for 4 s = 40 m                                                 |
+| Pings that change cell          | about 1 in 12 (8.35%), about 4,175 per second                          |
+| Location history                | 50,000 × 40 bytes × 86,400 s, about 173 GB per day                     |
+
+The 1 in 12 treats a precision 6 cell as a square 0.61 km on a side. A 40 m hop in a random direction crosses an edge
+with probability about (4 ÷ π) × (0.04 ÷ 0.61), which is 8.35%.
+
+Two things stand out. First, the naive scan grows with drivers times requests: when a city doubles both, the work grows
+4×. Second, the whole live index fits in 20 MB, small enough to hold in memory on one machine. The hard part is the
+write rate, and only the 4,175 cell changes per second touch the cell sets.
+
+## API
+
+```text
+POST /drivers/{driverId}/location
+     body { lat, lng, heading, sentAt }
+     returns 204 at once, and the app never retries a lost ping
+
+POST /rides
+     body { pickup: { lat, lng }, vehicleType }
+     returns { rideId, status: "matching" }
+
+GET  /rides/{rideId}
+     returns { status, driver, etaSeconds }
+
+POST /rides/{rideId}/offer/accept     from the driver app
+POST /rides/{rideId}/offer/decline    from the driver app
+```
+
+The location call is fire and forget. A lost ping needs no retry, because the next one arrives 4 s later with fresher
+data. The `sentAt` field lets the index drop a ping that shows up after a newer one. `POST /rides` returns before any
+driver is found. The rider app learns the outcome by polling `GET /rides/{rideId}` or over a push channel, which the
+Real-time transport lesson compares.
+
+## Data model
+
+| Table                        | Key                   | Holds                                                                    |
+| ---------------------------- | --------------------- | ------------------------------------------------------------------------ |
+| drivers                      | `driver_id`           | Vehicle type, rating, status (free, reserved, or on trip), and `ride_id` |
+| geo cells (in memory)        | geohash cell          | The set of driver ids whose last ping fell in this cell                  |
+| driver positions (in memory) | `driver_id`           | Last latitude, longitude, cell, and `sentAt`                             |
+| rides                        | `ride_id`             | Rider, pickup point, vehicle type, status, matched driver, timestamps    |
+| location_history             | `(driver_id, sentAt)` | Every ping, append only, on cheap bulk storage                           |
+
+The two in-memory maps work as a pair. A ping looks up the driver's last cell in driver positions. If the new cell is the
+same, the index overwrites the position and stops. If the cell changed, it removes the driver id from the old cell's set
+and adds it to the new one. The index needs no disk at all: if it crashes, the next 4 s of pings rebuild it from
+scratch. Location history lives elsewhere, and nothing reads it while matching.
+
+## High-level design
+
+Two paths share the geo index. The write path carries pings: the gateway accepts them, a log buffers them, and two
+consumers feed the in-memory index and the history store. The read path carries ride requests: the matcher reads a few
+cells, ranks the candidates by road ETA, and reserves one driver. The log between the gateway and the index lets a burst
+of pings wait its turn instead of overwhelming the index, which is the Queues and backpressure idea at work.
+
+<StepDiagram client:visible title="A ping and a ride request" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy title="A dispatcher's wall of pigeonholes">
+
+A taxi dispatcher hangs a city map on the wall, cut into squares, with a pigeonhole for each square. When a driver radios
+in a new position, the dispatcher moves the driver's card only if it crossed into another square, so most calls change
+nothing on the wall. When a customer phones from a street corner, the dispatcher pulls the cards from that square and the
+8 around it, and leaves the rest of the wall alone. If those 9 pigeonholes are empty, the dispatcher looks one ring of
+squares further out.
+
+</Analogy>
+
+## Deep dive: geohash cells and the 8 neighbors
+
+### Geohash: one string per cell
+
+A **geohash** turns a latitude and longitude into a short string, where each extra character names a smaller box. It
+works by halving. Start with the whole world, from 180° west to 180° east. If the point lies in the east half, write a 1
+and keep that half; otherwise write a 0 and keep the west half. Then do the same for latitude, from 90° south to 90°
+north: 1 for the north half, 0 for the south. Keep alternating, longitude first, and every 5 bits become one character
+from the base32 alphabet `0123456789bcdefghjkmnpqrstuvwxyz`, which skips a, i, l, and o so nobody misreads them.
+
+The classic test point, latitude 57.64911 and longitude 10.40744 in Denmark, encodes to `u4pruydqqvj` at 11 characters.
+Its first 5 bits are 1 1 0 1 0: east, north, west half of the east, north half of the north, west again. That is 26 in
+binary, and character 26 of the alphabet is `u`.
+
+Each character adds 5 bits, so it cuts a cell into 32 smaller ones. A cell spans a fixed number of degrees, and a degree
+of longitude shrinks toward the poles, so cells grow narrower away from the equator. All sizes below are approximate.
+
+| Characters | Approximate cell at the equator |
+| ---------- | ------------------------------- |
+| 1          | 5,009 × 5,009 km                |
+| 4          | 39.1 × 19.6 km                  |
+| 5          | 4.89 × 4.89 km                  |
+| 6          | 1.22 × 0.61 km                  |
+| 7          | 153 × 153 m                     |
+
+At 57.6° N, near the test point, a precision 6 cell shrinks to about 0.66 × 0.61 km. This lesson indexes drivers at
+precision 6: a cell holds a few city blocks.
+
+Because every character refines the one before, **a shared prefix means nearby**: two drivers whose hashes both start
+with `u4pruy` stand in the same precision 6 cell. The reverse fails. Two points a few meters apart on either side of a
+cell boundary can share a short prefix, or none at all. A point just north east of 0°, 0° encodes to `s0000`, and a
+point just south west of it encodes to `7zzzz`: about 31 m apart, with no character in common, because the very first
+bit splits the world at the prime meridian. That caveat drives the whole search design below.
+
+Step through the bits one at a time. Each bit halves the box, alternating between longitude and latitude, and every
+fifth bit completes a character. Then switch to the points beside 0°, 0° and watch them split on bit 1.
+
+<GeohashExplorerWidget client:visible />
+
+### Search the cell and its 8 neighbors
+
+The index maps each precision 6 cell to the set of drivers inside it. For a ride request, the matcher computes the
+geohash of the pickup point, then reads that cell and the 8 cells that touch it along an edge or at a corner. Finding a
+neighbor's hash needs no lookup table: decode the cell to its box, step one cell width or height from its center, and
+encode that point at the same precision. Searching the rider's own cell alone would be cheaper, and it gives the wrong
+answer whenever the closest driver stands just across an edge.
+
+The next widget's Rider near a cell edge scenario cuts the drivers to 150 and places every rider within 40 m of an edge
+of their cell.
+
+<Predict
+  client:visible
+  question="Every rider stands within 40 m of an edge of their cell. Over 15 requests, how often is the nearest free driver in a different cell from the rider?"
+  options={[
+    'Almost never',
+    'About a quarter of the time',
+    'Most of the time',
+    'Every time',
+  ]}
+  answer={2}
+>
+
+**Most of the time.** In this seeded run, the nearest free driver stands outside the rider's cell for 13 of 15
+requests. With 150 drivers across 100 cells, the nearest one is usually a few hundred meters away. A circle that wide
+around a rider 40 m from an edge spills across that edge, and often across a second one, so much of it lies outside the
+rider's cell. Even in the dense downtown, with riders placed anywhere, a search of the rider's cell alone would miss the
+nearest driver for 4 of 15 requests. Searching the 8 neighbors catches every one of these.
+
+</Predict>
+
+Nine cells are not always enough. If the best driver in the 9 cells stands farther away than the nearest edge of the
+searched square, a closer driver could wait one ring further out. The toy model checks this: it widens the search by one
+ring (the next 16 cells, then 24) whenever the cells so far hold no free driver or the best one is too far away to be
+sure. In the dense and edge scenarios it never widens. In Sparse suburbs it widens for 10 of 15 requests, out to 3 rings
+(49 cells) at most.
+
+Real systems handle sparse areas in one of two ways. They widen ring by ring, as the toy does, or they drop one
+character of precision and search 9 bigger cells, each 32 times the area. Dropping a character is simpler, and in a
+dense area it can pull in thousands of drivers, so systems pick the precision per area or stop widening as soon as they
+hold enough candidates.
+
+### Try it
+
+The widget opens on Rider near a cell edge, the case you just predicted. Both lanes pick the same driver every time;
+watch where the matched driver stands relative to the thick outline of the rider's cell. Then pick Sparse suburbs and
+watch the hatched area grow when the first 9 cells come up empty.
+
+<DriverMatchWidget
+  client:visible
+  scenarios={['edge', 'sparse']}
+  initial="edge"
+  title="Edges and empty suburbs"
+/>
+
+What to look for:
+
+- **Matches across the edge.** In Rider near a cell edge, the matched driver usually stands outside the thick outline.
+  Over the run, the cell search makes 209 distance checks to the scan's 2,190 and never widens.
+- **Writes versus index updates.** Both lanes receive the same pings. The Index updates row counts only the pings that
+  moved a driver into a new cell, a small share of the Location writes row.
+- **Widening.** In Sparse suburbs, 20 drivers cover 100 cells. The cell search widens on 10 of 15 requests, up to 49
+  cells, and still makes 33 distance checks to the scan's 240.
+- **Match distance.** Sparse matches average 993 m, against 241 m near cell edges. Fewer drivers means longer pickups,
+  whichever lane searches.
+
+### Matching takes more than the nearest dot
+
+Nearest by straight line is a toy. A driver 300 m away on the far side of a river or a one-way street can need ten
+minutes to arrive. Real matchers take the candidates from the cells, filter them by vehicle type, rating, and status,
+ask a **routing service** for the road ETA from each one to the pickup point, and rank by ETA. Some also collect the
+requests that arrive within a second or two and assign them together, which can cut the total pickup time when riders
+cluster.
+
+### Reserve one driver, then offer the ride
+
+Two riders a block apart can tap Request at the same moment, and both matchers can pick the same driver. Reading the
+status and then writing reserved leaves a gap where both reads see free. The fix is one atomic step, a conditional
+update (compare and set):
+
+```sql
+UPDATE drivers
+SET status = 'reserved', ride_id = :ride
+WHERE driver_id = :driver AND status = 'free';
+```
+
+Exactly one update finds the driver free and changes a row. The other changes zero rows and moves to its next
+candidate. The Transactions and constraints lesson covers this pattern. A lock on the driver also works, and it makes
+every other matcher wait while held. A **lease**, a reservation that expires on its own, frees the driver even if the
+matcher that took it crashes.
+
+Next, the matcher offers the ride to the driver app and starts a timer, 15 s in this illustration. If the driver
+accepts, their status changes from reserved to on trip. If the driver declines or the timer fires, the matcher sets the
+driver back to free and offers the ride to the next candidate on its list. The Timeouts and cancellation lesson covers
+why every wait needs a deadline. The rider sees one status, matching, the whole time.
+
+### Feeding the index
+
+The location stream runs through a log, the structure the Logs and pub/sub lesson builds, and the index consumer is a
+small stream processor. Partition the log by driver id, so one consumer reads every ping from a driver in order and
+holds that driver's last cell. Shard the geo index itself by cell prefix, for example the first 4 characters, so one
+index node holds every cell in an area and answers most 9-cell searches by itself. This is
+[sharding](../../scaling/sharding/) with a geographic key, and it brings three problems. Downtown at rush hour becomes a
+**hot shard**, so busy areas split further on a longer prefix. A search near a shard boundary reads cells from two
+nodes. A driver who crosses a boundary moves from one node to another, so the consumer sends a removal to the old node
+and an addition to the new one. Keying the log by cell would break this step: the new area's partition never learns
+which node still lists the driver.
+
+Pings also arrive late or twice: mobile networks deliver them out of order, and a consumer that restarts reads some
+again, the at-least-once delivery that Delivery semantics and the outbox describes. Every addition and removal carries
+the ping's `sentAt`, and each index node remembers the newest `sentAt` it has seen per driver, removals included. A node
+drops anything older, so a stale ping never drags a driver back to where they were. As a backstop, a cell entry expires
+about 30 s after its last ping (illustrative), so a driver whose removal got lost, or whose app went offline, leaves the
+search on its own. When the consumers fall behind during a burst, Queues and backpressure lists the options. Here one
+answer stands out: skip to the newest ping for each driver, since an old position has no value for matching.
+
+A second consumer writes every ping to the location history, about 173 GB a day in this estimate, on cheap bulk
+storage. Fares, receipts, and disputes read a trip's route from it later.
+
+## Trade-offs
+
+Geohash is one of several ways to bucket a map. Its strength is simplicity: a cell is a string, any key-value store can
+index it, and a shared prefix names a whole area, which makes partitioning easy. Its cells are rectangles that change
+shape with latitude, and finding neighbors takes a little arithmetic. **H3**, the hexagonal grid Uber published, gives
+every cell 6 neighbors at the same distance from its center, so rings and distances come out more even. A **quadtree**
+splits only crowded areas, so cells adapt to density, at the cost of a tree to rebalance as drivers move. A database
+spatial index, covered in the Indexes lesson, answers radius queries directly and pays for it on every write.
+
+<TradeoffTable title="Ways to find nearby drivers">
+
+| Design                                   | What it buys                                                                     | What it costs                                                                          |
+| ---------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Scan every driver                        | No index to maintain and trivial code                                            | Work per request grows with every online driver in the city                            |
+| Database spatial index                   | Radius queries in SQL, next to the driver rows                                   | Every location write updates a disk index, 50,000 times a second                       |
+| Geohash cell + 8 neighbors (this lesson) | Cells are plain strings, prefixes give partitions, most pings skip the cell sets | Rectangles that vary with latitude, and one cell size for dense and sparse areas alike |
+| Hexagonal grid (H3)                      | Every neighbor sits the same distance away, smooth rings                         | A library to encode and walk cells, and child cells only roughly fill a parent         |
+| Quadtree                                 | Small cells where drivers crowd, large cells where they are sparse               | A tree to split and merge as drivers move, and harder to partition                     |
+
+</TradeoffTable>
+
+## Honest simplifications
+
+This lesson's model is a toy. Here is what it leaves out:
+
+- **Straight-line distance.** The toy matches the nearest driver as the crow flies. Real systems rank candidates by road
+  ETA from a routing service.
+- **A flat toy city.** 100 cells of about 0.66 × 0.61 km, with drivers moving in straight lines at 36 km/h and no roads.
+- **Bouncing drivers.** Drivers bounce off the city limits instead of driving out, so slightly fewer pings cross a cell
+  edge: 7% in the dense run, against the 8.35% estimate.
+- **Short runs.** 15 requests over 30 s, with trips that last 12 s so drivers come back free within the run.
+- **No declines, surge pricing, or batching.** Every driver accepts at once, prices never change, and requests match one
+  at a time.
+- **One index node.** The whole city fits in one in-memory index. The toy has no log, no partitions, and no lost or late
+  pings.
+- **Rectangles.** At the equator a precision 6 cell is twice as wide as it is tall. The toy city sits at 57.6° N, where
+  cells come out close to square.
+
+## Check yourself
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+A concert ends, and 2,000 drivers converge on the 4 precision 6 cells around the stadium, a 2 × 2 block with about 500
+drivers per cell. A rider in one of those cells requests a ride. Using this lesson's illustrative numbers, how many
+drivers does a 9-cell search check? How would you bring that down? Assume drivers spread evenly within each cell.
+
+<div slot="answer">
+
+- Every one of the 4 hot cells touches the rider's cell, so the 9-cell search reads all of them and checks about
+  **2,000 drivers**, as many as a scan of a small city.
+- Go one character finer in hot areas. Each precision 6 cell splits into **32** precision 7 cells (8 columns by 4 rows),
+  about **153 × 153 m** at the equator. 500 ÷ 32 is about **16 drivers per cell**, so a 9-cell search checks about
+  **140**.
+- Cap the candidates. Stop at the first ring that yields, say, **20** free drivers of the right type, and send only those
+  to the routing service for an ETA.
+- Expect a burst of requests too. Everyone leaves at once, so put a queue in front of the matcher and assign nearby
+  requests in batches.
+
+</div>
+
+</Challenge>

@@ -1,0 +1,318 @@
+---
+title: CDNs
+description: Move bytes closer to people so distance stops dominating latency. Learn edge caching, TTLs and purges, hit ratio, origin shields, and push versus pull CDNs.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import ArcDiagram from '../../../components/viz/ArcDiagram';
+import CdnWidget from '../../../components/widgets/CdnWidget';
+
+export const nodes = [
+  { id: 'person', kind: 'client', x: 80, y: 140, label: 'Person', sublabel: 'in Sydney' },
+  { id: 'edge', kind: 'cdn', x: 280, y: 140, label: 'CDN edge', sublabel: 'Sydney, 50 km away' },
+  { id: 'shield', kind: 'cdn', x: 480, y: 60, label: 'Origin shield', sublabel: 'optional, near origin' },
+  { id: 'origin', kind: 'server', x: 480, y: 220, label: 'Origin', sublabel: 'Virginia, 15,700 km' },
+];
+export const edges = [
+  { from: 'person', to: 'edge' },
+  { from: 'edge', to: 'origin' },
+  { from: 'edge', to: 'shield', dashed: true },
+  { from: 'shield', to: 'origin', dashed: true },
+];
+export const steps = [
+  {
+    title: 'Connect to the edge nearby',
+    text: 'DNS sends the person to the CDN edge in their own city. TCP and TLS finish over 50 km, so the three round trips of a fresh click take 1.5 ms instead of 471 ms.',
+    nodes: ['person', 'edge'],
+    flows: ['person>edge', 'edge>person'],
+  },
+  {
+    title: 'Hit: answer at the edge',
+    text: 'The edge holds a fresh copy of the redirect for sho.rt/abc123 and answers at once. The click takes about 3.5 ms, and the origin never hears about it.',
+    nodes: ['person', 'edge'],
+    flows: ['edge>person'],
+  },
+  {
+    title: 'Miss: one trip to the origin',
+    text: 'The edge has no copy. It forwards the request over a connection it already keeps open to Virginia, so the click crosses the ocean once instead of three times: about 161 ms.',
+    nodes: ['edge', 'origin'],
+    flows: ['edge>origin', 'origin>edge'],
+  },
+  {
+    title: 'Fill the edge with a TTL',
+    text: 'The origin marks its answer cacheable for 60 seconds. The edge stores the copy, and every Sydney click on abc123 in the next minute is a hit.',
+    nodes: ['edge', 'origin'],
+    flows: ['origin>edge'],
+  },
+  {
+    title: 'Shield: one cache for all edges',
+    text: 'With an origin shield, an edge miss asks one shared cache beside the origin first. When another edge already fetched abc123, the shield answers and the origin does no work.',
+    nodes: ['edge', 'shield', 'origin'],
+    flows: ['edge>shield', 'shield>edge'],
+  },
+  {
+    title: 'Purge: delete every copy',
+    text: 'abc123 turns out to point at a scam. The team deletes it at the origin and sends a purge, which removes the cached copy from every edge and the shield.',
+    nodes: ['edge', 'shield', 'origin'],
+    flows: ['origin>shield', 'origin>edge'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'The redirect handler takes 2 ms, yet fresh clicks from Sydney take almost half a second. Which change helps those clicks most?',
+    options: [
+      { text: 'A server with twice the CPU', why: 'The code accounts for 2 ms of 473. Twice the CPU saves about 1 ms.' },
+      { text: 'Answer from a CDN edge in Sydney', correct: true, why: 'TCP, TLS, and the request all cross 50 km instead of 15,700 km. An edge hit takes about 3.5 ms, and even a miss pays the long distance only once.' },
+      { text: 'More servers behind the load balancer', why: 'More servers add capacity. Every click still crosses the ocean three times.' },
+      { text: 'A bigger cache beside the database', why: 'That cache saves a few milliseconds inside Virginia. The three ocean round trips stay.' },
+    ],
+  },
+  {
+    prompt: 'You turn on a CDN that caches redirects, and the next day the dashboard shows about a third of the usual clicks. What happened?',
+    options: [
+      { text: 'People stopped clicking', why: 'Traffic did not change. The counter lost sight of most clicks.' },
+      { text: 'Edges answer most clicks, and the origin counter never sees them', correct: true, why: 'Only edge misses reach the origin. In the simulation the counter saw 35% of clicks. Ship edge logs to the counter, or keep redirects out of the edge cache.' },
+      { text: 'The CDN drops repeat clicks', why: 'The CDN answers repeat clicks itself and drops none. They simply never reach your server.' },
+      { text: 'The TTL is too short', why: 'A shorter TTL sends more clicks to the origin, which would raise the count. The missing clicks are edge hits.' },
+    ],
+  },
+  {
+    prompt: 'Edges in five cities each fetch the same viral link from the origin. What does adding an origin shield change?',
+    options: [
+      { text: 'Each edge misses less often', why: 'Each edge still misses the first time it sees a link. The shield answers those misses so the origin does not have to.' },
+      { text: 'The origin sees about one fetch per link per TTL, instead of one per edge', correct: true, why: 'Edge misses ask one shared cache first. In the simulation, requests reaching the origin fell from 1,402 to 683.' },
+      { text: 'Clicks from far cities get much faster', why: 'The shield sits next to the origin, so a Sydney miss still crosses the ocean once. The shield saves origin work and leaves the distance unchanged.' },
+      { text: 'Purges are no longer needed', why: 'The shield holds copies too. A purge must clear the shield along with every edge.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Estimate how distance sets latency: light in fiber covers about 200 km per millisecond one way, and a fresh click pays
+  several round trips.
+- Explain how a pull CDN answers at the edge, fills on a miss, and drops copies by TTL or purge, and when a push CDN fits
+  better.
+- Read edge hit ratio and origin load, and say what an origin shield changes.
+- Spot the counting gap: clicks answered at the edge never reach the origin's click counter unless the edges log them.
+
+</Objectives>
+
+## The failure: distance sets the floor
+
+The shortener now serves 3 million users on five continents. The servers in Virginia answer a redirect in 2 ms, and the
+cache keeps the database calm. Yet people in Sydney say every new link they open feels sluggish.
+
+The server is fast. The light is slow. Light in fiber covers about **200 km per millisecond**, one way (about two
+thirds of its speed in a vacuum). Sydney sits about 15,700 km from Virginia in a straight line, so one round trip takes
+at least 157 ms. As [What happens when you click a link](../../foundations/what-happens-when-you-click/) showed, a
+fresh HTTPS click needs three round trips before the redirect arrives: the TCP handshake, the TLS 1.3 handshake, and the
+request itself. (DNS usually answers from a resolver nearby, so this lesson leaves it out.)
+
+<Predict
+  client:visible
+  question="A person in Sydney opens a sho.rt link on a fresh connection. One round trip to Virginia takes 157 ms, the click needs three of them, and the server works for 2 ms. About how long does the click take?"
+  options={['About 80 ms', 'About 160 ms', 'About 470 ms', 'About 2 seconds']}
+  answer={2}
+>
+
+About **473 ms**: three round trips of 157 ms, plus 2 ms of work. The code is under half a percent of the wait. A faster
+server, more servers, or a bigger cache cannot shrink the rest. Only a shorter distance can.
+
+</Predict>
+
+## The idea: answer from an edge nearby
+
+A **content delivery network (CDN)** runs cache servers, called **edges**, in many cities. DNS or network routing sends
+each person to an edge near them. The edge finishes TCP and TLS over a short distance and answers from its cache when it
+can. On a miss, it forwards the request to your own server, called the **origin**, over a connection it keeps open.
+
+Edges cache any response the origin marks as cacheable. For the shortener that means two kinds of bytes:
+
+- **Static assets**: the images, scripts, and styles of the shortener's website. They are large and identical for
+  everyone.
+- **Redirects**: the small `302 Found` answer for each short link. They are tiny, but there are millions of clicks.
+
+<ArcDiagram stage="cdn" caption="A CDN edge near each person answers first. Only edge misses reach the load balancer." />
+
+<StepDiagram client:visible title="A click through a CDN, step by step" nodes={nodes} edges={edges} steps={steps} height={290} />
+
+<Analogy>
+
+A bakery chain bakes everything in one central kitchen. Instead of making every customer travel there, it stocks a
+small shop in each neighborhood with the bestsellers. A customer who asks for a rare loaf waits while the shop orders it
+from the kitchen, and then the shop keeps a few on the shelf. Bread goes stale after a day (TTL), and a recalled batch
+comes off every shelf at once (purge).
+
+</Analogy>
+
+## Try it
+
+Both panes get the same 4,000 clicks over 20 seconds from five cities. The left pane sends every click to the origin.
+The right pane puts an edge beside each city. Pick a scenario, read the change it makes, and press Play.
+
+<Predict
+  client:visible
+  question="In the Short TTL scenario, edges keep each redirect for 1 second instead of 60 (60 times shorter). What happens to the requests that reach the origin?"
+  options={['They barely change', 'They roughly double', 'They grow about 60 times', 'They fall']}
+  answer={1}
+>
+
+They roughly **double**, from 1,402 to 2,761. In a 20 second run a 60 second copy never expires, so every origin request
+is the first click on some link in some city. With a 1 second TTL, rarely clicked links behave the same way, and a
+popular link gets refetched at most once a second per city. Each copy still answers every click that lands within its
+second, so the edges keep answering 31% of clicks.
+
+</Predict>
+
+<CdnWidget client:visible />
+
+What to look for:
+
+- **Worldwide clicks**: the average click falls from 202 ms to 28 ms, and the 95th percentile from 473 ms to about
+  161 ms. The slowest CDN clicks are edge misses from far cities, which still cross the ocean once.
+- **Edge hit ratio**: edges answer 65% of clicks, so only 1,402 of 4,000 requests reach the origin. The event log marks
+  3.2 s, the first moment edges answer over half of the last second's clicks.
+- **Purge at 10 s**: every edge goes cold at once, origin requests jump, and 1,774 reach the origin by the end.
+- **Origin shield**: requests reaching the origin fall to 683, while latency barely moves.
+- **Brand new links**: every edge misses, so all 4,000 requests reach the origin in both panes. The CDN pane is still
+  faster, because TCP and TLS end at the nearby edge.
+- **Clicks counted**: with no edge logs, the origin's counter sees only 35% of clicks. Turn on edge logs, and the count
+  catches up every 5 seconds.
+
+## TTL and invalidation
+
+An edge keeps a copy for as long as the origin allows. Two tools decide how stale a copy can get.
+
+**TTL.** The origin sets it with a `Cache-Control` header. For a redirect you usually want browsers to ask every time,
+so you can update or delete the link, while edges reuse the answer for a short while:
+
+```http
+HTTP/1.1 302 Found
+Location: https://example.com/a/very/long/article-url
+Cache-Control: max-age=0, s-maxage=60
+```
+
+`max-age=0` tells the browser its copy is stale at once. `s-maxage=60` applies only to shared caches such as CDN edges
+and lets them reuse the answer for 60 seconds.
+
+**Versioned file names.** Static assets get a name that changes with their content, such as `app.3f9c2b.js`, and a TTL
+of a year. A release ships new names, so edges fetch the new files on their first miss and nothing needs deleting.
+
+**Purge.** When a link must disappear now, such as a scam, delete it at the origin and call the CDN's purge API for its
+path. Most CDNs clear every edge within seconds. A purge has a cost: the purged edges go cold, and the origin absorbs the
+refill, as the Purge at 10 s scenario shows. Purge only the paths that changed, and save a full purge for emergencies.
+
+## Hit ratio: every edge warms up alone
+
+The **edge hit ratio** is the share of clicks an edge answers from its own cache, without asking anything upstream. It
+behaves like the [cache](../caching/) hit ratio, with one twist: each city's edge learns the popular links on its own. A
+link clicked a hundred times in Tokyo is still a miss the first time someone in London clicks it.
+
+More edge locations put an edge closer to more people, but each edge then sees less traffic and warms up more slowly.
+Links in the long tail may expire before anyone in that city clicks them again.
+
+## Origin shield: one cache in front of the origin
+
+An **origin shield** is one extra cache tier that all edges share. Edge misses ask the shield first, and only shield
+misses reach the origin. When five edges miss on the same viral link, the origin answers once instead of five times.
+
+In the simulation the shield sits beside the origin, so it cuts origin requests from 1,402 to 683 and saves almost no
+time: a Sydney miss still crosses the ocean once. A shield protects the origin. Edges near people cut latency.
+
+A shield hit still counts as an edge miss, because the edge had to ask upstream. With the shield on, the edge hit ratio
+stays at 65%, while the origin answers only 683 of the 4,000 clicks.
+
+Edges and shields shrink the traffic that reaches the origin, yet every miss still lands on one database. The
+[read replicas](../read-replicas/) lesson adds copies of the database itself.
+
+## Push and pull CDNs
+
+The simulation models a **pull CDN**: edges fetch from the origin on their first miss, keep the copy for its TTL, and
+fetch again after it expires. Nothing gets uploaded ahead of time, so new content works the moment it exists. The price
+is a slow first request in each city, plus copies that can trail the origin until their TTL ends or a purge clears them.
+
+A **push CDN** works the other way around. You upload files to the CDN's storage as part of each release, and the CDN
+serves them from there, so content appears the moment you publish it. That suits large files that change rarely and that
+you know about in advance, such as video, app installers, or a site's build output. The price is an explicit publish
+step, storage fees for every file you push whether anyone downloads it or not, and cleanup you must remember to do.
+Removal still runs through caches: deleting a pushed file leaves copies at edges and in browsers until their TTL ends or
+a purge clears them.
+
+For the shortener, redirects suit pull: nobody knows which of millions of links people will click next. The website's
+assets work either way, and with versioned file names, pull needs no extra deploy step.
+
+## Who counts the clicks?
+
+The shortener counts clicks at the origin, on every redirect it serves. Once edges answer redirects, most clicks never
+arrive. In the Worldwide clicks run, the origin's counter sees only the 35% of clicks that missed the edges.
+
+You have two honest fixes:
+
+- **Count from edge logs.** CDNs can write a log line for every request they handle and ship the logs to you. Count each
+  click in one place: edge hits from the logs and misses at the origin, or everything from the logs and nothing at the
+  origin. Mixing the two counts every miss twice. The simulation ships complete logs every 5 seconds, so the counter
+  catches up after each batch. Real log delivery runs minutes behind and is best effort, so expect small gaps.
+- **Keep counted redirects out of the edge cache.** Send `Cache-Control: no-store`, and edges pass every click through
+  to the origin. Those clicks still connect to the nearby edge, so they skip two long round trips, as the Brand new links
+  scenario shows.
+
+This is a toy model. Distances are straight lines, shares are illustrative, and it leaves out DNS, the last mile, queues,
+and packet loss. Real fiber detours around coasts and through undersea cables, so real round trips run longer than these
+numbers. The ratios still hold: three long round trips for a fresh click from far away, one for an edge miss, and none
+for an edge hit.
+
+## Trade-offs
+
+<TradeoffTable title="Choosing what the edge does">
+
+| Choice                       | What it buys                                            | What it costs                                                       |
+| ---------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------- |
+| Cache redirects at the edge  | Fast clicks everywhere and far less origin load         | The origin counter misses edge hits unless edges ship logs          |
+| Cache only static assets     | Every click reaches the origin to count and update      | Distant people still pay one long round trip on every redirect      |
+| Long TTL                     | Higher edge hit ratio, less origin load                 | Deletes and changes need a purge to show quickly                    |
+| Short TTL                    | Edges pick up changes on their own                      | More misses: a 1 s TTL roughly doubled origin requests in the run   |
+| Versioned asset file names   | One-year TTLs, with instant updates on each release     | A build step that renames files and rewrites references to them     |
+| Origin shield                | About one origin fetch per link per TTL                 | An extra hop on shield misses, and one more tier to run and watch   |
+| Pull CDN                     | No upload step: edges fetch on their first miss         | A slow first request per city, and copies stale until TTL or purge  |
+| Push CDN                     | Files wait at the CDN before anyone asks                | A publish step, storage for every file, and cleanup you must own    |
+| More edge locations          | Shorter distance for more people                        | Each edge sees less traffic, so it warms up slower and hits less    |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+The shortener's website ships a new 2 MB bundle of scripts, styles, and images every week. Some link owners pay for live
+click counts. For each item below, say whether the edge should cache it, with what TTL, and how you would remove a bad
+copy.
+
+1. The website's scripts and styles.
+2. The redirect for an ordinary link.
+3. The redirect for a link whose owner pays for live click counts.
+4. A link reported as a scam.
+
+<div slot="answer">
+
+1. **Cache for a year with versioned file names.** Each release ships new names, so nothing needs a purge. Give the HTML
+   page that lists the names a short TTL. Pull works with no extra step, and push fits if your deploy already uploads
+   the build output.
+2. **Cache at the edge** with an `s-maxage` of minutes or more, since links rarely change. Count its clicks from edge
+   logs and accept that the counts trail by the shipping interval.
+3. **Pass it through with `no-store`**, so every click reaches the origin counter at once. The click still connects to
+   the nearby edge, so it crosses the ocean once instead of three times. If a delay of seconds is acceptable, edge logs
+   work too.
+4. **Delete it at the origin, then purge its path** from every edge and the shield. Without the purge, edges keep
+   sending people to the scam until the TTL runs out.
+
+</div>
+
+</Challenge>

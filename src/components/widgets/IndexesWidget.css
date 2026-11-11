@@ -1,0 +1,235 @@
+.sdv-ix__statement {
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.4rem;
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  overflow-wrap: anywhere;
+  padding: 0.25rem 0.45rem;
+  justify-self: start;
+}
+
+.sdv-ix__label,
+.sdv-ix__muted {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+
+.sdv-ix__facts {
+  display: grid;
+  gap: 0.35rem 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+.sdv-ix__facts > div {
+  min-width: 0;
+}
+.sdv-ix__facts dt {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-ix__facts dd {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.sdv-ix__facts strong {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+}
+
+.sdv-ix__scan,
+.sdv-ix__index,
+.sdv-ix__queue-wrap {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.sdv-ix__tiles {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  min-width: 0;
+}
+.sdv-ix__tile {
+  align-items: center;
+  border: 1px solid var(--sdv-series-a);
+  border-radius: 2px;
+  display: flex;
+  height: 0.95rem;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+.sdv-ix__tile-fill {
+  background: var(--sdv-series-a);
+  inset: 0;
+  position: absolute;
+  transform-origin: left center;
+  transition: transform 0.1s linear;
+}
+.sdv-ix__tile[data-match] {
+  background: var(--sl-color-bg);
+  border: 2px solid var(--sl-color-white);
+  color: var(--sl-color-white);
+}
+.sdv-ix__tile[data-match] .sdv-ix__tile-fill {
+  opacity: 0;
+}
+/* The stage rule stretches every svg to full width; keep tile and key icons at icon size. */
+.sdv-ix__tiles .sdv-ix__tile svg,
+.sdv-ix__legend .sdv-ix__key svg {
+  display: block;
+  flex: none;
+  height: 0.75rem;
+  position: relative;
+  width: 0.75rem;
+}
+
+.sdv-ix__index .sdv-ix__tree {
+  max-width: 17rem;
+}
+.sdv-ix__tree-label {
+  fill: var(--sl-color-gray-2);
+  font-size: 11px;
+}
+.sdv-ix__page {
+  fill: var(--sdv-surface);
+  stroke: var(--sdv-border);
+  stroke-width: 1;
+}
+.sdv-ix__page[data-table] {
+  fill: color-mix(in oklab, var(--sdv-db) 10%, var(--sl-color-bg));
+}
+.sdv-ix__page[data-path] {
+  fill: color-mix(in oklab, var(--sdv-series-b) 22%, var(--sl-color-bg));
+  stroke: var(--sdv-series-b);
+  stroke-width: 2.5;
+}
+.sdv-ix__page-step {
+  fill: var(--sl-color-white);
+  font-size: 12px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+.sdv-ix__edge {
+  stroke: var(--sdv-border);
+  stroke-width: 1;
+}
+.sdv-ix__edge[data-path] {
+  stroke: var(--sdv-series-b);
+  stroke-dasharray: 4 3;
+  stroke-width: 2.5;
+}
+
+.sdv-ix__queue {
+  align-items: center;
+  color: var(--sl-color-gray-2);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  gap: 0.25rem;
+  margin: 0;
+  min-height: 0.8rem;
+}
+.sdv-ix__dot {
+  background: var(--sl-color-text-accent);
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+  height: 0.55rem;
+  width: 0.55rem;
+}
+
+.sdv-ix__legend {
+  color: var(--sl-color-gray-2);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  gap: 0.35rem 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-ix__legend li {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.4rem;
+  margin: 0;
+}
+.sdv-ix__key {
+  align-items: center;
+  border: 1.5px solid var(--sdv-series-a);
+  border-radius: 3px;
+  display: inline-flex;
+  flex: none;
+  height: 14px;
+  justify-content: center;
+  width: 26px;
+}
+.sdv-ix__key[data-state="read"] {
+  background: var(--sdv-series-a);
+}
+.sdv-ix__key[data-state="match"] {
+  background: var(--sl-color-bg);
+  border: 2px solid var(--sl-color-white);
+  color: var(--sl-color-white);
+}
+.sdv-ix__key[data-state="path"] {
+  background: color-mix(in oklab, var(--sdv-series-b) 22%, var(--sl-color-bg));
+  border: 2.5px solid var(--sdv-series-b);
+}
+
+.sdv-ix__writes {
+  display: grid;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-ix__row {
+  align-items: start;
+  background: color-mix(in oklab, var(--sdv-db) 8%, var(--sl-color-bg));
+  border: 1px solid color-mix(in oklab, var(--sdv-db) 45%, var(--sdv-border));
+  border-radius: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.45rem 0.55rem;
+}
+.sdv-ix__row[data-state="redundant"] {
+  border-color: var(--sdv-warn);
+  border-style: dashed;
+}
+.sdv-ix__row > .sdv-ix__icon {
+  flex: none;
+  height: 22px;
+  margin-top: 0.1rem;
+  width: 22px;
+}
+.sdv-ix__row-body {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.sdv-ix__value {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.sdv-ix__toggles {
+  display: grid;
+  gap: 0.4rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sdv-ix__tile-fill {
+    transition: none;
+  }
+}

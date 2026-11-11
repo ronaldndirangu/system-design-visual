@@ -1,0 +1,198 @@
+.sdv-slo__panel {
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.6rem;
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.6rem 0.65rem 0.7rem;
+}
+.sdv-slo__heading {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-base);
+  margin: 0;
+}
+.sdv-slo__empty,
+.sdv-slo__note {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+
+.sdv-slo__breakdown {
+  border-collapse: collapse;
+  display: table;
+  font-size: var(--sl-text-sm);
+  margin: 0;
+  width: 100%;
+}
+.sdv-slo__breakdown caption {
+  caption-side: bottom;
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  padding-top: 0.45rem;
+  text-align: start;
+}
+.sdv-slo__breakdown th,
+.sdv-slo__breakdown td {
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--sdv-border);
+  padding: 0.45rem 0.6rem 0.45rem 0;
+  text-align: start;
+  vertical-align: middle;
+}
+.sdv-slo__breakdown thead th {
+  border-top: 0;
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+}
+.sdv-slo__breakdown tbody th {
+  color: var(--sl-color-white);
+  font-weight: 600;
+  width: 34%;
+}
+.sdv-slo__total td {
+  color: var(--sl-color-white);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.sdv-slo__stage--network {
+  --node: var(--sdv-client);
+}
+.sdv-slo__stage--app {
+  --node: var(--sdv-server);
+}
+.sdv-slo__stage--cache {
+  --node: var(--sdv-cache);
+}
+.sdv-slo__stage--database {
+  --node: var(--sdv-db);
+}
+.sdv-slo__stage-name {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.45rem;
+}
+.sdv-sim__stage .sdv-slo__icon {
+  display: inline-block;
+  flex: none;
+  height: 1.15rem;
+  overflow: visible;
+  width: 1.15rem;
+}
+.sdv-slo__cell {
+  display: grid;
+  gap: 0.25rem;
+}
+.sdv-slo__track {
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 999px;
+  display: block;
+  height: 0.6rem;
+  overflow: hidden;
+}
+.sdv-slo__fill {
+  background: var(--node);
+  display: block;
+  height: 100%;
+}
+.sdv-slo__value {
+  color: var(--sl-color-white);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.sdv-slo__hist {
+  width: 100%;
+}
+.sdv-slo__bin {
+  fill: var(--sdv-series-a);
+}
+.sdv-slo__hist svg[data-variant="b"] .sdv-slo__bin {
+  fill: var(--sdv-series-b);
+}
+.sdv-slo__bin--slow {
+  stroke: var(--sdv-bad);
+  stroke-width: 1;
+}
+.sdv-slo__slow-bg {
+  fill: var(--sdv-bad);
+}
+.sdv-slo__slow-stripe {
+  fill: var(--sl-color-bg);
+}
+.sdv-slo__mark line {
+  stroke: var(--sl-color-gray-2);
+  stroke-width: 1.5;
+}
+.sdv-slo__mark text {
+  fill: var(--sl-color-white);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--sl-color-bg);
+  stroke-linejoin: round;
+  stroke-width: 3px;
+}
+.sdv-slo__mark--slo line {
+  stroke: var(--sdv-bad);
+  stroke-width: 2;
+}
+.sdv-slo__mark--percentile line {
+  stroke-dasharray: 5 3;
+}
+.sdv-slo__mark--mean line {
+  stroke-dasharray: 1.5 3;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
+.sdv-slo__facts {
+  display: grid;
+  gap: 0.5rem 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  margin: 0;
+}
+.sdv-slo__facts div {
+  margin: 0;
+}
+.sdv-slo__facts dt {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-slo__facts dd {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-lg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  margin: 0;
+}
+.sdv-slo__lanes .sdv-badge {
+  justify-self: start;
+}
+.sdv-slo__lanes .sdv-badge svg {
+  height: 0.85rem;
+  width: 0.85rem;
+}
+
+.sdv-slo__sample {
+  display: inline-block;
+  flex: none;
+  width: 28px;
+}
+.sdv-slo__sample--slow {
+  background: repeating-linear-gradient(45deg, var(--sdv-bad) 0 3px, transparent 3px 6px);
+  border: 1px solid var(--sdv-bad);
+  height: 10px;
+}
+.sdv-slo__sample--slo {
+  border-top: 2px solid var(--sdv-bad);
+  height: 0;
+}
+.sdv-slo__sample--percentile {
+  border-top: 2px dashed var(--sl-color-gray-2);
+  height: 0;
+}

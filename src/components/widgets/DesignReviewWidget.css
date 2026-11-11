@@ -1,0 +1,396 @@
+.sdv-review-root {
+  container: sdv-review / inline-size;
+  min-width: 0;
+}
+
+.sdv-review {
+  display: grid;
+  gap: 0.9rem;
+  min-width: 0;
+}
+
+.sdv-review p {
+  margin: 0;
+}
+
+.sdv-review h4 {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-lg);
+  line-height: 1.3;
+  margin: 0;
+}
+
+.sdv-review h4:focus-visible {
+  outline: 3px solid var(--sl-color-text-accent);
+  outline-offset: 2px;
+}
+
+.sdv-review h4:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.sdv-review .sdv-button svg,
+.sdv-review__tag svg,
+.sdv-review__chip svg {
+  display: inline-block;
+  height: 1rem;
+  vertical-align: -0.15em;
+  width: 1rem;
+}
+
+.sdv-review-root .sdv-button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.sdv-review__eyebrow {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Diagram markers */
+
+.sdv-review__marker circle,
+.sdv-review__marker rect {
+  fill: var(--sdv-surface-raised);
+  stroke: var(--sl-color-gray-2);
+  stroke-width: 2;
+}
+
+.sdv-review__marker text {
+  fill: var(--sl-color-white);
+  font-family: var(--sl-font);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sdv-review__marker.is-flagged circle {
+  fill: var(--sl-color-text-accent);
+  stroke: var(--sl-color-text-accent);
+}
+
+.sdv-review__marker.is-flagged text {
+  fill: var(--sl-color-black);
+}
+
+.sdv-review__marker.is-flaw rect {
+  fill: var(--sdv-bad);
+  stroke: var(--sdv-bad);
+}
+
+.sdv-review__marker.is-flaw text {
+  fill: var(--sdv-ink-on-status);
+}
+
+.sdv-review__pole {
+  stroke: var(--sl-color-white);
+  stroke-linecap: round;
+  stroke-width: 2.5;
+}
+
+.sdv-review__pennant {
+  fill: var(--sl-color-text-accent);
+  stroke: var(--sl-color-white);
+  stroke-linejoin: round;
+  stroke-width: 1;
+}
+
+.sdv-review__axis {
+  stroke: var(--sl-color-gray-3);
+  stroke-width: 2;
+}
+
+.sdv-review__mark--pending {
+  fill: var(--sdv-surface-raised);
+  stroke: var(--sl-color-gray-3);
+  stroke-width: 2;
+}
+
+.sdv-review__mark--incident {
+  fill: var(--sdv-bad);
+}
+
+.sdv-review__mark--held {
+  fill: var(--sdv-ok);
+}
+
+.sdv-review__cursor {
+  stroke: var(--sl-color-text-accent);
+  stroke-linecap: round;
+  stroke-width: 3;
+}
+
+/* Legend keys */
+
+.sdv-review__key {
+  align-items: center;
+  display: inline-flex;
+  flex: none;
+  height: 1rem;
+  justify-content: center;
+  width: 1rem;
+}
+
+.sdv-review__key--item {
+  border: 2px solid var(--sl-color-gray-2);
+  border-radius: 50%;
+  color: var(--sl-color-white);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.sdv-review__key--flag {
+  color: var(--sl-color-text-accent);
+}
+
+.sdv-review__key--flag svg {
+  height: 1rem;
+  width: 1rem;
+}
+
+.sdv-review__key--incident {
+  background: var(--sdv-bad);
+  border-radius: 2px;
+  height: 0.8rem;
+  width: 0.8rem;
+}
+
+.sdv-review__key--held {
+  background: var(--sdv-ok);
+  border-radius: 50%;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+
+/* Callout, results, transcript */
+
+.sdv-review__now,
+.sdv-review__results,
+.sdv-review__transcript {
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: var(--sdv-radius);
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+.sdv-review__results {
+  border-left: 4px solid var(--sl-color-text-accent);
+}
+
+.sdv-review__transcript ol {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.sdv-review__transcript li {
+  margin: 0;
+}
+
+.sdv-review__chip {
+  align-items: center;
+  border: 1.5px solid var(--sdv-border);
+  border-radius: 999rem;
+  display: inline-flex;
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+  gap: 0.3rem;
+  padding: 0.05rem 0.55rem;
+  vertical-align: 0.1em;
+  white-space: nowrap;
+  width: fit-content;
+}
+
+.sdv-review__chip--ok {
+  border-color: var(--sdv-ok);
+}
+
+.sdv-review__chip--ok svg {
+  color: var(--sdv-ok);
+}
+
+.sdv-review__chip--warn {
+  border-color: var(--sdv-warn);
+}
+
+.sdv-review__chip--warn svg {
+  color: var(--sdv-warn);
+}
+
+.sdv-review__chip--bad {
+  border-color: var(--sdv-bad);
+}
+
+.sdv-review__chip--bad svg {
+  color: var(--sdv-bad);
+}
+
+/* Item cards */
+
+.sdv-review__items {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sdv-review__item {
+  align-content: start;
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: var(--sdv-radius);
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  position: relative;
+}
+
+.sdv-review__item.is-flagged {
+  border-color: var(--sl-color-text-accent);
+}
+
+.sdv-review__item.is-current {
+  box-shadow: inset 4px 0 0 var(--sl-color-text-accent);
+}
+
+.sdv-review__item.is-flaw {
+  padding-left: 1.4rem;
+}
+
+.sdv-review__item.is-flaw::before {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-bad) 0 6px,
+    color-mix(in oklab, var(--sdv-bad) 60%, transparent) 6px 12px
+  );
+  border-radius: var(--sdv-radius) 0 0 var(--sdv-radius);
+  bottom: 0;
+  content: "";
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 6px;
+}
+
+.sdv-review__head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.sdv-review__num {
+  align-items: center;
+  border: 2px solid var(--sl-color-gray-2);
+  border-radius: 50%;
+  display: inline-flex;
+  flex: none;
+  font-size: var(--sl-text-xs);
+  font-weight: 700;
+  height: 1.6rem;
+  justify-content: center;
+  width: 1.6rem;
+}
+
+.sdv-review__item.is-flagged .sdv-review__num {
+  background: var(--sl-color-text-accent);
+  border-color: var(--sl-color-text-accent);
+  color: var(--sl-color-black);
+}
+
+.sdv-review__name {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.sdv-review__tag {
+  align-items: center;
+  color: var(--sl-color-text-accent);
+  display: inline-flex;
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+  gap: 0.25rem;
+}
+
+.sdv-review__flag {
+  margin-left: auto;
+}
+
+.sdv-review__flag[aria-pressed="true"] {
+  background: var(--sl-color-text-accent);
+  border-color: var(--sl-color-text-accent);
+  color: var(--sl-color-black);
+}
+
+.sdv-review__flag kbd {
+  font-size: var(--sl-text-xs);
+  padding: 0 0.3rem;
+}
+
+.sdv-review__note,
+.sdv-review__question {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+}
+
+.sdv-review__lens {
+  font-weight: 600;
+}
+
+.sdv-review__fix {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.sdv-review__fix label {
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+}
+
+.sdv-review__fix select {
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.4rem;
+  color: var(--sl-color-white);
+  font: inherit;
+  font-size: var(--sl-text-sm);
+  max-width: 100%;
+  padding: 0.35rem 0.5rem;
+}
+
+.sdv-review__fix select:focus-visible {
+  outline: 3px solid var(--sl-color-text-accent);
+  outline-offset: 2px;
+}
+
+.sdv-review__your-fix {
+  font-size: var(--sl-text-sm);
+}
+
+.sdv-review__answer {
+  border-top: 1px dashed var(--sdv-border);
+  display: grid;
+  font-size: var(--sl-text-sm);
+  gap: 0.4rem;
+  padding-top: 0.5rem;
+}
+
+@container sdv-review (max-width: 38rem) {
+  .sdv-review__items {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sdv-review__toolbar .sdv-button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}

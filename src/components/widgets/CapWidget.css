@@ -1,0 +1,200 @@
+.sdv-cap__intro,
+.sdv-cap__muted {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+.sdv-cap__lane {
+  min-width: 0;
+}
+@media (max-width: 40rem) {
+  .sdv-scroll-x > svg.sdv-cap__svg {
+    min-width: 22rem;
+  }
+}
+
+.sdv-cap__cut path {
+  fill: none;
+  stroke: var(--sdv-bad);
+  stroke-linecap: round;
+  stroke-width: 4;
+}
+.sdv-cap__cut text {
+  fill: var(--sl-color-white);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sdv-cap__carts {
+  display: grid;
+  font-size: var(--sl-text-xs);
+  gap: 0.35rem;
+  margin: 0;
+}
+.sdv-cap__carts > div {
+  display: grid;
+  gap: 0 0.5rem;
+  grid-template-columns: minmax(5.5rem, auto) 1fr;
+}
+.sdv-cap__carts dt {
+  color: var(--sl-color-gray-2);
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+  gap: 0.15rem;
+}
+.sdv-cap__carts dd {
+  color: var(--sl-color-white);
+  margin: 0;
+}
+.sdv-cap__versions {
+  border: 1px dashed var(--sdv-warn);
+  border-radius: 999px;
+  color: var(--sl-color-white);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0 0.35rem;
+  width: fit-content;
+}
+.sdv-cap__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-cap__items > li {
+  margin: 0;
+}
+.sdv-cap__item {
+  align-items: center;
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.35rem;
+  display: inline-flex;
+  gap: 0.2rem;
+  line-height: 1.3;
+  padding: 0.05rem 0.35rem;
+}
+.sdv-cap__item[data-back] {
+  background: color-mix(in srgb, var(--sdv-warn) 22%, transparent);
+  border: 2px solid var(--sdv-warn);
+  font-weight: 700;
+}
+.sdv-cap__back {
+  font-style: italic;
+  font-weight: 500;
+}
+
+.sdv-cap__answers {
+  display: grid;
+  font-size: var(--sl-text-xs);
+  gap: 0.3rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-cap__answers > li {
+  display: grid;
+  gap: 0 0.5rem;
+  grid-template-columns: minmax(5.5rem, auto) 1fr;
+  margin: 0;
+}
+.sdv-cap__device {
+  color: var(--sl-color-gray-2);
+  font-weight: 600;
+}
+.sdv-cap__answer {
+  align-items: flex-start;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  color: var(--sl-color-white);
+  display: inline-flex;
+  gap: 0.25rem;
+  line-height: 1.35;
+  padding: 0.1rem 0.35rem;
+  width: fit-content;
+}
+.sdv-sim__stage .sdv-cap__answer svg,
+.sdv-sim__stage .sdv-cap__item svg {
+  flex: none;
+  height: 1em;
+  margin-top: 0.15em;
+  width: 1em;
+}
+.sdv-cap__answer[data-status="none"] {
+  color: var(--sl-color-gray-2);
+  font-style: italic;
+}
+.sdv-cap__answer[data-status="ok"] {
+  background: color-mix(in srgb, var(--sdv-ok) 18%, transparent);
+  border-color: var(--sdv-ok);
+}
+.sdv-cap__answer[data-status="warn"] {
+  background: color-mix(in srgb, var(--sdv-warn) 22%, transparent);
+  border: 2px solid var(--sdv-warn);
+}
+.sdv-cap__answer[data-status="bad"] {
+  background: color-mix(in srgb, var(--sdv-bad) 15%, transparent);
+  border: 1px dashed var(--sdv-bad);
+}
+
+.sdv-cap__legend {
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  gap: 0.4rem 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-cap__legend li {
+  align-items: center;
+  color: var(--sl-color-gray-2);
+  display: flex;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+.sdv-cap__transcript {
+  font-size: var(--sl-text-sm);
+}
+.sdv-cap__transcript summary {
+  color: var(--sl-color-white);
+  cursor: pointer;
+  font-weight: 600;
+}
+.sdv-cap__transcript summary:focus-visible {
+  outline: 2px solid var(--sl-color-text-accent);
+  outline-offset: 2px;
+}
+.sdv-cap__table {
+  border-collapse: collapse;
+  font-size: var(--sl-text-xs);
+  margin: 0.5rem 0 0;
+  width: 100%;
+}
+.sdv-cap__caption {
+  color: var(--sl-color-gray-2);
+  font-weight: 600;
+  text-align: start;
+}
+.sdv-cap__table th,
+.sdv-cap__table td {
+  border: 0;
+  border-top: 1px solid var(--sdv-border);
+  color: var(--sl-color-gray-2);
+  padding: 0.3rem 0.25rem;
+  text-align: start;
+  vertical-align: top;
+}
+.sdv-cap__table thead th,
+.sdv-cap__table tbody th {
+  color: var(--sl-color-white);
+  font-weight: 600;
+}
+.sdv-cap__table time {
+  color: var(--sl-color-white);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

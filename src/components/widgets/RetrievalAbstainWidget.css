@@ -1,0 +1,43 @@
+.sdv-rag-eval {
+  font-size: var(--sl-text-xs);
+  min-width: 40rem;
+}
+
+.sdv-rag-eval caption {
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.sdv-rag-eval th[scope="row"] {
+  font-weight: 400;
+  min-width: 11rem;
+  text-align: left;
+}
+
+.sdv-rag-eval__id {
+  font-weight: 700;
+}
+
+.sdv-rag-eval__store {
+  color: var(--sl-color-gray-2);
+  display: block;
+}
+
+.sdv-rag-eval__chunk {
+  font-family: var(--sl-font-mono);
+  white-space: nowrap;
+}
+
+.sdv-rag-eval__support {
+  font-family: var(--sl-font-mono);
+  white-space: nowrap;
+}
+
+.sdv-rag-eval__support[data-below="true"] {
+  color: var(--sl-color-gray-2);
+  font-style: italic;
+}

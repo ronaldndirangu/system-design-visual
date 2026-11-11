@@ -1,0 +1,382 @@
+---
+title: Recommendation systems
+description: Narrow millions of items to a handful with candidate generation, then ranking. Cheap sources find a few hundred candidates, and an accurate ranker orders them.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import RecFunnelWidget from '../../../components/widgets/RecFunnelWidget';
+import RecBudgetWidget from '../../../components/widgets/RecBudgetWidget';
+
+export const nodes = [
+  { id: 'catalog', kind: 'database', x: 70, y: 150, label: 'Catalog', sublabel: '3,000,000 items' },
+  { id: 'embed', kind: 'vectorIndex', x: 205, y: 60, label: 'Embeddings', sublabel: 'nearest neighbors' },
+  { id: 'together', kind: 'database', x: 205, y: 150, label: 'Co-purchase', sublabel: 'bought together' },
+  { id: 'category', kind: 'cache', x: 205, y: 240, label: 'Category', sublabel: 'popular, precomputed' },
+  { id: 'merge', kind: 'server', x: 340, y: 150, label: 'Merge', sublabel: 'dedupe' },
+  { id: 'ranker', kind: 'model', x: 475, y: 150, label: 'Ranker', sublabel: 'rich features' },
+  { id: 'filters', kind: 'server', x: 610, y: 150, label: 'Filters', sublabel: 'stock, ship, diversity' },
+  { id: 'shown', kind: 'client', x: 745, y: 150, label: 'Five shown', sublabel: 'in the chat' },
+];
+export const edges = [
+  { from: 'catalog', to: 'embed', dashed: true },
+  { from: 'catalog', to: 'together', dashed: true },
+  { from: 'catalog', to: 'category', dashed: true },
+  { from: 'embed', to: 'merge' },
+  { from: 'together', to: 'merge' },
+  { from: 'category', to: 'merge' },
+  { from: 'merge', to: 'ranker' },
+  { from: 'ranker', to: 'filters' },
+  { from: 'filters', to: 'shown' },
+];
+export const steps = [
+  {
+    title: 'A request arrives',
+    text: 'A customer\u2019s 50 ft green garden hose from Verdant is out of stock. The assistant has an illustrative 50 ms to pick five replacements from a catalog of 3,000,000 items.',
+    nodes: ['catalog', 'shown'],
+  },
+  {
+    title: 'Build the sources ahead of time',
+    text: 'Background jobs (the dashed lines) turn the catalog into fast lookups: an embedding for every item, bought together lists from past orders, and the best sellers in each category. None of this work happens during the request.',
+    nodes: ['catalog', 'embed', 'together', 'category'],
+    flows: ['catalog>embed', 'catalog>together', 'catalog>category'],
+  },
+  {
+    title: 'Ask three cheap sources',
+    text: 'Each source returns its share of a 500 candidate budget: 300 nearest neighbors, 125 bought together, and 75 popular in the category. They run in parallel, so the slowest one, embeddings at 8 ms, sets the time.',
+    nodes: ['embed', 'together', 'category', 'merge'],
+    flows: ['embed>merge', 'together>merge', 'category>merge'],
+  },
+  {
+    title: 'Merge and dedupe',
+    text: 'The same hose nozzle can arrive from all three sources. Merging drops 11 duplicates and leaves 489 unique candidates. Candidate generation took 9 ms, including 1 ms to merge.',
+    nodes: ['merge'],
+  },
+  {
+    title: 'Rank with rich features',
+    text: 'The accurate ranker scores all 489 candidates using price, reviews, length, brand, and how closely each item matches the hose. At an illustrative 10 microseconds each, that takes 4.89 ms. It keeps the top 15.',
+    nodes: ['merge', 'ranker'],
+    flows: ['merge>ranker'],
+  },
+  {
+    title: 'Filter what cannot be sold here',
+    text: 'Business rules drop three of the 15: the green hose from another seller (out of stock), the hose and reel cart (does not ship to this address), and a recalled hose timer. Twelve remain, after 0.5 ms.',
+    nodes: ['ranker', 'filters'],
+    flows: ['ranker>filters'],
+  },
+  {
+    title: 'Re-rank for variety and pick five',
+    text: 'A diversity rule allows at most two items per brand, so the 75 ft green hose is skipped as a third Verdant hose. Five replacements reach the chat after 14.89 ms in total.',
+    nodes: ['filters', 'shown'],
+    flows: ['filters>shown'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'Why not score every item in the catalog with the accurate ranker?',
+    options: [
+      {
+        text: 'The ranker gives worse answers on large inputs',
+        why: 'Score everything shows the best five on the fixture. The problem is time: 3,000,000 items at an illustrative 10 microseconds each take 30 seconds.',
+      },
+      {
+        text: 'Ranker time grows with every item scored, so the whole catalog takes about 30 seconds against a 50 ms budget',
+        correct: true,
+        why: 'Ranker time is items times cost per item. Cheap sources shrink the list to a few hundred first, so the ranker needs under 5 ms.',
+      },
+      {
+        text: 'The catalog is too big to read during a request',
+        why: 'Reading is the cheap part. Even with every item in memory, scoring each one with rich features is what takes 30 seconds.',
+      },
+      {
+        text: 'It would recommend the store\u2019s best sellers',
+        why: 'That is the popularity only failure. Scoring everything returns relevant hoses, just far too late.',
+      },
+    ],
+  },
+  {
+    prompt: 'With 20 candidates instead of 500, the 50 ft blue garden hose never appears in the five shown. Why can\u2019t a better ranker fix this?',
+    options: [
+      {
+        text: 'The ranker scores the blue hose too low',
+        why: 'The blue hose has the highest score on the fixture, 0.96. The ranker never sees it.',
+      },
+      {
+        text: 'The ranker only orders what candidate generation hands it, and the blue hose never made the candidate list',
+        correct: true,
+        why: 'It ranks 14th among embedding neighbors and 9th in its category, while the small budget keeps only the top 12 and the top 3. Candidate recall caps final quality.',
+      },
+      {
+        text: 'A filter removed it for being out of stock',
+        why: 'The blue hose is in stock. The filter removed the green hose from another seller.',
+      },
+      {
+        text: 'The diversity rule skipped it',
+        why: 'The diversity rule can only skip items that reach the re-rank. The blue hose never got past candidate generation.',
+      },
+    ],
+  },
+  {
+    prompt: 'Why does the funnel ask three candidate sources instead of embedding neighbors alone?',
+    options: [
+      {
+        text: 'More sources make the reply faster',
+        why: 'The sources run in parallel, so the slowest one sets the time. Extra sources add work and never speed up the reply.',
+      },
+      {
+        text: 'Each source sees a different signal, so items one source misses can still arrive through another',
+        correct: true,
+        why: 'Embeddings find similar descriptions, bought together finds what customers pair, and category lists find what sells. In the toy model the hose and reel cart arrives only through bought together.',
+      },
+      {
+        text: 'The ranker needs exactly three inputs',
+        why: 'The ranker scores one merged list. It has no idea how many sources fed it.',
+      },
+      {
+        text: 'Duplicates across sources make the ranker more accurate',
+        why: 'Duplicates are waste. The merge drops them (11 of 500 in the funnel run) before the ranker spends time on them.',
+      },
+    ],
+  },
+  {
+    prompt: 'The 75 ft green garden hose scores 0.88, higher than the 50 ft lightweight hose at 0.86. The lightweight hose is shown and the 75 ft hose is not. Why?',
+    options: [
+      {
+        text: 'The ranker made a mistake',
+        why: 'The ranker ordered them correctly by score. A rule after the ranker changed the pick.',
+      },
+      {
+        text: 'The re-rank allows at most two items per brand, and the 75 ft hose would be the third Verdant hose',
+        correct: true,
+        why: 'Five near identical hoses from one brand waste the slots. A diversity rule trades a little score for a wider choice.',
+      },
+      {
+        text: 'The 75 ft hose is out of stock',
+        why: 'The out of stock item is the 50 ft green garden hose from another seller. The 75 ft hose is in stock.',
+      },
+      {
+        text: 'The 75 ft hose never reached the ranker',
+        why: 'It ranks 5th among embedding neighbors, so it reaches the ranker even with only 20 candidates.',
+      },
+    ],
+  },
+  {
+    prompt: 'In the toy model, recall is 90% at 500 candidates and 100% at 2,000, and total time crosses the 50 ms budget near 2,700. Which candidate count fits best?',
+    options: [
+      {
+        text: '10, because speed matters most',
+        why: 'At 10 candidates recall is 30% and the best replacement never reaches the ranker. The reply is fast and poor.',
+      },
+      {
+        text: 'A few hundred, where recall has mostly flattened and the reply keeps room under the budget',
+        correct: true,
+        why: 'At 500 the toy model reaches 90% recall in 14.89 ms. Going to 2,000 buys the last 10 points for 24 more milliseconds.',
+      },
+      {
+        text: '20,000, because more candidates are always better',
+        why: 'Recall stops growing at 2,000, and total time reaches about 327 ms, far over the budget.',
+      },
+      {
+        text: 'Whatever count makes total time exactly 50 ms',
+        why: 'That leaves no room for a slow request or the rest of the reply, and recall barely grows past 2,000 anyway.',
+      },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain the recommendation funnel: cheap candidate generation, then an accurate ranker, then filters and a re-rank.
+- Size the candidate count from two curves: ranker latency, which grows with every candidate, and recall, which
+  flattens.
+- Explain why candidate recall caps final quality, and why a better ranker cannot recover an item it never sees.
+- Combine several cheap candidate sources, then filter for stock and shipping and diversify the final handful.
+
+</Objectives>
+
+## The failure: scoring the whole catalog
+
+The support assistant works for a large online store that sells about 3,000,000 items. A customer's order includes a
+50 ft green garden hose from Verdant, and it just went out of stock. The assistant should suggest five replacements in
+the chat, and the recommendation step gets an illustrative 50 ms of the reply's
+[latency budget](../evaluation-and-budgets/).
+
+The first version is simple. A ranking model with rich features (price, reviews, length, brand, and how closely each
+item matches the hose) scores every item in the catalog, and the assistant shows the top five. On a test with a small
+catalog, the list looks perfect.
+
+<Predict
+  client:visible
+  question="The ranker takes an illustrative 10 microseconds to score one item. How long does one request take when it scores all 3,000,000 items, against a 50 ms budget?"
+  options={['About 30 ms', 'About 3 s', 'About 30 s', 'About 5 minutes']}
+  answer={2}
+>
+
+**About 30 seconds.** 3,000,000 items at 10 microseconds each is 30,000 ms, and the toy model reports 30,001 ms once
+the filters run. That is 600 times the budget, on every request. A quick
+[estimate](../../thinking/requirements-and-estimates/) catches this before anyone builds it.
+
+</Predict>
+
+The quick fix fails the other way. A second version skips the ranker and shows the store's five best sellers. It
+answers in about 2 ms and offers a phone case, a USB charger, wireless earbuds, paper towels, and a water bottle to a
+customer who wanted a garden hose.
+
+One version is accurate and far too slow. The other is fast and useless. A real system spends the expensive model only
+on the items that have a chance.
+
+## Try it: four pipelines, one request
+
+Every pipeline answers the same request: suggest five replacements for the out of stock 50 ft green garden hose. Start
+with **Score everything** and press Play. Then pick **Funnel** and run it again. The scoreboard keeps each finished run,
+so you can compare them side by side.
+
+<RecFunnelWidget client:visible />
+
+What to look for:
+
+- **Score everything is perfect and 600 times too slow.** All 10 known good replacements reach the ranker, and the top
+  five are all good. The latency lane runs off the end of the 50 ms budget: 30,001 ms.
+- **The funnel shows the same five in 14.89 ms.** Three cheap sources send 500 candidates, the merge drops 11
+  duplicates, and the ranker scores 489 instead of 3,000,000. Nine of the 10 good items reach it.
+- **Rules run after the ranker.** The filters drop an out of stock hose, one that does not ship to this address, and a
+  recalled timer. The re-rank then skips the 75 ft green hose, which would be a third Verdant hose in five slots.
+- **Popularity only is fast and wrong.** One source, no ranker, about 2 ms, and nothing in the list replaces a hose.
+
+Before you pick **Too few candidates**, predict what it does.
+
+<Predict
+  client:visible
+  question="Too few candidates cuts the candidate budget from 500 to 20 and keeps the same ranker. What happens to the five shown?"
+  options={[
+    'The same five, a little faster',
+    'Faster, but the best replacement is gone and fewer of the five are good',
+    'Slower, because the ranker has less to work with',
+    'The list turns into store best sellers',
+  ]}
+  answer={1}
+>
+
+**Faster and worse.** The run takes 7.25 ms, and only 3 of the 5 shown are good replacements; a hose nozzle and a
+sprinkler fill the other slots. The 50 ft blue garden hose, the best match on the fixture, ranks 14th among embedding
+neighbors, and the embedding source now returns only 12. It never reaches the ranker, so no ranker can show it.
+
+</Predict>
+
+This is a **toy model**. The 26 named items, their relevance, their ranks in each source, and their scores are
+hand-written fixtures. The other items count toward the totals and appear as a scaled sample of dots from a seeded
+generator, so every run looks the same. Counts use the illustrative catalog size of 3,000,000. Times come from a simple
+formula (a fixed cost per source plus a cost per item scored), and every time is illustrative.
+
+## The idea: a funnel
+
+A recommendation system narrows the catalog in stages. **Candidate generation** uses cheap sources to pull a few
+hundred plausible items out of millions. **Ranking** scores only those candidates with an accurate, expensive model.
+Filters and a re-rank then apply business rules and pick the handful the customer sees. Published systems use the same
+shape: in YouTube deep neural network recommendations (RecSys 2016), candidate generation narrows a corpus of millions
+to hundreds, ranking scores a few hundred, and the funnel goes from millions to hundreds to dozens.
+
+<StepDiagram client:visible title="From 3,000,000 items to five" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy>
+
+Hiring five people for a busy store. Three thousand people apply. A quick resume screen keeps a few hundred who list
+the right skills, interviews rank those carefully, reference checks remove anyone who cannot start, and the manager
+picks five so that no single team gets every hire. The screen is cheap and the interviews are expensive. If the screen
+rejects the best applicant, no interview can bring them back.
+
+</Analogy>
+
+### Where the time goes
+
+| Stage | Items in | Items out | Dropped | Illustrative time |
+| --- | --- | --- | --- | --- |
+| Candidate generation (three sources, then merge) | 3,000,000 | 489 | 2,999,511 | 9 ms |
+| Ranker (rich features) | 489 | 15 | 474 | 4.89 ms |
+| Filters (stock, shipping, recalls) | 15 | 12 | 3 | 0.5 ms |
+| Re-rank and pick (at most two per brand) | 12 | 5 | 7 | 0.5 ms |
+| Total | | | | 14.89 ms |
+
+Every row balances: items in equals items out plus items dropped. Candidate generation removes almost everything in
+9 ms because each source is a lookup, while the ranker spends 10 microseconds on every item it sees.
+
+### Recall caps quality
+
+- **The ranker orders what it receives.** An item that never reaches the ranker never gets a score, however good it
+  is. The best the final list can be is the best set of candidates.
+- **Measure recall at the candidate stage.** Keep a set of requests with known good answers, and count how many good
+  items survive candidate generation. In the funnel run, 9 of 10 survive. The RV fresh water hose sits at rank 900
+  among embedding neighbors, beyond the 300 that source returns.
+- **Fix missed items at the source.** Add a source that sees a different signal, or give the source that finds them a
+  bigger share. A heavier ranker cannot help.
+- **Precompute the sources.** Embeddings, bought together lists, and category best sellers come from background jobs,
+  and the request only looks them up. This is [caching](../../scaling/caching/) applied to recommendations, and the
+  lists go stale between refreshes.
+- **Filter after ranking, and keep spares.** The ranker keeps 15 for five slots, so stock, shipping, and diversity
+  rules can remove items and still leave a full list.
+
+## How many candidates?
+
+The funnel sends 500 candidates to the ranker. Why 500, instead of 50 or 5,000? Two curves decide. **Recall**, the
+share of the 10 known good replacements that reach the ranker, climbs fast and then flattens. **Ranker time** grows in
+a straight line with every candidate. Drag the slider and watch both.
+
+<RecBudgetWidget client:visible />
+
+In the toy model, recall reaches 70% at 50 candidates, 90% at 500, and 100% at 2,000. Total time is 14.89 ms at 500 and
+38.89 ms at 2,000, and it crosses the 50 ms budget near 2,700 candidates. Below 50 candidates the best replacement
+never reaches the ranker. Past 2,000 every extra candidate costs time and finds nothing new. This is why production
+funnels hand the ranker hundreds of candidates: recall has mostly flattened, and the reply keeps room under the budget.
+Measure both curves on real requests before you settle on a number.
+
+[Retrieval](../retrieval/), earlier in this module, uses the same narrow then rank shape for documents. The next lesson,
+[Capstone: support assistant](../support-assistant/), puts these pieces together in one design with a fixed budget.
+
+## Trade-offs
+
+<TradeoffTable title="Designing a recommendation funnel">
+
+| Choice | What it buys | What it costs |
+| --- | --- | --- |
+| More candidates (thousands) | Higher recall, fewer good items missed | Ranker time grows with every candidate |
+| Fewer candidates (dozens) | Fast, cheap ranking | Good items never reach the ranker, which caps quality |
+| One candidate source | Simple to build, refresh, and debug | Misses items that only another signal finds |
+| Several candidate sources | Higher recall from different signals | More pipelines to build, refresh, merge, and dedupe |
+| Heavy ranker (rich features) | Better order at the top of the list | More time per item, so fewer candidates fit the budget |
+| Light ranker | Scores more candidates in the same time | Weaker order, so worse items reach the top |
+| Precompute (lists built in the background) | Fast lookups at request time | Stale lists: new items and stock changes lag until the next refresh |
+| Compute per request | Fresh results that use the current order and customer | Spends the latency budget on every request |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+Customers often return some hoses because they leak. The store asks the assistant to stop suggesting items that are
+frequently returned. Where does this go in the funnel, what data does it need, and how do you still show five good
+replacements when it removes items?
+
+<div slot="answer">
+
+- **Placement:** a hard rule goes in the filter stage after the ranker, next to the stock and shipping checks. A softer
+  rule adds the return rate as a ranker feature or a score penalty, so a slightly better item with a few returns can
+  still win.
+- **Data:** a return rate per item, computed by a background job from orders and returns and refreshed daily. The
+  request reads a precomputed number, the same way it reads the category lists.
+- **Threshold:** compare each item with similar items (for example, returned three times as often as other 50 ft
+  hoses), and require a minimum number of orders so that one return cannot remove a new item.
+- **Backfill:** the ranker already keeps 15 for five slots. If the new filter often leaves fewer than five, raise the
+  number the ranker keeps; the candidate count stays the same.
+- **Measure:** track the return rate and how often customers accept a suggested replacement, before and after the
+  change. Add requests whose best match is often returned to the evaluation set, so the rule stays tested.
+
+</div>
+
+</Challenge>

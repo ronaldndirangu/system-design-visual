@@ -7,6 +7,7 @@ const pages = [
   { path: 'start-here/', heading: /How this course works/i },
   { path: 'curriculum/', heading: /Course map/i },
   { path: 'visual-language/', heading: /Visual language/i },
+  { path: 'reference/', heading: /Reference sheet/i },
   ...readyLessons.map((lesson) => ({
     path: `${lesson.id}/`,
     heading: new RegExp(escapeRegExp(lesson.title), 'i'),
@@ -111,7 +112,7 @@ test('a quiz explains the chosen answer', async ({ page }) => {
   await firstQuestion.getByRole('radio').first().check();
   await quiz.getByRole('button', { name: 'Check answer' }).first().click();
   await expect(quiz.getByText(/Correct|Not quite/).first()).toBeVisible();
-  await expect(quiz.getByText('1 of 3 answered')).toBeVisible();
+  await expect(quiz.getByText('1 of 4 answered')).toBeVisible();
 });
 
 test('a simulation steps forward and updates its readout', async ({ page }) => {

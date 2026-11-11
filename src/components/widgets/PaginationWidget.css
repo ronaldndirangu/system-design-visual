@@ -1,0 +1,148 @@
+.sdv-pg__changes {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-pg__changes strong {
+  color: var(--sl-color-white);
+  font-variant-numeric: tabular-nums;
+}
+
+.sdv-pg__lane {
+  min-width: 0;
+}
+
+.sdv-pg__exchange {
+  display: grid;
+  gap: 0.2rem;
+}
+.sdv-pg__label,
+.sdv-pg__muted {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-pg__request {
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.4rem;
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  justify-self: start;
+  overflow-wrap: anywhere;
+  padding: 0.25rem 0.45rem;
+}
+.sdv-pg__response {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+  min-height: 1.2em;
+  overflow-wrap: anywhere;
+}
+.sdv-pg__tally {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+
+.sdv-pg__grid {
+  display: grid;
+  gap: 2px;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  margin: 0;
+}
+
+.sdv-pg__cell,
+.sdv-pg__key {
+  --pg-color: var(--sl-color-gray-4);
+  background: var(--sdv-surface);
+  border: 1px solid color-mix(in oklab, var(--pg-color) 70%, var(--sdv-border));
+  border-radius: 3px;
+}
+.sdv-pg__cell {
+  align-items: center;
+  aspect-ratio: 1;
+  color: var(--sl-color-white);
+  display: flex;
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  justify-content: center;
+  line-height: 1;
+  margin: 0;
+  min-width: 0;
+  position: relative;
+}
+.sdv-pg__cell[data-state="unseen"] {
+  color: var(--sl-color-gray-2);
+}
+.sdv-pg__cell[data-state="once"],
+.sdv-pg__key[data-state="once"] {
+  --pg-color: var(--sdv-ok);
+  background: color-mix(in oklab, var(--sdv-ok) 24%, var(--sl-color-bg));
+}
+.sdv-pg__cell[data-state="multi"],
+.sdv-pg__key[data-state="multi"] {
+  --pg-color: var(--sdv-bad);
+  background: color-mix(in oklab, var(--sdv-bad) 30%, var(--sl-color-bg));
+  border-width: 2px;
+}
+.sdv-pg__cell[data-state="skipped"],
+.sdv-pg__key[data-state="skipped"] {
+  --pg-color: var(--sdv-bad);
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--sdv-bad) 30%, var(--sl-color-bg)) 0 3px,
+    color-mix(in oklab, var(--sdv-bad) 10%, var(--sl-color-bg)) 3px 6px
+  );
+  border-style: dashed;
+}
+.sdv-pg__cell[data-state="new"],
+.sdv-pg__key[data-state="new"] {
+  --pg-color: var(--sl-color-text-accent);
+  border-style: dashed;
+}
+.sdv-pg__cell[data-next],
+.sdv-pg__key[data-next] {
+  outline: 2px solid var(--sl-color-text-accent);
+  outline-offset: -1px;
+}
+
+.sdv-pg__times {
+  background: var(--sl-color-bg);
+  border-radius: 2px;
+  color: var(--sl-color-white);
+  font-size: 0.5rem;
+  line-height: 1;
+  padding: 0 1px;
+  position: absolute;
+  right: -2px;
+  top: -3px;
+}
+
+.sdv-pg__legend {
+  color: var(--sl-color-gray-2);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  gap: 0.35rem 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-pg__legend li {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+  margin: 0;
+}
+.sdv-pg__legend li:first-child {
+  flex-basis: 100%;
+}
+.sdv-pg__key {
+  display: inline-block;
+  flex: none;
+  height: 12px;
+  width: 26px;
+}

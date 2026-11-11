@@ -1,0 +1,157 @@
+.sdv-converge__lane-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  justify-content: space-between;
+}
+
+/* The stage sizes every svg to full width; keep the badge icon at badge size. */
+.sdv-converge__lane-head .sdv-badge svg {
+  flex: none;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+
+.sdv-converge__copy {
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.5rem 0.55rem;
+}
+
+.sdv-converge__copy-head {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.sdv-converge__copy-head strong {
+  color: var(--sl-color-white);
+}
+
+.sdv-converge__tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sdv-converge__tile {
+  align-items: center;
+  animation: sdv-pop 220ms ease-out;
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.35rem;
+  display: inline-flex;
+  flex-direction: column;
+  margin: 0;
+  min-width: 2.6rem;
+  padding: 0.15rem 0.2rem 0.2rem;
+}
+
+.sdv-converge__tile[data-deleted] {
+  background-color: var(--sdv-surface);
+  background-image: repeating-linear-gradient(
+    45deg,
+    color-mix(in oklab, var(--sdv-bad) 35%, transparent) 0 2px,
+    transparent 2px 9px
+  );
+  border-color: var(--sdv-bad);
+  border-style: dashed;
+}
+
+.sdv-converge__char {
+  color: var(--sl-color-white);
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-lg);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.sdv-converge__tile[data-deleted] .sdv-converge__char {
+  color: var(--sl-color-gray-2);
+  text-decoration: line-through 2px;
+}
+
+.sdv-converge__id,
+.sdv-converge__gone {
+  color: var(--sl-color-gray-2);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.sdv-converge__gone {
+  font-weight: 700;
+}
+
+.sdv-converge__wire {
+  border-inline-start: 2px dashed var(--sdv-border);
+  margin-inline-start: 1rem;
+  min-width: 0;
+  padding: 0.15rem 0 0.15rem 0.6rem;
+}
+
+.sdv-converge__wire ul,
+.sdv-converge__held {
+  display: grid;
+  gap: 0.3rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sdv-converge__msg {
+  align-items: baseline;
+  background: var(--sl-color-accent-low);
+  border-radius: 0.35rem;
+  color: var(--sl-color-white);
+  display: flex;
+  font-size: var(--sl-text-xs);
+  gap: 0.35rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 0.2rem 0.45rem;
+}
+
+.sdv-converge__dir {
+  font-weight: 700;
+}
+
+.sdv-converge__msg--key {
+  display: inline-flex;
+}
+
+.sdv-converge__quiet {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+
+.sdv-converge__held li {
+  border-inline-start: 3px solid var(--sdv-warn);
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding-inline-start: 0.4rem;
+}
+
+.sdv-converge__legend .sdv-converge__tile--key {
+  animation: none;
+  flex: none;
+  min-width: 2rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sdv-converge__tile {
+    animation: none;
+  }
+}

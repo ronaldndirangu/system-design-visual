@@ -1,0 +1,112 @@
+.sdv-cardinality__state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.sdv-cardinality__state .sdv-badge {
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.sdv-cardinality__state .sdv-badge svg,
+.sdv-cardinality__newest .sdv-badge svg {
+  flex: none;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+
+.sdv-cardinality__grid {
+  display: grid;
+  gap: 2px;
+  grid-template-columns: repeat(20, minmax(0, 1fr));
+  max-width: 22rem;
+}
+
+.sdv-cardinality__cell {
+  aspect-ratio: 1;
+  background: transparent;
+  border: 1px solid var(--sl-color-gray-3);
+  border-radius: 2px;
+  display: inline-block;
+  min-width: 0;
+  transition: background-color 200ms ease;
+}
+
+.sdv-qtracks__legend .sdv-cardinality__cell {
+  flex: none;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+
+.sdv-cardinality__cell[data-used] {
+  background: var(--sl-color-text-accent);
+  border-color: var(--sl-color-text-accent);
+}
+
+.sdv-cardinality__grid[data-full] .sdv-cardinality__cell[data-used],
+.sdv-cardinality__cell[data-full] {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-bad) 0 2px,
+    color-mix(in oklab, var(--sdv-bad) 35%, transparent) 2px 4px
+  );
+  border-color: var(--sdv-bad);
+}
+
+.sdv-cardinality__meta {
+  color: var(--sl-color-gray-2);
+  display: grid;
+  font-size: var(--sl-text-xs);
+  font-variant-numeric: tabular-nums;
+  gap: 0.1rem;
+  margin: 0;
+}
+
+.sdv-cardinality__newest {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.sdv-cardinality__newest-title,
+.sdv-cardinality__empty {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+
+.sdv-cardinality__newest ul {
+  display: grid;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sdv-cardinality__newest li {
+  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.4rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.sdv-cardinality__newest code {
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.3rem;
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 0.1rem 0.3rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sdv-cardinality__cell {
+    transition: none;
+  }
+}

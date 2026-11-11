@@ -1,0 +1,293 @@
+.sdv-cqrs {
+  display: grid;
+  gap: 0.9rem;
+  min-width: 0;
+}
+.sdv-cqrs__extra {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* The stage stretches every svg to full width, so inline icons need their size back. */
+.sdv-sim__stage .sdv-cqrs__cell svg,
+.sdv-sim__stage .sdv-cqrs .sdv-badge svg {
+  display: inline-block;
+  flex: none;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+
+.sdv-cqrs__legend {
+  color: var(--sl-color-gray-2);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  gap: 0.4rem 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-cqrs__legend li {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.35rem;
+  margin: 0;
+}
+.sdv-cqrs__line {
+  border-top: 2px solid var(--sl-color-gray-2);
+  display: inline-block;
+  flex: none;
+  width: 1.5rem;
+}
+.sdv-cqrs__line[data-dashed] {
+  border-top-style: dashed;
+}
+.sdv-cqrs__swatch,
+.sdv-cqrs__hatch {
+  border-radius: 2px;
+  display: inline-block;
+  flex: none;
+  height: 0.8rem;
+  width: 1rem;
+}
+.sdv-cqrs__swatch {
+  background: var(--sdv-db);
+}
+.sdv-cqrs__hatch {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-warn) 0 4px,
+    color-mix(in oklab, var(--sdv-warn) 40%, var(--sl-color-bg)) 4px 8px
+  );
+  outline: 1px dashed var(--sdv-warn);
+}
+
+.sdv-cqrs__tracks {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-cqrs__track {
+  --sdv-cqrs-kind: var(--sdv-db);
+  align-items: center;
+  display: grid;
+  font-size: var(--sl-text-sm);
+  gap: 0.2rem 0.75rem;
+  grid-template-columns: minmax(7rem, 1fr) minmax(8rem, 2.5fr);
+  margin: 0;
+}
+.sdv-cqrs__track[data-kind="queue"] {
+  --sdv-cqrs-kind: var(--sdv-queue);
+}
+.sdv-cqrs__track[data-kind="server"] {
+  --sdv-cqrs-kind: var(--sdv-server);
+}
+.sdv-cqrs__track-name {
+  color: var(--sl-color-white);
+  font-weight: 600;
+}
+.sdv-cqrs__track-bar {
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 999rem;
+  display: flex;
+  height: 0.8rem;
+  overflow: hidden;
+}
+.sdv-cqrs__track-applied,
+.sdv-cqrs__track-gap {
+  display: block;
+  flex: none;
+  height: 100%;
+  transition: width 200ms ease;
+}
+.sdv-cqrs__track-applied {
+  background: var(--sdv-cqrs-kind);
+}
+.sdv-cqrs__track-gap {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-warn) 0 4px,
+    color-mix(in oklab, var(--sdv-warn) 40%, var(--sl-color-bg)) 4px 8px
+  );
+}
+.sdv-cqrs__track-text {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-variant-numeric: tabular-nums;
+  grid-column: 2;
+}
+
+.sdv-cqrs__views {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+}
+.sdv-cqrs__panel {
+  align-content: start;
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
+  padding: 0.75rem;
+}
+.sdv-cqrs__heading {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  font-weight: 700;
+  margin: 0;
+}
+.sdv-cqrs__empty {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+.sdv-cqrs__cards {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-cqrs__card {
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+}
+.sdv-cqrs__card[data-tone="warn"] {
+  border: 2px dotted var(--sdv-warn);
+}
+.sdv-cqrs__card[data-tone="bad"] {
+  border: 2px dashed var(--sdv-bad);
+}
+.sdv-cqrs__card-title {
+  align-items: center;
+  color: var(--sl-color-white);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-sm);
+  font-weight: 700;
+  gap: 0.3rem;
+  margin: 0;
+}
+.sdv-cqrs__lines {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-cqrs__totals {
+  display: grid;
+  gap: 0.25rem 0.5rem;
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+}
+.sdv-cqrs__totals div {
+  margin: 0;
+}
+.sdv-cqrs__totals dt {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+}
+.sdv-cqrs__totals dd {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  margin: 0;
+}
+
+.sdv-cqrs__events {
+  border-collapse: collapse;
+  display: table;
+  font-size: var(--sl-text-sm);
+  margin: 0;
+  width: 100%;
+}
+.sdv-cqrs__events caption {
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding-bottom: 0.35rem;
+  text-align: start;
+  text-transform: uppercase;
+}
+.sdv-cqrs__events th,
+.sdv-cqrs__events td {
+  border-top: 1px solid var(--sdv-border);
+  color: var(--sl-color-white);
+  padding: 0.35rem 0.5rem;
+  text-align: start;
+  vertical-align: top;
+}
+.sdv-cqrs__events thead th {
+  border-top: 0;
+  font-size: var(--sl-text-xs);
+  font-weight: 700;
+}
+.sdv-cqrs__events tbody th {
+  color: var(--sl-color-gray-2);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.sdv-cqrs__cell {
+  align-items: flex-start;
+  display: inline-flex;
+  gap: 0.3rem;
+}
+.sdv-cqrs__cell svg {
+  flex: none;
+  margin-top: 0.25em;
+}
+.sdv-cqrs__cell .sdv-cqrs__hatch {
+  margin-top: 0.3em;
+}
+.sdv-cqrs__cell[data-state="done"] svg {
+  color: var(--sdv-ok);
+}
+.sdv-cqrs__cell[data-state="bad"] {
+  font-weight: 700;
+}
+.sdv-cqrs__cell[data-state="bad"] svg {
+  color: var(--sdv-bad);
+}
+.sdv-cqrs__cell[data-state="none"] {
+  color: var(--sl-color-gray-2);
+}
+
+@media (min-width: 40.01rem) {
+  .sdv-cqrs .sdv-bars li {
+    grid-template-columns: minmax(4rem, 1fr) minmax(5rem, 2fr) auto;
+  }
+}
+@media (max-width: 40rem) {
+  .sdv-cqrs__track {
+    grid-template-columns: 1fr;
+  }
+  .sdv-cqrs__track-text {
+    grid-column: auto;
+  }
+  .sdv-cqrs__events {
+    font-size: var(--sl-text-xs);
+  }
+  .sdv-cqrs__events th,
+  .sdv-cqrs__events td {
+    padding: 0.3rem 0.25rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sdv-cqrs__track-applied,
+  .sdv-cqrs__track-gap,
+  .sdv-cqrs .sdv-bars__fill {
+    transition: none;
+  }
+}

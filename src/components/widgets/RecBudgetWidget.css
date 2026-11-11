@@ -1,0 +1,132 @@
+.sdv-rec-budget__chart {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+.sdv-rec-budget__line {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+}
+.sdv-rec-budget__line--recall {
+  stroke: var(--sdv-series-a);
+}
+.sdv-rec-budget__line--latency {
+  stroke: var(--sdv-series-b);
+  stroke-dasharray: 7 4;
+}
+.sdv-rec-budget__point {
+  stroke: var(--sl-color-bg);
+  stroke-width: 1.5;
+}
+.sdv-rec-budget__point--recall {
+  fill: var(--sdv-series-a);
+}
+.sdv-rec-budget__point--latency {
+  fill: var(--sdv-series-b);
+}
+.sdv-rec-budget__point--over {
+  fill: var(--sdv-bad);
+}
+.sdv-rec-budget__budget {
+  stroke: var(--sdv-warn);
+  stroke-dasharray: 0.1 5;
+  stroke-linecap: round;
+  stroke-width: 2.5;
+}
+.sdv-rec-budget__cross {
+  stroke: var(--sl-color-gray-3);
+  stroke-dasharray: 6 3 1 3;
+  stroke-width: 1.25;
+}
+.sdv-rec-budget__chevron {
+  fill: none;
+  stroke: var(--sdv-bad);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+.sdv-rec-budget__note,
+.sdv-rec-budget__value,
+.sdv-rec-budget__selected-label {
+  paint-order: stroke;
+  stroke: var(--sl-color-bg);
+  stroke-linejoin: round;
+  stroke-width: 4px;
+}
+.sdv-rec-budget__note {
+  fill: var(--sl-color-gray-2);
+  font-size: 11px;
+}
+.sdv-rec-budget__value {
+  fill: var(--sl-color-white);
+  font-size: 12px;
+  font-weight: 600;
+}
+.sdv-rec-budget__selected {
+  stroke: var(--sl-color-gray-2);
+  stroke-dasharray: 4 3;
+  stroke-width: 1;
+}
+.sdv-rec-budget__selected-label {
+  fill: var(--sl-color-white);
+  font-size: 12px;
+  font-weight: 700;
+}
+.sdv-rec-budget__ring {
+  fill: none;
+  stroke-width: 2;
+}
+.sdv-rec-budget__ring--recall {
+  stroke: var(--sdv-series-a);
+}
+.sdv-rec-budget__ring--latency {
+  stroke: var(--sdv-series-b);
+}
+
+.sdv-rec-budget__key {
+  display: inline-block;
+  flex: none;
+  height: 0;
+  vertical-align: middle;
+  width: 1.5rem;
+}
+.sdv-rec-budget__key--recall {
+  border-top: 2.5px solid var(--sdv-series-a);
+}
+.sdv-rec-budget__key--latency {
+  border-top: 2.5px dashed var(--sdv-series-b);
+}
+.sdv-rec-budget__key--budget {
+  border-top: 2px dotted var(--sdv-warn);
+}
+
+.sdv-rec-budget__caveat {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-rec-budget__details summary {
+  cursor: pointer;
+  font-size: var(--sl-text-sm);
+}
+.sdv-rec-budget__details summary:focus-visible {
+  outline: 2px solid var(--sl-color-text-accent);
+  outline-offset: 2px;
+}
+.sdv-rec-budget__row--selected th,
+.sdv-rec-budget__row--selected td {
+  background: var(--sdv-surface-raised);
+}
+.sdv-rec-budget__here {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-weight: 400;
+}
+
+/* The stage rule sizes every svg to 100%, so pin the badge icons back to badge size. */
+.sdv-rec-budget__table .sdv-badge svg {
+  display: inline;
+  height: 0.85rem;
+  width: 0.85rem;
+}

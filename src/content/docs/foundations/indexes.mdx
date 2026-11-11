@@ -1,0 +1,340 @@
+---
+title: Indexes
+description: A redirect without an index reads the whole links table. Find one row among billions in a few page reads with a B-tree, and see what every extra index costs on write.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import IndexesWidget from '../../../components/widgets/IndexesWidget';
+import IndexWriteCostWidget from '../../../components/widgets/IndexWriteCostWidget';
+
+export const nodes = [
+  { id: 'browser', kind: 'client', x: 60, y: 140, label: 'Browser', sublabel: 'sho.rt/bATJ4g' },
+  { id: 'handler', kind: 'server', x: 210, y: 140, label: 'Redirect handler', sublabel: 'WHERE code = ?' },
+  { id: 'root', kind: 'database', x: 360, y: 50, label: 'Root page', sublabel: '1 page' },
+  { id: 'branch', kind: 'database', x: 500, y: 140, label: 'Branch page', sublabel: '1 of 40' },
+  { id: 'leaf', kind: 'database', x: 640, y: 230, label: 'Leaf page', sublabel: '1 of 20,000' },
+  { id: 'table', kind: 'database', x: 360, y: 230, label: 'links table', sublabel: '1 of 100,000 pages' },
+];
+export const edges = [
+  { from: 'browser', to: 'handler' },
+  { from: 'handler', to: 'root' },
+  { from: 'root', to: 'branch' },
+  { from: 'branch', to: 'leaf' },
+  { from: 'leaf', to: 'table' },
+  { from: 'table', to: 'handler' },
+];
+export const steps = [
+  {
+    title: 'The redirect asks for one code',
+    text: "A browser opens sho.rt/bATJ4g. The handler runs SELECT long_url FROM links WHERE code = 'bATJ4g'. The table holds 10 million links on 100,000 pages of about 100 rows each.",
+    nodes: ['browser', 'handler'],
+    flows: ['browser>handler'],
+  },
+  {
+    title: 'Without an index: every page',
+    text: 'With no index on code, the database reads all 100,000 table pages and checks every row. It keeps reading after the match, because nothing tells it that no other row has the same code.',
+    nodes: ['handler', 'table'],
+    flows: ['handler>table'],
+  },
+  {
+    title: 'Root page: pick a range',
+    text: 'A B-tree on code starts at one root page. It holds sorted separator keys, and each one points to the page that covers a range of codes. One read picks the branch page whose range holds bATJ4g.',
+    nodes: ['handler', 'root'],
+    flows: ['handler>root'],
+  },
+  {
+    title: 'Branch page: narrow again',
+    text: 'The branch page splits its range again, up to 500 ways in this toy model, and points to the one leaf page that can hold bATJ4g. Every level divides the search by the fanout.',
+    nodes: ['root', 'branch'],
+    flows: ['root>branch'],
+  },
+  {
+    title: 'Leaf page: the key and a row pointer',
+    text: 'The leaf holds codes in sorted order, each with the location of its row. A search inside the page finds bATJ4g, or proves that no such code exists.',
+    nodes: ['branch', 'leaf'],
+    flows: ['branch>leaf'],
+  },
+  {
+    title: 'One table page, then the redirect',
+    text: 'The database reads the one table page that holds the row and returns long_url. That is 4 page reads in total, against 100,000 for the scan. The handler sends the redirect.',
+    nodes: ['leaf', 'table', 'handler', 'browser'],
+    flows: ['leaf>table', 'table>handler', 'handler>browser'],
+  },
+  {
+    title: 'Grow the table 1,000 times',
+    text: 'At 10 billion links the scan reads 100,000,000 pages. The tree adds one level, so a lookup reads 5 pages. Each level multiplies capacity by up to 500, and 4 levels hold up to 62.5 billion keys.',
+    nodes: ['root', 'branch', 'leaf', 'table'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: "The redirect runs SELECT long_url FROM links WHERE code = ?, and code has no index. The matching row sits on page 12 of 100,000. How many pages does the database read?",
+    options: [
+      { text: '12', why: 'A row with the same code could sit on any later page, and without a unique index the database cannot rule that out. It reads on.' },
+      { text: 'All 100,000', correct: true, why: 'A full scan reads every page, wherever the match is. Its cost grows in step with the table.' },
+      { text: 'About 50,000 on average', why: 'Stopping halfway on average needs a promise of one match per code. That promise comes from a unique index, and with that index the database would not scan at all.' },
+      { text: '4', why: 'That is the B-tree lookup. Without an index there is no tree to walk.' },
+    ],
+  },
+  {
+    prompt: 'The links table grows from 10 million to 10 billion rows. How does a lookup by code change when code has a B-tree index?',
+    options: [
+      { text: 'It reads about 1,000 times more pages', why: 'That is the full scan. A B-tree reads one page per level, and levels grow with the logarithm of the row count.' },
+      { text: 'It reads about one more page', correct: true, why: 'Each level splits the search up to 500 ways here, so 1,000 times the rows adds one level, occasionally two. In the toy model, 4 page reads become 5.' },
+      { text: 'It reads exactly the same pages', why: 'A bigger tree eventually needs another level. The growth is tiny, and it is still there.' },
+      { text: 'The database switches to a full scan', why: 'A planner prefers a scan when it expects much of the table to match. One code among billions is the best case for an index.' },
+    ],
+  },
+  {
+    prompt: 'The links table has UNIQUE (code). You add indexes on (user_id) and (created_at). What happens to each new link?',
+    options: [
+      { text: 'Nothing changes; indexes only affect reads', why: 'Each index is its own B-tree, and every insert must add its key to every one of them.' },
+      { text: 'It writes two more index leaf pages, after walking down each new tree', correct: true, why: 'One leaf per index, found by a root-to-leaf walk. In the toy model, pages written go from 2 to 4 and the illustrative insert time doubles from 0.2 ms to 0.4 ms.' },
+      { text: 'The database rebuilds every index from scratch', why: 'B-trees update in place: one leaf per index, plus an occasional split when a leaf fills up.' },
+      { text: 'Inserts get faster, since rows are easier to find', why: 'An insert does not search for its own row. The extra indexes add work and save none.' },
+    ],
+  },
+  {
+    prompt: 'The dashboard runs WHERE user_id = ? ORDER BY created_at DESC LIMIT 20. Which index serves it best?',
+    options: [
+      { text: '(created_at, user_id)', why: 'Entries are sorted by date first, so one user\'s links are scattered across the whole index.' },
+      { text: '(user_id, created_at)', correct: true, why: 'user_id is the leftmost column, so the database jumps to one user\'s entries, which already sit in date order, and reads the newest 20.' },
+      { text: 'Two separate indexes, one on user_id and one on created_at', why: 'The database seeks with one of them and still sorts the user\'s links by date. One composite index does both jobs and costs one write per insert instead of two.' },
+      { text: '(created_at)', why: 'That index orders every link by date regardless of owner, so it cannot find one user\'s links.' },
+    ],
+  },
+  {
+    prompt: 'Which query can a B-tree index on code NOT speed up?',
+    options: [
+      { text: "WHERE code = 'bATJ4g'", why: 'An exact match is the case B-trees handle best: a few page reads from root to leaf.' },
+      { text: "WHERE code BETWEEN 'bA' AND 'bZ'", why: 'The tree finds the first matching key, then reads the following leaf entries in sorted order.' },
+      { text: "WHERE lower(code) = 'batj4g'", correct: true, why: 'The index stores code as written, and lower(code) is a different value. The database computes it for every row. Compare the raw column, or build an index on the expression.' },
+      { text: "WHERE code IN ('bATJ4g', 'x9Qe2L')", why: 'The database runs one tree lookup per value, a handful of page reads each.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain why a lookup with no index reads every page of the table, and why its cost grows with the table.
+- Trace a B-tree lookup from root to leaf, and estimate its depth from the row count and the fanout.
+- Count what each extra index costs every insert: one more tree to update, more pages written, more storage.
+- Pick a composite index for the dashboard with the leftmost prefix rule, and spot queries no index can help.
+
+</Objectives>
+
+## The failure: redirects slow down as the shortener grows
+
+Every redirect runs one query:
+
+```sql
+SELECT long_url FROM links WHERE code = 'bATJ4g';
+```
+
+The `links` table uses `id` as its primary key, and nobody added an index on `code`. At launch, with 10,000 links, the
+query takes about a millisecond and every test passes. A year later the table holds 10 million links, each redirect
+takes about a second, and requests start to queue. Nothing is broken: the database does exactly what the query asks,
+reading every page of the table and checking every row, once per click.
+
+<Predict
+  client:visible
+  question="The links table grows 1,000 times, from 10 million rows to 10 billion. How many more pages does one lookup by code read with no index? With a B-tree index on code?"
+  options={[
+    'About 1,000 times more, with or without the index',
+    'About 1,000 times more with no index, and about one more page with the index',
+    'The same number either way, because the database caches pages',
+    'About twice as many with no index, and the same with the index',
+  ]}
+  answer={1}
+>
+
+**About 1,000 times more with no index, and one more page with it.** A full scan reads every page, so it grows with the
+table: 100,000 pages become 100,000,000 (illustrative, at 100 rows per page). A B-tree lookup reads one page per level,
+and each level splits the search up to 500 ways, so 1,000 times the rows adds one or two levels. Here it adds one: 4
+page reads become 5. At the assumed page costs, the scan goes from 1 second to about 17 minutes per lookup, and the
+index goes from 0.4 ms to 0.5 ms.
+
+</Predict>
+
+## The idea: sorted pages that narrow the search
+
+An index is a second copy of one column, kept sorted, with a pointer from each value to its row. Databases store it as a
+**B-tree**: a shallow tree of pages. The root and branch pages hold separator keys that split the key space into
+ranges, and the leaf pages hold every key in order. Each level divides the search by the **fanout**, the number of
+children per page (hundreds in practice, 500 in this toy model). The number of pages a lookup reads grows with the
+logarithm of the row count, base fanout.
+
+<StepDiagram client:visible title="One lookup through a B-tree" nodes={nodes} edges={edges} steps={steps} height={290} />
+
+<Analogy>
+
+To find every mention of "caching" in a 900-page book, you could read all 900 pages. Or you turn to the index at the
+back: terms in alphabetical order, so you jump to C, find the word, and read off three page numbers. The index costs
+the publisher extra pages to print, and every new edition must update it. A database index makes the same trade.
+
+</Analogy>
+
+## Try it
+
+The simulation replays the same 43 redirect lookups, about five a second for 10 seconds, against two copies of the
+links table. Only the index differs. Pick a table size, press Play, and watch the left lane sweep pages while the right
+lane walks down the tree.
+
+The simulation is a toy model. It assumes 100 rows per table page, 500 keys per index page, 10 microseconds per page in
+a sequential scan, and 100 microseconds per page for the random reads of an index lookup. The tree drawing shows three
+children per page so it fits; the text below it gives the real depth. The page counts and times are illustrative. Real
+databases cache hot pages, read ahead, and scan in parallel, which shrinks the numbers without changing their shape.
+
+<IndexesWidget client:visible />
+
+What to look for:
+
+- **10 thousand links.** Both lanes keep up. The scan reads all 100 pages per lookup, 4,300 pages for the 43 lookups,
+  and the index reads 3 pages each, 129 in total. At about 1 ms per scan the queue never builds, which is why a missing
+  index passes every test.
+- **10 million links.** Each scan now costs 1 second of page reads. The scan lane answers 9 lookups, leaves 34 waiting,
+  and its longest wait reaches 7.6 seconds. The index reads 4 pages per lookup and answers all 43 with 172 pages.
+- **10 billion links.** The scan reads 980,000 pages in 10 seconds and finishes nothing: one lookup needs 100,000,000
+  pages, about 17 minutes. The index reads 5 pages per lookup, answers all 43 with 215 pages, and no lookup waits more
+  than 1 ms.
+
+## Every index costs a write
+
+Reads got fast because the database keeps a sorted copy of every code. That copy has a price. Each index is its own
+B-tree, and every `INSERT` into `links` must add its key to each one: walk from the root to the right leaf, write the
+leaf, and split it when it is full.
+
+<Predict
+  client:visible
+  question="The links table has 10 million rows and one index, UNIQUE (code). You add (user_id), (created_at), and (user_id, created_at). How many pages does one new link write now?"
+  options={[
+    'Still 2: the table page and the code index',
+    '5: the table page plus one leaf in each of the four indexes',
+    '4: one leaf per index, and the table page is free',
+    '13: every page from root to leaf in every tree',
+  ]}
+  answer={1}
+>
+
+**5 pages written, in five structures.** Each index adds one leaf write per insert. To find that leaf, the database
+reads 3 pages from root to leaf in each tree, so one new link touches 13 pages. At an assumed 100 microseconds per page,
+the insert goes from 0.2 ms to 0.5 ms (illustrative), and the four indexes fill 80,164 pages, about 80% on top of the
+100,000-page table.
+
+</Predict>
+
+<IndexWriteCostWidget client:visible />
+
+Turn on `(user_id)` and `(user_id, created_at)` together and the widget flags `(user_id)` as redundant: the composite
+index starts with `user_id`, so it answers every query the single-column index can. Turn off the `code` index and the
+redirect goes back to scanning the table.
+
+Real numbers vary. The upper levels of a busy B-tree usually stay in memory, so an insert mostly pays for the leaf. A
+full leaf splits in two, which writes another page or two. Every change also goes to the write-ahead log. The shape
+holds: each index adds work to every insert, every delete, and every update of an indexed column. A shortener serves
+far more redirects than it creates links, so a few well-chosen indexes pay off. A write-heavy table, such as a raw click
+log, wants as few as its queries need.
+
+One index pays for itself twice. `UNIQUE (code)` makes the redirect fast, and it also rejects a second link with the
+same code at the moment of the insert, the guard from [Transactions and constraints](../transactions/). The database
+checks uniqueness by looking the key up in that index, so a unique constraint always comes with one.
+
+## Composite indexes and the leftmost prefix
+
+The dashboard shows a user's 20 newest links:
+
+```sql
+SELECT code, long_url, created_at
+FROM links
+WHERE user_id = 42
+ORDER BY created_at DESC
+LIMIT 20;
+```
+
+An index on `(user_id, created_at)` sorts its entries by `user_id` first, then by `created_at` within each user, like a
+phone book sorted by last name, then first name. The database walks down to the newest entry for user 42, reads 20
+entries in order, and stops. It never sorts, and it never touches the user's older links.
+
+Column order matters. A composite index serves queries that filter on a **leftmost prefix** of its columns:
+
+- `WHERE user_id = 42` uses it, because `user_id` comes first.
+- `WHERE user_id = 42 ORDER BY created_at DESC` uses all of it: one user's entries, already in date order.
+- `WHERE created_at > '2025-01-01'` cannot seek with it. Dates are sorted only within each user, the way first names
+  in a phone book are sorted only within each last name.
+
+An index on `(created_at, user_id)` has the same columns in the wrong order for the dashboard. Once
+`(user_id, created_at)` exists, a lone index on `(user_id)` is redundant: it costs a write on every insert and answers
+nothing the composite index cannot.
+
+**Covering indexes.** The dashboard query above still reads a table page for each of its 20 rows to fetch `code` and
+`long_url`. Add those columns to the index (`INCLUDE (code, long_url)` in PostgreSQL and SQL Server) and the index alone
+answers the query. That saves 20 table reads per page view, and it makes the index larger, since long URLs are long,
+and every insert writes more bytes.
+
+## When an index cannot help
+
+An index helps only when the query can use its sort order to skip most of the table. Watch for these cases:
+
+- **A function on the column.** `WHERE lower(code) = 'batj4g'` asks about values the index does not store, so the
+  database computes `lower(code)` for every row. Compare the raw column, or build an index on the expression.
+- **A leading wildcard.** `WHERE long_url LIKE '%sale%'` can match anywhere in the string, so sorted order gives no
+  starting point. A fixed prefix such as `LIKE 'https://shop.%'` does, and many databases can use an index for it. For
+  words inside text, use a full-text index.
+- **Low selectivity.** An index on `is_active`, where 95% of rows are true, points at most of the table. Following it
+  costs more random reads than a scan, so the planner scans anyway.
+- **Tiny tables.** At 100 pages a scan takes about a millisecond, and the planner may skip your index, correctly.
+
+To see what the database actually does, run `EXPLAIN` (or `EXPLAIN ANALYZE`) on the query. A `Seq Scan on links` under
+a lookup by code is the failure from the top of this lesson.
+
+An index makes one lookup cheap. When a single database still cannot keep up with the number of lookups,
+[Caching](../../scaling/caching/) and [read replicas](../../scaling/read-replicas/) spread the load.
+
+## Trade-offs
+
+<TradeoffTable title="Choosing indexes for the links table">
+
+| Choice                                   | What it buys                                                    | What it costs                                                                 |
+| ---------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| No index on a queried column             | The cheapest writes and no extra storage                        | Every lookup reads the whole table, and its cost grows with the table         |
+| B-tree index on one column (`code`)      | Lookups in a few page reads at any table size                   | One more tree to update on every insert; about 20% more storage here          |
+| Unique index (`UNIQUE (code)`)           | Fast lookups plus a guarantee of no duplicate codes             | Every insert checks the key; the API must turn a violation into a clear error |
+| Composite index (`(user_id, created_at)`) | Serves its leftmost prefix and returns rows already sorted     | No help for queries that skip the first column; order must match the queries  |
+| Covering index (`INCLUDE (...)`)         | Answers the query from the index alone, with no table reads     | A larger index, and more bytes written on every insert                        |
+| Many indexes "just in case"              | Some query might find a fast path                               | Every insert, update, and delete pays for each one, used or not               |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+The dashboard lists a user's 20 newest links. The links table holds 10 million rows with `UNIQUE (code)`, and users
+create about 50 links a second.
+
+1. Which index serves the dashboard query, and why that column order?
+2. What does it cost on every new link, in this lesson's illustrative numbers?
+3. A teammate added an index on `(user_id)` last year. What do you do with it?
+
+<div slot="answer">
+
+1. **`(user_id, created_at)`**: the equality column first, the sort column second. The database seeks to the user,
+   reads 20 entries already in date order, and stops. Most databases read a B-tree in either direction, so
+   `ORDER BY created_at DESC` needs no special index.
+2. **One more tree to update per create.** Pages written go from 2 to 3, the insert reads 3 more pages on the way down,
+   and the illustrative insert time goes from 0.2 ms to 0.3 ms. The index fills about 20,041 pages, about 20% of the
+   table. At 50 creates a second, that is 50 more leaf writes a second, a small price for a dashboard that reads 20
+   entries instead of scanning.
+3. **Drop it.** The composite index starts with `user_id`, so it answers every query the old index did, and the old one
+   still costs a write on every insert. Confirm with `EXPLAIN` and the database's index usage statistics first.
+
+</div>
+
+</Challenge>

@@ -1,0 +1,370 @@
+---
+title: Payments
+description: Move money exactly once and reconcile with the bank. Watch a timeout and a blind retry charge shoppers twice, then fix it with idempotency keys, a double-entry ledger, and reconciliation.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import PaymentsWidget from '../../../components/widgets/PaymentsWidget';
+
+export const nodes = [
+  { id: 'shopper', kind: 'client', x: 70, y: 150, label: 'Shopper', sublabel: 'checkout page' },
+  { id: 'pay', kind: 'server', x: 230, y: 150, label: 'Payments' },
+  { id: 'bank', kind: 'server', x: 390, y: 60, label: 'Bank', sublabel: 'card network' },
+  { id: 'ledger', kind: 'database', x: 390, y: 240, label: 'Ledger', sublabel: 'entries and keys' },
+  { id: 'recon', kind: 'server', x: 550, y: 150, label: 'Reconciler', sublabel: 'nightly job' },
+];
+export const edges = [
+  { from: 'shopper', to: 'pay' },
+  { from: 'pay', to: 'bank' },
+  { from: 'pay', to: 'ledger' },
+  { from: 'recon', to: 'ledger' },
+  { from: 'recon', to: 'bank', dashed: true },
+];
+export const steps = [
+  {
+    title: 'Checkout names the purchase',
+    text: 'The shopper presses Pay. The checkout page creates an idempotency key, a random ID for this one purchase, and sends it with the request. A double click or a reloaded page sends the same key again.',
+    nodes: ['shopper', 'pay'],
+    flows: ['shopper>pay'],
+  },
+  {
+    title: 'Write down the intent first',
+    text: 'Before it calls the bank, the payment service stores a pending payment with the key and the amount. A unique constraint on the key means a repeat request finds this row instead of starting a second payment.',
+    nodes: ['pay', 'ledger'],
+    flows: ['pay>ledger'],
+  },
+  {
+    title: 'Ask the bank, and pass the key along',
+    text: 'The service asks the bank to charge $40 and includes the same key. The bank stores the key with its result, so a repeat returns the first answer.',
+    nodes: ['pay', 'bank'],
+    flows: ['pay>bank'],
+  },
+  {
+    title: 'Time out, then retry with the same key',
+    text: 'No reply after 2 s. The service cannot tell a lost request from a slow reply, so it backs off and retries with the same key. If the first attempt did charge the card, the bank answers with that charge and moves no more money.',
+    nodes: ['pay', 'bank'],
+    flows: ['pay>bank', 'bank>pay'],
+  },
+  {
+    title: 'Record two entries that balance',
+    text: 'When the bank confirms, the service writes two ledger entries in one transaction: $40 owed by the card network, and $40 owed to the merchant. Debits equal credits, and no entry is ever edited.',
+    nodes: ['pay', 'ledger'],
+    flows: ['pay>ledger'],
+  },
+  {
+    title: 'Reconcile with the bank',
+    text: "Each night the reconciler matches the bank's settlement file against the ledger, line by line. A bank charge with no ledger entry completes a stuck payment. A stuck payment with no bank charge is marked failed.",
+    nodes: ['recon', 'bank', 'ledger'],
+    flows: ['bank>recon', 'recon>ledger'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'The payment service asked the bank to charge a card 2 s ago and has no reply. What does it know about the charge?',
+    options: [
+      {
+        text: 'Nothing yet: the bank may have charged, declined, or never received the request',
+        correct: true,
+        why: 'A timeout only says no reply arrived in time. In the slow bank run, many late replies belong to real charges, and blind retries charge 17 shoppers twice or more.',
+      },
+      {
+        text: 'The charge failed, so a fresh request is safe',
+        why: 'That assumption is the double charge. In the slow bank run it charges 17 shoppers twice or more, $940 in total.',
+      },
+      {
+        text: 'The charge succeeded, so the order can ship',
+        why: 'Some requests never reach the bank. Shipping on a timeout gives the goods away whenever the request was lost.',
+      },
+      {
+        text: 'The bank is down',
+        why: 'One late reply says little about the bank as a whole. In the slow bank run most replies arrive in time, and only some are late.',
+      },
+    ],
+  },
+  {
+    prompt: 'What makes a retried charge safe to send?',
+    options: [
+      {
+        text: 'It carries the same idempotency key, so the bank returns the first result',
+        correct: true,
+        why: 'The key names the purchase, so the bank recognizes a repeat. With keys, the bank charges exactly 120 times for 120 payments.',
+      },
+      {
+        text: 'It waits longer before it goes out',
+        why: 'Backoff spreads out load. A late reply can still arrive after any wait, and the retry is still a second, independent charge.',
+      },
+      {
+        text: 'A shorter timeout, so retries go out sooner',
+        why: 'Sooner retries repeat more charges that were merely slow. The 1 s timeout charges 40 shoppers twice or more, up from 17.',
+      },
+      {
+        text: 'A new key for every attempt',
+        why: 'A new key looks like a new purchase to the bank. That is exactly the lane without a key.',
+      },
+    ],
+  },
+  {
+    prompt: "Every retry carries a key, yet after the outage the bank's records show $195 more than the ledger. Where did the money go?",
+    options: [
+      {
+        text: 'Some payments gave up after 3 timed-out attempts, though the bank had charged them',
+        correct: true,
+        why: 'A key stops double charges. It cannot report an outcome when every reply is lost. Reconciliation reads the bank records and completes 5 of those payments.',
+      },
+      {
+        text: 'The keys failed and some shoppers paid twice',
+        why: 'Keyed lanes never charge twice. The whole gap comes from 6 payments stuck as unknown, 5 of which the bank charged.',
+      },
+      {
+        text: 'Rounding errors',
+        why: 'Every amount in the model is a whole number of dollars. Real ledgers store integer cents to rule rounding out.',
+      },
+      {
+        text: 'Refunds',
+        why: 'Nothing in the run refunds anything. The gap is money the bank took for payments the ledger still calls unknown.',
+      },
+    ],
+  },
+  {
+    prompt: 'Why does a payment ledger write two entries per payment and never edit a row?',
+    options: [
+      {
+        text: 'Debits must equal credits, so a missing or extra entry shows up, and history stays auditable',
+        correct: true,
+        why: 'A balanced, append-only ledger can be checked: the entries sum to zero, and any balance can be rebuilt from them. A refund is a new pair of entries.',
+      },
+      {
+        text: 'Two entries make writes faster',
+        why: 'Two entries are more writes. The ledger spends some speed to buy checks it can run.',
+      },
+      {
+        text: 'The ledger stops double charges',
+        why: 'A double charge happens at the bank before the ledger hears about it. Keys prevent it, and reconciliation against the ledger reveals it.',
+      },
+      {
+        text: 'SQL databases require it',
+        why: 'No database demands double entry. It is a centuries-old accounting practice that payment systems adopt on purpose.',
+      },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain why a timeout leaves a payment's outcome unknown, and why a blind retry can charge a shopper twice.
+- Make retries safe with an idempotency key that both the payment service and the bank honor.
+- Record money in an append-only, double-entry ledger where every payment balances.
+- Reconcile the ledger with the bank to settle payments whose outcome stayed unknown.
+- Contrast how payments and flash-sale ticketing fail.
+
+</Objectives>
+
+## The failure: one order, two charges
+
+A shopper presses Pay on a $40 order. The payment service asks the bank to charge the card and waits. Two seconds pass
+with no reply, so the service gives up on that request and sends a new one. The bank approves the second request at
+once, and the order ships. A week later the shopper's statement shows two charges of $40.
+
+The first request had reached the bank and charged the card. Its reply was slow. A timeout tells the service that no
+answer arrived in time, and nothing about what the bank did.
+
+<Predict
+  client:visible
+  question="In the toy run below, 120 shoppers pay within 20 s. 15% of bank replies arrive after the 2 s timeout, and 5% of requests never reach the bank. The service retries every timeout with a fresh request, up to 3 attempts. How many shoppers get charged more than once?"
+  options={['None: the bank spots the repeat', 'About 1 in 50', 'About 1 in 7', 'About half']}
+  answer={2}
+>
+
+**17 shoppers, about 1 in 7**, pay twice or more, and the bank takes **$940** that the ledger never recorded. Every reply
+that arrives after the timeout belongs to a charge that already happened, so the fresh retry charges the card again. A
+request that never reached the bank is harmless to retry, and the service cannot tell the two cases apart.
+
+</Predict>
+
+## The idea: name every payment, then check the books
+
+This case study has one dominant constraint: **move money exactly once**, even when the network loses requests and
+replies. Load is modest. Correctness is the whole job.
+
+Retries can carry one charge to the bank more than once, and after its last timed-out attempt the service may still not
+know whether any landed. The fix makes repeats harmless and settles the unknowns later. An **idempotency key** names the purchase, and
+every retry carries the same name. The bank stores the key with its result, so a repeat gets the first answer and moves
+no money. A **double-entry ledger** records every payment as entries that must balance. **Reconciliation** compares that
+ledger with the bank's own records and settles anything the retries could not.
+
+<StepDiagram client:visible title="A payment, step by step" nodes={nodes} edges={edges} steps={steps} height={290} />
+
+<Analogy>
+
+Paying by numbered cheque. If you are unsure whether a cheque reached the shop, you write a copy with the same number,
+and the bank refuses to pay one number twice. Your chequebook stubs are the ledger. Once a month you tick each stub
+against the bank statement, and any line that does not match gets a phone call. That is reconciliation.
+
+</Analogy>
+
+## Walk the design checklist
+
+The seven steps from the [design checklist](../../thinking/design-checklist/), applied to a payment service.
+
+<Steps>
+
+1. **Requirements.** Charge a card for an order, refund it, and show a payment history. The hard bar: every payment moves
+   money exactly once, and every charge at the bank matches an entry in the ledger. A payment that takes 3 seconds is
+   fine. A payment charged twice becomes a support ticket and a chargeback. Fraud scoring, currency conversion, and
+   payouts to sellers stay out of scope.
+
+2. **Estimates (illustrative).** Ten million payments a day average about **116 per second**, and a 5× peak on a sale
+   day is about **579 per second**. That load is modest. Each payment writes 2 ledger entries, so **20 million entries a
+   day**, and at 200 bytes each that is about **4 GB a day**, kept for years for audits. Keeping each idempotency key for
+   a day at 100 bytes takes about **1 GB**. (See [requirements and estimates](../../thinking/requirements-and-estimates/)
+   for the method.)
+
+3. **API.** `POST /payments` takes an order, an amount in cents, and a card token, plus an `Idempotency-Key` header. It
+   returns the payment with a status of `succeeded`, `failed`, or `pending`. The same key with the same body returns the
+   same response. The same key with a different body returns `422`, because it signals a bug in the caller.
+   `POST /payments/{id}/refunds` takes a key too.
+
+4. **Data model.** A `payments` table holds the key (unique), the amount, the status, and the bank's reference. A
+   `ledger_entries` table is append-only: each row names a payment, an account, a direction (debit or credit), and an
+   amount in cents. Balances are sums of entries. An `idempotency_keys` table stores each key with a hash of the request
+   and the response to replay.
+
+5. **High-level design.** The checkout page calls the payment service, which writes to the ledger database and calls the
+   bank. A reconciler runs on a schedule, reads the bank's settlement file, and compares it with the ledger.
+
+6. **Deep dive: the retry.** This is where the design breaks first, and the simulations below live here. After a timeout
+   there are three possible worlds: the request was lost, the bank declined, or the bank charged and the reply was lost.
+   Only the bank knows which. A retry with the same key asks the bank to answer from its key store, so all three worlds
+   end with one charge at most. The Idempotency lesson covers key stores in depth, and Retries with backoff and jitter
+   covers spacing the attempts. When every attempt times out, the payment stays unknown until reconciliation settles it.
+
+7. **Trade-offs.** Timeout length, how long to keep keys, how often to reconcile, and what to show the shopper while a
+   payment is pending. The table at the end of this page lays them out.
+
+</Steps>
+
+## Try it: retry a timed-out charge
+
+Both lanes face the same 120 payments, and the bank treats each attempt the same way in both: the same requests get
+lost, and the same replies arrive late. Only the retry differs. Times are compressed: the whole run takes 30 seconds.
+
+<PaymentsWidget client:visible duel="retries" />
+
+What to look for:
+
+- **Slow bank.** Without a key the service sends **24 retries**, and the bank charges **139 times for 120 payments**.
+  **17 shoppers** pay twice or more, **$940** in total, so the bank takes **$7,080** while the ledger records
+  **$6,140**. With a key the bank answers **19 retries** from its key store and charges exactly **120 times**.
+- **Shorter timeout.** Cutting the timeout from 2 s to 1 s makes the no-key lane worse: **55 retries**, **40
+  shoppers** charged twice or more, and **$2,555** taken twice. A short timeout counts ordinary slow replies as failures.
+  With a key nobody pays twice, but **3 payments** end unknown after 3 attempts while the bank holds **$95** for them.
+  The next duel settles those.
+- **Healthy bank.** Every reply arrives in time, nobody retries, and the lanes match. A missing key costs nothing until
+  the network misbehaves, which is why this bug passes every test.
+
+## The ledger
+
+A payment service keeps its own record of every cent, separate from the bank's. Two rules make that record trustworthy.
+
+- **Double entry.** Every payment writes at least two entries whose debits equal their credits, so the whole ledger sums
+  to zero. A missing or extra entry breaks the sum, and a check can find it.
+- **Append only.** No entry is ever edited or deleted. A refund writes a new pair of entries in the opposite direction,
+  so the history shows both what happened and how it was corrected.
+
+| Entry | Payment | Account                                    | Debit | Credit |
+| ----- | ------- | ------------------------------------------ | ----- | ------ |
+| 1     | 71      | Card network receivable (money on its way) | $40   |        |
+| 2     | 71      | Merchant payable (money owed to the shop)  |       | $40    |
+| 3     | 71      | Merchant payable (refund of $15)           | $15   |        |
+| 4     | 71      | Card network receivable (refund of $15)    |       | $15    |
+
+Write both entries of a pair in one database transaction (the Transactions and constraints lesson covers this), and
+store amounts as integer cents so rounding never creates or destroys money.
+
+## Reconcile with the bank
+
+Keys stop double charges. They cannot help when every attempt times out: after 3 tries the service still does not know
+whether the bank charged the card. Both lanes below retry with a key, so neither one charges twice. Only one of them
+compares its ledger with the bank's records every 10 s. Real systems do this once a night against the bank's settlement
+file, often with an hourly check through the bank's API for payments stuck as pending.
+
+<PaymentsWidget client:visible duel="reconcile" />
+
+What to look for:
+
+- **Bank outage.** From 8 s to 16 s the bank answers slowly and drops requests. **6 payments** give up after 3
+  attempts. Trusting the ledger, they stay unknown, and the bank holds **$195** that the ledger never recorded. The
+  reconciling lane finds **5 charges** in the bank's file and completes those payments, marks **1** failed so its
+  shopper can pay again, and closes the gap to **$0**.
+- **Calm day.** No outage, no unknown payments, and the lanes match. Reconciliation finds nothing, and that silence has
+  value: it proves the books balance.
+
+A payment that spans several services (reserve stock, charge the card, book shipping) also needs a plan for undoing the
+earlier steps when a later one fails. The Sagas lesson covers that, and Delivery semantics and the outbox covers sending
+the "payment succeeded" event exactly when the ledger commits.
+
+## Payments versus ticketing
+
+[Flash-sale ticketing](../ticketing/) is the other half of this pair. Both protect something scarce, and they fail in
+opposite ways.
+
+| Question          | Payments                                              | Flash-sale ticketing                           |
+| ----------------- | ----------------------------------------------------- | ---------------------------------------------- |
+| What is scarce?   | Money in one account, touched by few writers          | 10,000 seats, the same rows for everyone       |
+| Who collides?     | One request with its own retry                        | Many strangers on the same seat                |
+| What goes wrong?  | One payment runs twice after a timeout and retry      | Two buyers claim one seat at the same instant  |
+| The guard         | An idempotency key and a ledger that must balance     | A conditional write on the seat row            |
+| Undoing a mistake | Moved money needs a refund, a new entry in the ledger | A hold expires and the seat goes back on sale  |
+
+Both fixes end with one authority deciding: the seat row for a ticket, the bank's key store for a charge. Every other
+attempt learns the first answer.
+
+## Trade-offs
+
+<TradeoffTable title="Designing a payment service">
+
+| Choice                           | What it buys                                           | What it costs                                              |
+| -------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------- |
+| Long timeout                     | Fewer false timeouts and fewer retries                 | Shoppers wait longer when the bank is stuck                |
+| Short timeout                    | Fast feedback for the shopper                          | More retries, and without a key, more double charges       |
+| Idempotency key on every write   | Safe retries from the page, the service, and the bank  | A key store to run, and keys expire (24 h is common)       |
+| Double-entry, append-only ledger | Every cent traceable, and mistakes fixed in the open   | More rows, and balances need sums or snapshots             |
+| Reconcile often                  | Unknown payments settle within minutes                 | More calls to the bank and more matching work              |
+| Reconcile nightly                | A simple batch job against one file                    | A payment can stay unknown for a day                       |
+| Show "pending" to the shopper    | Honest while the outcome is unknown                    | A follow-up email or screen once the payment settles       |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+A support agent clicks Refund $40 on a $100 payment. The request times out, so the agent clicks again. An hour later a
+second agent refunds $70 on the same payment. Design the refund path so each click refunds once and the shopper never
+gets back more than $100.
+
+<div slot="answer">
+
+**Treat a refund as a new payment in the other direction, with the same guards.**
+
+- **Key every refund:** the Refund button creates one key per refund the agent intends. The second click reuses it, so
+  the bank returns the first refund and sends no more money.
+- **Guard the total with a conditional write:**
+  `UPDATE payments SET refunded = refunded + 4000 WHERE id = ? AND refunded + 4000 <= amount`. Zero rows changed means
+  the refund would exceed the payment. The $70 refund changes zero rows, since $40 plus $70 is more than $100. This is
+  the same check that stops [ticketing](../ticketing/) from selling a seat twice.
+- **Record it in the ledger:** write a new pair of entries that reverses $40, and leave the original entries alone.
+- **Reconcile refunds too:** a refund whose every attempt timed out stays unknown until the bank's file shows whether it
+  went out.
+
+</div>
+
+</Challenge>

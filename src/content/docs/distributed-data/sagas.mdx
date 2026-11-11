@@ -1,0 +1,317 @@
+---
+title: Sagas
+description: Check out a cart across Inventory, Payments, and Shipping without a global lock. Undo finished steps with compensations when one fails, and compare orchestration with choreography.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import SagaWidget from '../../../components/widgets/SagaWidget';
+
+export const nodes = [
+  { id: 'orders', kind: 'server', x: 70, y: 150, label: 'Orders', sublabel: 'runs the saga' },
+  { id: 'inventory', kind: 'server', x: 300, y: 50, label: 'Inventory' },
+  { id: 'payments', kind: 'server', x: 300, y: 150, label: 'Payments' },
+  { id: 'shipping', kind: 'server', x: 300, y: 250, label: 'Shipping' },
+  { id: 'stock', kind: 'database', x: 530, y: 50, label: 'Stock' },
+  { id: 'ledger', kind: 'database', x: 530, y: 150, label: 'Ledger' },
+  { id: 'bookings', kind: 'database', x: 530, y: 250, label: 'Bookings' },
+];
+export const edges = [
+  { from: 'orders', to: 'inventory' },
+  { from: 'orders', to: 'payments' },
+  { from: 'orders', to: 'shipping' },
+  { from: 'inventory', to: 'stock' },
+  { from: 'payments', to: 'ledger' },
+  { from: 'shipping', to: 'bookings' },
+];
+export const steps = [
+  {
+    title: 'Three services, three databases',
+    text: 'Checkout touches Inventory, Payments, and Shipping. Each service owns its own database, so no single database transaction can cover all three.',
+    nodes: ['orders', 'inventory', 'payments', 'shipping', 'stock', 'ledger', 'bookings'],
+    flows: [],
+  },
+  {
+    title: 'Reserve stock and commit',
+    text: 'Orders asks Inventory to hold the item. Inventory commits the hold in its own database right away, and other shoppers now see one fewer in stock.',
+    nodes: ['orders', 'inventory', 'stock'],
+    flows: ['orders>inventory', 'inventory>stock'],
+  },
+  {
+    title: 'Charge the card and commit',
+    text: 'Payments charges $75 and commits it to the ledger. The money has left the customer, and no database rollback can bring it back.',
+    nodes: ['orders', 'payments', 'ledger'],
+    flows: ['orders>payments', 'payments>ledger'],
+  },
+  {
+    title: 'A failure mid saga',
+    text: 'Shipping finds no courier and says no. Two steps have already committed in two other databases.',
+    nodes: ['orders', 'shipping'],
+    flows: ['orders>shipping', 'shipping>orders'],
+  },
+  {
+    title: 'Compensate in reverse',
+    text: 'Orders asks Payments to refund the $75, then asks Inventory to release the item. Each compensation is a new local transaction, and the newest step unwinds first.',
+    nodes: ['orders', 'inventory', 'payments', 'stock', 'ledger'],
+    flows: ['orders>payments', 'payments>ledger', 'orders>inventory', 'inventory>stock'],
+  },
+  {
+    title: 'The books balance',
+    text: 'The ledger shows $75 charged and $75 refunded, and the item is back on sale. The customer sees a cancelled order and a refund.',
+    nodes: ['orders', 'stock', 'ledger'],
+    flows: [],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'Inventory reserved the stock and Payments charged the card. Then Shipping finds no courier. What does the saga do about the two finished steps?',
+    options: [
+      { text: 'Runs a compensation for each one, newest first: refund the card, then release the stock', correct: true, why: 'Each finished step has a matching undo, and the saga unwinds like a stack. In the simulation, Payments refunds $75 before Inventory releases the item.' },
+      { text: 'Rolls back both databases in one transaction', why: 'No transaction spans the three databases. That gap is the reason sagas exist.' },
+      { text: 'Nothing, since Shipping never recorded the order', why: 'Inventory and Payments already committed. Without compensations, the customer stays charged for an order that never ships.' },
+      { text: 'Deletes the payment row so the charge never happened', why: 'The card network already moved the money. Deleting a row hides the charge from you and leaves it on the customer statement. A refund is a new transaction.' },
+    ],
+  },
+  {
+    prompt: 'Why must Payments look up the order id before it charges?',
+    options: [
+      { text: 'Retries can deliver the same charge request twice', correct: true, why: 'A lost reply looks exactly like a lost request, so the sender tries again. Without the lookup, order 2 paid $90 twice in both lanes.' },
+      { text: 'It makes charges faster', why: 'The lookup adds work to every charge. It exists for safety.' },
+      { text: 'The payment provider rejects repeats on its own', why: 'A provider only spots a repeat when you send the same idempotency key. Without one, the second charge looks like a new purchase.' },
+      { text: 'Only choreography needs it', why: 'Both styles retry. The orchestrator resends commands, and the bus redelivers events. Both lanes double charged without the lookup.' },
+    ],
+  },
+  {
+    prompt: 'Which question gets harder to answer with choreography?',
+    options: [
+      { text: 'Where is order 3 right now?', correct: true, why: 'The saga state is spread across four services. The orchestration lane answers from one saga log, and the choreography lane makes you ask four places.' },
+      { text: 'Did Inventory reserve the stock for order 3?', why: 'Inventory owns its own records in both styles, so one service answers.' },
+      { text: 'Can a new loyalty service react when an order ships?', why: 'This is where choreography shines: the new service subscribes to the event, and no other service changes.' },
+      { text: 'How many sneakers are in stock?', why: 'Stock lives in Inventory in both styles. One query answers it.' },
+    ],
+  },
+  {
+    prompt: 'Checkout runs as a saga, and stock reads go straight to the Inventory database. A shopper sees a sneaker sell out and come back a second later. What happened?',
+    options: [
+      { text: 'Another checkout held it, then compensated', correct: true, why: 'Sagas give up isolation. The hold was a real, committed step that everyone could see, and the release was a second step. Order 3 kept 1 item off sale for 800 ms.' },
+      { text: 'A cache served an old value', why: 'Reads go straight to Inventory here, so no cache is involved. The stock really was held.' },
+      { text: 'Inventory lost a write', why: 'Nothing was lost. Inventory committed the hold and later committed the release.' },
+      { text: 'A two-phase commit rolled back', why: 'No two-phase commit runs in a saga. Under two-phase commit, other shoppers would have waited on the lock instead of seeing the hold.' },
+    ],
+  },
+  {
+    prompt: 'The store adds a confirmation email, which no one can take back once sent. Where should the saga send it?',
+    options: [
+      { text: 'After the last step that can fail', correct: true, why: 'Once the courier is booked, nothing left can fail the order, so the email never needs taking back. Retry it until it goes out.' },
+      { text: 'First, so the customer hears right away', why: 'If a later step fails, the saga cannot recall the email. The best it can do is send a second, apologetic one.' },
+      { text: 'At the same time as the charge', why: 'The card might be declined, and then the email promises an order that will never ship.' },
+      { text: 'Anywhere, since its compensation deletes it', why: 'No compensation can pull an email out of an inbox. A compensation is a new forward action, and it cannot erase what people already saw.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain why two-phase commit across services blocks checkouts, and what a saga does instead.
+- Design a compensation for each step, and run them in reverse order when a step fails mid saga.
+- Compare orchestration and choreography by messages sent, where the saga state lives, and how easily you can trace one order.
+- Explain why a saga gives up isolation and why every step must be safe to retry.
+
+</Objectives>
+
+## The failure: a charge with nothing to ship
+
+The online store has grown into separate services. Checking out a cart now touches three of them, and each owns its
+own database: **Inventory** reserves the items, **Payments** charges the card, and **Shipping** books a courier.
+Inside one database, a transaction makes a change all or nothing (the Transactions and constraints lesson covers how).
+Nothing like that spans three databases.
+
+You have two obvious options, and both hurt:
+
+- **Commit atomically.** Run a distributed transaction protocol such as two-phase commit: every service votes to
+  prepare, then a coordinator tells all three to commit or all three to abort. Each service holds its locks from its
+  vote until the decision arrives. When Shipping stalls for two seconds, the stock rows and payment records stay
+  locked, and every other checkout for the same items waits. If the coordinator crashes after the votes, the locks stay
+  held until it recovers. Many outside services, such as card networks and courier companies, cannot join a two-phase
+  commit at all. (A distributed lock alone gives no such promise: it stops two callers from running at once, and it
+  cannot undo a charge that Payments already committed.)
+- **Just call them in order.** Reserve, charge, book. That works until a step fails halfway.
+
+<Predict
+  client:visible
+  question="Checkout calls Inventory, then Payments, then Shipping, with no plan for failure. Inventory holds 1 item and Payments charges $75. Then Shipping finds no courier. What does the customer see?"
+  options={[
+    'An error, and nothing else changes',
+    'A $75 charge for an order that will never ship',
+    'The database rolls the charge back automatically',
+    'Checkout waits until a courier is free',
+  ]}
+  answer={1}
+>
+
+**A $75 charge for an order that will never ship.** Inventory and Payments each committed in their own database, and
+no rollback reaches across services. The held item also stays off sale. A saga gives every step an undo: in the
+simulation below, Payments refunds the $75 **400 ms after charging it**, then Inventory releases the item, which other
+shoppers could not buy for **800 ms**.
+
+</Predict>
+
+## The idea: local steps, each with an undo
+
+A **saga** splits one business action into a chain of local transactions. Each step commits in its own service right
+away, so no service waits on another's locks. If a step fails, the saga runs a **compensation** for every step that
+already finished, newest first. Releasing the stock undoes the reservation, and refunding the card undoes the charge.
+
+A compensation is a new forward action, and it restores the business outcome without erasing history. The refund shows
+up as a second line on the customer's statement. Some actions have no undo at all: a sent email stays sent. Put those
+after the **pivot**, the last step that can fail. Here, booking the courier is the pivot: once it succeeds, the order
+will complete.
+
+<StepDiagram client:visible title="A checkout saga with a failure mid saga" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy>
+
+You plan a trip by booking a flight, then a hotel, then a rental car. The car company has nothing left, so you cancel
+the hotel and then the flight. Nobody freezes all three companies while you decide. Each cancellation is a new call
+with its own record, and the airline may even keep a fee: you get back to a sensible state, which is a little different
+from never having booked.
+
+</Analogy>
+
+## Try it
+
+Someone has to decide which step runs next. **Orchestration** gives that job to one service, the orchestrator, which
+sends a command to each service and records every saga's progress in a saga log. **Choreography** has no one in
+charge: each service listens on an event bus, reacts to the previous service's event, and publishes its own.
+
+Messages get lost, so both styles retry. Commit to a guess before you run the last scenario.
+
+<Predict
+  client:visible
+  question="Payments charges order 2 ($90), and its reply gets lost. After 400 ms of silence, the request arrives at Payments again. Payments does not check whether it already charged that order. The six carts are worth $490 in total. How much does the store charge?"
+  options={['$490', '$400', '$580', '$980']}
+  answer={2}
+>
+
+**$580.** Payments runs the charge a second time, so the customer for order 2 pays **$90 twice**. Both lanes make the
+same mistake, because both retry. Switch on dedupe and Payments finds order 2 already charged, repeats its first
+answer, and the store charges the correct $490.
+
+</Predict>
+
+<SagaWidget client:visible />
+
+What to look for:
+
+- **Compensations run newest first.** Pick **Courier fails** and watch order 3. The charge cell turns to **Refunded
+  $75** before the stock cell turns to **Released 1 item**, in both lanes.
+- **The stock chart climbs back by 1.** The hold for order 3 is a real, committed change. Other shoppers see one fewer
+  item until the release lands, and then the line steps back up.
+- **Choreography sends more messages here.** On the happy path, orchestration sends **36** messages for six orders
+  and choreography sends **48**: 6 against 8 per order, because every event in this toy passes through the bus.
+- **Where is order 3?** The orchestration lane answers from one saga log. The choreography lane makes you ask four
+  services, and while the saga runs, the Orders service only knows the order was placed.
+- **Retries need dedupe.** Compare **Lost reply, deduped** with **Lost reply, no dedupe**. The only difference is one
+  check in Payments, and it decides whether order 2 pays once or twice.
+
+This is a toy model. Every message takes 100 ms, the six carts come from a fixed seed, and the numbers are
+illustrative.
+
+## Orchestration or choreography
+
+With **orchestration**, the whole flow lives in one place. The orchestrator knows the order of steps and the order of
+compensations, and its saga log answers "where is order 3?" with one lookup. In the toy, a happy checkout takes **600
+ms** and the courier failure cancels order 3 after **1000 ms**. The price is one more service to run and keep
+available, and an orchestrator can slowly turn into a central service that knows everyone's business.
+
+With **choreography**, services stay loosely coupled. A new loyalty service can subscribe to the shipping event, and
+no existing service changes. The price is that the flow lives in four codebases. In the toy, the extra bus hops make a
+happy checkout take **800 ms** and the courier failure take **1200 ms**. A real broker adds only a few milliseconds per
+hop, so the bigger cost is debugging: to trace one order, you collect events from every service. Many teams solve that
+with a read model that listens to every event and keeps one status row per order, an idea the
+[CQRS](../cqrs/) lesson builds on.
+
+A common rule of thumb: choreography for short flows of two or three steps owned by different teams, and orchestration
+once the flow has many steps, branches, or compensations you need to audit.
+
+## A saga gives up isolation
+
+A database transaction hides its work until it commits. A saga commits every step as it goes, so other readers see the
+in-between states. In the courier failure, 1 item for order 3 was off sale for **800 ms** before Inventory released it.
+When Payments declined order 2's card, 3 items were held for **400 ms**. A shopper who looked in those windows saw
+less stock than the store really had to sell, and a shopper who read the ledger saw a charge that later disappeared
+behind a refund. The [consistency models](../consistency-models/) lesson describes what readers can see in more
+detail.
+
+Designs that live with this:
+
+- **Pending states.** Store a hold as "reserved", separate from "sold", and an order as "pending" until the saga ends.
+  Readers who understand the flag can show "2 left, 1 on hold".
+- **Undo by adding back.** Write compensations as increments, such as "add 1 to stock", instead of "set stock to 24".
+  Two sagas that interleave then cannot overwrite each other.
+- **Risky steps early, permanent steps last.** Put the steps most likely to fail early, so fewer compensations run.
+  Put steps with no undo, such as emails, after the pivot.
+
+## Retries need idempotent steps
+
+A lost reply and a lost request look the same to the sender, so the orchestrator resends a command after a timeout,
+and the bus redelivers an event that nobody acknowledged. Every step and every compensation can therefore run more
+than once. Payments must key each charge by order id, see that order 2 is already charged, and return its first answer.
+Refunds need the same guard, or a retried refund pays the customer back twice. The Idempotency lesson covers these
+keys in depth.
+
+Retries also cost time. With the lost reply, order 2 finishes in **1000 ms** under orchestration and **1200 ms** under
+choreography, against 600 and 800 for the other orders. A compensation must never give up for good, either: keep
+retrying a refund until it succeeds, and alert a person if it keeps failing.
+
+One more trap: a service must save its change and publish its event together. If it crashes between the two, the saga
+stalls forever. The usual fix writes the event to an outbox table in the same local transaction, and a relay publishes
+it later. The Event-driven design lesson covers that pattern.
+
+## Trade-offs
+
+<TradeoffTable title="Coordinating a checkout across services">
+
+| Choice                                | What it buys                                              | What it costs                                                                   |
+| ------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Two-phase commit                      | All or nothing across services, and held locks keep other writers off half-done rows | Locks held across services, one stalled service or coordinator blocks everyone, outside APIs cannot join |
+| Saga with compensations               | Each service commits alone, with no cross-service locks   | No isolation, and a compensation to write and test for every step              |
+| Orchestration                         | One place holds the flow and every saga's state           | One more service to run, and it can grow to know too much                       |
+| Choreography                          | Loose coupling, and new listeners need no other changes   | The flow is spread across services, so tracing one order is hard                |
+| Idempotent steps                      | Safe retries, with no double charges or double refunds    | A dedupe record per order or request, checked on every step                     |
+| Pending states                        | Readers can tell held stock from sold stock               | Every reader must understand the pending flag                                   |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+The store adds gift cards. Checkout now runs five steps: reserve stock, redeem the gift card balance, charge the rest
+to the card, book a courier, and send a confirmation email. Give each step a compensation, or say why it needs none.
+If Shipping fails, which compensations run, and in what order? Pick orchestration or choreography and say why. Then, in
+the toy model's terms (a command and its reply count as two messages, and an event counts as two because it passes
+through the bus), count the messages for one happy checkout in each style.
+
+<div slot="answer">
+
+- **Compensations:** release stock, restore the gift card balance (add it back), and refund the card. Booking the
+  courier is the pivot, so it needs no undo. The email comes after the pivot: it has no undo, so the saga retries it
+  until it goes out.
+- **Shipping fails:** refund the card, then restore the gift card, then release the stock. Newest first.
+- **Style:** orchestration. Five steps with two kinds of money and a support team that asks "where is my order?" all
+  point to one saga log.
+- **Idempotency:** redeem, charge, and both money compensations key on the order id, so a retry never takes or
+  returns the money twice.
+- **Messages:** orchestration sends a command and a reply per step: 5 × 2 = **10**. Choreography sends one event per
+  step plus the order placed event, each through the bus: 6 × 2 = **12**.
+
+</div>
+
+</Challenge>

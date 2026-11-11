@@ -1,0 +1,49 @@
+.sdv-gate__chart {
+  display: block;
+  height: auto;
+  margin-top: 0.75rem;
+  width: 100%;
+}
+.sdv-gate__box {
+  fill: var(--sdv-ok);
+  fill-opacity: 0.12;
+  stroke: var(--sdv-ok);
+  stroke-dasharray: 6 4;
+  stroke-width: 1.5;
+}
+.sdv-gate__box-label {
+  fill: var(--sl-color-gray-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+.sdv-gate__point circle {
+  stroke: var(--sl-color-black);
+  stroke-width: 1.5;
+}
+.sdv-gate__point--ok circle {
+  fill: var(--sdv-ok);
+}
+.sdv-gate__point--bad circle {
+  fill: var(--sdv-bad);
+}
+.sdv-gate__mark {
+  fill: none;
+  stroke: var(--sl-color-black);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+}
+.sdv-gate__name {
+  fill: var(--sl-color-white);
+  font-size: 13px;
+  font-weight: 700;
+}
+.sdv-gate__detail {
+  fill: var(--sl-color-gray-2);
+  font-size: 11px;
+}
+.sdv-gate__note {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0.5rem 0 0;
+}

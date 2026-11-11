@@ -1,0 +1,354 @@
+---
+title: CQRS and event sourcing
+description: Split the write model from the read models, watch projections lag behind the event log, and rebuild a broken view by replaying events.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import CqrsWidget from '../../../components/widgets/CqrsWidget';
+
+export const nodes = [
+  { id: 'shopper', kind: 'client', x: 70, y: 50, label: 'Shopper' },
+  { id: 'write', kind: 'server', x: 70, y: 250, label: 'Write model', sublabel: 'checks commands' },
+  { id: 'log', kind: 'queue', x: 300, y: 250, label: 'Event log', sublabel: 'append only' },
+  { id: 'cart', kind: 'database', x: 530, y: 50, label: 'Cart page view' },
+  { id: 'top', kind: 'database', x: 530, y: 150, label: 'Top items' },
+  { id: 'email', kind: 'server', x: 530, y: 250, label: 'Email sender' },
+];
+export const edges = [
+  { from: 'shopper', to: 'write' },
+  { from: 'write', to: 'log' },
+  { from: 'log', to: 'cart' },
+  { from: 'log', to: 'top' },
+  { from: 'log', to: 'email' },
+  { from: 'shopper', to: 'cart', dashed: true },
+];
+export const steps = [
+  {
+    title: 'The write model checks each command',
+    text: 'The shopper sends RemoveItem socks. The write model folds the cart’s events into its current state, finds no socks, and rejects the command. Rejected commands never reach the log.',
+    nodes: ['shopper', 'write'],
+    flows: ['shopper>write'],
+  },
+  {
+    title: 'Accepted commands become events',
+    text: 'AddItem mug becomes ItemAdded mug at the next position in the log, say event 42. The log only grows: nobody edits or deletes an event.',
+    nodes: ['write', 'log'],
+    flows: ['write>log'],
+  },
+  {
+    title: 'Readers follow the log at their own pace',
+    text: 'The cart page view, top items, and the email sender each keep their own position and apply new events in order. A slow reader grows its own lag and never holds up the writes.',
+    nodes: ['log', 'cart', 'top', 'email'],
+    flows: ['log>cart', 'log>top', 'log>email'],
+  },
+  {
+    title: 'Reads land on a view that runs behind',
+    text: 'The cart page answers from its own table. If that view has not reached event 42 yet, the shopper sees the cart without the mug.',
+    nodes: ['shopper', 'cart'],
+    flows: ['shopper>cart'],
+  },
+  {
+    title: 'Rebuild a view by replaying the log',
+    text: 'To fix a broken view, run the fixed code from position 0 into a new table, then switch reads to it once it catches up. The email sender keeps its own position, so no receipt goes out twice.',
+    nodes: ['log', 'cart'],
+    flows: ['log>cart'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'A shopper adds a mug, and the cart page that loads right after shows the cart without it. What is the most likely cause?',
+    options: [
+      { text: 'The cart page view has not applied the ItemAdded event yet', correct: true, why: 'Read models catch up with the log after the write succeeds. In the normal run, 19 of 95 page loads landed in that gap.' },
+      { text: 'The event log lost the event', why: 'The write model answers only after the event is appended, and the log never drops events. The view simply has not reached it.' },
+      { text: 'The write model rejected the command without saying so', why: 'A rejected command returns an error to the shopper. This one was accepted, so its event sits in the log.' },
+      { text: 'The top items dashboard is slow', why: 'Each projection keeps its own position. A slow dashboard grows its own lag and leaves the cart page alone.' },
+    ],
+  },
+  {
+    prompt: 'During the flash sale, top items falls 42 events behind. What happens to checkout?',
+    options: [
+      { text: 'It keeps running at full speed', correct: true, why: 'The write model appends events without waiting for any projection. All 156 events reach the log while top items drains its backlog.' },
+      { text: 'It slows to 10 events per second', why: 'That limit belongs to top items alone. The write model has no such cap.' },
+      { text: 'It fails until top items catches up', why: 'The log decouples writers from readers. A slow reader only makes its own answers older.' },
+      { text: 'It drags the cart page 42 events behind too', why: 'The cart page view follows the log with its own worker and position. It never trails by more than 9 events.' },
+    ],
+  },
+  {
+    prompt: 'You fix a bug that left wrong totals in a projection. What is the safest way to correct the existing rows?',
+    options: [
+      { text: 'Replay the log from position 0 through the fixed code into a new table, then switch reads to it', correct: true, why: 'The log still holds every event the old code mishandled, so the fixed code produces correct rows for all of them. The old table keeps serving until the new one catches up.' },
+      { text: 'Write a one-off UPDATE that patches the old table', why: 'You would write the fix a second time in another language and guess which rows the bug touched. Replay runs the same fixed code over every event.' },
+      { text: 'Apply the fix to new events only', why: 'Rows the bug already broke stay wrong. In the widget, 7 carts stay wrong until v2 takes over.' },
+      { text: 'Send every past command through the write model again', why: 'Old commands get checked against today’s rules and run their side effects again, such as 6 receipt emails. Events record what already happened, so replay those.' },
+    ],
+  },
+  {
+    prompt: 'While the cart page view rebuilds, how do you keep shoppers from getting a second receipt?',
+    options: [
+      { text: 'The email sender keeps its own position and takes no part in the rebuild', correct: true, why: 'A rebuild resets only the view being rebuilt. An idempotency key on each email, such as the event position, also guards against retries after a crash.' },
+      { text: 'Delete the CheckedOut events before replaying', why: 'The rebuilt views would lose every checkout, and the log would stop being a true history.' },
+      { text: 'Replay fast enough that nobody notices', why: 'Speed changes when the duplicates arrive. Every duplicate receipt still reaches a shopper.' },
+      { text: 'Pause the write model until the replay finishes', why: 'Pausing stops new checkouts only. Old CheckedOut events would still trigger emails if the sender replayed them.' },
+    ],
+  },
+  {
+    prompt: 'Which statement about CQRS and event sourcing is true?',
+    options: [
+      { text: 'You can use either one without the other', correct: true, why: 'CQRS can feed read models from ordinary tables through an outbox or change data capture. Event sourcing can answer reads by folding a stream of events directly.' },
+      { text: 'CQRS requires an event log as the source of truth', why: 'The read side needs a stream of changes, and an outbox table or change data capture from a normal database provides one.' },
+      { text: 'Event sourcing makes every read strongly consistent', why: 'Projections trail the log, so reads are eventually consistent unless the reader waits for a known position.' },
+      { text: 'You edit an event once you find it was wrong', why: 'The log stays append only. You record a correcting event or fix the projection, and every old event shape stays readable forever.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Separate a write model that checks commands from read models shaped for each screen.
+- Explain projection lag and the stale reads it causes, and hide it from the shopper who made the change.
+- Rebuild a broken read model by replaying the event log without repeating side effects.
+- Tell CQRS and event sourcing apart, and name the cost each one adds.
+
+</Objectives>
+
+## The failure: one table for every job
+
+The shop keeps carts in one table, one row per cart line, updated in place. Checkout writes to it, the cart page reads
+it, and so does a new "popular right now" dashboard that scans every cart from the last hour and counts items. Three
+problems show up during a sale:
+
+- **Reads and writes fight.** The dashboard's big scans compete with checkout for the same CPU, disk, and cache, and
+  every index added to speed up the dashboard slows every write.
+- **One shape suits nobody.** Checkout wants a row per line. The cart page wants a cart with its total, and the
+  dashboard wants a count per item. Every read rebuilds its shape with joins and sums.
+- **The history is gone.** Marketing asks which items shoppers add and then remove. The table cannot answer, because
+  removing an item deleted its row.
+
+Splitting the reads off solves the first two problems, and keeping every change as an event solves the third. Both
+bring a new cost: the read side runs behind the writes.
+
+<Predict
+  client:visible
+  question="The cart page moves to its own table, which a background reader updates from the stream of changes every 300 ms. Shoppers open the cart page 100 to 500 ms after each change. What share of page loads miss the shopper’s latest change?"
+  options={[
+    'None, because the change is saved first',
+    'About 1 in 5',
+    'About half',
+    'All of them',
+  ]}
+  answer={1}
+>
+
+**About 1 in 5.** In the toy run below, 19 of 95 page loads show a cart without the change the shopper just made. The
+write succeeded and the event sits in the log, and the page read a view that had not applied it yet. Pooled across 30
+different seeds, 535 of 2,693 page loads are stale (19.9%). Single short runs swing from 9% to 27%. This is a **stale
+read**, and you can hide it from the shopper who made the change.
+
+</Predict>
+
+## The idea: write events, read projections
+
+Split the system in two.
+
+- The **write model** takes **commands** (AddItem, RemoveItem, Checkout), checks each one against the cart's current
+  state, and either rejects it or records what happened as **events** (ItemAdded, ItemRemoved, CheckedOut). Events are
+  facts in the past tense. Each one gets the next position in an **append-only event log**, and nobody edits or deletes
+  them.
+- **Projections**, also called read models, follow the log. Each keeps its own position, applies events in order, and
+  stores a table shaped for one screen: the cart page wants lines and a total per cart, and the dashboard wants a count
+  per item. The distance between the end of the log and a projection's position is its **lag**.
+
+Separating the write model from the read models is **CQRS**, short for command query responsibility segregation.
+Keeping the events themselves as the source of truth, and treating every other table as something you can recompute,
+is **event sourcing**. A cart's state is a fold of its events: start empty and apply each one in order.
+
+The two ideas often travel together, and each works alone. CQRS works with ordinary tables: the write side updates
+rows, and an outbox table or change data capture feeds the read models. Event sourcing works without separate read
+models: a small system can fold a cart's few events on every read. The Event-driven design lesson covers events that
+travel between services; here the events live inside one service's storage.
+
+<StepDiagram client:visible title="How CQRS with event sourcing works" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy>
+
+A shop keeps a ledger at the counter. Clerks only add lines to it, such as "sold one mug" or "returned the socks", and
+nobody erases a line. Around the room, whiteboards summarize the ledger for different people: today's takings, the best
+sellers. A runner copies new ledger lines onto each board every so often, so a board can trail the ledger by a few
+lines. When someone finds a board summed wrong, they wipe it and recount from page one of the ledger. The invoice clerk
+keeps a bookmark in the ledger, so the recount never sends an invoice twice.
+
+</Analogy>
+
+## Try it
+
+The widget runs a toy model. Five shoppers send about 4 commands per second for 24 seconds, drawn from a seeded random
+generator, so every run and every scenario sees the same shoppers. The numbers are illustrative. The toy applies events
+slowly on purpose so you can watch the positions move; real projections apply thousands of events per second.
+
+Start with **Normal lag** and press Play, then try **Flash sale**. Each chip shows what it changes. The third scenario,
+**Fix a bug and replay**, ships cart page v2, which fixes a bug: v1 ignores ItemRemoved, so when a shopper removes a
+$12 mug, the page still adds $12 to the total. Predict before you run it.
+
+<Predict
+  client:visible
+  question="Cart page v1 has shown wrong totals for a while. You deploy v2 with the fix. How do you correct the carts v1 already got wrong?"
+  options={[
+    'Run an UPDATE that subtracts removed items',
+    'Leave them alone, since new events will come out right',
+    'Replay the log from position 0 through v2 into a new table, then switch reads to it',
+    'Send every past command through the write model again',
+  ]}
+  answer={2}
+>
+
+**Replay the log through v2 into a new table, then switch.** The log still holds every ItemRemoved that v1 skipped, so
+v2 applies all of them. In the toy run, v2 replays 57 events in 2.8 s while v1 keeps serving, then takes over and fixes
+the 7 carts v1 showed wrong. Before the switch, 28 page loads showed a wrong total. A hand-written UPDATE repeats the
+fix in a second language and has to guess which rows the bug touched. Sending the old commands again checks them
+against today's rules and runs their side effects a second time: 6 shoppers would get a second receipt.
+
+</Predict>
+
+<CqrsWidget client:visible />
+
+What to look for:
+
+- **The write model filters commands.** In the normal run, 98 commands arrive and 3 get rejected (two checkouts of a
+  cart already checked out, and one removal of tea that was never in the cart), so the log holds 95 events. Rejected
+  commands never reach a reader.
+- **Each reader has its own gap.** A reader's bar marks its position in the log, and the hatched gap after it is its
+  lag. In the strip of recent page loads, a ring marks a stale load.
+- **19 of 95 page loads are stale** when the page reads right away. The table compares the same run with every page
+  load first waiting for the shopper's own event: no stale pages, 24 ms of extra wait per page load on average, and
+  200 ms at worst.
+- **A flash sale swamps one reader.** Commands jump to 15 per second, and top items applies at most 10 events per
+  second. It falls 42 events behind at 11.4 s and drains the backlog by 18.5 s. The cart page never trails by more than
+  9 events, and the write model appends all 156 events without waiting for anyone.
+- **The replay sweeps from position 0.** When v2 ships at 12 s, 6 carts show a wrong total. v1 keeps serving while v2
+  rebuilds, so the count reaches 7. v2 replays 57 events in 2.8 s, catches up, and takes over with every total right.
+  Receipts stay at 14.
+
+## Read your own writes
+
+The shopper who just added a mug expects to see it. Everyone else can live with a view that trails by a few hundred
+milliseconds. So give the person who wrote a way to wait:
+
+1. The write model returns the position of the event it appended, for example event 42.
+2. The client sends that position with its next read.
+3. The read waits until the projection reaches event 42, then answers. Cap the wait at a second or so, and fall back to
+   showing the change from the client's own memory.
+
+In the toy run, this turns 19 stale page loads into 0 at a cost of 24 ms per page load on average. It is the same idea
+as sending a user's reads to the primary in [Read replicas](../../scaling/read-replicas/), and
+[Consistency models](../consistency-models/) gives it a precise name: read-your-writes consistency.
+
+## When one projection falls behind
+
+Each projection runs at its own speed. The one that does the most work per event, or writes to the slowest store,
+falls behind first, and a burst of commands exposes it. In the flash sale, the log grows faster than top items can
+apply events, so its lag climbs until the sale ends. The dashboard only gets older; checkout never notices.
+
+- **Measure lag two ways:** in events, which shows how much work is queued, and in time, which shows how old the
+  answers are. Alert on age, because age is what people feel.
+- **Give each projection its own worker,** so a slow dashboard never delays the cart page.
+- **Split a busy projection by cart id,** so several workers each apply one slice of the log. Events for one cart must
+  stay in order, which is the same partitioning question as [Sharding](../../scaling/sharding/).
+
+## Fixing a bug by replaying
+
+Replay turns a projection bug into a redeploy:
+
+1. Deploy v2 next to v1, writing to a new table and starting at position 0.
+2. Let v2 catch up while v1 keeps serving reads.
+3. Switch reads to v2 once its lag is near zero, then drop v1's table.
+
+The same move builds a brand new view from old events. Marketing's question about items added and then removed becomes
+a new projection that replays the whole history on its first day.
+
+A log of several years can take hours to replay even at thousands of events per second. Teams split the replay across
+partitions, or start a projection from a saved copy of its table at a known position when the bug arrived after that
+copy.
+
+## Replays must not repeat side effects
+
+Some readers act on the world. The email sender mails a receipt for every CheckedOut event, and a rebuild must leave it
+alone: it keeps its own position, and the replay rebuilds one table. In the widget, receipts stay at 14 through the
+replay. Make every side effect safe to repeat anyway, with an idempotency key such as the event's position, so a retry
+after a crash cannot mail twice. The Idempotency lesson covers those keys.
+
+## Events live forever
+
+Once an event is in the log, every future version of every projection must read it. Rename a field, and years of old
+events still carry the old name. Teams cope by:
+
+- adding fields with defaults and keeping every old field,
+- putting a version number on each event type, and
+- writing **upcasters**, small functions that turn an old event shape into the current one as it is read.
+
+Fix a wrong event with a new one, such as a correction, because the log stays append only. Plan for deletion laws up
+front: keep personal data outside the log, or encrypt it with a key per shopper and delete the key when asked.
+
+## Snapshots
+
+The write model rebuilds a cart's state by folding its events before each command. A cart has a handful of events, so
+that costs little. A bank account with ten years of transactions has thousands. A **snapshot** stores the folded state
+at a known position. The write model loads the latest snapshot and folds only the events after it. Snapshots work like
+a cache: delete one and you can rebuild it from the log.
+
+## When to skip it
+
+Both patterns add moving parts: a log to run, projections to deploy and watch, lag to explain to users, and event
+schemas to keep forever. A shop with modest traffic does well with one database, a cache, and a read replica. Reach for
+CQRS when reads and writes want different shapes or different scale, and for event sourcing when the history itself is
+valuable: audits, money, or questions nobody has asked yet.
+
+## Trade-offs
+
+<TradeoffTable title="CQRS and event sourcing choices">
+
+| Choice                           | What it buys                                                      | What it costs                                                     |
+| -------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Separate read models             | A table shaped for each screen, and reads that stop slowing writes | Reads trail the writes, and more stores to run and watch           |
+| Event log as the source of truth | Full history, new views from old events, and bug fixes by replay  | Event schemas live forever, replays take time, deletion is harder |
+| Wait for my event                | The writer always sees their own change                           | Slower reads right after a write, and a timeout for stuck readers |
+| More projections                 | New questions answered without touching the write side            | Another reader to deploy, monitor, and rebuild                    |
+| Snapshots                        | Fast loads for long event streams                                 | Another format to version, and a rebuild when it changes          |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+A chat app stores every message as a MessagePosted event and every "opened the conversation" as a ConversationRead
+event. The log holds 5 billion events and grows by 2,000 per second at peak. You find a bug in the unread-counts
+projection and must rebuild it, and one worker applies 50,000 events per second.
+
+1. How long does the rebuild take with one worker? With the log split into 20 partitions by conversation id, one worker
+   each?
+2. A user opens a conversation, goes back to the inbox, and still sees the unread badge. Why, and how do you fix it?
+3. What must the rebuild leave alone?
+
+<div slot="answer">
+
+- One worker: 5,000,000,000 ÷ 50,000 = 100,000 s, about **28 hours**. New events keep arriving at 2,000 per second, so
+  it catches up at 48,000 per second, which makes it closer to 29 hours.
+- 20 partitions: each worker replays about 250 million events, and 250,000,000 ÷ 50,000 = 5,000 s, about
+  **83 minutes**. Each partition gains only about 100 new events per second meanwhile. The old table keeps serving until
+  every partition catches up, then reads switch.
+- The badge: the inbox reads the projection, which has not applied the ConversationRead event yet. Return that event's
+  position from the "open conversation" command and have the inbox wait for the projection to reach it, with a cap, or
+  clear the badge in the client right away.
+- Leave alone: push notifications and emails for new messages. They keep their own positions, and the rebuild writes
+  only the new unread-counts table. Give each push an idempotency key from the event anyway.
+
+</div>
+
+</Challenge>

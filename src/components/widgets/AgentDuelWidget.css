@@ -1,0 +1,245 @@
+.sdv-agent-lanes {
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.sdv-agent-lane {
+  padding: 0.75rem;
+}
+
+.sdv-agent-request {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+
+.sdv-agent-request__who,
+.sdv-agent-card__kind,
+.sdv-agent-untrusted__label {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sdv-agent-meter {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.sdv-agent-meter__text {
+  color: var(--sl-color-gray-2);
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+
+.sdv-agent-meter__track {
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 999px;
+  display: block;
+  height: 0.5rem;
+  overflow: hidden;
+}
+
+.sdv-agent-meter__fill {
+  background: var(--sdv-ok);
+  display: block;
+  height: 100%;
+}
+
+.sdv-agent-meter[data-over="true"] .sdv-agent-meter__fill {
+  background: var(--sdv-bad);
+}
+
+.sdv-agent-meter[data-capped="false"] .sdv-agent-meter__track {
+  border-style: dashed;
+}
+
+.sdv-agent-cards {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sdv-agent-cards > li {
+  margin: 0;
+}
+
+.sdv-agent-card {
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.6rem 0.8rem;
+}
+
+.sdv-agent-card p {
+  margin: 0;
+}
+
+.sdv-agent-card[data-kind="plan"],
+.sdv-agent-card[data-kind="answer"] {
+  border-left: 4px solid var(--sl-color-gray-4);
+}
+
+.sdv-agent-card[data-kind="event"] {
+  border-left: 4px solid var(--sdv-warn);
+}
+
+.sdv-agent-card[data-status="blocked"] {
+  border: 2px dashed var(--sdv-ok);
+}
+
+.sdv-agent-card[data-status="pending"] {
+  border: 2px dotted var(--sdv-warn);
+}
+
+.sdv-agent-card[data-status="cancelled"] {
+  border: 2px dotted var(--sdv-ok);
+}
+
+.sdv-agent-card[data-unauthorized="true"] {
+  border: 4px solid var(--sdv-bad);
+}
+
+.sdv-agent-card__head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+}
+
+.sdv-agent-card__origin,
+.sdv-agent-card__count {
+  border: 1px solid var(--sdv-border);
+  border-radius: 999px;
+  color: var(--sl-color-white);
+  display: inline-block;
+  font-size: var(--sl-text-xs);
+  padding: 0.05rem 0.5rem;
+}
+
+.sdv-agent-card__origin {
+  border-style: dashed;
+}
+
+.sdv-agent-card__count {
+  font-family: var(--sl-font-mono);
+  font-weight: 700;
+}
+
+.sdv-agent-card__text {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.sdv-agent-card__text code {
+  font-size: var(--sl-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.sdv-agent-card__result {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+}
+
+.sdv-agent-card__badge {
+  display: block;
+}
+
+.sdv-agent-lane .sdv-badge,
+.sdv-agent-table .sdv-badge {
+  white-space: normal;
+}
+
+.sdv-agent-lane .sdv-badge svg,
+.sdv-agent-table .sdv-badge svg {
+  display: inline;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+
+.sdv-agent-untrusted {
+  border: 2px dashed var(--sdv-warn);
+  border-radius: 0.4rem;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.45rem 0.6rem;
+}
+
+.sdv-agent-untrusted[data-tagged="false"] {
+  border-color: var(--sdv-bad);
+  border-style: solid;
+}
+
+.sdv-agent-untrusted__text {
+  color: var(--sl-color-white);
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.sdv-agent-guards {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.sdv-agent-guards legend {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+  padding: 0;
+}
+
+.sdv-agent-guards__note {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0 0 0.5rem;
+}
+
+.sdv-agent-guards__list {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sdv-agent-guards__list > li {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0;
+}
+
+.sdv-agent-guards__hint {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+}
+
+.sdv-agent-legend__card {
+  background: var(--sdv-surface-raised);
+  border: 2px dashed var(--sdv-ok);
+  border-radius: 0.2rem;
+  display: inline-block;
+  flex: none;
+  height: 0.9rem;
+  width: 1.4rem;
+}
+
+.sdv-agent-legend__card[data-status="pending"] {
+  border: 2px dotted var(--sdv-warn);
+}
+
+.sdv-agent-legend__card[data-unauthorized="true"] {
+  border: 4px solid var(--sdv-bad);
+}

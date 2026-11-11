@@ -1,0 +1,156 @@
+.sdv-dm__stage {
+  container-type: inline-size;
+}
+.sdv-dm__panes {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@container (max-width: 34rem) {
+  .sdv-dm__panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.sdv-dm__pane [data-region="0"] {
+  --dm-color: var(--sdv-db);
+}
+.sdv-dm__pane [data-region="1"] {
+  --dm-color: var(--sdv-series-a);
+}
+.sdv-dm__pane [data-region="2"] {
+  --dm-color: var(--sdv-series-b);
+}
+.sdv-dm__pane[aria-label="Key-value"] [data-region="0"] {
+  --dm-color: var(--sdv-cache);
+}
+.sdv-dm__legend [data-region] {
+  --dm-color: var(--sdv-db);
+}
+
+/* The stage rule stretches every svg to full width; keep icons at their intended size. */
+.sdv-dm__pane .sdv-dm__pane-title > svg {
+  flex: none;
+  height: 22px;
+  width: 22px;
+}
+.sdv-dm__pane .sdv-badge svg,
+.sdv-dm__table .sdv-badge svg {
+  display: inline-block;
+  flex: none;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+
+.sdv-dm__layout,
+.sdv-dm__verdict,
+.sdv-dm__muted {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-dm__table .sdv-dm__muted {
+  font-size: var(--sl-text-sm);
+}
+.sdv-dm__verdict .sdv-badge {
+  margin-inline-end: 0.25rem;
+}
+
+.sdv-dm__grid {
+  aspect-ratio: 1;
+  display: grid;
+  gap: 2px;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  justify-self: center;
+  max-width: 16rem;
+  width: 100%;
+}
+.sdv-dm__cell {
+  align-items: center;
+  background: color-mix(in oklab, var(--dm-color) 14%, var(--sl-color-bg));
+  border-radius: 2px;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+.sdv-dm__cell[data-lit] {
+  background: color-mix(in oklab, var(--dm-color) 70%, var(--sl-color-bg));
+}
+.sdv-dm__hit {
+  background: var(--sl-color-white);
+  border: 1px solid var(--sl-color-bg);
+  border-radius: 50%;
+  display: block;
+  height: 46%;
+  width: 46%;
+}
+
+.sdv-dm__regions,
+.sdv-dm__legend {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-dm__regions {
+  display: grid;
+  gap: 0.2rem;
+}
+.sdv-dm__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+}
+.sdv-dm__regions li,
+.sdv-dm__legend li {
+  align-items: center;
+  display: flex;
+  gap: 0.4rem;
+  margin: 0;
+}
+.sdv-dm__swatch {
+  align-items: center;
+  background: color-mix(in oklab, var(--dm-color) 70%, var(--sl-color-bg));
+  border-radius: 2px;
+  display: inline-flex;
+  flex: none;
+  height: 14px;
+  justify-content: center;
+  width: 14px;
+}
+
+.sdv-dm__progress {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+
+.sdv-dm__table th,
+.sdv-dm__table td {
+  overflow-wrap: break-word;
+}
+/* Shared badges never wrap; in these narrow columns the icon and words flow like a short sentence instead. */
+.sdv-dm__table .sdv-badge {
+  border-radius: 0.5rem;
+  display: inline-block;
+  line-height: 1.3;
+  white-space: normal;
+}
+.sdv-dm__table .sdv-badge svg {
+  margin-right: 0.3rem;
+  vertical-align: -0.12em;
+}
+/* The shared compare table gives the row header 40% and leaves three shape columns squeezed. */
+.sdv-stats.sdv-dm__table thead th,
+.sdv-stats.sdv-dm__table tbody th {
+  width: 25%;
+}
+.sdv-dm__fit-label {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.sdv-dm__fit tr[data-current] > * {
+  background: color-mix(in oklab, var(--sl-color-accent) 10%, transparent);
+}
