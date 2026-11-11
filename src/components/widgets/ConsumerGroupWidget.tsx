@@ -128,6 +128,7 @@ export default function ConsumerGroupWidget({
   if (!runRef.current) runRef.current = new GroupRun(groupScenarios[scenarioId]);
   const run = runRef.current;
   const [, rerender] = useReducer((count: number) => count + 1, 0);
+  const [notice, setNotice] = useState<{ id: number; text: string }>();
 
   const restart = (id: GroupScenarioId) => {
     runRef.current = new GroupRun(groupScenarios[id]);
@@ -146,7 +147,10 @@ export default function ConsumerGroupWidget({
     rerender();
   };
   const send = (command: LogCommand) => {
+    const before = run.log.notes.length;
     run.apply(command);
+    const note = run.log.notes.length > before ? run.log.notes.at(-1) : undefined;
+    if (note) setNotice((last) => ({ id: (last?.id ?? 0) + 1, text: note.text }));
     rerender();
   };
 
@@ -169,6 +173,13 @@ export default function ConsumerGroupWidget({
       : lag > earlier
         ? { label: 'Lag now (events not read yet)', value: String(lag), tone: 'bad', note: 'Falling behind' }
         : { label: 'Lag now (events not read yet)', value: String(lag), tone: 'warn', note: 'Catching up' };
+  const announceState = rebalancing
+    ? 'The group is rebalancing, so nobody reads.'
+    : lagTone.tone === 'ok'
+      ? 'Consumers are keeping up.'
+      : lagTone.tone === 'bad'
+        ? 'Lag is growing. Consumers are falling behind.'
+        : 'Consumers are catching up.';
 
   const stats: StatRow[] = [
     { label: 'Clicks written to the log', value: totals.produced.toLocaleString('en-US') },
@@ -213,6 +224,8 @@ export default function ConsumerGroupWidget({
       status={status}
       finished={run.done}
       resetKey={scenarioId}
+      announceState={announceState}
+      notice={notice}
       controls={
         <>
           <div className="sdv-duel__extra sdv-group__skip">
