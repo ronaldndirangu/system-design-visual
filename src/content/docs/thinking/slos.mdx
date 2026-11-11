@@ -1,0 +1,276 @@
+---
+title: SLOs and measurement
+description: Define fast enough with percentiles, an SLO, and an error budget, then use tracing to find which fix actually keeps the promise.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import SloWidget from '../../../components/widgets/SloWidget';
+
+export const nodes = [
+  { id: 'client', kind: 'client', x: 70, y: 150, label: 'Clicks' },
+  { id: 'lb', kind: 'loadBalancer', x: 240, y: 150, label: 'Load balancer', sublabel: 'times each redirect' },
+  { id: 'server', kind: 'server', x: 410, y: 150, label: 'App server' },
+  { id: 'cache', kind: 'cache', x: 590, y: 60, label: 'Cache', sublabel: '95% hits' },
+  { id: 'db', kind: 'database', x: 590, y: 240, label: 'Database', sublabel: 'misses only' },
+];
+export const edges = [
+  { from: 'client', to: 'lb' },
+  { from: 'lb', to: 'server' },
+  { from: 'server', to: 'cache' },
+  { from: 'server', to: 'db' },
+];
+export const steps = [
+  {
+    title: 'Pick what to count: the SLI',
+    text: 'The load balancer times every redirect it answers. A redirect counts as good when it finishes in under 100 ms. The SLI is the share of redirects that are good.',
+    nodes: ['client', 'lb'],
+    flows: ['client>lb'],
+  },
+  {
+    title: 'Set the target: the SLO',
+    text: 'The SLO promises that 99% of redirects are good over a window. Real windows run 28 or 30 days. The toy run below lasts 20 s and gets 19,921 redirects.',
+    nodes: ['client', 'lb', 'server'],
+    flows: ['client>lb', 'lb>server'],
+  },
+  {
+    title: 'Count the allowance: the error budget',
+    text: '1% of 19,921 is 199, so the run may spend 199 slow redirects. Burn rate compares the slow share with the 1% allowed. At 1x the budget lasts the window exactly. At 4x it runs out a quarter of the way in.',
+    nodes: ['lb'],
+    flows: [],
+  },
+  {
+    title: 'Trace where the time goes',
+    text: 'Tracing times each stage of a redirect. Every redirect pays for the network, app code, and a cache lookup. The 5% that miss the cache also wait for a database read.',
+    nodes: ['lb', 'server', 'cache', 'db'],
+    flows: ['lb>server', 'server>cache', 'server>db'],
+  },
+  {
+    title: 'Fix what the slow ones wait on',
+    text: 'With slow misses, the average redirect spends 16 of its 35 ms in app code. The slowest 1% spend 141 of their 171 ms in the database. A p99 promise points at the database.',
+    nodes: ['server', 'db'],
+    flows: ['server>db'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'A dashboard shows an average redirect time of 35 ms. What does that tell you about the slowest 1% of redirects?',
+    options: [
+      { text: 'Very little: a long tail can hide behind a low average', correct: true, why: 'The average blends a few slow redirects into thousands of fast ones. In the toy run the slowest 1% average 171 ms while the mean reads 35 ms.' },
+      { text: 'They take at most about twice the average, 70 ms', why: 'Nothing bounds the tail by the mean. One slow database read can take five times the average redirect.' },
+      { text: 'They take about 35 ms too', why: 'The mean describes the whole set. The slowest 1% are by definition the requests far above it.' },
+      { text: 'They finish under 100 ms, so the SLO holds', why: 'The SLO counts the share of redirects under 100 ms. A mean of 35 ms can sit next to thousands of redirects over the limit.' },
+    ],
+  },
+  {
+    prompt: 'An SLO says 99.9% of requests succeed over 30 days. How much full downtime does its error budget allow?',
+    options: [
+      { text: 'About 43 minutes', correct: true, why: '30 days hold 43,200 minutes, and 0.1% of that is 43.2 minutes. Spread the failures out and the same budget covers a longer partial outage.' },
+      { text: 'About 4 minutes', why: 'That is the budget for 99.99%. Each extra nine divides the budget by ten.' },
+      { text: 'About 7 hours', why: 'That is the budget for 99%, ten times looser than 99.9%.' },
+      { text: 'None, since the SLO forbids failures', why: 'An SLO under 100% allows failures on purpose. The budget is the room you spend on launches, experiments, and bad luck.' },
+    ],
+  },
+  {
+    prompt: 'Ten servers each report their own p99 latency. How do you get the p99 for the whole fleet?',
+    options: [
+      { text: 'Merge their latency histograms, then read the 99th percentile', correct: true, why: 'A percentile comes from the full set of samples. Merging histograms with matching buckets keeps every sample in the count.' },
+      { text: 'Average the ten p99 values', why: 'Percentiles do not average. A quiet server counts as much as a busy one, and the result can land far from the true fleet p99.' },
+      { text: 'Take the largest of the ten', why: 'One quiet, unlucky server would set the number for the whole fleet. That overstates the p99 most users see.' },
+      { text: 'Take the median of the ten', why: 'The median of ten summaries ignores how many requests each server handled. It is a different number from the fleet p99.' },
+    ],
+  },
+  {
+    prompt: 'Tracing shows the average request spends most of its time in app code, while the slowest 1% spend most of theirs on database reads. The SLO is about the p99. What should you fix first?',
+    options: [
+      { text: 'The database reads', correct: true, why: 'The SLO counts slow requests, and the slow requests wait on the database. In the toy run halving the miss path kept the SLO.' },
+      { text: 'The app code', why: 'That lowers the average the most, and the slow requests spend little of their time there. In the toy run the app fix gave the lowest mean and still spent the whole budget.' },
+      { text: 'Add more app servers', why: 'The trace shows no request waiting for an app server. Extra servers add room, and each database read takes just as long.' },
+      { text: 'Raise the SLO limit to 200 ms', why: 'That turns the dashboard green and leaves users waiting just as long. Change the SLO only when users truly accept slower pages.' },
+    ],
+  },
+  {
+    prompt: 'A page makes 20 backend calls in parallel and waits for all of them. Each call runs slower than its p99 1% of the time. About how often does a page wait on at least one slow call?',
+    options: [
+      { text: 'About 1 in 100 page loads', why: 'That holds for a single call. With 20 calls the page gets 20 chances to draw a slow one.' },
+      { text: 'About 18 in 100 page loads', correct: true, why: 'All 20 calls are fast with probability 0.99 to the 20th power, about 0.82. So about 18% of pages wait on a slow call.' },
+      { text: 'About 50 in 100 page loads', why: 'That would need each call to be slow far more often. 0.99 to the 20th power is about 0.82, so the answer is near 18%.' },
+      { text: 'Never, since parallel calls hide a slow one', why: 'The page waits for every call, so the slowest of the 20 sets its time. Parallel calls make the tail matter more.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain why an average hides slow requests, and read p50, p95, and p99.
+- Define an SLI, an SLO, and an error budget, and compute a budget from a target.
+- Use burn rate to tell how fast a budget is running out.
+- Use tracing to find what the slowest requests wait on before choosing a fix.
+
+</Objectives>
+
+## The failure: a green dashboard and angry users
+
+The shortener's latency dashboard shows one line: the average redirect time, a steady 35 ms. Everyone agreed redirects
+should feel fast, and 35 ms looks fast. Meanwhile support tickets pile up: links "hang for a moment" before they open.
+
+Both are true. In the toy run below, during the first two seconds, 1 redirect in 100 takes 140 ms or longer, four times
+the average. The average blends those slow redirects into thousands of quick ones, and they vanish from the chart.
+
+The team writes a promise: **99% of redirects finish in under 100 ms.** Two engineers each have a fix ready, and both
+ship at the 2 s mark.
+
+<Predict
+  client:visible
+  question="One fix halves the time spent in app code on every redirect. The other halves the database read that only cache misses (5% of redirects) make. Which fix keeps 99% of redirects under 100 ms?"
+  options={[
+    'Faster app code: it speeds up every redirect',
+    'Faster miss path: it speeds up the slow redirects',
+    'Either one: both cut the time a redirect takes',
+    'Neither: the promise was already broken before the fixes',
+  ]}
+  answer={1}
+>
+
+**Faster miss path.** Faster app code wins on the average: the whole run's mean falls to 27 ms against 32 ms. It still
+breaks the promise. Its p99 stays at 129 ms, 479 redirects take 100 ms or more, and its error budget of 199 runs out at
+7.7 s. Faster miss path brings the p99 down to 93 ms, keeps 99.2% of redirects under 100 ms, and ends with 41 of 199
+left. The slow redirects are almost all cache misses, so only the miss path fix reaches them.
+
+</Predict>
+
+## The idea: promise a percentile, then measure the tail
+
+A **percentile** ranks every request by time. The **p50** (median) is the time half of the requests beat. The **p95**
+is the time 95% beat, and the **p99** is the time 99% beat. The p99 describes the slowest 1 in 100, the requests the
+average hides.
+
+Three terms turn "fast enough" into something you can check:
+
+- **SLI** (service level indicator): a measured ratio of good events. Here, redirects under 100 ms divided by all
+  redirects.
+- **SLO** (service level objective): a target for the SLI over a window, such as 99% over 30 days.
+- **Error budget**: the bad events the SLO allows. A 99% SLO over 19,921 redirects allows 199 slow ones. A 99.9%
+  availability SLO over 30 days allows 43.2 minutes of full downtime.
+
+**Burn rate** tells you how fast the budget goes: the share of bad events divided by the share allowed. At 1x the
+budget lasts exactly the window. At 10x a 30 day budget is gone in 3 days, which is worth waking someone up for. When the
+budget runs out, the team pauses risky launches and spends its time on reliability. While budget is left, the team can
+ship faster.
+
+The tail matters more than its 1% suggests. One page often makes many requests. If a page makes 20 calls and waits for
+all of them, about 18% of page loads hit at least one call slower than its p99.
+
+<StepDiagram client:visible title="From a promise to a fix" nodes={nodes} edges={edges} steps={steps} />
+
+<Analogy>
+
+A pizza shop promises delivery in under 30 minutes for 99 of every 100 orders. The average delivery takes 18 minutes,
+and that number means nothing to the family who waited an hour. So the shop counts late pizzas, and 1 late order in 100
+is its allowance. While the allowance holds, the shop tries new recipes. Once it runs out, the shop stops experimenting
+and finds out why the late pizzas were late: the slow oven, a far suburb, or one driver.
+
+</Analogy>
+
+## Try it
+
+Both lanes below time the exact same redirects from a seeded generator, so any difference comes from the fix. At 2 s
+the left lane halves app code and the right lane halves the database read on cache misses. The panel at the top traces
+each redirect from the first 2 s into its stages, for the average redirect and for the slowest 1%.
+
+<Predict
+  client:visible
+  question="Before you pick Slow app code: the database is healthy again, and app code now averages 32 ms with a long tail. Which fix keeps the SLO now?"
+  options={[
+    'Faster miss path, same as before',
+    'Faster app code',
+    'Neither fix keeps it',
+  ]}
+  answer={1}
+>
+
+**Faster app code.** The trace panel now shows the slowest 1% spending about 120 ms in app code and 20 ms in the
+database. Faster app code ends with a p99 of 92 ms and 74 of 199 budget left. Faster miss path spends its whole budget
+by 7.0 s and ends with a p99 of 119 ms. The fix that worked a minute ago fails here, which is why you measure before
+you choose.
+
+</Predict>
+
+<SloWidget client:visible initial="slow-misses" />
+
+What to look for:
+
+- **Slow misses.** In the trace panel the average redirect spends most of its time in app code, and the slowest 1% spend
+  most of theirs in the database. The faster miss path lane drops its p99 under 100 ms at 2.8 s. The faster app code
+  lane keeps the lower mean all run and still spends its budget at 7.7 s.
+- **Slow app code.** The mirror image. The slowest 1% now wait on app code, so the app fix keeps the SLO and the miss
+  path lane runs out of budget at 7.0 s.
+- **Healthy.** Both lanes keep the SLO. Faster app code wins the mean, 25 ms against 31 ms. Faster miss path wins the
+  p99, 59 ms against 69 ms. With most of the budget left, either result is fine.
+- **The histograms.** Striped bars are slow redirects. Watch the p99 line move while the mean barely changes.
+
+This widget is a **toy model**. Each stage takes a fixed floor plus a random extra with a long tail, nothing queues, and
+the run lasts 20 s where real SLO windows last weeks. The 1,000 redirects a second, the 95% hit rate, and every timing
+are illustrative numbers picked to make the effect easy to see.
+
+## Measure before you fix
+
+- **Measure where users feel it.** The load balancer misses the user's own network. Timing in the browser (real user
+  monitoring) catches it, and it is noisier.
+- **Never average percentiles.** Merge the raw samples or histograms from every server, then read the percentile.
+- **Collect enough samples.** A p99 needs hundreds of requests to mean anything. Over 100 requests it is nearly the
+  single slowest one.
+- **Trace the slowest requests too.** The average redirect and the slowest 1% often wait on different things. In the
+  toy run the average points at app code and the tail points at the database.
+- **Split the SLI along the access pattern.** In [Access patterns and hot keys](../access-patterns/), one hot cache node
+  turned clicks away while the other three sat idle. A fleet-wide number dilutes that node's failures. A per node view
+  shows them at once.
+
+## Trade-offs
+
+<TradeoffTable title="Measuring and promising latency">
+
+| Choice                               | What it buys                                          | What it costs                                              |
+| ------------------------------------ | ----------------------------------------------------- | ---------------------------------------------------------- |
+| Track the average                    | One cheap number that moves with total load           | Hides the slow tail users complain about                   |
+| Track the p50                        | Shows what a typical user gets                        | Says nothing about the slowest half                        |
+| Track the p99                        | Follows the tail that busy pages hit often            | Needs many samples, and it is noisy at low traffic         |
+| Track the max                        | Catches every outlier                                 | One freak request sets the number                          |
+| Strict SLO, 99.99%                   | Users almost never see a slow or failed request       | About 4 minutes of budget a month slows every launch       |
+| Loose SLO, 99%                       | Room to ship fast and run experiments                 | Users notice 1 bad request in 100                          |
+| Freeze launches when the budget ends | A rule product and operations teams agree on upfront  | A freeze can block an urgent feature                       |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+A photo app's upload endpoint has an SLO: 99.5% of uploads finish within 2 s, measured over 30 days. It handles 2
+million uploads a day.
+
+1. How many slow or failed uploads does the error budget allow in 30 days?
+2. On day 10 a bad deploy fails 20% of uploads for one hour. What is the burn rate during that hour, and how much of the
+   budget does the hour spend?
+3. The dashboard shows a mean upload time of 600 ms and a p99 of 1.8 s, yet mobile users complain. What do you measure
+   next?
+
+<div slot="answer">
+
+1. **300,000.** 30 days of 2 million uploads is 60 million, and 0.5% of 60 million is 300,000.
+2. **40x, about 6% of the budget.** 20% bad against 0.5% allowed is a burn rate of 40. An hour holds about 83,000
+   uploads, so the deploy fails about 16,700 of them, close to 6% of 300,000. At 40x the whole month's budget would last
+   18 hours.
+3. **Measure closer to the user and split the tail.** Time uploads in the app itself, since the server never sees a slow
+   mobile network. Then break the p99 down by network type, region, and app version, and trace the slowest uploads to
+   see which stage they wait on.
+
+</div>
+
+</Challenge>
