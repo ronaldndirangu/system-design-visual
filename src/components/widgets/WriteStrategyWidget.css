@@ -1,0 +1,76 @@
+.sdv-wstrat__path {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-wstrat__gauge {
+  display: grid;
+  gap: 0.25rem;
+}
+.sdv-wstrat__label {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+.sdv-wstrat__track {
+  background-color: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.35rem;
+  display: flex;
+  height: 0.9rem;
+  overflow: hidden;
+}
+.sdv-wstrat__fill,
+.sdv-wstrat__key {
+  background: color-mix(in oklab, var(--sdv-cache) 70%, var(--sl-color-bg));
+  display: inline-block;
+  flex: none;
+  height: 100%;
+}
+.sdv-wstrat__fill[data-dirty],
+.sdv-wstrat__key[data-dirty] {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-warn) 0 4px,
+    color-mix(in oklab, var(--sdv-warn) 40%, var(--sl-color-bg)) 4px 8px
+  );
+}
+.sdv-wstrat__fill[data-pending],
+.sdv-wstrat__key[data-pending] {
+  background: repeating-linear-gradient(
+    to right,
+    var(--sdv-db) 0 3px,
+    color-mix(in oklab, var(--sdv-db) 35%, var(--sl-color-bg)) 3px 6px
+  );
+}
+.sdv-wstrat__key {
+  height: 0.75rem;
+  vertical-align: middle;
+  width: 1.5rem;
+}
+.sdv-wstrat__stats {
+  display: grid;
+  font-size: var(--sl-text-xs);
+  font-variant-numeric: tabular-nums;
+  gap: 0.15rem;
+  margin: 0;
+}
+.sdv-wstrat__stats div {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+.sdv-wstrat__stats dt {
+  color: var(--sl-color-gray-2);
+}
+.sdv-wstrat__stats dd {
+  color: var(--sl-color-white);
+  font-weight: 600;
+  margin: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sdv-wstrat__fill {
+    transition: width 120ms linear;
+  }
+}
