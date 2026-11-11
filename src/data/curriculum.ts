@@ -245,7 +245,8 @@ export const curriculum: CourseModule[] = [
         title: 'Event-driven design',
         summary:
           'Choose between thin and fat events, choreography and orchestration, evolve event schemas safely, and park poison messages in a dead-letter queue.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
       },
       {
         id: 'async/stream-processing',

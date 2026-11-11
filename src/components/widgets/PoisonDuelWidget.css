@@ -1,0 +1,162 @@
+/* Poison duel widget: the partition and the dead-letter queue are queues (cyan), the consumer is a server (violet). Click cells use a pattern per state, and a cross marks a malformed click. */
+
+.sdv-poison__path {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-poison__nodes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-poison__node {
+  align-items: center;
+  border: 1px solid var(--sdv-border);
+  border-inline-start: 4px solid var(--node);
+  border-radius: 0.5rem;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  max-width: 100%;
+  padding: 0.25rem 0.45rem;
+}
+.sdv-poison__node .sdv-badge {
+  flex: none;
+  max-width: 100%;
+  white-space: normal;
+}
+.sdv-poison__node[data-status="stuck"] {
+  background-image: repeating-linear-gradient(
+    45deg,
+    color-mix(in oklab, var(--sdv-bad) 18%, transparent) 0 2px,
+    transparent 2px 9px
+  );
+  border-inline-start-color: var(--sdv-bad);
+  border-style: dashed;
+}
+/* Two classes outrank the shared stage rule that stretches every svg to full width. */
+.sdv-poison__node .sdv-poison__icon {
+  flex: none;
+  height: 1.1rem;
+  width: 1.1rem;
+}
+.sdv-poison__node-name {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+}
+/* The shared stage rule stretches every svg to full width, so badge icons need their size back. */
+.sdv-poison__node .sdv-badge svg,
+.sdv-poison__verdict .sdv-badge svg {
+  display: inline-block;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.sdv-poison__backlog {
+  display: grid;
+  gap: 0.2rem;
+}
+.sdv-poison__backlog-label,
+.sdv-poison__tray-label {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.sdv-poison__bar {
+  background: var(--sdv-surface-raised);
+  border: 1px solid color-mix(in oklab, var(--sdv-queue) 60%, var(--sdv-border));
+  border-radius: 999px;
+  display: block;
+  height: 0.75rem;
+  overflow: hidden;
+}
+.sdv-poison__bar > span {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-queue) 0 4px,
+    color-mix(in oklab, var(--sdv-queue) 45%, var(--sl-color-bg)) 4px 8px
+  );
+  display: block;
+  height: 100%;
+}
+.sdv-poison__strip {
+  display: grid;
+  gap: 2px;
+  grid-template-columns: repeat(20, minmax(0, 1fr));
+  min-height: 3.1rem;
+}
+.sdv-poison__cell {
+  border: 1px solid transparent;
+  border-radius: 2px;
+  box-sizing: border-box;
+  display: block;
+  height: 0.9rem;
+  position: relative;
+}
+.sdv-poison__key {
+  display: inline-block;
+  flex: none;
+  width: 1.1rem;
+}
+.sdv-poison__cell[data-state="processed"] {
+  background: var(--sdv-ok);
+}
+.sdv-poison__cell[data-state="waiting"] {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-queue) 0 3px,
+    color-mix(in oklab, var(--sdv-queue) 35%, var(--sl-color-bg)) 3px 6px
+  );
+}
+.sdv-poison__cell[data-state="retrying"] {
+  background: var(--sdv-bad);
+  outline: 2px solid var(--sl-color-white);
+  outline-offset: -1px;
+}
+.sdv-poison__cell[data-state="parked"] {
+  background:
+    radial-gradient(circle, var(--sdv-warn) 1.2px, transparent 1.7px) 0 0 / 4px 4px,
+    color-mix(in oklab, var(--sdv-warn) 15%, var(--sl-color-bg));
+  border: 1px dashed var(--sdv-warn);
+}
+.sdv-poison__cell[data-malformed="true"]::after {
+  background:
+    linear-gradient(45deg, transparent 38%, var(--sl-color-white) 38% 62%, transparent 62%),
+    linear-gradient(-45deg, transparent 38%, var(--sl-color-white) 38% 62%, transparent 62%);
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+.sdv-poison__strip-text {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-poison__tray {
+  display: grid;
+  gap: 0.2rem;
+}
+.sdv-poison__tray-cells {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  min-height: 0.9rem;
+}
+.sdv-poison__tray-cells .sdv-poison__cell {
+  flex: none;
+  width: 0.9rem;
+}
+.sdv-poison__verdict {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.sdv-poison__verdict .sdv-badge {
+  white-space: normal;
+}
