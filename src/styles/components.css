@@ -1906,6 +1906,11 @@ a.sdv-map__link:hover {
   stroke: var(--sdv-series-b);
   stroke-dasharray: 7 4;
 }
+.sdv-trace__line--c {
+  stroke: var(--sdv-series-c);
+  stroke-dasharray: 0.5 5;
+  stroke-width: 3.5;
+}
 .sdv-trace__marker line {
   stroke: var(--sl-color-gray-3);
   stroke-dasharray: 2 3;

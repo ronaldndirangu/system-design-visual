@@ -50,6 +50,15 @@ export const quiz = [
       { text: 'Traffic shifts away at once, because the errors are fast', why: 'Speed is the problem: a fast error frees the slot at once, which invites the next request.' },
     ],
   },
+  {
+    prompt: 'The shortener wants redirects such as GET /abc123 on one pool of servers and /dashboard on another, all under one domain. Which load balancer can split them?',
+    options: [
+      { text: 'A layer 4 load balancer', why: 'Layer 4 forwards connections by IP address and port. Both kinds of traffic arrive on the same address and port, so it cannot tell them apart.' },
+      { text: 'A layer 7 load balancer', correct: true, why: 'Layer 7 reads each HTTP request, so it can route by path. For HTTPS traffic it terminates TLS first, then reads the path.' },
+      { text: 'Either one, since both read the URL', why: 'Only layer 7 reads the request. Layer 4 passes the bytes along without looking inside.' },
+      { text: 'Neither, since one domain always maps to one pool', why: 'A layer 7 balancer splits one domain by path, header, or cookie.' },
+    ],
+  },
 ];
 
 <Objectives>
@@ -59,6 +68,7 @@ export const quiz = [
 - Describe how a load balancer spreads traffic and routes around a crashed server.
 - Choose between round robin, random, and least connections.
 - Spot the failure that makes least connections send more traffic to a broken server.
+- Tell layer 4 from layer 7 balancing, and keep the load balancer itself from becoming a single point of failure.
 
 </Objectives>
 
@@ -223,6 +233,41 @@ This farm starts with three servers at about 70% busy, plus a few slow requests.
   instructions="Press Play and let the farm settle. Then crash a server, add one back, and compare strategies with more slow requests."
 />
 
+## Inside the load balancer
+
+### Layer 4 or layer 7
+
+Load balancers differ in how much of each request they read.
+
+- A **layer 4** (transport layer) balancer forwards connections by IP address and port and never reads the HTTP
+  request. It is fast, cheap, and works for any protocol. It sends a whole connection to one server.
+- A **layer 7** (application layer) balancer reads every HTTP request. It can route by path, header, or cookie, retry a
+  failed request on another server, and terminate TLS so the servers behind it skip the encryption work. Reading each
+  request costs CPU and adds a little latency.
+
+The shortener can use layer 7 to split its traffic: redirects such as `GET /abc123` go to a pool tuned for speed, and
+`/dashboard` goes to a separate pool, so a slow dashboard query never delays a redirect.
+
+### Reverse proxies
+
+A **reverse proxy** is a server that answers clients on behalf of the servers behind it. Clients see one address and
+never learn which server answered. A reverse proxy can terminate TLS, compress responses, cache popular answers, and
+block abusive traffic. A layer 7 load balancer is a reverse proxy with several servers behind it, and many teams put a
+reverse proxy such as NGINX in front of even a single server for TLS and caching.
+
+### Who balances the balancer?
+
+Every request passes through the load balancer, so it needs a backup too.
+
+- **Active-passive**: one balancer handles all traffic while a standby watches its heartbeat. When the heartbeat stops,
+  the standby takes over the shared IP address. Connections open on the failed balancer break, and clients reconnect.
+  The standby costs money while it sits idle.
+- **Active-active**: two or more balancers all handle traffic, for example with DNS returning several addresses. You use
+  every machine you pay for, but each one must keep enough spare room to absorb the traffic of a failed partner. Two
+  balancers that each run above 50% busy cannot cover for each other.
+
+The server farm above already runs active-active: every server takes traffic, and the 70% rule leaves room for a crash.
+
 ## Trade-offs
 
 <TradeoffTable title="Bigger machine or more machines?">
@@ -234,6 +279,10 @@ This farm starts with three servers at about 70% busy, plus a few slow requests.
 | Round robin                  | Simple and predictable                              | Uneven queues when request costs vary                           |
 | Least connections            | Adapts to slow requests and slow servers            | Tracks every server's open requests, and favors a server that fails fast |
 | Short health check interval  | Faster failover                                     | More check traffic, and a brief hiccup can eject a good server  |
+| Layer 4 balancer             | Fast, cheap, works for any protocol                 | Cannot route by path or header, or retry a single request       |
+| Layer 7 balancer             | Routes by path, header, or cookie, and terminates TLS | Reads every request, which costs CPU and a little latency     |
+| Active-passive balancers     | Simple failover with one shared address             | An idle standby to pay for, and open connections break on takeover |
+| Active-active balancers      | Uses every machine you pay for                      | Each balancer must keep spare room to cover a failed partner    |
 
 </TradeoffTable>
 

@@ -1,6 +1,6 @@
 ---
 title: Caching
-description: Put the hottest links in memory and watch database load collapse. Learn hit ratios, eviction, expiry, and the cold cache trap.
+description: Put the hottest links in memory and watch database load collapse. Learn hit ratios, eviction, expiry, write strategies, and the cold cache trap.
 ---
 
 import Objectives from '../../../components/lesson/Objectives.astro';
@@ -12,6 +12,7 @@ import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
 import ArcDiagram from '../../../components/viz/ArcDiagram';
 import CacheWidget from '../../../components/widgets/CacheWidget';
+import WriteStrategyWidget from '../../../components/widgets/WriteStrategyWidget';
 
 export const nodes = [
   { id: 'server', kind: 'server', x: 80, y: 140, label: 'App server' },
@@ -82,6 +83,15 @@ export const quiz = [
       { text: 'The load balancer remembers it', why: 'A load balancer forwards requests. It stores no link data.' },
     ],
   },
+  {
+    prompt: 'The shortener counts clicks with write-behind and saves to the database every 2 seconds. The cache server loses power. What happens to the click counts?',
+    options: [
+      { text: 'Nothing, since the database has every click', why: 'The database has clicks up to the last save. Every click since then lived only in the cache.' },
+      { text: 'Up to 2 seconds of clicks vanish, even though each one was confirmed', correct: true, why: 'Write-behind confirms a write as soon as the cache has it. Unsaved writes die with the cache. A few lost clicks may be fine; lost payments are not.' },
+      { text: 'The cache replays the missing clicks when it restarts', why: 'An in-memory cache restarts empty. Replaying writes needs a durable log, which is extra machinery to build and run.' },
+      { text: 'Every count resets to zero', why: 'The database keeps the totals from earlier saves. Only the unsaved clicks disappear.' },
+    ],
+  },
 ];
 
 <Objectives>
@@ -89,6 +99,7 @@ export const quiz = [
 - Explain cache hits, misses, and hit ratio, and why skewed popularity makes small caches powerful.
 - Walk through the cache-aside pattern, LRU eviction, and expiry (TTL).
 - Predict what happens when a cache restarts empty, and how stale data creeps in.
+- Compare write-through, write-behind, and write-around, and pick one for a given workload.
 
 </Objectives>
 
@@ -155,6 +166,52 @@ Two tools keep caches honest:
 - **Expiry (TTL)** puts an upper bound on how old a cached answer can get.
 - **Invalidation** deletes the cache entry whenever the source data changes.
 
+## Write strategies
+
+So far the cache only handles reads. The dashboard adds writes: people edit their links, and every click adds 1 to a
+click count. Each write now has to reach the cache, the database, or both, and the order decides speed, load, and what a
+crash destroys.
+
+- **Write-through.** Each write updates the database and the cache before it returns. A read right after the write
+  finds the new value in the cache. Every write waits for the database.
+- **Write-behind** (also called write-back). Each write updates only the cache and returns in about a millisecond. Every
+  2 seconds the cache saves its changed links to the database, and several changes to one link merge into one database
+  write. Until that save, the cache holds the only copy.
+- **Write-around.** Each write updates the database and deletes the cached copy. The next read misses and loads the
+  fresh value, so written data enters the cache only when someone reads it.
+
+<Predict
+  client:visible
+  question="Every click now adds 1 to a click count: 200 writes per second, mostly to popular links. Which strategy sends the fewest writes to the database?"
+  options={['Write-through', 'Write-behind', 'Write-around', 'All three send the same number']}
+  answer={1}
+>
+
+**Write-behind**. A popular link gets clicked many times in each 2 second window, and the cache saves only its latest
+count. With seed 42, 4,015 click writes reach the database as 1,319 under write-behind, while write-through and
+write-around send all 4,015. Write-around also wrecks the cache: each click deletes the copy that the next click needs,
+so the hit ratio falls to about 4%.
+
+</Predict>
+
+<WriteStrategyWidget client:visible initial="clicks" />
+
+What to look for:
+
+- **Count every click** rewards write-behind: frequent writes to the same few keys merge before they reach the
+  database.
+- **Bulk import** punishes write-through and write-behind. Both put each imported link in the cache, and those links push
+  the popular ones out. Write-around keeps the popular links, and its hit ratio for the run ends near 84% against 62%.
+- **Cache crashes** shows the price of write-behind. With seed 42 it loses 38 writes that callers already saw succeed.
+  Write-through and write-around lose none, because the database already had every write.
+
+A fourth strategy works on the read side. **Refresh-ahead** reloads a popular entry from the database shortly before its
+TTL runs out, so readers keep getting fresh answers without ever paying for the miss. It costs database reads for
+entries nobody asks for again, and it helps only when the cache can guess which entries people will read next.
+
+Teams that use write-behind for data they cannot lose put the buffer in a replicated cache or a durable log. Click
+counts can tolerate a few lost seconds. Payments cannot.
+
 ## Trade-offs
 
 <TradeoffTable title="Tuning a cache">
@@ -167,6 +224,10 @@ Two tools keep caches honest:
 | Invalidate on every write    | Fresh data without a short TTL                     | Extra code on every write path, and easy to forget one     |
 | Shared cache (such as Redis) | Every server sees the same hot links               | One more network hop and one more system to run            |
 | Cache inside each server     | Fastest reads, nothing extra to run                | Each server warms up alone, and copies can disagree        |
+| Write-through                | Fresh reads after a write, database always current | Every write waits for the database, and writes fill the cache |
+| Write-behind                 | Fast writes, and repeated writes merge into one    | A cache crash loses confirmed writes                       |
+| Write-around                 | Writes never push hot links out of the cache       | The first read after each write misses                     |
+| Refresh-ahead                | Popular entries stay fresh with no miss            | Extra database reads for entries nobody reads again        |
 
 </TradeoffTable>
 

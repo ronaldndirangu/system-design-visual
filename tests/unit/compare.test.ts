@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { betterIndex } from '../../src/lib/compare';
+import { betterIndex, betterIndices } from '../../src/lib/compare';
 
 describe('betterIndex', () => {
   it('picks the clearly better side in the requested direction', () => {
@@ -19,5 +19,17 @@ describe('betterIndex', () => {
     expect(betterIndex([4216, 4000], undefined, ['4216', '4000'])).toBe(-1);
     expect(betterIndex([0, 0], 'lower', ['0', '0'])).toBe(-1);
     expect(betterIndex([0, 1], 'lower', ['0', '1'])).toBe(0);
+  });
+});
+
+describe('betterIndices', () => {
+  it('marks every column tied with the best of three', () => {
+    expect(betterIndices([416, 279, 416], 'lower', ['416', '279', '416'])).toEqual([1]);
+    expect(betterIndices([0, 38, 0], 'lower', ['0', '38', '0'])).toEqual([0, 2]);
+    expect(betterIndices([0.62, 0.62, 0.84], 'higher', ['62%', '62%', '84%'])).toEqual([2]);
+  });
+
+  it('marks nothing when all three tie', () => {
+    expect(betterIndices([11, 11, 11.2], 'lower', ['11 ms', '11 ms', '11 ms'])).toEqual([]);
   });
 });

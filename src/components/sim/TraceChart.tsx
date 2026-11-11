@@ -2,7 +2,10 @@ import { useRef } from 'react';
 import { niceScale } from '../../lib/niceScale';
 import { useElementWidth } from './useElementWidth';
 
-export type SeriesVariant = 'a' | 'b';
+export type SeriesVariant = 'a' | 'b' | 'c';
+
+/** Series styles in column order: solid, dashed, dotted. */
+export const seriesVariants: readonly SeriesVariant[] = ['a', 'b', 'c'];
 
 export interface TraceSeries {
   label: string;
@@ -33,7 +36,7 @@ const HEIGHT = 190;
 const pad = { top: 26, right: 12, bottom: 26, left: 36 };
 const MARKER_GAP = 24;
 
-/** Solid for the first series, dashed for the second, so the lines differ without color. */
+/** Solid, dashed, then dotted, so the lines differ without color. */
 export function SeriesSwatch({ variant }: { variant: SeriesVariant }) {
   return (
     <svg className="sdv-swatch" width="28" height="10" viewBox="0 0 28 10" aria-hidden="true">
