@@ -65,6 +65,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'reliability/rate-limiting/q1',
     prompt: 'A token bucket refills 10 tokens per second and holds 20. The client has been idle for a minute, then sends 50 requests in one instant. How many get through?',
     options: [
       { text: '10, the refill rate', why: 'The refill rate caps the long run average. After a quiet minute the bucket is full, so the client can spend all 20 stored tokens at once.' },
@@ -74,6 +75,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/rate-limiting/q2',
     prompt: 'A fixed window allows 100 requests per calendar second. What is the most a client can send in any 0.2 s stretch?',
     options: [
       { text: '20, the limit scaled to 0.2 s', why: 'A fixed window checks only the count inside each calendar second. It never spreads the 100 requests evenly.' },
@@ -83,6 +85,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/rate-limiting/q3',
     prompt: 'Your client gets 429 with Retry-After: 2. What should it do?',
     options: [
       { text: 'Retry at once, since the limit may have reset', why: 'An instant retry almost always meets an empty bucket. It burns a retry and adds load to a limiter that already said no.' },
@@ -92,6 +95,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/rate-limiting/q4',
     prompt: 'Six gateway instances each keep their own local token bucket, and each enforces one sixth of a 600 req/min limit. The load balancer sends one client\u2019s long-lived connection to a single instance. What happens?',
     options: [
       { text: 'The client gets its full 600 req/min', why: 'Only one instance sees this client, and that instance allows 100 req/min.' },
@@ -101,6 +105,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/rate-limiting/q5',
     prompt: 'The shared counter store behind your rate limiter goes down. The limit protects a free tier from abuse. Which choice keeps most users happy?',
     options: [
       { text: 'Fail closed: reject every request until the store returns', why: 'That turns a limiter outage into a full outage for every client, including the polite ones.' },
@@ -129,6 +134,7 @@ pushes its traffic from 50 to 400 requests per second.
 
 <Predict
   client:visible
+  id="reliability/rate-limiting/predict-1"
   question="Partners B, C, and D keep sending 50 requests per second each, well under any fair share. What happens to their requests after A jumps to 400?"
   options={[
     'Nothing, because their own traffic never changed',
@@ -187,6 +193,8 @@ a thousand credits, and your card never spends anyone else's credits.
 
 <Predict
   client:visible
+  id="reliability/rate-limiting/predict-2"
+  ordered
   question="Client A sends 6 requests per second into a bucket that refills 10 tokens per second and holds 20. From 4 s to 6 s, A bursts to 30 requests per second, about 60 requests in total. Roughly how many get 429?"
   options={[
     'None: the bucket absorbs the whole burst',
@@ -234,6 +242,7 @@ the boundary and a full window just after it.
 
 <Predict
   client:visible
+  id="reliability/rate-limiting/predict-3"
   question="Client A has a limit of 100 requests per second. Every 2 s, it sends 100 requests at 0.9 s and 100 more at 1.0 s. Under a fixed window, how many of those 200 reach the server?"
   options={['100, the limit', '200, all of them', 'None, since 200 is over the limit']}
   answer={1}
@@ -274,6 +283,7 @@ a little random jitter so many clients do not return in the same instant, and st
 
 <Predict
   client:visible
+  id="reliability/rate-limiting/predict-4"
   question="Client A bursts from 40 to 160 requests per second for two seconds. Both lanes give up on a request after 3 retries. Which client gives up on fewer requests?"
   options={[
     'The one that retries at once, because it gets back in line sooner',

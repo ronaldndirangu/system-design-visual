@@ -73,6 +73,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'ai-systems/gateway/q1',
     prompt:
       'Store A runs a backfill that triples its traffic. Each store has its own token bucket, and the quotas add up to the shared upstream limit. What happens to Store B?',
     options: [
@@ -96,6 +97,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/gateway/q2',
     prompt:
       'On the mostly easy mix, the cascade is the cheapest strategy and passes the most questions. Why does it still miss a budget?',
     options: [
@@ -119,6 +121,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/gateway/q3',
     prompt:
       'A response cache key holds the question, the model, the prompt version, the settings, and the user role. It leaves out the store. What goes wrong?',
     options: [
@@ -142,6 +145,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/gateway/q4',
     prompt: 'The model server turns on prefix caching for the shared system prompt and store policy. What improves?',
     options: [
       {
@@ -164,6 +168,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/gateway/q5',
     prompt: 'The refund form receives a reply with no amount field. What should the gateway do?',
     options: [
       {
@@ -186,6 +191,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/gateway/q6',
     prompt:
       'After three errors in a row, the breaker opens and sends new requests to Small. Why does it later let one probe request through to Medium?',
     options: [
@@ -237,6 +243,7 @@ Each problem has a known fix, and every fix lives in the same place: a gateway t
 
 <Predict
   client:visible
+  id="ai-systems/gateway/predict-1"
   question="Stores A, B, and C share a 15 req/s limit. Store B sends a steady 3 req/s. Store A bursts from 4 to 25 req/s for 15 seconds. What happens to the customers of Store B?"
   options={['Nothing, since Store B stays well under its fair share', 'Store B slows down, but every request succeeds', 'Some Store B requests fail with rate limit errors', 'Every Store B request fails until Store A stops']}
   answer={2}
@@ -378,6 +385,7 @@ What to look for on the mostly easy mix:
 
 <Predict
   client:visible
+  id="ai-systems/gateway/predict-2"
   question="Before you switch: on the mostly hard mix, 42 of the 60 questions are hard. Which strategy fits every budget?"
   options={['Routing', 'The cascade', 'Medium alone', 'None of them']}
   answer={2}

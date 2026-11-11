@@ -68,6 +68,7 @@ export const steps = [
 ];
 export const quiz = [
   {
+    id: 'case-studies/search/q1',
     prompt: "An editor fixes a typo in one story's headline. The index is built from immutable segments. What happens?",
     options: [
       {
@@ -90,6 +91,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/search/q2',
     prompt: 'The index is sharded by document across 18 shards. A reader searches for storm coast. Which shards does the query touch?',
     options: [
       {
@@ -112,6 +114,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/search/q3',
     prompt: 'A recipe site mostly gets searches for recipes that are years old. Judging by the evergreen run, should it add a real-time tier?',
     options: [
       {
@@ -134,6 +137,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/search/q4',
     prompt: 'Why does each node of the typeahead trie store its top 3 completions ahead of time?',
     options: [
       {
@@ -187,6 +191,8 @@ is searchable within 1 s. Recall@10 compares each lane's top 10 with an ideal ra
 
 <Predict
   client:visible
+  id="case-studies/search/predict-1"
+  ordered
   question="Over the whole day, what share of queries does the nightly rebuild answer without the ideal top result?"
   options={[
     'About 5%',
@@ -399,6 +405,7 @@ documents, is one of those rewrites. Log-structured storage engines use the same
 
 <Predict
   client:visible
+  id="case-studies/search/predict-2"
   question="Now flip the day: only 5% of queries chase a breaking story, and the rest look for older documents. How does the real-time tier compare with the nightly rebuild?"
   options={[
     'It still wins recall by a wide margin',

@@ -49,6 +49,8 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'thinking/requirements-and-estimates/q1',
+    ordered: true,
     prompt: 'A service stores 2 million new records a day. About how many writes per second is that on average?',
     options: [
       { text: 'About 2', why: 'That would be roughly 170,000 a day. Divide 2,000,000 by 86,400 seconds.' },
@@ -58,6 +60,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'thinking/requirements-and-estimates/q2',
     prompt: 'Why multiply the average request rate by a peak factor before counting servers?',
     options: [
       { text: 'Traffic arrives unevenly, and servers must survive the busiest minute', correct: true, why: 'Evenings, launches, and viral posts push traffic well above the daily average. Size for the peak, then add headroom.' },
@@ -67,6 +70,8 @@ export const quiz = [
     ],
   },
   {
+    id: 'thinking/requirements-and-estimates/q3',
+    ordered: true,
     prompt: 'You expect 3 trillion links over the life of the service. How many base62 characters does a short code need?',
     options: [
       { text: '5', why: '62⁵ is about 916 million codes, far short of 3 trillion.' },
@@ -92,6 +97,8 @@ full, writes start failing, and every new short link returns an error.
 
 <Predict
   client:visible
+  id="thinking/requirements-and-estimates/predict-1"
+  ordered
   question="The growing startup scale adds 1 million links a day at about 500 bytes each. How much storage do 5 years of links need?"
   options={['About 1 GB', 'About 100 GB', 'About 1 TB', 'About 100 TB']}
   answer={2}

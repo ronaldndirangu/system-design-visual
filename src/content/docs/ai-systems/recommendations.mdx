@@ -79,6 +79,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'ai-systems/recommendations/q1',
     prompt: 'Why not score every item in the catalog with the accurate ranker?',
     options: [
       {
@@ -101,6 +102,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/recommendations/q2',
     prompt: 'With 20 candidates instead of 500, the 50 ft blue garden hose never appears in the five shown. Why can\u2019t a better ranker fix this?',
     options: [
       {
@@ -123,6 +125,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/recommendations/q3',
     prompt: 'Why does the funnel ask three candidate sources instead of embedding neighbors alone?',
     options: [
       {
@@ -145,6 +148,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/recommendations/q4',
     prompt: 'The 75 ft green garden hose scores 0.88, higher than the 50 ft lightweight hose at 0.86. The lightweight hose is shown and the 75 ft hose is not. Why?',
     options: [
       {
@@ -167,6 +171,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/recommendations/q5',
     prompt: 'In the toy model, recall is 90% at 500 candidates and 100% at 2,000, and total time crosses the 50 ms budget near 2,700. Which candidate count fits best?',
     options: [
       {
@@ -214,6 +219,8 @@ catalog, the list looks perfect.
 
 <Predict
   client:visible
+  id="ai-systems/recommendations/predict-1"
+  ordered
   question="The ranker takes an illustrative 10 microseconds to score one item. How long does one request take when it scores all 3,000,000 items, against a 50 ms budget?"
   options={['About 30 ms', 'About 3 s', 'About 30 s', 'About 5 minutes']}
   answer={2}
@@ -256,6 +263,7 @@ Before you pick **Too few candidates**, predict what it does.
 
 <Predict
   client:visible
+  id="ai-systems/recommendations/predict-2"
   question="Too few candidates cuts the candidate budget from 500 to 20 and keeps the same ranker. What happens to the five shown?"
   options={[
     'The same five, a little faster',

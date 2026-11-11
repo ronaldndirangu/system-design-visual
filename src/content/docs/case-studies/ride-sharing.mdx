@@ -85,6 +85,7 @@ export const steps = [
 ];
 export const quiz = [
   {
+    id: 'case-studies/ride-sharing/q1',
     prompt: "A rider stands 20 m from the east edge of their geohash cell. Why does the matcher also search the 8 cells around the rider's own?",
     options: [
       {
@@ -107,6 +108,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/ride-sharing/q2',
     prompt: 'A driver sends a ping from inside the same geohash cell as the last one. What does the geo index do?',
     options: [
       {
@@ -129,6 +131,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/ride-sharing/q3',
     prompt: 'Two riders tap Request at the same moment, and both matchers pick the same driver. What prevents a double booking?',
     options: [
       {
@@ -151,6 +154,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/ride-sharing/q4',
     prompt:
       'Two points about 31 m apart, one just north east of 0°, 0° and one just south west of it, encode to s0000 and 7zzzz. What does this pair teach?',
     options: [
@@ -200,6 +204,7 @@ every free driver. The other looks only in the rider's cell and the 8 cells arou
 
 <Predict
   client:visible
+  id="case-studies/ride-sharing/predict-1"
   question="The first ride request arrives while all 600 drivers are free. How many distances does each lane measure: the scan first, then the cell search?"
   options={[
     '600 and 600',
@@ -394,6 +399,7 @@ of their cell.
 
 <Predict
   client:visible
+  id="case-studies/ride-sharing/predict-2"
   question="Every rider stands within 40 m of an edge of their cell. Over 15 requests, how often is the nearest free driver in a different cell from the rider?"
   options={[
     'Almost never',

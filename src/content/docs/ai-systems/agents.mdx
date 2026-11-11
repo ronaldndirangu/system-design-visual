@@ -76,6 +76,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'ai-systems/agents/q1',
     prompt: 'The unguarded agent refunds order 1042 after reading ticket 88. Where is the most reliable place to stop that call?',
     options: [
       {
@@ -98,6 +99,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/agents/q2',
     prompt: 'Apart from the system\u2019s own rules, which text in the injected ticket scenario may direct what the agent does?',
     options: [
       {
@@ -120,6 +122,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/agents/q3',
     prompt: 'In the runaway loop, the guarded agent uses all 8 tool calls without finding an answer. What should happen next?',
     options: [
       {
@@ -142,6 +145,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/agents/q4',
     prompt: 'The customer closes the chat while a slow search runs. Which design makes sure nothing happens on their behalf afterward?',
     options: [
       {
@@ -164,6 +168,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/agents/q5',
     prompt: 'A call to issue_refund times out, and the agent retries it. How do you avoid refunding twice?',
     options: [
       {
@@ -219,6 +224,7 @@ the moment the model gets misled and limits what happens next.
 
 <Predict
   client:visible
+  id="ai-systems/agents/predict-1"
   question="The unguarded agent retrieves ticket 88 and can call any tool with full access. What does it do?"
   options={['It ignores the note and refunds only order 1077', 'It refunds order 1042 and stops', 'It refunds both orders, $544 in total', 'It asks the customer before refunding anything']}
   answer={2}
@@ -322,6 +328,7 @@ once untrusted text enters the context, allow only read tools until the customer
 
 <Predict
   client:visible
+  id="ai-systems/agents/predict-2"
   question="Turn off every guard except Human approval for refunds, then replay the injected ticket. Is order 1042 refunded?"
   options={['Yes, $480 goes out', 'No, it waits for a person', 'No, the budget blocks it', 'No, the model refuses']}
   answer={1}

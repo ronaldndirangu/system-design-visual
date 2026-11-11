@@ -60,6 +60,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'thinking/slos/q1',
     prompt: 'A dashboard shows an average redirect time of 35 ms. What does that tell you about the slowest 1% of redirects?',
     options: [
       { text: 'Very little: a long tail can hide behind a low average', correct: true, why: 'The average blends a few slow redirects into thousands of fast ones. In the toy run the slowest 1% average 171 ms while the mean reads 35 ms.' },
@@ -69,6 +70,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'thinking/slos/q2',
     prompt: 'An SLO says 99.9% of requests succeed over 30 days, and traffic stays steady around the clock. How much full downtime does its error budget allow?',
     options: [
       { text: 'About 43 minutes', correct: true, why: '30 days hold 43,200 minutes, and 0.1% of that is 43.2 minutes. Steady traffic makes each minute carry the same share of requests. With real daily peaks, an outage at the busiest hour spends the budget faster than one at night.' },
@@ -78,6 +80,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'thinking/slos/q3',
     prompt: 'Ten servers each report their own p99 latency. How do you get the p99 for the whole fleet?',
     options: [
       { text: 'Merge their latency histograms, then read the 99th percentile', correct: true, why: 'A percentile comes from the full set of samples. Merging histograms with matching buckets keeps every sample in the count.' },
@@ -87,6 +90,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'thinking/slos/q4',
     prompt: 'Tracing shows the average request spends most of its time in app code, while the slowest 1% spend most of theirs on database reads. The SLO is about the p99. What should you fix first?',
     options: [
       { text: 'The database reads', correct: true, why: 'The SLO counts slow requests, and the slow requests wait on the database. In the toy run halving the miss path kept the SLO.' },
@@ -96,6 +100,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'thinking/slos/q5',
     prompt: 'A page makes 20 backend calls in parallel and waits for all of them. Each call runs slower than its p99 1% of the time, independently of the others. About how often does a page wait on at least one slow call?',
     options: [
       { text: 'About 1 in 100 page loads', why: 'That holds for a single call, or for 20 calls that always turn slow together. Independent calls give the page 20 separate chances to draw a slow one.' },
@@ -128,6 +133,7 @@ ship at the 2 s mark.
 
 <Predict
   client:visible
+  id="thinking/slos/predict-1"
   question="One fix halves the time spent in app code on every redirect. The other halves the database read that only cache misses (5% of redirects) make. Which fix keeps 99% of redirects under 100 ms?"
   options={[
     'Faster app code: it speeds up every redirect',
@@ -188,6 +194,7 @@ each redirect from the first 2 s into its stages, for the average redirect and f
 
 <Predict
   client:visible
+  id="thinking/slos/predict-2"
   question="Before you pick Slow app code: the database is healthy again, and app code now averages 32 ms with a long tail. Which fix keeps the SLO now?"
   options={[
     'Faster miss path, same as before',

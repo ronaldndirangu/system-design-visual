@@ -61,6 +61,7 @@ import StepDiagram from '../../../components/lesson/StepDiagram';
 
 export const quiz = [
   {
+    id: 'reliability/timeouts/q1',
     prompt: 'A question about the core idea?',
     options: [
       { text: 'A tempting wrong answer', why: 'Why it is wrong.' },
@@ -77,7 +78,13 @@ export const quiz = [
 
 ## The failure: something breaks
 
-<Predict client:visible question="What happens next?" options={['A', 'B', 'C']} answer={1}>
+<Predict
+  client:visible
+  id="reliability/timeouts/predict-1"
+  question="What happens next?"
+  options={['A', 'B', 'C']}
+  answer={1}
+>
 
 The reveal, shown after the learner locks in a guess.
 
@@ -97,6 +104,13 @@ Follow the lesson rhythm, in this order:
 6. **Trade-offs** (`<TradeoffTable title="...">` wrapping a Markdown table).
 7. **Quiz** (`<Quiz client:visible>`): every option needs a `why`, including the right one.
 8. **Challenge** (`<Challenge>` with a `<div slot="answer">`): a small design problem in a new setting.
+
+Every quiz question and every `<Predict>` needs an `id` of the form `<lesson id>/qN` or `<lesson id>/predict-N`.
+Saved progress keys on it, so never change an `id` once published, even when you reorder or reword questions. A unit
+test checks that every `id` exists, is unique and has the right form. Choices display in a shuffled order seeded by the
+`id`, and a unit test fails if more than 40% of a component's answers land in the same position. When the options form
+a scale (1, 10, 100), add `ordered` (`ordered: true` in a quiz question) to keep their sequence; the display direction
+then flips on each retry.
 
 Quick cards skip the full rhythm. Keep them to one focused idea, use Starlight's `<Steps>` or a table for structure,
 and end with a short `<Quiz client:visible>` so the learner still retrieves what they read.

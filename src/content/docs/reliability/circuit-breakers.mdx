@@ -65,6 +65,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'reliability/circuit-breakers/q1',
     prompt: 'The lane without a breaker gives every ingest call a 500 ms timeout, yet it turns away 1,016 redirects with a 503 while ingest hangs. Why?',
     options: [
       { text: 'Each hung call still holds a worker for 500 ms, so 16 workers finish about 31 redirects a second against 150 arriving', correct: true, why: 'A timeout bounds each wait, and every redirect still waits. With every worker stuck, the queue of 64 fills in well under a second, and the rest get a 503.' },
@@ -74,6 +75,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/circuit-breakers/q2',
     prompt: 'On a normal day, 2% of ingest calls fail at random. The breaker opens when at least half of 20 or more calls in the last second failed. What does it do?',
     options: [
       { text: 'It opens for a moment whenever two errors land close together', why: 'Two errors among the roughly 150 calls a second is about 1%, far below a 50% threshold.' },
@@ -83,6 +85,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/circuit-breakers/q3',
     prompt: 'A half-open breaker with no probe limit lets every redirect through until the round is decided. While ingest still hangs, what goes wrong?',
     options: [
       { text: 'The breaker can never close again', why: 'It closes once ingest heals, at about the same time as the gentle breaker. The damage happens during each half-open round.' },
@@ -92,6 +95,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/circuit-breakers/q4',
     prompt: 'Ingest crashes and refuses every connection within 10 ms. What does the breaker buy sho.rt in this case?',
     options: [
       { text: 'Far fewer redirects turned away with a 503', why: 'Neither lane turns any away. A refusal frees the worker at once, so workers never get stuck.' },
@@ -123,6 +127,8 @@ One afternoon at 3 s, the ingest service hangs. It accepts calls and never answe
 
 <Predict
   client:visible
+  id="reliability/circuit-breakers/predict-1"
+  ordered
   question="Both lanes get the exact same 3,018 redirects over 20 s, and ingest hangs from 3 s to 12 s. One lane has no breaker. The other opens a circuit breaker when half of its recent ingest calls fail, and then buffers clicks without calling ingest. How many redirects does the lane without a breaker turn away with a 503?"
   options={[
     'None: the 500 ms timeout protects it',
@@ -240,6 +246,7 @@ empty connection pools. A breaker with no probe limit lets every redirect throug
 
 <Predict
   client:visible
+  id="reliability/circuit-breakers/predict-2"
   question="Both lanes have a breaker with the same threshold and cooldown. One sends 3 probes when half-open; the other lets every redirect through as a probe until the round is decided. Ingest hangs from 3 s to 12 s. What happens to the p95 time to answer a redirect in the lane with no probe limit?"
   options={['It stays at about 60 ms', 'It roughly doubles', 'It rises about sevenfold', 'It matches the lane with no breaker at all']}
   answer={2}

@@ -1,62 +1,52 @@
-import { type ReactNode, useId, useState } from 'react';
+import type { ReactNode } from 'react';
 import { ToneBadge } from '../sim/StatTable';
-import { useHydrated } from '../sim/useHydrated';
+import { ChoiceError, ChoiceList, useChoiceCard } from './ChoiceCard';
 
 interface Props {
+  /** Stable and unique site-wide, for example "scaling/caching/predict-1". Never change it once published. */
+  id: string;
   question: string;
   options: string[];
   /** Index of the option that matches what really happens. */
   answer: number;
+  /** Options form a scale (1, 10, 100). Keep their sequence instead of shuffling. */
+  ordered?: boolean;
   /** The reveal, shown after the learner commits to a guess. */
   children?: ReactNode;
 }
 
 /** Ask for a guess before showing the answer. Committing first makes the answer stick. */
-export default function Predict({ question, options, answer, children }: Props) {
-  const name = useId();
-  const hydrated = useHydrated();
-  const [choice, setChoice] = useState<number | null>(null);
-  const [locked, setLocked] = useState(false);
-  const correct = locked && choice === answer;
+export default function Predict({ id, question, options, answer, ordered, children }: Props) {
+  const card = useChoiceCard(id, options.length, ordered);
+  const correct = card.submitted && card.choice === answer;
+  const describedBy = card.error ? card.errorId : undefined;
 
   return (
     <section className="sdv-predict not-content" aria-label="Make a prediction">
       <p className="sdv-predict__eyebrow">Predict first</p>
-      <fieldset disabled={locked || !hydrated}>
+      <fieldset disabled={!card.hydrated} aria-describedby={describedBy}>
         <legend className="sdv-predict__question">{question}</legend>
-        <div className="sdv-choices">
-          {options.map((option, index) => (
-            <label
-              key={option}
-              className="sdv-choice"
-              data-state={
-                locked ? (index === answer ? 'correct' : index === choice ? 'wrong' : undefined) : undefined
-              }
-            >
-              <input type="radio" name={name} checked={choice === index} onChange={() => setChoice(index)} />
-              <span>{option}</span>
-            </label>
-          ))}
-        </div>
+        <ChoiceList card={card} labels={options} answer={answer} pickedLabel="Your guess" />
       </fieldset>
-      {!locked ? (
+      <ChoiceError card={card} />
+      {card.submitted ? (
+        <div className="sdv-predict__reveal">
+          <h3 className="sdv-result" tabIndex={-1} ref={card.resultRef}>
+            <ToneBadge tone={correct ? 'ok' : 'warn'}>{correct ? 'You called it' : 'Surprise'}</ToneBadge>
+          </h3>
+          <div className="sdv-predict__body">{children}</div>
+        </div>
+      ) : (
         <button
           type="button"
           className="sdv-button sdv-button--primary"
-          disabled={choice === null}
-          onClick={() => setLocked(true)}
+          disabled={!card.hydrated}
+          aria-describedby={describedBy}
+          onClick={() => card.submit()}
         >
           Lock in my guess
         </button>
-      ) : null}
-      <div aria-live="polite">
-        {locked && (
-          <div className="sdv-predict__reveal">
-            <ToneBadge tone={correct ? 'ok' : 'warn'}>{correct ? 'You called it' : 'Surprise'}</ToneBadge>
-            <div className="sdv-predict__body">{children}</div>
-          </div>
-        )}
-      </div>
+      )}
     </section>
   );
 }

@@ -74,6 +74,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'case-studies/collaborative-editor/q1',
     prompt: "Ada and Ben send ops that name an index, and each copy applies the other's ops as written. Why do the copies drift apart?",
     options: [
       {
@@ -96,6 +97,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/collaborative-editor/q2',
     prompt: 'Why does the CRDT keep a deleted character as a tombstone instead of removing it?',
     options: [
       {
@@ -118,6 +120,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/collaborative-editor/q3',
     prompt: 'Ada and Ben each type a character right after the same character at the same moment. How does every copy agree on their order?',
     options: [
       {
@@ -140,6 +143,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/collaborative-editor/q4',
     prompt: 'A new editor opens a document with two years of edit history. What keeps the load fast?',
     options: [
       {
@@ -186,6 +190,7 @@ design describes each edit by position: Ada sends "delete the character at index
 
 <Predict
   client:visible
+  id="case-studies/collaborative-editor/predict-1"
   question="Ada's copy now reads cat and Ben's reads coast. Ada's copy inserts o at index 1, and Ben's copy deletes the character at index 2. What does each copy show afterwards?"
   options={[
     'Both show coat',
@@ -368,6 +373,7 @@ which Ben's copy has not seen yet.
 
 <Predict
   client:visible
+  id="case-studies/collaborative-editor/predict-2"
   question="Ben's copy receives Ada's ! (id a5, after a4) before it has received a4, the s. What should Ben's editor do?"
   options={[
     'Place the ! at the end for now',

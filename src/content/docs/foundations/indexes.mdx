@@ -75,6 +75,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'foundations/indexes/q1',
     prompt: "The redirect runs SELECT long_url FROM links WHERE code = ?, and code has no index. The matching row sits on page 12 of 100,000. How many pages does the database read?",
     options: [
       { text: '12', why: 'A row with the same code could sit on any later page, and without a unique index the database cannot rule that out. It reads on.' },
@@ -84,6 +85,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/indexes/q2',
     prompt: 'The links table grows from 10 million to 10 billion rows. How does a lookup by code change when code has a B-tree index?',
     options: [
       { text: 'It reads about 1,000 times more pages', why: 'That is the full scan. A B-tree reads one page per level, and levels grow with the logarithm of the row count.' },
@@ -93,6 +95,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/indexes/q3',
     prompt: 'The links table has UNIQUE (code). You add indexes on (user_id) and (created_at). What happens to each new link?',
     options: [
       { text: 'Nothing changes; indexes only affect reads', why: 'Each index is its own B-tree, and every insert must add its key to every one of them.' },
@@ -102,6 +105,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/indexes/q4',
     prompt: 'The dashboard runs WHERE user_id = ? ORDER BY created_at DESC LIMIT 20. Which index serves it best?',
     options: [
       { text: '(created_at, user_id)', why: 'Entries are sorted by date first, so one user\'s links are scattered across the whole index.' },
@@ -111,6 +115,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/indexes/q5',
     prompt: 'Which query can a B-tree index on code NOT speed up?',
     options: [
       { text: "WHERE code = 'bATJ4g'", why: 'An exact match is the case B-trees handle best: a few page reads from root to leaf.' },
@@ -145,6 +150,7 @@ reading every page of the table and checking every row, once per click.
 
 <Predict
   client:visible
+  id="foundations/indexes/predict-1"
   question="The links table grows 1,000 times, from 10 million rows to 10 billion. How many more pages does one lookup by code read with no index? With a B-tree index on code?"
   options={[
     'About 1,000 times more, with or without the index',
@@ -213,6 +219,7 @@ leaf, and split it when it is full.
 
 <Predict
   client:visible
+  id="foundations/indexes/predict-2"
   question="The links table has 10 million rows and one index, UNIQUE (code). You add (user_id), (created_at), and (user_id, created_at). How many pages does one new link write now?"
   options={[
     'Still 2: the table page and the code index',

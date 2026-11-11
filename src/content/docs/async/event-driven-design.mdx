@@ -152,6 +152,7 @@ export const orchSteps = [
 
 export const quiz = [
   {
+    id: 'async/event-driven-design/q1',
     prompt: 'A consumer retries a click that fails to parse every 0.3 s, with no limit. Clicks arrive at about 40 per second. What happens to that partition?',
     options: [
       { text: 'It slows down a little, since the consumer still reads its other partitions', why: 'One consumer reads each partition in order. The clicks behind the head of this partition wait, however idle the other partitions are.' },
@@ -161,6 +162,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'async/event-driven-design/q2',
     prompt: 'Which failure should the consumer park in the dead-letter queue on its first try, with no retries?',
     options: [
       { text: 'A click whose JSON fails to parse', correct: true, why: 'Parsing is permanent: every retry fails the same way, so retries only hold the partition while the backlog grows.' },
@@ -170,6 +172,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'async/event-driven-design/q3',
     prompt: 'Billing must charge only for clicks that fraud scoring marks clean. The services use choreography. What changes?',
     options: [
       { text: 'The click service calls fraud scoring, then billing, in order', why: 'That moves orchestration into the click service and couples the producer to every consumer it calls.' },
@@ -179,6 +182,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'async/event-driven-design/q4',
     prompt: 'The click service must rename code to shortCode. Several teams read the click topic and deploy on their own schedules. Which path is safe?',
     options: [
       { text: 'Rename the field in place and announce the deploy time', why: 'Every reader of code breaks at the deploy. In the widget, both readers park all 205 clicks after the rename.' },
@@ -222,6 +226,7 @@ group, and that consumer stalls in the same place.
 
 <Predict
   client:visible
+  id="async/event-driven-design/predict-1"
   question="A malformed click reaches the head of the partition at 2 s. The consumer retries it every 0.3 s until it works. What happens to the clicks behind it?"
   options={[
     'They skip past it and get counted',
@@ -382,6 +387,7 @@ Both park an event they reject in a dead-letter queue, since no retry fixes a sc
 
 <Predict
   client:visible
+  id="async/event-driven-design/predict-2"
   question="The click service adds an optional country field to every click. Which consumer breaks?"
   options={[
     'Neither, because adding a field is always safe',

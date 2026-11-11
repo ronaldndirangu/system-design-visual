@@ -59,6 +59,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'foundations/apis/q1',
     prompt: 'A user reads page 1 of their links with ?page=1&size=20. Before they press Next, 3 new links are created. What does page 2 start with?',
     options: [
       { text: 'The last 3 links from page 1, again', correct: true, why: 'The 3 new links sort first and push every older link down 3 rows. Rows 21 to 23 now hold links the user just saw.' },
@@ -68,6 +69,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/apis/q2',
     prompt: 'The marketing team wants every click on a short link counted. Which status should the redirect GET /{code} return?',
     options: [
       { text: '301 Moved Permanently', why: 'Browsers may cache a 301 with no expiry and go straight to the destination next time. Those repeat clicks never reach the server, so the count falls short.' },
@@ -77,6 +79,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/apis/q3',
     prompt: 'POST /v1/links asks for the custom alias sale, and another user already owns it. Which response helps the client most?',
     options: [
       { text: '409 Conflict with a machine readable code such as alias_taken', correct: true, why: 'The request was valid and clashes with current state. A specific code lets the app show "pick another alias" instead of a generic error.' },
@@ -86,6 +89,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/apis/q4',
     prompt: 'Which change to the link response can ship in /v1 without breaking a client that ignores unknown fields?',
     options: [
       { text: 'Add an optional "title" field', correct: true, why: 'A tolerant reader skips fields it does not know. Old clients keep working, and new ones can start reading "title".' },
@@ -95,6 +99,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/apis/q5',
     prompt: 'You must rename "url" to "destination". Old mobile app versions stay installed for years. What plan keeps them working?',
     options: [
       { text: 'Rename it in place and email every user to update', why: 'Many phones never update. Those users hit errors the moment you deploy, and an email will not fix that.' },
@@ -104,6 +109,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/apis/q6',
     prompt: 'The redirect service reports every click to your own analytics service, about 5,000 calls a second. Which style fits that call best?',
     options: [
       { text: 'A public REST endpoint with JSON', why: 'It works, but text JSON costs more to encode at this rate, and no shared schema gives both services typed code for the message.' },
@@ -132,6 +138,7 @@ a link they know exists never appears on any page. Nothing errored, and the logs
 
 <Predict
   client:visible
+  id="foundations/apis/predict-1"
   question="A user has 50 links and pages through them 10 at a time with ?page=N&size=10. While they read, a script creates about one new link every two seconds. What do they see on later pages?"
   options={['Exactly the next 10 links each time', 'Some links they already saw on an earlier page', 'Only the new links', 'An error, since the list changed']}
   answer={1}

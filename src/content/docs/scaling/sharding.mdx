@@ -14,6 +14,8 @@ import ShardingWidget from '../../../components/widgets/ShardingWidget';
 
 export const quiz = [
   {
+    id: 'scaling/sharding/q1',
+    ordered: true,
     prompt: 'Links live on 9 shards placed with hash mod 9. You add a tenth shard. About what share of links move?',
     options: [
       { text: 'About 10%', why: 'That is the minimum, and only consistent hashing gets close to it. With mod N, a link stays put only when both remainders happen to match.' },
@@ -23,6 +25,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'scaling/sharding/q2',
     prompt: 'On a consistent hashing ring, which links move when a new shard joins?',
     options: [
       { text: 'Every link, since the ring gets redrawn', why: 'The ring stays put. Only the new shard\'s points get added to it.' },
@@ -32,6 +35,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'scaling/sharding/q3',
     prompt: 'Why give each shard many virtual nodes on the ring?',
     options: [
       { text: 'To store more copies of each link', why: 'Virtual nodes are extra positions for the same shard. They change placement and store no extra copies.' },
@@ -62,6 +66,8 @@ which shard owns which link.
 
 <Predict
   client:visible
+  id="scaling/sharding/predict-1"
+  ordered
   question="Links sit on 4 shards, placed with hash(code) mod 4. You add a fifth shard and switch to mod 5. About what share of the links must move?"
   options={['About 20%', 'About 50%', 'About 80%', 'All of them']}
   answer={2}

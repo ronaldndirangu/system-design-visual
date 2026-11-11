@@ -14,6 +14,7 @@ import RequestJourneyWidget from '../../../components/widgets/RequestJourneyWidg
 
 export const quiz = [
   {
+    id: 'foundations/what-happens-when-you-click/q1',
     prompt: 'The server code answers in 2 ms, yet people far away wait 400 ms for a redirect. What explains most of the gap?',
     options: [
       { text: 'Slow application code', why: 'The code takes 2 ms of the 400. Making it twice as fast saves 1 ms.' },
@@ -23,6 +24,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/what-happens-when-you-click/q2',
     prompt: 'You move the server from another continent to the same city as your users. Which steps get faster?',
     options: [
       { text: 'Only the DNS lookup', why: 'DNS talks to a resolver, which is usually near the user already. Moving your server helps the steps that talk to it.' },
@@ -32,6 +34,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/what-happens-when-you-click/q3',
     prompt: 'Why might a URL shortener answer with 302 Found instead of 301 Moved Permanently?',
     options: [
       { text: 'A 302 is faster for repeat visits', why: 'The opposite holds: browsers cache a 301 and skip your server on repeat clicks.' },
@@ -57,6 +60,8 @@ and the server sits in Virginia.
 
 <Predict
   client:visible
+  id="foundations/what-happens-when-you-click/predict-1"
+  ordered
   question="A person across an ocean (150 ms round trip) opens a sho.rt link for the first time. The server and database need 7 ms together. About how long until the redirect arrives?"
   options={['About 10 ms', 'About 160 ms', 'About 490 ms', 'About 2 seconds']}
   answer={2}

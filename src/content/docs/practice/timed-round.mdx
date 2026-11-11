@@ -14,6 +14,7 @@ import TimedRoundWidget from '../../../components/widgets/TimedRoundWidget';
 
 export const quiz = [
   {
+    id: 'practice/timed-round/q1',
     prompt: 'Your Estimates step hits its budget with the storage math half done. What is the best move?',
     options: [
       { text: 'Write the rough figure with its assumption, mark it to revisit, and move on', correct: true, why: 'A rough number with a stated assumption is enough to steer the design. The later steps need time more than they need a second decimal place.' },
@@ -23,6 +24,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'practice/timed-round/q2',
     prompt: 'Why does the widget ask you to score yourself before you open the reference outline?',
     options: [
       { text: 'So your score reflects your own page before another answer can anchor it', correct: true, why: 'Once you read a polished outline, your memory of what you wrote drifts toward it. Scoring first keeps the self-assessment honest.' },
@@ -32,6 +34,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'practice/timed-round/q3',
     prompt: 'In the 45 minute pace, the high-level design and the deep dive get 21 of the 45 minutes. Why the largest share?',
     options: [
       { text: 'They show the most judgment, and they build on every step before them', correct: true, why: 'The boxes and the riskiest part are where trade-offs appear. They also need the requirements, numbers, API, and data model as inputs, which is why those come first and stay short.' },
@@ -41,6 +44,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'practice/timed-round/q4',
     prompt: 'The reference outline uses a different database from the one you chose. What should you conclude?',
     options: [
       { text: 'Nothing yet. Check that you can name the access pattern and the trade-off behind your choice', correct: true, why: 'Several stores can serve the same workload. A choice backed by the data model and the numbers is a sound answer even when it differs from the outline.' },
@@ -69,6 +73,7 @@ trade-offs.
 
 <Predict
   client:visible
+  id="practice/timed-round/predict-1"
   question="Which habit would have saved this round?"
   options={[
     'Work faster on every step',
@@ -126,6 +131,7 @@ endgame (the deep dive and the trade-offs) still gets played.
 
 <Predict
   client:visible
+  id="practice/timed-round/predict-2"
   question="Your Estimates step is at 2:00 of 2:00, and the storage figure is still unfinished. What do you do?"
   options={[
     'Keep going until the number is exact',

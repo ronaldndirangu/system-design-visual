@@ -15,6 +15,7 @@ import BalancerDuelWidget from '../../../components/widgets/BalancerDuelWidget';
 
 export const quiz = [
   {
+    id: 'scaling/load-balancing/q1',
     prompt: 'A server can finish 100 requests per second. Traffic holds steady at 95 per second. What do users notice?',
     options: [
       { text: 'Nothing, since 95 is below 100', why: 'Requests arrive in bursts. At 95% busy, short bursts pile up into long queues, so waits grow sharply even though the average fits.' },
@@ -24,6 +25,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'scaling/load-balancing/q2',
     prompt: 'One server crashes behind a load balancer with health checks every 2 seconds. What happens?',
     options: [
       { text: 'No request ever fails', why: 'Until the health checks notice, the load balancer still sends some requests to the dead server, and those fail.' },
@@ -33,6 +35,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'scaling/load-balancing/q3',
     prompt: 'A few requests take 10 times longer than the rest. Which strategy keeps queues most even?',
     options: [
       { text: 'Round robin', why: 'Round robin hands out requests in turn, regardless of how busy each server is. A server stuck on slow requests keeps getting more.' },
@@ -42,6 +45,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'scaling/load-balancing/q4',
     prompt: 'Your load balancer uses least connections. One server starts answering every request instantly with an error. Before the health check notices, what happens?',
     options: [
       { text: 'It gets the same share as every other server', why: 'That is round robin. Least connections looks at requests in progress, and the broken server has none.' },
@@ -51,6 +55,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'scaling/load-balancing/q5',
     prompt: 'The shortener wants redirects such as GET /abc123 on one pool of servers and /dashboard on another, all under one domain. Which load balancer can split them?',
     options: [
       { text: 'A layer 4 load balancer', why: 'Layer 4 forwards connections by IP address and port. Both kinds of traffic arrive on the same address and port, so it cannot tell them apart.' },
@@ -79,6 +84,7 @@ traffic jumps from 60 to 150 requests per second.
 
 <Predict
   client:visible
+  id="scaling/load-balancing/predict-1"
   question="What happens to the 50 extra requests arriving each second?"
   options={[
     'They wait a little, then every request gets served',
@@ -151,6 +157,7 @@ the routing alone.
 
 <Predict
   client:visible
+  id="scaling/load-balancing/predict-2"
   question="10% of requests now take 20 times as long as the rest, and the average cost stays the same. Which balancer keeps the 95th percentile latency lower?"
   options={[
     'Round robin, because it spreads requests evenly',
@@ -184,6 +191,7 @@ the least busy one in the farm.
 
 <Predict
   client:visible
+  id="scaling/load-balancing/predict-3"
   question="Server 1 crashes at 3 s, and health checks need 2 s to remove it. Which balancer fails more requests in that window?"
   options={['Round robin', 'Least connections', 'They fail the same number, since the window is the same']}
   answer={1}
