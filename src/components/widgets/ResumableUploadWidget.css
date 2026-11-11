@@ -1,0 +1,123 @@
+.sdv-upload {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.sdv-upload__caption {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+
+.sdv-upload__line {
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+
+.sdv-upload__rows {
+  display: grid;
+  gap: 0.7rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sdv-upload__row {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.sdv-upload__name {
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+}
+
+.sdv-upload__value {
+  font-size: var(--sl-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.sdv-upload__track {
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.3rem;
+  display: flex;
+  height: 1.1rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sdv-upload__useful,
+.sdv-upload__sent {
+  background: var(--sdv-series-a);
+  display: block;
+  flex: none;
+}
+
+.sdv-upload__wasted {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-bad) 0 3px,
+    color-mix(in oklab, var(--sdv-bad) 35%, transparent) 3px 6px
+  );
+  border-left: 1px solid var(--sdv-surface-raised);
+  display: block;
+  flex: none;
+}
+
+.sdv-upload__key {
+  border: 1px solid var(--sdv-border);
+  display: inline-block;
+  height: 0.75rem;
+  width: 1.1rem;
+}
+
+.sdv-upload__parts {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.sdv-upload__strip {
+  align-items: flex-end;
+  border-bottom: 1px solid var(--sdv-border);
+  display: flex;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.sdv-upload__strip[data-dense] {
+  gap: 1px;
+}
+
+.sdv-upload__part {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column-reverse;
+  margin: 0;
+  min-width: 0;
+}
+
+.sdv-upload__sent {
+  height: 0.9rem;
+}
+
+.sdv-upload__retry {
+  border-bottom: 1px solid var(--sdv-surface-raised);
+  border-left: 0;
+  height: 0.45rem;
+}
+
+.sdv-upload__count {
+  color: var(--sl-color-gray-2);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  text-align: center;
+}

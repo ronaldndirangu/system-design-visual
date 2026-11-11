@@ -1,0 +1,173 @@
+.sdv-abr__now {
+  margin: 0;
+}
+
+.sdv-abr__head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+/* The stage stretches every svg to full width; keep the status badge icon at its own size. */
+.sdv-abr__head .sdv-badge svg {
+  flex: none;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+
+.sdv-abr__line {
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+
+.sdv-abr__muted {
+  color: var(--sl-color-gray-3);
+}
+
+.sdv-abr__buffer {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.sdv-abr__meter {
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.3rem;
+  display: flex;
+  height: 0.85rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.sdv-abr__piece {
+  background: var(--sdv-series-a);
+  border-right: 1px solid var(--sdv-surface-raised);
+  flex: none;
+  height: 100%;
+}
+
+.sdv-abr__lane[data-variant="b"] .sdv-abr__piece {
+  background: var(--sdv-series-b);
+}
+
+.sdv-abr__start {
+  border-left: 2px dashed var(--sl-color-white);
+  height: 100%;
+  position: absolute;
+  top: 0;
+}
+
+.sdv-abr__segments {
+  display: flex;
+  gap: 3px;
+  list-style: none;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.sdv-abr__segment {
+  display: grid;
+  flex: 1 1 0;
+  gap: 2px;
+  margin: 0;
+  min-width: 0;
+  text-align: center;
+}
+
+.sdv-abr__bar {
+  align-items: flex-end;
+  background: var(--sdv-surface);
+  border-radius: 0.2rem;
+  display: flex;
+  height: 3rem;
+  overflow: hidden;
+}
+
+.sdv-abr__fill {
+  background: var(--sdv-series-a);
+  display: block;
+  width: 100%;
+}
+
+.sdv-abr__lane[data-variant="b"] .sdv-abr__fill {
+  background: var(--sdv-series-b);
+}
+
+.sdv-abr__slot {
+  align-items: flex-end;
+  border: 2px dashed var(--sdv-series-a);
+  border-radius: 0.2rem;
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+}
+
+.sdv-abr__lane[data-variant="b"] .sdv-abr__slot {
+  border-color: var(--sdv-series-b);
+}
+
+.sdv-abr__rung {
+  color: var(--sl-color-gray-2);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.sdv-abr__segment[data-loading] .sdv-abr__rung {
+  color: var(--sl-color-white);
+  font-weight: 700;
+}
+
+.sdv-abr__legend-bar {
+  background: linear-gradient(to top, var(--sl-color-gray-3) 60%, transparent 60%);
+  border: 1px solid var(--sl-color-gray-3);
+  display: inline-block;
+  flex: none;
+  height: 0.75rem;
+  width: 0.5rem;
+}
+
+.sdv-abr__area {
+  fill: color-mix(in oklab, var(--sl-color-gray-3) 28%, transparent);
+  stroke: var(--sl-color-gray-3);
+  stroke-width: 1;
+}
+
+.sdv-abr__area-key {
+  background: color-mix(in oklab, var(--sl-color-gray-3) 28%, transparent);
+  border-top: 2px solid var(--sl-color-gray-3);
+  display: inline-block;
+  flex: none;
+  height: 10px;
+  width: 18px;
+}
+
+.sdv-abr__threshold-key {
+  border-top: 2px dotted var(--sl-color-gray-3);
+  display: inline-block;
+  flex: none;
+  width: 18px;
+}
+
+.sdv-abr__panel-title {
+  fill: var(--sl-color-gray-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sdv-abr__threshold {
+  stroke: var(--sl-color-gray-3);
+  stroke-dasharray: 2 3;
+  stroke-width: 1;
+}
+
+.sdv-abr__nonum {
+  display: inline-block;
+  flex: none;
+  width: 1.15rem;
+}

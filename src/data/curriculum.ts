@@ -328,8 +328,10 @@ export const curriculum: CourseModule[] = [
       {
         id: 'case-studies/video-streaming',
         title: 'Video streaming',
-        summary: 'Store large files in object storage, transcode them, and pay for bandwidth wisely.',
-        status: 'soon',
+        summary:
+          'Store large files in object storage, upload them in parts, transcode a bitrate ladder, and pay for bandwidth wisely.',
+        status: 'ready',
+        minutes: 22,
         bestAfter: 'reliability',
       },
       {
