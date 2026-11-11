@@ -29,7 +29,7 @@ export const FIXES: readonly Fix[] = [
   { id: 'ttl', label: 'Set a TTL and invalidate the entry on write' },
   { id: 'precompute', label: 'Precompute the result off the request path' },
   { id: 'backoff', label: 'Retry with exponential backoff, jitter, and a retry budget' },
-  { id: 'bound', label: 'Bound the queue and push back on producers' },
+  { id: 'bound', label: 'Use a durable, bounded queue and push back on producers' },
   { id: 'outbox', label: 'Write the event to an outbox table in the same transaction' },
   {
     id: 'more-servers',
@@ -96,13 +96,13 @@ export const REVIEW_ITEMS: readonly ReviewItem[] = [
   {
     id: 'web-tier',
     label: 'Web tier',
-    note: 'Three stateless web servers. The load balancer health checks each one every 5 seconds.',
+    note: 'Three stateless web servers, sized so any two carry the peak sale traffic. The load balancer health checks each one every 5 seconds.',
     lens: 'Deep dive',
     question: 'If one web server dies during the sale, who notices, and what changes for shoppers?',
     isFlaw: false,
     verdictName: 'Sound: stateless and health checked',
     explanation:
-      'Any server can handle any request, so a failed one drops out of rotation and the other two absorb its share.',
+      'Any server can handle any request, so a failed one drops out of rotation. The tier keeps one spare server of capacity, so the other two carry the peak on their own.',
     fixId: null,
     fixDetail: null,
     lesson: lessons.loadBalancing,
@@ -155,7 +155,7 @@ export const REVIEW_ITEMS: readonly ReviewItem[] = [
   {
     id: 'event-queue',
     label: 'Event queue',
-    note: 'Order events wait in an in-memory queue with no length limit, so the queue never drops an event.',
+    note: 'Order events wait in an in-memory queue with no length limit, so producers never block and the queue turns no event away.',
     lens: 'Trade-offs',
     question: 'What happens to this queue when its consumers fall behind for an hour?',
     isFlaw: true,
@@ -164,7 +164,7 @@ export const REVIEW_ITEMS: readonly ReviewItem[] = [
       'With no limit the queue grows until the process runs out of memory, and then every pending event is lost at once. Each new event also waits behind the whole backlog.',
     fixId: 'bound',
     fixDetail:
-      'Cap the queue, keep events on durable storage, and slow producers down or shed low value work when it fills.',
+      'Move the events from process memory into a durable broker with a size limit, alert when consumer lag grows, and slow checkout down as the backlog nears the limit. Shed only low value work such as analytics, and keep every order event.',
     lesson: lessons.queues,
   },
   {
@@ -179,7 +179,7 @@ export const REVIEW_ITEMS: readonly ReviewItem[] = [
       'The database write and the publish are separate steps. A crash between them keeps the order and loses the event, so no confirmation email goes out and the warehouse never ships.',
     fixId: 'outbox',
     fixDetail:
-      'Insert the event into an outbox table in the same transaction as the order row, and let a relay publish from the outbox.',
+      'Insert the event into an outbox table in the same transaction as the order row. A relay publishes each outbox row until the broker confirms it, and a relay crash can publish a row twice, so delivery is at least once. Consumers record each event id they handle and skip a repeat, which makes them idempotent.',
     lesson: lessons.outbox,
   },
   {
@@ -263,7 +263,7 @@ export const EVENTS: readonly ReplayEvent[] = [
     minute: 18,
     item: 1,
     kind: 'held',
-    text: 'One web server fails two health checks. The load balancer stops sending it requests within 10 seconds, and the other two absorb its share.',
+    text: 'One web server fails two health checks. The load balancer stops sending it requests within 10 seconds, and the other two, sized for the peak, absorb its share.',
   },
   {
     minute: 24,

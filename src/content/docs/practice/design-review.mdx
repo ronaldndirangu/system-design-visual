@@ -167,14 +167,14 @@ minutes are illustrative, and every run plays the same fixed script.
 
 <TradeoffTable title="How to run a design review">
 
-| Choice                                   | What it buys                                                  | What it costs                                              |
-| ---------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------- |
-| Walk the request path, part by part      | Covers every part, in the order a request touches them         | Can miss problems that span parts, such as a dual write    |
-| Walk a list of anti-patterns             | Catches the known failure modes fast                          | Misses a flaw that fits no pattern on the list             |
-| Flag broadly                             | Fewer misses                                                  | More false alarms, and the real risks get diluted          |
-| Flag only what you can explain           | A short list the team trusts                                  | You may hold back on a real risk you cannot yet put into words |
-| Propose a fix with every flag            | Turns findings into work the team can start                   | Slower, and a weak fix can anchor the discussion           |
-| List findings first, fix later           | A faster review that stays on risks                           | Findings without fixes tend to sit in the backlog          |
+| Choice                              | What it buys                                           | What it costs                                                  |
+| ----------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------- |
+| Walk the request path, part by part | Covers every part, in the order a request touches them | Can miss problems that span parts, such as a dual write        |
+| Walk a list of anti-patterns        | Catches the known failure modes fast                   | Misses a flaw that fits no pattern on the list                 |
+| Flag broadly                        | Fewer misses                                           | More false alarms, and the real risks get diluted              |
+| Flag only what you can explain      | A short list the team trusts                           | You may hold back on a real risk you cannot yet put into words |
+| Propose a fix with every flag       | Turns findings into work the team can start            | Slower, and a weak fix can anchor the discussion               |
+| List findings first, fix later      | A faster review that stays on risks                    | Findings without fixes tend to sit in the backlog              |
 
 </TradeoffTable>
 
@@ -190,10 +190,15 @@ Find the flaws, propose a fix for each, and name the part that holds.
 
 <div slot="answer">
 
-1. **Photos on one server's disk.** A single point of failure, and a disk failure loses every photo since the last
-   nightly copy. Write uploads straight to replicated object storage before the request returns.
+1. **Photos on one server's disk, behind one web server.** The server is a single point of failure, and a disk failure
+   loses every photo since the last nightly copy. Run two or more stateless web servers behind a load balancer, sized
+   so the others carry the peak when one fails, and write each upload straight to replicated object storage.
 2. **Notifications inside the upload request.** A user with many followers makes every upload slow, and a slow push
-   service fails uploads. Put a notification job on a bounded queue and return as soon as the photo is stored.
+   service fails uploads. Report success once the photo is in object storage and the transaction that saves its row
+   commits; if that commit fails, the upload fails and a cleanup job deletes the stored object. In the same
+   transaction, insert a notification row into an outbox. A relay publishes outbox rows to a durable queue at least
+   once, so a relay crash can send a row twice, and the notification workers skip any upload id they have already
+   sent.
 3. **Read, add one, write back on the like count.** Two likes at the same moment both read 10 and both write 11, so
    one like vanishes. Use an atomic increment in the database, or split a hot counter across several rows and sum them.
 4. **The CDN with content-hashed names holds.** A new photo gets a new name, so a cached copy never goes stale, and
