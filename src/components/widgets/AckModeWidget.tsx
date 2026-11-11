@@ -135,7 +135,10 @@ export default function AckModeWidget({
       label: 'Distinct clicks',
       value: t.clicks.toLocaleString('en-US'),
       ...(relayCopies > 0
-        ? { note: `The relay published ${relayCopies === 1 ? 'one event' : `${relayCopies} events`} twice` }
+        ? {
+            tone: 'neutral' as const,
+            note: `The relay published ${relayCopies === 1 ? 'one event' : `${relayCopies} events`} twice`,
+          }
         : {}),
     },
     { label: 'Analytics count', value: t.counted.toLocaleString('en-US') },

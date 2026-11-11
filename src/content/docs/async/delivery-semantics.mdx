@@ -81,7 +81,7 @@ export const quiz = [
       { text: 'Commit the offset first, then count', why: 'That is at most once. A crash after the commit and before the count loses the clicks in hand, and a relay copy at a new offset still gets counted.' },
       { text: 'Count first, then commit the offset', why: 'That is at least once. A crash after counting and before the commit makes the restarted consumer count those clicks again, and a relay copy at a new offset gets counted twice.' },
       { text: 'Count first, then commit, and skip click ids already recorded with the count', correct: true, why: 'At least once delivery plus an idempotent consumer. Repeats still arrive, and the consumer turns each one into a no-op. The click id also catches a relay copy at a new offset, which offset tracking misses. This is effectively once.' },
-      { text: 'Turn on an exactly once setting in the broker', why: 'Broker transactions cover reads and writes inside the broker. The count lives in another database, so the consumer still needs to deduplicate or store its offset with the count.' },
+      { text: 'Turn on an exactly once setting in the broker', why: 'Broker transactions cover reads and writes inside the broker. The count lives in another database, so the consumer still needs to skip click ids it already counted.' },
     ],
   },
   {
@@ -265,10 +265,9 @@ Two details make effectively once work in a real system:
   payload can collide or change between retries. The log offset does not work: a consumer that only skips offsets at
   or below its last commit absorbs its own rereads, and the relay's second copy at a new offset slips through.
 - **One transaction for the effect and the record.** If the consumer adds to the count and records the id in two
-  separate writes, a crash between them reopens the gap. Without transactions, keep the count and the last applied
-  offset per partition in one record, and update both in one atomic write, such as a conditional update that applies
-  only when the stored offset is below the new one. A store that cannot update both at once cannot give effectively
-  once.
+  separate writes, a crash between them reopens the gap. Without multi-row transactions, make the click id the key of
+  the effect: insert one row per click id, let a unique key reject a repeat, and compute the count from those rows. A
+  store that cannot write the effect and the id in one atomic step cannot give effectively once.
 
 The list of seen ids grows forever unless you trim it. Keep ids for longer than the longest redelivery you expect, such
 as the log's retention period.
