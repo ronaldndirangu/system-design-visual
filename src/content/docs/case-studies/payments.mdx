@@ -15,10 +15,10 @@ import PaymentsWidget from '../../../components/widgets/PaymentsWidget';
 
 export const nodes = [
   { id: 'shopper', kind: 'client', x: 70, y: 150, label: 'Shopper', sublabel: 'checkout page' },
-  { id: 'pay', kind: 'server', x: 230, y: 150, label: 'Payment service' },
-  { id: 'recon', kind: 'server', x: 390, y: 60, label: 'Reconciler', sublabel: 'nightly job' },
+  { id: 'pay', kind: 'server', x: 230, y: 150, label: 'Payments' },
+  { id: 'bank', kind: 'server', x: 390, y: 60, label: 'Bank', sublabel: 'card network' },
   { id: 'ledger', kind: 'database', x: 390, y: 240, label: 'Ledger', sublabel: 'entries and keys' },
-  { id: 'bank', kind: 'server', x: 550, y: 150, label: 'Bank', sublabel: 'card network' },
+  { id: 'recon', kind: 'server', x: 550, y: 150, label: 'Reconciler', sublabel: 'nightly job' },
 ];
 export const edges = [
   { from: 'shopper', to: 'pay' },
