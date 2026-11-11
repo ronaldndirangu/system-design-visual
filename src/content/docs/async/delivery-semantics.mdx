@@ -88,7 +88,7 @@ export const quiz = [
       { text: 'The 10 events are lost', why: 'The outbox rows are still on disk and still unsent, so the relay finds them again after it restarts.' },
       { text: 'The relay publishes the 10 events again after it restarts', correct: true, why: 'From the outbox, they still look unsent. The consumer receives 10 duplicates and must skip them by click id.' },
       { text: 'The database rolls back the 10 clicks', why: 'The clicks committed long before the relay read them. The relay crash cannot touch them.' },
-      { text: 'The broker detects the duplicates and drops them', why: 'A plain broker stores what it receives. Some brokers offer producer deduplication, but it covers retries from one live producer session and does not survive a relay restart.' },
+      { text: 'The broker detects the duplicates and drops them', why: 'A plain broker stores what it receives. The Kafka idempotent producer covers retries within one producer session, and a relay restart starts a new one. Deduplication by a supplied message id holds only for a time window: five minutes on SQS FIFO queues.' },
     ],
   },
   {
@@ -245,8 +245,10 @@ Two details make effectively once work in a real system:
 - **A stable id.** The id must be assigned once, at the source. The outbox row id works. A timestamp or a hash of the
   payload can collide or change between retries.
 - **One transaction for the effect and the record.** If the consumer adds to the count and records the id in two
-  separate writes, a crash between them reopens the gap. When the target store has no transactions, store the last
-  applied offset per partition alongside the count instead, and skip anything at or below it.
+  separate writes, a crash between them reopens the gap. Without transactions, keep the count and the last applied
+  offset per partition in one record, and update both in one atomic write, such as a conditional update that applies
+  only when the stored offset is below the new one. A store that cannot update both at once cannot give effectively
+  once.
 
 The list of seen ids grows forever unless you trim it. Keep ids for longer than the longest redelivery you expect, such
 as the log's retention period.

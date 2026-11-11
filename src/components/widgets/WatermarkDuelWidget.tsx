@@ -219,7 +219,10 @@ export default function WatermarkDuelWidget({
 
   const rows: CompareRow[] = [
     { label: 'Clicks read (same for both)', values: [a.read, b.read] },
-    { label: 'Counted in a first result', values: [a.ontime, b.ontime], better: 'higher' },
+    {
+      label: 'Clicks in published first results',
+      values: [fast.model.firstResultClicks, slow.model.firstResultClicks],
+    },
     { label: 'Late clicks', values: [a.late, b.late], better: 'lower' },
     policyRow,
     {

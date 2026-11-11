@@ -139,6 +139,14 @@ describe('ClockDuel', () => {
     checkClockConservation(event.model);
   });
 
+  it('pins the mid run restart overcount the lesson quotes', () => {
+    const duel = new ClockDuel('restart');
+    for (let i = 0; i < 97; i += 1) duel.step();
+    const processing = duel.lanes[0].model;
+    expect(processing.windowCounts[4]).toBe(70);
+    expect(processing.truth[4]).toBe(33);
+  });
+
   it('pins the outage and steady numbers the lesson quotes', () => {
     const outage = new ClockDuel('outage');
     finish(outage);
@@ -227,6 +235,11 @@ describe('WatermarkDuel', () => {
     expect(long.model.totals).toMatchObject({ read: 410, late: 12, dropped: 12, published: 8 });
     expect(short.model.meanPublishDelay?.toFixed(1)).toBe('0.6');
     expect(long.model.meanPublishDelay?.toFixed(1)).toBe('3.1');
+    expect(duel.truth[0]).toBe(58);
+    expect(short.model.windows[0]).toMatchObject({ ontime: 56, publishedAt: 26 });
+    expect(long.model.windows[0]).toMatchObject({ ontime: 58, publishedAt: 50 });
+    expect(short.model.firstResultClicks).toBe(327);
+    expect(long.model.firstResultClicks).toBe(316);
     expect(duel.events.map((e) => e.text)).toContain(
       'The buffered clicks are in. Wait 0.5 s found 26 of them late, and Wait 3 s found 12 late.',
     );

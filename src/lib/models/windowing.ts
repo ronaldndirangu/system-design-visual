@@ -596,6 +596,11 @@ export class WatermarkCounter {
     return this.windowList.filter((window, index) => index <= newest && window.forgottenAt === null).length;
   }
 
+  /** Clicks inside first results already sent downstream. Open windows do not count yet. */
+  get firstResultClicks(): number {
+    return this.windowList.reduce((total, window) => total + (window.publishedAt === null ? 0 : window.ontime), 0);
+  }
+
   /** Mean seconds from a window's end to its first result, over published windows. */
   get meanPublishDelay(): number | null {
     const delays = this.windowList.flatMap((window, index) =>

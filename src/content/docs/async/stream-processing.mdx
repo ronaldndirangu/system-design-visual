@@ -203,7 +203,7 @@ every number. This is a toy model of one partition at about 20 clicks a second, 
 What to look for:
 
 - **Consumer restart.** The job starts again at 9 s with **85** clicks waiting. The processing-time lane shows **0**
-  for 6 to 8 s and **98** for 8 to 10 s. At 9.6 s it has counted 70 clicks in 8 to 10 s, where only 33 had happened,
+  for 6 to 8 s and **98** for 8 to 10 s. At 9.7 s it has counted 70 clicks in 8 to 10 s, where only 33 had happened,
   and it pages on-call. Over the run it puts **80** clicks in the wrong window. The event-time lane fires no alert and
   ends the run **2** clicks short, both still on their way to the topic.
 - **Edge region cut off.** The region that serves 40% of clicks buffers them from 4 to 10 s, then sends the **42** it
@@ -221,8 +221,9 @@ The windows so far are **tumbling windows**: fixed length, back to back, no over
 and the job emits one result per window. They answer "how many clicks per minute" well.
 
 A **sliding window** has a fixed length too, and a new one starts every slide interval, so windows overlap. Kafka
-Streams calls these hopping windows. They answer "did any 10 s span hold more than 40 clicks", which tumbling windows
-can miss when a burst straddles a boundary.
+Streams calls these hopping windows. They catch a burst that tumbling windows split across a boundary. A burst no
+longer than the window minus the slide (8 s for a 10 s window that slides every 2 s) lands whole in some window. A
+longer spread can still fall between windows, and a shorter slide narrows that gap at the cost of more windows.
 
 A **session window** has no fixed length. It groups one visitor's clicks until a gap with no clicks, such as 30
 minutes, closes it. Sessions answer "how many links does a visitor open in one sitting". Since the gap ends a session,
@@ -290,7 +291,8 @@ What to look for:
   late clicks. Drop loses them. Allow 10 s of lateness sends **18** updated results for the short wait's 36 late
   clicks, and **4** for the long wait's 12, so every reader downstream must accept a count that changes. Side table
   keeps the 36 or the 12 for the nightly batch job.
-- **Lateness costs memory.** With updates, the job keeps each window for 10 s after it publishes. At the end of the
+- **Lateness costs memory.** With updates, the job keeps each window until the watermark passes the window's end plus
+  10 s of allowed lateness, so a stalled watermark holds windows longer. At the end of the
   run the 0.5 s lane holds **6** windows in memory with updates, against **1** when it drops late clicks.
 
 Three things the widget leaves out matter in production:
@@ -330,7 +332,7 @@ alert, the side table catches late clicks, and the nightly batch job writes the 
 | Processing-time windows | Simple, and results right away | A restart or an outage moves clicks into the wrong window and fires false alerts |
 | Event-time windows | Each click lands in the window it happened in, whatever the delay | The job has to decide when a window is done, and hold windows until then |
 | Tumbling windows | One result per window, and each click counted once | A burst that straddles a boundary splits in two |
-| Sliding windows | Catch a burst wherever it lands | Each click counted in several windows: five times the work and state here |
+| Sliding windows | Catch a short burst wherever it lands | Each click counted in several windows: five times the work and state here |
 | Session windows | Group activity the way visitors behave | No fixed length, and a session ends only after a gap passes |
 | Short watermark wait | Fast results and alerts | More late clicks to drop, update, or set aside |
 | Long watermark wait | Fewer late clicks and more complete first results | Slower dashboards and alerts, and more windows in memory |
@@ -352,8 +354,10 @@ late policy, and the path to exact invoices.
 
 - **Count by event time.** The redirect server stamps clickedAt. The app stamps its own clicks, and the server also
   records when it received them, since phone clocks drift: treat a clickedAt far ahead of the receive time as wrong.
-- **Alert on sliding windows.** A 1 minute window that slides every 10 s, compared with each code's usual rate, catches
-  a spike wherever it starts. With a watermark wait of a few seconds, the page lands well inside 30 seconds.
+- **Alert on sliding windows.** Use a 10 s window that slides every 2 s, and compare it with 10 times the code's usual
+  10 s count. An 11 times jump crosses that threshold once it fills 9 s of a window. Add up to 2 s for the next window
+  to end and a 3 s watermark wait, and the page lands within about 15 s. A 1 minute window would need 54 s, and
+  bigger spikes fire sooner. Require a minimum count too, since short windows are noisy for codes with little traffic.
 - **Keep the live path short.** A wait of a few seconds covers retried sends. Allow a minute or two of lateness with
   updates for the dashboard, and store each count keyed by code and window so an update replaces the old one.
 - **Send the long tail to batch.** Clicks from offline phones arrive hours late, past any wait the dashboard can
