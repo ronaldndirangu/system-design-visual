@@ -366,7 +366,8 @@ export const curriculum: CourseModule[] = [
         id: 'case-studies/ride-sharing',
         title: 'Ride sharing',
         summary: 'Index fast-changing locations with one geospatial scheme and match riders to drivers.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 30,
         bestAfter: 'async',
       },
       {

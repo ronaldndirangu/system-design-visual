@@ -1,0 +1,91 @@
+.sdv-ride__figure {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+}
+.sdv-sim__stage .sdv-ride__map {
+  background: var(--sdv-surface);
+  border-radius: 0.4rem;
+  margin-inline: auto;
+  max-width: 26rem;
+  overflow: hidden;
+}
+.sdv-ride__cell {
+  fill: none;
+  stroke: var(--sdv-border);
+  stroke-width: 1;
+}
+.sdv-ride__label {
+  fill: var(--sl-color-gray-3);
+  font-size: 9px;
+  pointer-events: none;
+}
+.sdv-ride__hatch {
+  fill: none;
+  stroke-linecap: square;
+  stroke-width: 2;
+}
+.sdv-ride__hatch--a {
+  stroke: var(--sdv-series-a);
+}
+.sdv-ride__hatch--b {
+  stroke: var(--sdv-series-b);
+}
+.sdv-ride__searched {
+  opacity: 0.55;
+}
+.sdv-ride__home {
+  fill: none;
+  stroke: var(--sl-color-white);
+  stroke-width: 2.5;
+}
+.sdv-ride__driver {
+  fill: var(--sl-color-white);
+}
+.sdv-ride__driver[data-busy] {
+  fill: var(--sdv-surface);
+  stroke: var(--sl-color-gray-2);
+  stroke-width: 1.2;
+}
+.sdv-ride__rider {
+  fill: var(--sl-color-accent);
+  stroke: var(--sl-color-white);
+  stroke-width: 1.5;
+}
+.sdv-ride__match {
+  fill: none;
+  stroke-width: 2.5;
+}
+.sdv-ride__match--a {
+  stroke: var(--sdv-series-a);
+}
+.sdv-ride__match--b {
+  stroke: var(--sdv-series-b);
+}
+.sdv-ride__link {
+  stroke: var(--sl-color-white);
+  stroke-dasharray: 3 3;
+  stroke-width: 1.5;
+}
+.sdv-ride__caption,
+.sdv-ride__note {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-ride__notes {
+  display: grid;
+  gap: 0.25rem;
+}
+.sdv-ride__note--total {
+  color: var(--sl-color-white);
+  font-variant-numeric: tabular-nums;
+}
+.sdv-ride__glyph,
+.sdv-sim__stage .sdv-ride__glyph {
+  display: inline-block;
+  flex: none;
+  height: 1rem;
+  overflow: visible;
+  width: 1rem;
+}
