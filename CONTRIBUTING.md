@@ -164,7 +164,9 @@ pnpm test:e2e
 ```
 
 The browser tests open every ready lesson, hydrate every widget, fail on console errors or broken links, and run axe in
-both light and dark color schemes.
+both light and dark color schemes. To run the faster pull request subset locally, set `E2E_MODE=pr` and list the pages
+in `E2E_PAGES`, for example `E2E_PAGES=scaling/caching/`. CI picks the pages from your diff and runs the full sweep on
+`main` and every night.
 Also try the lesson with the keyboard only, in dark and light themes, at phone width, and with reduced motion turned
 on in your operating system.
 
