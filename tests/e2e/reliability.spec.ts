@@ -82,3 +82,72 @@ test.describe('Timeouts and cancellation', () => {
     await expect(widget.getByText('Gave up, and everything stopped')).toBeVisible();
   });
 });
+
+test.describe('Queues and backpressure', () => {
+  test('a bounded line beats an unbounded one in a viral spike and is axe clean in both themes', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+    await page.goto('reliability/queues-and-backpressure/');
+    const duel = page.getByRole('region', { name: 'Simulation: Same traffic, two waiting lines' });
+    await duel.scrollIntoViewIfNeeded();
+    await expect(duel.getByTestId('queue-canvas')).toHaveCount(0);
+    const skip = duel.getByRole('button', { name: 'Skip to the end' });
+    const served = duel.getByRole('row', { name: /Answered in time/ });
+
+    await expect(skip).toBeEnabled();
+    await skip.focus();
+    await page.keyboard.press('Enter');
+    await expect(served).toContainText('265');
+    await expect(served).toContainText('946');
+    await expect(duel.getByRole('row', { name: /Still inside the server/ })).toContainText('266');
+    await expect(duel.getByText('Run complete')).toBeVisible();
+    expect(await axeViolations(page)).toEqual([]);
+    await page.emulateMedia({ colorScheme: 'light' });
+    expect(await axeViolations(page)).toEqual([]);
+
+    const steady = duel.getByRole('radio', { name: /Steady traffic/ });
+    await duel.getByRole('radio', { name: /Viral link/ }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(steady).toBeChecked();
+    await expect(duel.getByText('Ready', { exact: true })).toBeVisible();
+    await skip.click();
+    await expect(served).toContainText('800');
+    await expect(served).not.toContainText('Better');
+
+    const physics = duel.getByRole('switch', { name: 'Physics animation' });
+    await physics.focus();
+    await page.keyboard.press('Space');
+    await expect(physics).toBeChecked();
+    await expect(duel.getByTestId('queue-canvas')).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test('a queue absorbs the bursts that a server with no line turns away', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('reliability/queues-and-backpressure/');
+    const duel = page.getByRole('region', { name: 'Simulation: A short burst, with and without a line' });
+    await duel.scrollIntoViewIfNeeded();
+    const skip = duel.getByRole('button', { name: 'Skip to the end' });
+    await expect(skip).toBeEnabled();
+    await skip.click();
+    await expect(duel.getByRole('row', { name: /Turned away at the door/ })).toContainText('187');
+    await expect(duel.getByRole('row', { name: /Answered in time/ })).toContainText('845');
+  });
+
+  test('shedding by expected wait answers more visitors when redirects slow down', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('reliability/queues-and-backpressure/');
+    const duel = page.getByRole('region', {
+      name: 'Simulation: Slow redirects: line limit against wait budget',
+    });
+    await duel.scrollIntoViewIfNeeded();
+    const skip = duel.getByRole('button', { name: 'Skip to the end' });
+    await expect(skip).toBeEnabled();
+    await skip.click();
+    const late = duel.getByRole('row', { name: /Answered late/ });
+    await expect(late).toContainText('230');
+    await expect(duel.getByRole('row', { name: /Answered in time/ })).toContainText('657');
+  });
+});

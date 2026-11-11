@@ -185,7 +185,8 @@ export const curriculum: CourseModule[] = [
         id: 'reliability/queues-and-backpressure',
         title: 'Queues and backpressure',
         summary: 'Absorb bursts, push back when the queue fills, and shed load before the system tips over.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 22,
       },
       {
         id: 'reliability/idempotency',
