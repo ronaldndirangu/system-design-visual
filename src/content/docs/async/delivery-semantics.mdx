@@ -1,0 +1,301 @@
+---
+title: Delivery semantics and the outbox
+description: Save a click and announce it without losing either half, then count every event once even when the consumer crashes mid batch. At most once, at least once, effectively once, and the transactional outbox.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import OutboxDuelWidget from '../../../components/widgets/OutboxDuelWidget';
+import AckModeWidget from '../../../components/widgets/AckModeWidget';
+
+export const nodes = [
+  { id: 'redirect', kind: 'server', x: 70, y: 150, label: 'Redirect service', sublabel: 'one transaction' },
+  { id: 'db', kind: 'database', x: 270, y: 150, label: 'Clicks database', sublabel: 'clicks + outbox' },
+  { id: 'relay', kind: 'server', x: 470, y: 60, label: 'Outbox relay', sublabel: 'polls unsent rows' },
+  { id: 'topic', kind: 'queue', x: 470, y: 250, label: 'clicks topic' },
+  { id: 'analytics', kind: 'server', x: 690, y: 250, label: 'Analytics', sublabel: 'skips seen ids' },
+  { id: 'counts', kind: 'database', x: 690, y: 80, label: 'Click counts', sublabel: 'counts + seen ids' },
+];
+
+export const edges = [
+  { from: 'redirect', to: 'db' },
+  { from: 'db', to: 'relay' },
+  { from: 'relay', to: 'topic' },
+  { from: 'topic', to: 'analytics' },
+  { from: 'analytics', to: 'counts' },
+];
+
+export const steps = [
+  {
+    title: 'One transaction',
+    text: 'The redirect service inserts the click row and an outbox row describing the event in one local transaction. Both rows commit, or neither does. The service never talks to the broker.',
+    nodes: ['redirect', 'db'],
+    flows: ['redirect>db'],
+  },
+  {
+    title: 'Poll',
+    text: 'A separate relay process reads outbox rows not yet marked sent, oldest first. Each row carries a click id that the database assigned once and that never changes.',
+    nodes: ['db', 'relay'],
+    flows: ['db>relay'],
+  },
+  {
+    title: 'Publish',
+    text: 'The relay publishes each event to the clicks topic and waits for the broker to acknowledge it. If the broker is down, the rows simply wait in the outbox, and the relay retries.',
+    nodes: ['relay', 'topic'],
+    flows: ['relay>topic'],
+  },
+  {
+    title: 'Mark sent',
+    text: 'After the acknowledgment, the relay marks the rows sent. A crash before this step means the relay publishes those rows again after it restarts: delivery is at least once.',
+    nodes: ['relay', 'db'],
+    flows: [],
+  },
+  {
+    title: 'Count once',
+    text: 'The analytics consumer records each click id it counts, in the same transaction as the count. A repeated event finds its id already there and changes nothing.',
+    nodes: ['topic', 'analytics', 'counts'],
+    flows: ['topic>analytics', 'analytics>counts'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'A service commits a row, then publishes the matching event. The process crashes between the two steps. What does the event consumer see?',
+    options: [
+      { text: 'The event, a little late, once the service restarts', why: 'The event existed only in the memory of the crashed process. Nothing on disk tells the restarted service to publish it.' },
+      { text: 'Nothing: the row exists, and the event never will', correct: true, why: 'This is a lost event. The two writes go to two systems, and no transaction spans both, so a crash between them leaves them out of step for good.' },
+      { text: 'A rollback message that undoes the row', why: 'The database already committed. Nothing links the database transaction to the broker, so nothing rolls back.' },
+      { text: 'The event twice', why: 'Duplicates come from retrying a publish that may have succeeded. Here the publish never ran at all.' },
+    ],
+  },
+  {
+    prompt: 'Which setup counts every click exactly once, even across consumer crashes?',
+    options: [
+      { text: 'Commit the offset first, then count', why: 'That is at most once. A crash after the commit and before the count loses the clicks in hand.' },
+      { text: 'Count first, then commit the offset', why: 'That is at least once. A crash after counting and before the commit makes the restarted consumer count those clicks again.' },
+      { text: 'Count first, then commit, and skip click ids already recorded with the count', correct: true, why: 'At least once delivery plus an idempotent consumer. Repeats still arrive, and the consumer turns each one into a no-op. This is effectively once.' },
+      { text: 'Turn on an exactly once setting in the broker', why: 'Broker transactions cover reads and writes inside the broker. The count lives in another database, so the consumer still needs to deduplicate or store its offset with the count.' },
+    ],
+  },
+  {
+    prompt: 'The outbox relay publishes 10 events, then crashes before marking them sent. What happens next?',
+    options: [
+      { text: 'The 10 events are lost', why: 'The outbox rows are still on disk and still unsent, so the relay finds them again after it restarts.' },
+      { text: 'The relay publishes the 10 events again after it restarts', correct: true, why: 'From the outbox, they still look unsent. The consumer receives 10 duplicates and must skip them by click id.' },
+      { text: 'The database rolls back the 10 clicks', why: 'The clicks committed long before the relay read them. The relay crash cannot touch them.' },
+      { text: 'The broker detects the duplicates and drops them', why: 'A plain broker stores what it receives. The Kafka idempotent producer covers retries within one producer session, and a relay restart starts a new one. Deduplication by a supplied message id holds only for a time window: five minutes on SQS FIFO queues.' },
+    ],
+  },
+  {
+    prompt: 'A consumer sends a push notification for every new follower. Users complain loudly about duplicate pushes and rarely notice a missing one. Which policy fits best?',
+    options: [
+      { text: 'At most once: commit the offset, then send', correct: true, why: 'A crash costs a few missed pushes and never a duplicate. When a repeat hurts more than a loss, at most once is a legitimate choice.' },
+      { text: 'At least once: send, then commit the offset', why: 'Every crash resends the batch in flight, which produces exactly the duplicates users complain about.' },
+      { text: 'Effectively once, by recording sent ids after each send', why: 'The push leaves your system before the id is recorded. A crash between the two still resends it. Effectively once works only when the effect and the record commit together.' },
+      { text: 'Commit the offset twice for safety', why: 'Committing again changes nothing about when a crash happens relative to the send.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain the dual write problem: why saving a row and publishing an event as two separate steps loses or invents events.
+- Describe the transactional outbox and the relay, and why it delivers at least once.
+- Tell apart at most once, at least once, and effectively once by where the consumer commits its offset.
+- Make a repeated event harmless with an idempotent consumer, and name what it needs: a stable event id stored with the result.
+
+</Objectives>
+
+## The failure: two writes, no transaction
+
+The shortener now sells paid links billed per click, so every click must be **saved as a row** in the clicks database.
+The [log from the previous lesson](../logs-and-pubsub/) still feeds the analytics dashboard, so every click must also be
+**published as an event**. The billing total and the dashboard must agree.
+
+The obvious code does both, one after the other:
+
+```ts
+await db.insert('clicks', click);        // 1. save the row
+await broker.publish('clicks', click);   // 2. announce it
+```
+
+This is a **dual write**: two systems, two separate writes, and no transaction that covers both. In the simulation
+below, the broker goes down for 1.5 seconds while clicks keep arriving.
+
+<Predict
+  client:visible
+  question="The service commits the row, then publishes. The broker is down for 1.5 s while clicks keep arriving. What happens to those clicks?"
+  options={[
+    'The requests fail, so nothing is written anywhere',
+    'The rows are saved, and analytics never hears about them',
+    'The events wait, and analytics gets them when the broker returns',
+    'Analytics counts clicks that the database never saved',
+  ]}
+  answer={1}
+>
+
+**The rows are saved, and the events are gone.** The commit succeeded before the publish failed, and nothing remembers
+that a publish is still owed. In the simulation, **62** clicks end up billed and never counted. Flip the order (publish,
+then commit) and the database outage does the mirror image: **49** **phantom** events that analytics counts and the
+database never saved. Neither order is safe, because a crash or outage can land between any two steps.
+
+</Predict>
+
+Retrying the publish in memory narrows the gap and does not close it: if the process crashes while it retries, the
+event is gone. A distributed transaction across the database and the broker (two phase commit) would close it, but most
+brokers do not support it, and it ties the availability of every click to both systems at once.
+
+## The idea: write the event into the database
+
+The **transactional outbox** turns two writes into one. The service writes the click row and an **outbox row** (the
+event, waiting to be sent) in the **same local transaction**. The database guarantees that both commit or neither does.
+A separate **relay** process then reads unsent outbox rows and publishes them.
+
+<StepDiagram client:visible title="How the transactional outbox carries a click" nodes={nodes} edges={edges} steps={steps} height={320} />
+
+The relay can still crash after publishing and before marking rows sent. It then publishes those rows again, so the
+outbox delivers **at least once**. That is the price of never losing an event, and the consumer pays it by skipping
+repeats.
+
+<Analogy>
+
+A clerk used to post a letter and then write it in the ledger, and sometimes got called away in between. Now the clerk
+writes the ledger line and drops the letter in the outbox tray in one motion. A courier empties the tray, posts each
+letter, and ticks it off. If the courier is interrupted before ticking, the next courier posts the same letter again.
+Every letter carries a reference number, so the recipient bins any letter whose number it already filed.
+
+</Analogy>
+
+## Try it: dual write against the outbox
+
+Both lanes get the same clicks and the same faults. The broker fails at 2 s, the database at 5.5 s, and the outbox
+relay crashes at 8 s. Each strip shows the latest clicks, one cell per click: solid means saved and sent, hatched
+means waiting in the outbox, a cross hatch means the event was lost, a dashed outline means phantom, and dots mean the
+request failed and nothing was written. This is a toy model, and the numbers are illustrative.
+
+<OutboxDuelWidget client:visible />
+
+What to look for:
+
+- **Dual write, commit first**: the broker outage leaves **62** clicks saved and never counted. They stay out of sync
+  for the rest of the run.
+- **Dual write, publish first**: the same outage just fails the requests, and the database outage creates **49**
+  phantom events instead.
+- **Outbox**: during the broker outage, saved clicks wait in the outbox (the backlog peaks at **62**). When the broker
+  returns, the relay drains them, and the lane ends with **0** clicks out of sync.
+- **Database outage**: both designs fail **49** requests outright. A failed request is honest: the caller sees an
+  error and can retry. A silent mismatch is the real damage.
+- **Relay crash**: the relay published **5** events without marking them sent, so it publishes them again. The outbox
+  trades lost events for duplicates. The next section makes duplicates harmless.
+
+A polling relay adds latency: an event waits for the next poll. **Change data capture** (CDC) is the common
+alternative. A tool such as Debezium tails the database's own write ahead log and publishes outbox rows as they commit,
+with no polling queries.
+
+## Delivery semantics: when does the consumer commit?
+
+The consumer faces the same two step problem from the other side. It **counts** a batch of clicks, and it **commits its
+offset** in the log so a restart knows where to resume. Those are two writes again, and a crash can land between them.
+Where the consumer puts the commit decides what a crash costs:
+
+- **At most once**: commit the offset, then count. A crash loses the clicks in hand. Nothing is ever counted twice.
+- **At least once**: count, then commit. A crash makes the restarted consumer count the clicks since the last commit
+  again. Nothing is ever lost.
+- **Effectively once**: count, then commit, and make a repeat harmless. The consumer records each click id it counted
+  **in the same transaction as the count**, and skips ids it has seen. Delivery is still at least once, and the effect
+  happens once. The **Idempotency** lesson covers this pattern in depth.
+
+<Predict
+  client:visible
+  question="At least once: the consumer counts a batch of 20 clicks, then commits. At 3.2 s it crashes after counting 12 clicks of a batch. What happens to those 12 when it restarts?"
+  options={[
+    'They are lost',
+    'It counts them a second time',
+    'It skips them, because it already counted them',
+    'The broker deletes them during the crash',
+  ]}
+  answer={1}
+>
+
+**It counts them a second time.** The restarted consumer resumes from the committed offset, which still points at the
+start of the batch. In the simulation, the two crashes cause **16** double counts (12 and 4) under at least once. Under
+at most once, the same crashes **lose 24** clicks (8 and 16): the part of each batch not yet counted. Effectively once
+reads the same 16 clicks again and **skips** every one.
+
+</Predict>
+
+The simulation below is a toy model of one partition and one consumer, and its numbers are illustrative.
+
+<AckModeWidget client:visible />
+
+What to look for:
+
+- **At most once** keeps the count too low after every crash. The lost cells sit behind the committed offset, so no
+  restart ever reaches them.
+- **At least once** keeps the count too high after every crash, by the clicks counted since the last commit.
+- **Effectively once** rereads exactly as much as at least once, and its count error stays at **Exact**.
+- **Crash it yourself** right after a batch starts and right before it ends. At most once loses more early in a batch,
+  and at least once double counts more late in one.
+
+Two details make effectively once work in a real system:
+
+- **A stable id.** The id must be assigned once, at the source. The outbox row id works. A timestamp or a hash of the
+  payload can collide or change between retries.
+- **One transaction for the effect and the record.** If the consumer adds to the count and records the id in two
+  separate writes, a crash between them reopens the gap. Without transactions, keep the count and the last applied
+  offset per partition in one record, and update both in one atomic write, such as a conditional update that applies
+  only when the stored offset is below the new one. A store that cannot update both at once cannot give effectively
+  once.
+
+The list of seen ids grows forever unless you trim it. Keep ids for longer than the longest redelivery you expect, such
+as the log's retention period.
+
+You will often read about **exactly once delivery**. No network protocol delivers a message exactly once in general:
+the sender cannot tell a lost message from a lost acknowledgment, so it either retries (at least once) or gives up (at
+most once). Products that advertise exactly once, such as Kafka transactions, make reads and writes **inside the broker**
+atomic. The moment a consumer touches an outside database, you are back to an idempotent consumer.
+
+## Trade-offs
+
+<TradeoffTable title="Delivery choices">
+
+| Choice                          | What it buys                                         | What it costs                                                   |
+| ------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------- |
+| Dual write                      | Simple code, no extra table or process               | Lost or phantom events whenever a fault lands between the steps |
+| Transactional outbox, polling   | Every committed row is published, at least once      | An extra write per click, a relay to run, and poll latency      |
+| Outbox with change data capture | Low latency and no polling load                      | A CDC tool to run, tied to the database's log format            |
+| At most once                    | No duplicates, the simplest consumer                 | Every crash loses the batch in hand                             |
+| At least once                   | No loss                                              | Every crash repeats work since the last commit                  |
+| Effectively once                | No loss and no double counts                         | A stable id, a seen id store, and a transaction around both     |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+A shop's order service saves each order and must publish an `OrderPlaced` event. An email consumer sends one
+confirmation email per order, and a stock consumer reserves items. Today the service commits the order, then publishes,
+and support reports orders with no confirmation email and, after a deploy, customers who got two. Redesign both ends and
+name what can still go wrong.
+
+<div slot="answer">
+
+- **Producer: a transactional outbox.** Insert the order and an `OrderPlaced` outbox row in one transaction, and let a
+  relay (or CDC) publish it. No more orders without an event.
+- **Every event carries the order id**, assigned once by the order service, so consumers can recognize repeats.
+- **Stock consumer: effectively once.** Reserve the items and record the order id in the same database transaction.
+  A repeat finds the order id and changes nothing.
+- **Email consumer: deduplicate as close to the send as possible.** The email provider sits outside your transaction,
+  so record the order id and send in a known order, and pass the order id as the provider's idempotency key if it
+  supports one. Without that, a crash between send and record can still send twice, rarely.
+- **Commit offsets after processing** in both consumers, so a crash repeats work instead of losing it.
+
+</div>
+
+</Challenge>

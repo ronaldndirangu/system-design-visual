@@ -1,0 +1,143 @@
+/* Window shapes: a dot strip of clicks over 30 s, then the tumbling and sliding windows that count them. Burst clicks are diamonds, alert windows have a thick dashed border and the word alert, so nothing depends on color alone. */
+
+.sdv-wshapes {
+  display: grid;
+  gap: 0.75rem;
+  margin-block-start: 0.75rem;
+  min-width: 0;
+}
+.sdv-wshapes__track {
+  display: grid;
+  gap: 0.2rem;
+}
+.sdv-wshapes__dots {
+  align-items: end;
+  background: var(--sdv-surface);
+  border-block-end: 1px solid var(--sl-color-gray-3);
+  border-radius: 0.35rem 0.35rem 0 0;
+  display: grid;
+  grid-template-columns: repeat(30, minmax(0, 1fr));
+  min-height: 7rem;
+  padding-block-start: 0.4rem;
+  position: relative;
+}
+.sdv-wshapes__band {
+  background: color-mix(in oklab, var(--sdv-series-a) 18%, transparent);
+  border-inline: 2px solid var(--sdv-series-a);
+  inset-block: 0;
+  pointer-events: none;
+  position: absolute;
+}
+.sdv-wshapes__bucket {
+  align-items: center;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 1px;
+  padding-block-end: 2px;
+  position: relative;
+}
+.sdv-wshapes__bucket[data-dim] {
+  opacity: 0.35;
+}
+.sdv-wshapes__dot,
+.sdv-wshapes__key[data-kind="dot"],
+.sdv-wshapes__key[data-kind="burst"] {
+  background: var(--sl-color-gray-2);
+  border-radius: 50%;
+  display: block;
+  flex: none;
+  height: 5px;
+  width: 5px;
+}
+.sdv-wshapes__dot[data-burst],
+.sdv-wshapes__key[data-kind="burst"] {
+  background: var(--sdv-warn);
+  border-radius: 0;
+  transform: rotate(45deg) scale(0.9);
+}
+.sdv-wshapes__axis {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  height: 1.1rem;
+  position: relative;
+}
+.sdv-wshapes__axis span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.sdv-wshapes__axis span:first-child {
+  transform: none;
+}
+.sdv-wshapes__axis span:last-child {
+  transform: translateX(-100%);
+}
+.sdv-wshapes__group {
+  display: grid;
+  gap: 0.3rem;
+}
+.sdv-wshapes .sdv-wshapes__label {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-wshapes__row,
+.sdv-wshapes__stack {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-wshapes__row {
+  height: 2rem;
+  position: relative;
+}
+.sdv-wshapes__stack {
+  display: grid;
+  gap: 2px;
+}
+.sdv-wshapes__box {
+  align-items: center;
+  background: var(--sdv-surface);
+  border: 1px solid var(--sl-color-gray-4);
+  border-radius: 0.3rem;
+  box-sizing: border-box;
+  color: var(--sl-color-white);
+  display: flex;
+  font-size: var(--sl-text-xs);
+  font-variant-numeric: tabular-nums;
+  justify-content: center;
+  margin: 0;
+  white-space: nowrap;
+}
+.sdv-wshapes__row .sdv-wshapes__box {
+  inset-block: 0;
+  position: absolute;
+}
+.sdv-wshapes__stack .sdv-wshapes__box {
+  height: 1.25rem;
+  position: relative;
+}
+.sdv-wshapes__box[data-over] {
+  border: 3px dashed var(--sdv-warn);
+  font-weight: 700;
+}
+.sdv-wshapes__box[data-selected] {
+  background: color-mix(in oklab, var(--sdv-series-a) 22%, var(--sl-color-bg));
+  outline: 2px solid var(--sdv-series-a);
+  outline-offset: -1px;
+}
+.sdv-wshapes__key[data-kind="over"],
+.sdv-wshapes__key[data-kind="selected"] {
+  border-radius: 0.2rem;
+  box-sizing: border-box;
+  display: block;
+  height: 0.9rem;
+  width: 1.4rem;
+}
+.sdv-wshapes__key[data-kind="over"] {
+  border: 3px dashed var(--sdv-warn);
+}
+.sdv-wshapes__key[data-kind="selected"] {
+  background: color-mix(in oklab, var(--sdv-series-a) 22%, var(--sl-color-bg));
+  border: 2px solid var(--sdv-series-a);
+}
