@@ -1,0 +1,26 @@
+---
+title: Page not found
+description: This page does not exist. Head back to the course map or start the first lesson.
+template: splash
+editUrl: false
+pagefind: false
+hero:
+  title: This request got dropped
+  tagline: No server here knows that page. The link may have a typo, or the page may have moved.
+---
+
+import { LinkButton } from '@astrojs/starlight/components';
+import { firstLesson } from '../../data/coursePath';
+import { lessonHref, withBase } from '../../lib/paths';
+
+<div class="sdv-notfound not-content">
+  <LinkButton href={withBase('/curriculum/')} icon="right-arrow">See the course map</LinkButton>
+  {firstLesson && (
+    <LinkButton href={lessonHref(firstLesson.id)} variant="minimal">
+      Start the first lesson
+    </LinkButton>
+  )}
+  <LinkButton href={withBase('/')} variant="minimal">
+    Go home
+  </LinkButton>
+</div>

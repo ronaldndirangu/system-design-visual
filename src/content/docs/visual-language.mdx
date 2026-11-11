@@ -1,0 +1,24 @@
+---
+title: Visual language
+description: The fixed shapes, colors, and icons used for every component in every diagram.
+---
+
+import KindGallery from '../../components/viz/KindGallery';
+
+Every diagram in this course draws each kind of component the same way. A database is always a green cylinder, and a load
+balancer is always an amber hexagon. Once you learn the shapes, you can read any diagram at a glance.
+
+Color is never the only cue. Each component also has its own **shape**, **icon**, and **label**, so the diagrams work in
+grayscale, in high contrast mode, and for people with color vision deficiency.
+
+## Components
+
+<KindGallery />
+
+## Arrows and traffic
+
+- A **solid arrow** shows a request path.
+- A **dashed arrow** shows background work, such as a database copying data to a replica.
+- A **moving dot** on an arrow is one request in flight. When your device asks for reduced motion, the dots stay hidden and
+  the tables beside each simulation carry the same information.
+- A **highlighted outline** marks the component that the current step talks about.

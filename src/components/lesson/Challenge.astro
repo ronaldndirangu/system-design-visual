@@ -1,0 +1,20 @@
+---
+interface Props {
+  title?: string;
+}
+const { title = 'Design challenge' } = Astro.props;
+---
+
+<section class="sdv-challenge" aria-label={title}>
+  <p class="sdv-challenge__title">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M4 20l6-14l4 8l2-3l4 9z"></path>
+    </svg>
+    {title}
+  </p>
+  <slot />
+  <details>
+    <summary>Show one possible answer</summary>
+    <div class="sdv-challenge__answer"><slot name="answer" /></div>
+  </details>
+</section>

@@ -1,0 +1,63 @@
+---
+title: How this course works
+description: What you will learn, how each lesson is built, and how to get the most out of the simulations.
+---
+
+import ProgressReset from '../../components/lesson/ProgressReset';
+
+System design is the craft of choosing components (servers, caches, databases, queues) and wiring them together so a product
+stays fast and correct as more people use it. This course teaches it by letting you **watch systems fail** and then fix them
+with your own hands.
+
+## Who it is for
+
+- Developers who build features and want to understand what happens after their code ships.
+- Students and career switchers preparing for system design interviews.
+- Anyone who has heard "just add a cache" and wants to know when that advice is wrong.
+
+You need basic programming knowledge. You do not need any cloud account, and nothing here asks you to sign up.
+
+## How each lesson is built
+
+Every lesson follows the same seven beats, so you always know where you are.
+
+1. **Objectives.** A short list of what you can do by the end.
+2. **The failure.** The system breaks in a specific way. You predict what happens before the answer appears.
+3. **The idea.** A step by step diagram and an everyday analogy introduce the fix.
+4. **The simulation.** A live model you can play, pause, step, and reset. Every result also appears as a table of numbers,
+   so you can read it with a screen reader or with motion turned off.
+5. **The trade-offs.** No fix is free. A table lists what you gain and what you pay.
+6. **The quiz.** Each wrong answer comes with an explanation of why it is wrong.
+7. **The challenge.** A short design problem that applies the idea somewhere new, with one possible answer to compare.
+
+A lesson takes 20 to 25 minutes. Split it into two sittings if you like: read up to the simulation, then come back for the
+quiz and challenge. A few topics are **quick cards** instead: five-minute reference pages, such as the design checklist,
+that end with a short quiz.
+
+## One running example
+
+The first three modules grow a single product, a **URL shortener** like `sho.rt/abc123`, from a weekend project to a
+service with 100 million users. Each lesson adds one component to the same diagram, so you can always see why it exists.
+
+Later modules switch to examples that fit their problems better: a click analytics pipeline for queues and streams, a
+shopping cart for consistency, and ten case studies, each chosen for one constraint that dominates its design. The AI
+systems module builds a customer support assistant.
+
+## The simulations are honest models
+
+The simulations use small, deterministic models: the same settings always produce the same result. They leave out many
+real world details on purpose, but they never show you a behavior that real systems do not have. When a model simplifies
+something important, the lesson says so.
+
+## Your progress
+
+Mark a lesson complete at the bottom of its page. Progress lives in this browser's local storage, so it stays on this
+device and nobody else can see it.
+
+<ProgressReset client:visible />
+
+## Where to go next
+
+- Open the [course map](../curriculum/) to see every module.
+- Learn the [visual language](../visual-language/) used in every diagram.
+- Or jump straight into the [first lesson](../thinking/requirements-and-estimates/).

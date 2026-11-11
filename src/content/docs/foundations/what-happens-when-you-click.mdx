@@ -1,0 +1,155 @@
+---
+title: What happens when you click a link
+description: Follow one click on a short link through DNS, TCP, TLS, HTTP, and a database lookup, and see why distance beats code speed.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import ArcDiagram from '../../../components/viz/ArcDiagram';
+import RequestJourneyWidget from '../../../components/widgets/RequestJourneyWidget';
+
+export const quiz = [
+  {
+    prompt: 'The server code answers in 2 ms, yet people far away wait 400 ms for a redirect. What explains most of the gap?',
+    options: [
+      { text: 'Slow application code', why: 'The code takes 2 ms of the 400. Making it twice as fast saves 1 ms.' },
+      { text: 'Network round trips for DNS, TCP, TLS, and HTTP', correct: true, why: 'Each handshake waits for a message to cross the distance and come back. Far away users pay that price several times before the server even sees the request.' },
+      { text: 'The database lookup', why: 'A lookup by primary key takes a few milliseconds. It is a small slice of the total.' },
+      { text: 'The browser drawing the page', why: 'A redirect has nothing to draw. The browser just follows the Location header.' },
+    ],
+  },
+  {
+    prompt: 'You move the server from another continent to the same city as your users. Which steps get faster?',
+    options: [
+      { text: 'Only the DNS lookup', why: 'DNS talks to a resolver, which is usually near the user already. Moving your server helps the steps that talk to it.' },
+      { text: 'TCP, TLS, the request, and the response', correct: true, why: 'Every step that travels between the browser and your server shrinks with distance. The database lookup stays the same.' },
+      { text: 'Only the database lookup', why: 'The database sits next to the server either way, so its time does not change.' },
+      { text: 'Nothing, because the code is the same', why: 'The code runs at the same speed, while every network step shrinks. Light in fiber covers about 200 km per millisecond.' },
+    ],
+  },
+  {
+    prompt: 'Why might a URL shortener answer with 302 Found instead of 301 Moved Permanently?',
+    options: [
+      { text: 'A 302 is faster for repeat visits', why: 'The opposite holds: browsers cache a 301 and skip your server on repeat clicks.' },
+      { text: 'Every click still reaches the server, so it can count clicks and change the target', correct: true, why: 'Browsers do not cache a 302 by default. You pay one round trip per click and keep control of the link.' },
+      { text: 'Browsers cannot follow a 301', why: 'Every browser follows 301 redirects.' },
+      { text: '301 is deprecated', why: '301 is a standard, widely used status code.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Trace one click through DNS, TCP, TLS, HTTP, and a database lookup.
+- Explain a round trip time (RTT) and why distance often matters more than code speed.
+- Name two ways to skip steps entirely: a cached DNS answer and a reused connection.
+
+</Objectives>
+
+## The failure: fast code, slow links
+
+The team's dashboards say the redirect handler takes 2 ms. Yet people in Sydney complain that `sho.rt` links feel slow,
+and the server sits in Virginia.
+
+<Predict
+  client:visible
+  question="A person across an ocean (150 ms round trip) opens a sho.rt link for the first time. The server and database need 7 ms together. About how long until the redirect arrives?"
+  options={['About 10 ms', 'About 160 ms', 'About 490 ms', 'About 2 seconds']}
+  answer={2}
+>
+
+About **490 ms**. The browser pays for a DNS lookup (30 ms), a TCP handshake (150 ms), a TLS handshake (150 ms), the
+request (75 ms one way plus 2 ms of work), the database (5 ms), and the response (75 ms). Only 7 ms of that is your
+code. The rest is waiting for the network.
+
+</Predict>
+
+## The big picture
+
+Before your server sees anything, the browser must find it and open a secure connection to it.
+
+<ArcDiagram stage="dns" caption="The first click: find the server, connect, then ask." />
+
+1. **DNS** turns the name `sho.rt` into an IP address, such as `203.0.113.7`.
+2. **TCP** opens a reliable connection with a three-way handshake: one round trip.
+3. **TLS** agrees on encryption keys: one round trip with TLS 1.3, two with TLS 1.2.
+4. **HTTP** sends the request. The server looks up the code in the database and answers with a redirect.
+
+```http
+GET /abc123 HTTP/1.1
+Host: sho.rt
+
+HTTP/1.1 302 Found
+Location: https://example.com/a/very/long/article-url
+```
+
+<Analogy>
+
+Think of calling a shop. You look up its number (DNS), dial and wait for someone to pick up (TCP), agree to speak in a
+private code (TLS), and finally ask your question (HTTP). The clerk may check the back room (database). If the shop is
+abroad, every pause on the line takes longer, no matter how quickly the clerk answers.
+
+</Analogy>
+
+## Try it
+
+Press Play to watch the click in slow motion, then change the distance and turn on the shortcuts.
+
+<RequestJourneyWidget client:visible />
+
+What to look for:
+
+- **Distance multiplies.** Each handshake costs a full round trip, so a far server pays the distance several times.
+- **Shortcuts remove whole steps.** A cached DNS answer skips the lookup. A reused connection skips both handshakes, which
+  is why browsers keep connections open.
+- **TLS 1.3 saves a round trip** over TLS 1.2 on every new connection.
+
+## Latency numbers worth remembering
+
+These rough figures explain most performance surprises. Learn the order of magnitude of each.
+
+| Operation                               | Rough time | Compared with a memory read |
+| --------------------------------------- | ---------- | --------------------------- |
+| Read from memory                        | 100 ns     | 1×                          |
+| Read 4 KB from an SSD                   | 100 µs     | 1,000×                      |
+| Round trip inside one data center       | 0.5 ms     | 5,000×                      |
+| Round trip within one continent         | 40 ms      | 400,000×                    |
+| Round trip across an ocean              | 150 ms     | 1,500,000×                  |
+
+## Trade-offs
+
+<TradeoffTable title="Choices that shape a click">
+
+| Choice                         | What it buys                                   | What it costs                                        |
+| ------------------------------ | ---------------------------------------------- | ---------------------------------------------------- |
+| Long DNS TTL (hours)           | Fewer lookups, faster first clicks             | Slow to move traffic away from a broken server       |
+| 301 Moved Permanently          | Browsers cache it and skip your server         | No click counts, and you can never change the target |
+| 302 Found                      | Every click reaches you to count and update    | One round trip on every click                        |
+| Keep connections open          | Later requests skip TCP and TLS                | Each open connection holds server memory             |
+| Servers near users             | Shorter round trips for every step             | More places to deploy, monitor, and keep in sync     |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+Half of your users live in Europe and half in Australia. The only server runs in Frankfurt. Without changing any code,
+name two changes that make links faster for the Australian half, and estimate the saving for a first click.
+
+<div slot="answer">
+
+- **Run a second copy in Australia** and let DNS send each person to the nearest one. The round trip drops from about
+  150 ms to about 10 ms, so a first click falls from roughly 490 ms to roughly 70 ms. Both copies need the same link
+  data, which the replication lesson covers.
+- **Keep connections open** (HTTP keep-alive, HTTP/2). Repeat clicks skip TCP and TLS, saving two round trips, about
+  300 ms from Australia.
+- **Use TLS 1.3** if the server still runs 1.2. That removes one round trip from every new connection.
+
+</div>
+
+</Challenge>

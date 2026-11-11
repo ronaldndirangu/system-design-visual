@@ -1,0 +1,11 @@
+---
+interface Props {
+  title?: string;
+}
+const { title = 'By the end of this lesson you can' } = Astro.props;
+---
+
+<section class="sdv-objectives not-content" aria-label="Learning objectives">
+  <p class="sdv-objectives__title">{title}</p>
+  <div class="sdv-objectives__list"><slot /></div>
+</section>

@@ -1,0 +1,195 @@
+---
+title: Caching
+description: Put the hottest links in memory and watch database load collapse. Learn hit ratios, eviction, expiry, and the cold cache trap.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import ArcDiagram from '../../../components/viz/ArcDiagram';
+import CacheWidget from '../../../components/widgets/CacheWidget';
+
+export const nodes = [
+  { id: 'server', kind: 'server', x: 80, y: 140, label: 'App server' },
+  { id: 'cache', kind: 'cache', x: 420, y: 60, label: 'Cache', sublabel: 'memory, about 1 ms' },
+  { id: 'db', kind: 'database', x: 420, y: 216, label: 'Database', sublabel: 'disk, about 10 ms' },
+];
+export const edges = [
+  { from: 'server', to: 'cache' },
+  { from: 'server', to: 'db' },
+];
+export const steps = [
+  {
+    title: 'Ask the cache first',
+    text: 'A click on sho.rt/abc123 arrives. The server asks the cache for abc123 before touching the database.',
+    nodes: ['server', 'cache'],
+    flows: ['server>cache'],
+  },
+  {
+    title: 'Hit: answer from memory',
+    text: 'The cache has it. The server gets the long URL back in about a millisecond, and the database never hears about it.',
+    nodes: ['server', 'cache'],
+    flows: ['cache>server'],
+  },
+  {
+    title: 'Miss: go to the database',
+    text: 'The cache does not have it. The server reads the link from the database, which takes about 10 times longer.',
+    nodes: ['server', 'db'],
+    flows: ['server>db', 'db>server'],
+  },
+  {
+    title: 'Fill the cache',
+    text: 'The server stores the answer in the cache with an expiry time (TTL). The next click on abc123 is a hit.',
+    nodes: ['server', 'cache'],
+    flows: ['server>cache'],
+  },
+  {
+    title: 'Full? Evict the least recently used',
+    text: 'Memory is small. When the cache runs out of room, it drops the link nobody has clicked for the longest time (LRU).',
+    nodes: ['cache'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'Why can a cache that holds 10% of all links answer most of the reads?',
+    options: [
+      { text: 'Memory compresses the links', why: 'Compression only changes how much fits. The win comes from which links people click.' },
+      { text: 'A few popular links get most of the clicks', correct: true, why: 'Real traffic follows a long tail. Keep the head of that tail in memory and most reads never reach the database.' },
+      { text: 'The cache predicts which links people will click', why: 'LRU only remembers what was clicked recently. It works because popular links get clicked again and again.' },
+      { text: 'It cannot. A 10% cache answers 10% of reads', why: 'That holds only when every link is equally popular. Set the popularity slider to 0 in the simulation to see it.' },
+    ],
+  },
+  {
+    prompt: 'The cache restarts and comes back empty during peak traffic. What happens first?',
+    options: [
+      { text: 'Nothing, since the database still has every link', why: 'The database has the data, but it was sized for cache misses only. Now it gets every request at once.' },
+      { text: 'Every request misses at once and the database load spikes', correct: true, why: 'A cold cache sends all traffic to the database until it warms up. Teams warm caches gradually or protect the database with limits.' },
+      { text: 'Users see stale links', why: 'An empty cache cannot serve old data. Every answer comes fresh from the database.' },
+      { text: 'Requests get faster, since the cache has free room', why: 'Free room does not help until popular links fill it. Until then every request pays the slow database path.' },
+    ],
+  },
+  {
+    prompt: 'You delete a scam link, yet it keeps redirecting for 10 minutes. What is the most likely cause?',
+    options: [
+      { text: 'The database failed to delete it', why: 'The database delete worked. The old answer still sits in the cache.' },
+      { text: 'A cached copy with a 10 minute TTL', correct: true, why: 'The cache keeps serving its copy until it expires. Delete the cache entry along with the database row (invalidation).' },
+      { text: 'The browser blocks the change', why: 'With a 302 redirect the browser asks the server every time, and the server answers from its cache.' },
+      { text: 'The load balancer remembers it', why: 'A load balancer forwards requests. It stores no link data.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain cache hits, misses, and hit ratio, and why skewed popularity makes small caches powerful.
+- Walk through the cache-aside pattern, LRU eviction, and expiry (TTL).
+- Predict what happens when a cache restarts empty, and how stale data creeps in.
+
+</Objectives>
+
+## The failure: the database does all the work
+
+The shortener now runs on three servers behind a load balancer. Every click still asks the database for the same few
+viral links, thousands of times a second. The database's disk and CPU max out, and redirects slow to a crawl.
+
+<Predict
+  client:visible
+  question="People click 1,000 different links, and a few are far more popular than the rest. A cache holds 100 of them (10%). About what share of clicks can it answer?"
+  options={['About 10%', 'About 30%', 'About 70%', 'All of them']}
+  answer={2}
+>
+
+About **70%**. Click popularity follows a long tail: the top link gets twice the clicks of the second, three times the
+clicks of the third, and so on. The 100 most popular links cover about 70% of all clicks, so the database sees fewer than
+a third of the reads it saw before.
+
+</Predict>
+
+## The idea: keep hot answers in memory
+
+A **cache** is a small, fast store (usually memory) that keeps copies of popular answers. Reading memory takes about a
+millisecond over the network, while a database that reads from disk takes around ten.
+
+<ArcDiagram stage="cache" caption="A cache sits beside the servers. The database sees only the misses." />
+
+The most common pattern is **cache-aside**: the application checks the cache, falls back to the database on a miss, and
+then fills the cache.
+
+<StepDiagram client:visible title="Cache-aside, step by step" nodes={nodes} edges={edges} steps={steps} height={290} />
+
+<Analogy>
+
+You keep the ten files you use every day on your desk and the rest in a filing cabinet in the basement. Most days you
+never walk downstairs. When the desk fills up, the file you have not touched for the longest time goes back to the
+basement.
+
+</Analogy>
+
+## Try it
+
+Start with no cache, then give it room. Change how uneven popularity is, set an expiry time, and restart the cache in
+the middle of a run.
+
+<CacheWidget client:visible />
+
+What to look for:
+
+- **Small caches go far** when popularity is skewed. With popularity even (slider at 0), the hit ratio only matches the
+  share of links that fit.
+- **Restarting the cache** sends every request to the database until the popular links come back. This is a cold cache.
+- **A short TTL** lowers the hit ratio, since even popular links expire and must be fetched again.
+
+## Stale data and invalidation
+
+A cache holds copies, and copies can go out of date. For the shortener this is mostly easy: links never change after
+creation. Deletion is the exception. If you remove a scam link from the database but not from the cache, the cache
+keeps redirecting people to the scam until the entry expires.
+
+Two tools keep caches honest:
+
+- **Expiry (TTL)** puts an upper bound on how old a cached answer can get.
+- **Invalidation** deletes the cache entry whenever the source data changes.
+
+## Trade-offs
+
+<TradeoffTable title="Tuning a cache">
+
+| Choice                       | What it buys                                       | What it costs                                              |
+| ---------------------------- | -------------------------------------------------- | ---------------------------------------------------------- |
+| Bigger cache                 | Higher hit ratio, less database load               | Memory is pricier than disk, and gains shrink as it grows   |
+| Long TTL                     | More hits                                          | Changes and deletes take longer to show                    |
+| Short TTL                    | Fresher answers                                    | More misses and more database reads                        |
+| Invalidate on every write    | Fresh data without a short TTL                     | Extra code on every write path, and easy to forget one     |
+| Shared cache (such as Redis) | Every server sees the same hot links               | One more network hop and one more system to run            |
+| Cache inside each server     | Fastest reads, nothing extra to run                | Each server warms up alone, and copies can disagree        |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+The shortener gains a dashboard where people see their own links and click counts. For each read below, would you cache
+it, and with what TTL?
+
+1. The redirect lookup for `sho.rt/abc123`.
+2. The click count shown on the dashboard.
+3. The list of my links, right after I create a new one.
+
+<div slot="answer">
+
+1. **Cache it for a long time** (hours or days). Links never change, so invalidate the entry only when a link gets
+   deleted.
+2. **Cache it briefly** (30 to 60 seconds). Nobody minds a count that trails by a minute, and it saves a database query
+   on every dashboard view.
+3. **Skip the cache or invalidate on write.** People expect to see the link they just made. Showing an old list looks
+   like a bug. The next lesson calls this read-your-writes consistency.
+
+</div>
+
+</Challenge>

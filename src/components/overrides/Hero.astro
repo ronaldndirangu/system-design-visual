@@ -1,0 +1,40 @@
+---
+import { LinkButton } from '@astrojs/starlight/components';
+import Default from '@astrojs/starlight/components/Hero.astro';
+import { firstLesson } from '../../data/coursePath';
+import { lessonHref, withBase } from '../../lib/paths';
+import LandingHero from '../landing/LandingHero';
+
+const route = Astro.locals.starlightRoute;
+const isHome = route.id === '';
+const hero = route.entry.data.hero;
+const title = hero?.title ?? route.entry.data.title;
+---
+
+{
+  isHome ? (
+    <div class="sdv-hero">
+      <div class="sdv-hero__copy">
+        <p class="sdv-hero__kicker">A free, visual, hands-on course</p>
+        <h1 id="_top" data-page-title set:html={title} />
+        {hero?.tagline && <p class="sdv-hero__tagline" set:html={hero.tagline} />}
+        <div class="sdv-hero__actions">
+          {firstLesson && (
+            <LinkButton href={lessonHref(firstLesson.id)} icon="right-arrow">
+              Start learning
+            </LinkButton>
+          )}
+          <LinkButton href={withBase('/curriculum/')} variant="minimal">
+            See the course map
+          </LinkButton>
+        </div>
+        <p class="sdv-hero__note">No sign up. Progress saves in this browser only.</p>
+      </div>
+      <div class="sdv-hero__toy">
+        <LandingHero client:load />
+      </div>
+    </div>
+  ) : (
+    <Default />
+  )
+}

@@ -1,0 +1,50 @@
+{
+  "name": "system-design-visual",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Learn system design visually: interactive, animated lessons from a single server to planet scale.",
+  "homepage": "https://ronaldndirangu.github.io/system-design-visual/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ronaldndirangu/system-design-visual.git"
+  },
+  "packageManager": "pnpm@12.17.0",
+  "engines": {
+    "node": ">=22.23.4"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "check": "astro check",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "verify": "pnpm lint && pnpm check && pnpm test && pnpm build"
+  },
+  "dependencies": {
+    "@astrojs/react": "^7.1.2",
+    "@astrojs/starlight": "^0.42.8",
+    "astro": "^7.4.5",
+    "matter-js": "^0.20.0",
+    "motion": "^14.9.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.12",
+    "@axe-core/playwright": "^4.14.0",
+    "@biomejs/biome": "^2.6.4",
+    "@playwright/test": "^1.64.1",
+    "@types/matter-js": "^0.20.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0"
+  }
+}

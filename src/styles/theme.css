@@ -1,0 +1,309 @@
+/*
+ * Visual language: every component kind has a fixed color, shape, and icon.
+ * Colors never carry meaning alone; shapes, icons, and text labels repeat it.
+ */
+
+:root {
+  --sl-color-accent-low: #1f1b4d;
+  --sl-color-accent: #7064ff;
+  --sl-color-accent-high: #cdc9ff;
+
+  --sdv-client: #60a5fa;
+  --sdv-dns: #2dd4bf;
+  --sdv-server: #a78bfa;
+  --sdv-lb: #fbbf24;
+  --sdv-cache: #fb7185;
+  --sdv-db: #4ade80;
+  --sdv-queue: #22d3ee;
+  --sdv-cdn: #38bdf8;
+
+  --sdv-ok: #4ade80;
+  --sdv-warn: #fbbf24;
+  --sdv-bad: #f87171;
+  --sdv-ink-on-status: #0b0f19;
+
+  --sdv-surface: color-mix(in oklab, var(--sl-color-gray-6) 70%, var(--sl-color-black));
+  --sdv-surface-raised: var(--sl-color-gray-6);
+  --sdv-border: var(--sl-color-gray-5);
+  --sdv-radius: 0.75rem;
+  --sdv-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.25);
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #e4e1ff;
+  --sl-color-accent: #4c3fd1;
+  --sl-color-accent-high: #241a78;
+
+  --sdv-client: #1d4ed8;
+  --sdv-dns: #0f766e;
+  --sdv-server: #6d28d9;
+  --sdv-lb: #b45309;
+  --sdv-cache: #be123c;
+  --sdv-db: #15803d;
+  --sdv-queue: #0e7490;
+  --sdv-cdn: #0369a1;
+
+  --sdv-ok: #15803d;
+  --sdv-warn: #b45309;
+  --sdv-bad: #b91c1c;
+  --sdv-ink-on-status: #ffffff;
+
+  --sdv-surface: var(--sl-color-gray-7);
+  --sdv-surface-raised: var(--sl-color-black);
+  --sdv-border: var(--sl-color-gray-5);
+  --sdv-shadow: 0 1px 2px rgb(15 23 42 / 0.08), 0 8px 24px rgb(15 23 42 / 0.08);
+}
+
+/* ---------- Diagram nodes ---------- */
+
+.sdv-node {
+  --node: var(--sl-color-gray-3);
+}
+.sdv-node--client {
+  --node: var(--sdv-client);
+}
+.sdv-node--dns {
+  --node: var(--sdv-dns);
+}
+.sdv-node--server {
+  --node: var(--sdv-server);
+}
+.sdv-node--loadBalancer {
+  --node: var(--sdv-lb);
+}
+.sdv-node--cache {
+  --node: var(--sdv-cache);
+}
+.sdv-node--database {
+  --node: var(--sdv-db);
+}
+.sdv-node--queue {
+  --node: var(--sdv-queue);
+}
+.sdv-node--cdn {
+  --node: var(--sdv-cdn);
+}
+
+.sdv-node__shape {
+  fill: color-mix(in oklab, var(--node) 16%, var(--sl-color-bg));
+  stroke: var(--node);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.sdv-node__detail {
+  fill: none;
+  stroke: var(--node);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  opacity: 0.7;
+  vector-effect: non-scaling-stroke;
+}
+.sdv-node__icon {
+  fill: none;
+  stroke: var(--node);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sdv-node__label {
+  fill: var(--sl-color-white);
+  font-family: var(--sl-font);
+  font-size: 14px;
+  font-weight: 600;
+}
+.sdv-node__sublabel {
+  fill: var(--sl-color-gray-2);
+  font-family: var(--sl-font);
+  font-size: 12.5px;
+}
+.sdv-node--highlight .sdv-node__shape {
+  stroke-width: 3.5;
+  filter: drop-shadow(0 0 6px color-mix(in oklab, var(--node) 70%, transparent));
+}
+.sdv-node--down .sdv-node__shape {
+  stroke-dasharray: 6 4;
+  fill: color-mix(in oklab, var(--sdv-bad) 10%, var(--sl-color-bg));
+}
+.sdv-node--down .sdv-node__icon,
+.sdv-node--down .sdv-node__detail {
+  opacity: 0.45;
+}
+.sdv-node--dim {
+  opacity: 0.35;
+}
+
+.sdv-status--ok {
+  fill: var(--sdv-ok);
+}
+.sdv-status--warn {
+  fill: var(--sdv-warn);
+}
+.sdv-status--bad {
+  fill: var(--sdv-bad);
+}
+.sdv-status__glyph {
+  fill: none;
+  stroke: var(--sdv-ink-on-status);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.sdv-edge {
+  fill: none;
+  stroke: var(--sl-color-gray-3);
+  stroke-width: 1.5;
+}
+.sdv-edge--active {
+  stroke: var(--sl-color-text-accent);
+  stroke-width: 2.5;
+}
+.sdv-edge--dashed {
+  stroke-dasharray: 5 4;
+}
+.sdv-arrowhead {
+  fill: var(--sl-color-gray-3);
+}
+
+.sdv-dot {
+  fill: var(--sl-color-text-accent);
+}
+.sdv-dot--hit {
+  fill: var(--sdv-ok);
+}
+.sdv-dot--miss {
+  fill: var(--sdv-warn);
+}
+.sdv-dot--bad {
+  fill: var(--sdv-bad);
+}
+
+/* ---------- Shared widget chrome ---------- */
+
+.sdv-card {
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: var(--sdv-radius);
+  padding: 1rem;
+}
+
+.sdv-figure {
+  margin-block: 1.5rem;
+}
+.sdv-figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.sdv-figure figcaption {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  margin-top: 0.5rem;
+}
+
+.sdv-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.sdv-button {
+  align-items: center;
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 999rem;
+  color: var(--sl-color-white);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+  gap: 0.4rem;
+  line-height: 1.2;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.9rem;
+}
+.sdv-button:hover:not(:disabled) {
+  border-color: var(--sl-color-text-accent);
+}
+.sdv-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.sdv-button--primary {
+  background: var(--sl-color-text-accent);
+  border-color: var(--sl-color-text-accent);
+  color: var(--sl-color-black);
+}
+.sdv-button--primary:hover:not(:disabled) {
+  border-color: var(--sl-color-white);
+}
+.sdv-button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+:where(.sdv-button, .sdv-choice, .sdv-segmented label, input[type="range"], summary):focus-visible,
+.sdv-segmented input:focus-visible + span {
+  outline: 3px solid var(--sl-color-text-accent);
+  outline-offset: 2px;
+}
+
+.sdv-badge {
+  align-items: center;
+  border-radius: 999rem;
+  display: inline-flex;
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+  gap: 0.3rem;
+  line-height: 1;
+  padding: 0.25rem 0.55rem;
+  white-space: nowrap;
+}
+.sdv-badge svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+.sdv-badge--ok {
+  background: color-mix(in oklab, var(--sdv-ok) 22%, transparent);
+  color: var(--sl-color-white);
+}
+.sdv-badge--warn {
+  background: color-mix(in oklab, var(--sdv-warn) 25%, transparent);
+  color: var(--sl-color-white);
+}
+.sdv-badge--bad {
+  background: color-mix(in oklab, var(--sdv-bad) 25%, transparent);
+  color: var(--sl-color-white);
+}
+.sdv-badge--neutral {
+  background: var(--sl-color-gray-5);
+  color: var(--sl-color-white);
+}
+.sdv-badge--ok svg {
+  color: var(--sdv-ok);
+}
+.sdv-badge--warn svg {
+  color: var(--sdv-warn);
+}
+.sdv-badge--bad svg {
+  color: var(--sdv-bad);
+}
+
+/* Simple full-width layout for the landing page sections. */
+.sdv-section-title {
+  font-size: var(--sl-text-2xl);
+  margin-top: 3rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sdv-node--highlight .sdv-node__shape {
+    filter: none;
+  }
+}

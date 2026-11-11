@@ -1,0 +1,196 @@
+---
+title: Read replicas
+description: Copy the database to spread reads, then meet replication lag, stale reads, and read-your-writes consistency.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import ArcDiagram from '../../../components/viz/ArcDiagram';
+import ReplicationWidget from '../../../components/widgets/ReplicationWidget';
+
+export const nodes = [
+  { id: 'app', kind: 'server', x: 70, y: 150, label: 'App server' },
+  { id: 'primary', kind: 'database', x: 300, y: 150, label: 'Primary', sublabel: 'takes writes' },
+  { id: 'r1', kind: 'database', x: 530, y: 50, label: 'Replica 1' },
+  { id: 'r2', kind: 'database', x: 530, y: 250, label: 'Replica 2' },
+];
+export const edges = [
+  { from: 'app', to: 'primary' },
+  { from: 'primary', to: 'r1', dashed: true },
+  { from: 'primary', to: 'r2', dashed: true },
+  { from: 'app', to: 'r1' },
+  { from: 'app', to: 'r2' },
+];
+export const steps = [
+  {
+    title: 'Every write goes to the primary',
+    text: 'Creating a link changes data, so the app sends it to one database: the primary. Only the primary accepts writes.',
+    nodes: ['app', 'primary'],
+    flows: ['app>primary'],
+  },
+  {
+    title: 'The primary copies each write',
+    text: 'In the background, the primary streams every change to its replicas. That usually takes milliseconds, and under heavy load it can take seconds.',
+    nodes: ['primary', 'r1', 'r2'],
+    flows: ['primary>r1', 'primary>r2'],
+  },
+  {
+    title: 'Reads spread across the replicas',
+    text: 'Each replica holds a full copy, so it can answer any read. Two replicas take the reads off the primary entirely.',
+    nodes: ['app', 'r1', 'r2'],
+    flows: ['app>r1', 'app>r2'],
+  },
+  {
+    title: 'The lag window',
+    text: 'Someone creates a link and opens it right away. The read lands on Replica 1 before the copy arrives, and it answers Not found.',
+    nodes: ['app', 'r1'],
+    flows: ['app>r1'],
+  },
+  {
+    title: 'Read your own writes',
+    text: 'For a few seconds after someone writes, send their reads to the primary. Everyone else keeps reading from replicas.',
+    nodes: ['app', 'primary'],
+    flows: ['app>primary'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'Which workload gains the most from adding read replicas?',
+    options: [
+      { text: 'A read-heavy one, like a URL shortener', correct: true, why: 'Replicas multiply read capacity. With 100 reads per write, almost all the load can move off the primary.' },
+      { text: 'A write-heavy one, like a sensor logger', why: 'Every write still goes to the primary, and every replica must replay it too. Replicas add work for writes.' },
+      { text: 'Any workload equally', why: 'Replicas only share reads. The more a workload writes, the less they help.' },
+      { text: 'One where every read must see the latest write', why: 'Replicas lag behind the primary, so strict freshness pushes reads back to the primary.' },
+    ],
+  },
+  {
+    prompt: 'A replica answers "not found" for a link that exists. What is the most likely cause?',
+    options: [
+      { text: 'The replica lost the data', why: 'Replicas keep everything they receive. This one has not received the write yet.' },
+      { text: 'Replication lag: the copy has not arrived yet', correct: true, why: 'The read reached the replica inside the lag window. A moment later the same read succeeds.' },
+      { text: 'The cache expired', why: 'An expired cache entry falls back to the database, which would still find the link on the primary.' },
+      { text: 'The load balancer sent it to the wrong server', why: 'Every replica holds the same data. The question is only whether the copy has arrived.' },
+    ],
+  },
+  {
+    prompt: 'With asynchronous replication, the primary crashes and you promote a replica. What can go wrong?',
+    options: [
+      { text: 'Nothing, since replicas hold every write', why: 'Replicas trail the primary. Writes inside the lag window never reached them.' },
+      { text: 'The last few writes can be lost', correct: true, why: 'Anything the primary accepted but had not yet copied disappears with it. Synchronous replication avoids this at the cost of slower writes.' },
+      { text: 'All reads fail until the old primary returns', why: 'The promoted replica takes over reads and writes. That is the point of failover.' },
+      { text: 'The replicas become read only forever', why: 'Promotion turns a replica into the new primary, which accepts writes.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain how a primary and its replicas split writes and reads.
+- Describe replication lag and why it causes stale reads.
+- Apply read-your-writes consistency to hide lag from the person who made a change.
+- Weigh asynchronous against synchronous replication.
+
+</Objectives>
+
+## The failure: one database, too many reads
+
+The cache answers most clicks, but at 10 million users the misses alone keep one database pinned at 100% busy. Reads now
+queue behind each other, and the occasional write waits behind them.
+
+<Predict
+  client:visible
+  question="You add two replicas that copy every write about half a second later, and send all reads to them. Someone creates a link and opens it 100 ms later. What do they see?"
+  options={[
+    'The redirect works as usual',
+    'Sometimes a Not found error',
+    'The request waits until the copy arrives',
+    'The create request fails',
+  ]}
+  answer={1}
+>
+
+**Sometimes a Not found error.** The read lands on a replica that has not received the new link yet. Wait half a
+second and it works. The data was never lost; the person just looked too early. This is a **stale read**, and the
+fix is to send people's reads of their own fresh data to the primary.
+
+</Predict>
+
+## The idea: one writer, many readers
+
+Copy the database to more machines. The **primary** takes every write and streams the changes to **replicas**, which
+serve reads. A URL shortener reads about 100 times for every write, so replicas can carry almost all of the load.
+
+<ArcDiagram stage="replicas" caption="Writes go to the primary. Replicas copy them and serve the reads." />
+
+<StepDiagram client:visible title="How replication works" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy>
+
+A teacher writes on the whiteboard in the main room, and assistants copy every change onto whiteboards in other rooms.
+Students spread across all the rooms, so nobody crowds the main board. A student who walks into a side room right after
+a change may still see the old version for a moment.
+
+</Analogy>
+
+## Try it
+
+Press Play. One database cannot keep up. Add replicas until the load bars calm down, then raise the lag and watch the
+stale reads (squares with a cross) appear. Finally, turn on read your own writes.
+
+<ReplicationWidget client:visible />
+
+What to look for:
+
+- **Read capacity grows with each replica,** while the primary still handles every write.
+- **Stale reads come from fresh links.** A link created long ago is already on every replica. Only reads inside the lag
+  window go wrong.
+- **Read your own writes** moves those few reads to the primary. Stale reads vanish, and the primary takes a little
+  extra load.
+
+## When the primary dies
+
+If the primary crashes, you **promote** a replica to become the new primary and point writes at it. With
+**asynchronous** replication (the default almost everywhere), writes that had not been copied yet are lost.
+**Synchronous** replication waits for a replica to confirm each write before answering, so nothing gets lost, and every
+write gets slower.
+
+## Trade-offs
+
+<TradeoffTable title="Replication choices">
+
+| Choice                    | What it buys                                  | What it costs                                            |
+| ------------------------- | --------------------------------------------- | -------------------------------------------------------- |
+| More replicas             | More read capacity, more copies of the data   | Every replica replays every write, and more lag to watch |
+| Asynchronous replication  | Fast writes                                   | Stale reads, and recent writes can vanish in a failover   |
+| Synchronous replication   | No lost writes on failover                    | Slower writes, and a slow replica stalls the primary      |
+| Read your own writes      | People always see their own changes           | Extra primary load, and routing logic in the app          |
+| Replicas in other regions | Fast reads near users, survives a region loss | Lag of 100 ms or more across oceans                      |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+At 10 million users, the shortener sees 100 new links and 50,000 clicks per second. The cache answers 90% of clicks.
+One database node handles 2,000 queries per second, and you keep each node under 70% busy. How many replicas do you
+need? And what breaks if a new feature pushes writes to 5,000 per second?
+
+<div slot="answer">
+
+- Cache misses reach the database: 50,000 × 10% = **5,000 reads per second**.
+- Each replica takes 2,000 × 0.7 = 1,400 per second, so 5,000 ÷ 1,400 ≈ 3.6, which rounds up to **4 replicas**, plus
+  one spare to survive a crash: **5**.
+- At 5,000 writes per second, replicas stop helping. The single primary must accept every write, and every replica must
+  replay all 5,000 of them on top of its reads. To grow past one machine's write limit, you split the data itself across
+  machines. That is sharding, the next lesson.
+
+</div>
+
+</Challenge>

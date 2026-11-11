@@ -1,0 +1,78 @@
+---
+title: The design checklist
+description: Seven questions to ask about any system, from requirements to trade-offs, worked through for the URL shortener.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import Quiz from '../../../components/lesson/Quiz';
+
+export const quiz = [
+  {
+    prompt: 'A teammate opens a design review by asking "Postgres or Cassandra?" Which steps did they skip?',
+    options: [
+      { text: 'Requirements, estimates, and the data model', correct: true, why: 'A storage choice depends on what you store, how you read it, and how much of it there is. Without those answers, both databases look equally good.' },
+      { text: 'The deep dive', why: 'A deep dive needs a high-level design to dig into. The database question came before any design existed.' },
+      { text: 'Trade-offs', why: 'Picking a database is a trade-off, but you cannot weigh one without knowing the load and the access pattern first.' },
+      { text: 'Nothing, because the database is the first decision', why: 'Starting from a product name anchors the design on a tool. The requirements decide which tool fits.' },
+    ],
+  },
+  {
+    prompt: 'Your high-level design is on the board. How do you choose what to deep dive on?',
+    options: [
+      { text: 'Pick the part your estimates say breaks first, or the one you are least sure about', correct: true, why: 'Depth on the riskiest part tells you the most about whether the design survives. Hot keys and growth were that part for the URL shortener.' },
+      { text: 'Pick the component you know best', why: 'Comfortable ground rarely holds the risk. Reviewers learn more from how you handle the hard part.' },
+      { text: 'Give every component equal time', why: 'Time runs out before any part gets real depth. Spend it where failure is most likely.' },
+      { text: 'Pick the newest technology in the diagram', why: 'Novelty and risk are different things. Let the numbers point at the weak spot.' },
+    ],
+  },
+];
+
+Every design in this course, and most design interviews, walks the same seven steps. Each step answers one question. The
+right column shows the answers for the URL shortener from the lessons you have already seen or will see next.
+
+<Steps>
+
+1. **Requirements: what must it do, and how well?** List the features, the quality bars (latency, uptime, durability),
+   and what you will leave out.
+
+   _URL shortener:_ create a short link and redirect anyone who opens it. Redirects under 100 ms, 99.9% uptime.
+   Analytics stay out of scope.
+
+2. **Estimates: how big is it?** Work out peak requests per second, storage over the system's life, and the read to
+   write ratio.
+
+   _URL shortener:_ 1 million new links a day is about 12 writes per second. At 100 clicks per link, reads dominate.
+   Five years of links need about 1 TB.
+
+3. **API: how do callers talk to it?** Name the endpoints, their inputs and outputs, and the errors they return.
+
+   _URL shortener:_ `POST /links` takes a long URL and returns a code. `GET /{code}` answers with a redirect.
+
+4. **Data model: what do you store, and how do you read it?** Name the entities, their keys, and the queries that hit
+   them most.
+
+   _URL shortener:_ one table keyed by the short code. Every read is a lookup by that key.
+
+5. **High-level design: which boxes, and how does a request flow?** Draw the read path and the write path separately.
+
+   _URL shortener:_ browser, load balancer, app servers, cache, and database.
+
+6. **Deep dive: where does it break first?** Take the riskiest part your estimates expose and design it in detail.
+
+   _URL shortener:_ a viral link floods one key, and the table outgrows one machine. Caching and sharding answer those.
+
+7. **Trade-offs: what did you give up, and why?** Name the alternatives you rejected and the cost of the one you chose.
+
+   _URL shortener:_ a `301` redirect lets browsers cache it, so repeat clicks never reach you and click counts go
+   missing. A `302` keeps every click visible at the cost of more traffic.
+
+</Steps>
+
+## It is a loop
+
+The steps run in order the first time, then loop. A deep dive often sends you back: a hot key changes your estimates, and
+a new query changes the data model. Revisiting an earlier step means the design is working.
+
+## Check yourself
+
+<Quiz client:visible questions={quiz} />

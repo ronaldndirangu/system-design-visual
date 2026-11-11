@@ -1,0 +1,110 @@
+---
+import { anchorFor, curriculum, findModule } from '../../data/curriculum';
+import { lessonHref } from '../../lib/paths';
+
+interface Props {
+  /** Use h3 headings when the map sits under a page section heading. */
+  headingLevel?: 2 | 3;
+  compact?: boolean;
+}
+
+const { headingLevel = 2, compact = false } = Astro.props;
+const Heading = headingLevel === 2 ? 'h2' : 'h3';
+---
+
+<div class:list={['sdv-map', 'not-content', { 'sdv-map--compact': compact }]}>
+  {
+    curriculum.map((module) => {
+      const ready = module.lessons.filter((lesson) => lesson.status === 'ready').length;
+      return (
+        <section class="sdv-map__module" id={compact ? undefined : anchorFor(module.id)} aria-labelledby={`map-${module.id}`}>
+          <header class="sdv-map__header">
+            <span class="sdv-map__number" aria-hidden="true">
+              {module.number}
+            </span>
+            <Heading class="sdv-map__title" id={`map-${module.id}`}>
+              <span class="sdv-visually-hidden">Module {module.number}: </span>
+              {module.title}
+            </Heading>
+            <span class:list={['sdv-badge', ready > 0 ? 'sdv-badge--ok' : 'sdv-badge--neutral']}>
+              {ready > 0 ? `${ready} of ${module.lessons.length} ready` : 'Coming soon'}
+            </span>
+            <p class="sdv-map__summary">{module.summary}</p>
+            <p class="sdv-map__example">Running example: {module.example}</p>
+          </header>
+          {!compact && (
+            <ol class="sdv-map__lessons">
+              {module.lessons.map((lesson) => (
+                <li
+                  id={anchorFor(lesson.id)}
+                  class="sdv-map__lesson"
+                  data-status={lesson.status}
+                  data-lesson-id={lesson.id}
+                >
+                  {lesson.status === 'ready' ? (
+                    <a href={lessonHref(lesson.id)} class="sdv-map__link">
+                      {lesson.title}
+                    </a>
+                  ) : (
+                    <span class="sdv-map__link">{lesson.title}</span>
+                  )}
+                  <span class="sdv-map__lesson-summary">{lesson.summary}</span>
+                  <span class="sdv-map__tags">
+                    {lesson.status === 'ready' ? (
+                      <>
+                        {lesson.minutes && <span class="sdv-badge sdv-badge--neutral">{lesson.minutes} min</span>}
+                        <span class="sdv-badge sdv-badge--ok sdv-map__done" hidden>
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 12l4 4l10-10" fill="none" stroke="currentColor" stroke-width="2.5" />
+                          </svg>
+                          Completed
+                        </span>
+                      </>
+                    ) : (
+                      <span class="sdv-badge sdv-badge--neutral">Coming soon</span>
+                    )}
+                    {lesson.format === 'card' && <span class="sdv-badge sdv-badge--neutral">Quick card</span>}
+                    {lesson.advanced && <span class="sdv-badge sdv-badge--warn">Advanced</span>}
+                    {lesson.bestAfter && (
+                      <span class="sdv-badge sdv-badge--neutral">
+                        Best after module {findModule(lesson.bestAfter)?.number}
+                      </span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+          {compact && ready > 0 && (
+            <ul class="sdv-map__compact-lessons">
+              {module.lessons
+                .filter((lesson) => lesson.status === 'ready')
+                .map((lesson) => (
+                  <li>
+                    <a href={lessonHref(lesson.id)}>{lesson.title}</a>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </section>
+      );
+    })
+  }
+</div>
+
+<script>
+  import { readProgress, subscribeProgress } from '../../lib/progress';
+
+  function paint() {
+    const { completed } = readProgress();
+    for (const item of document.querySelectorAll<HTMLElement>('.sdv-map__lesson[data-lesson-id]')) {
+      const done = Boolean(item.dataset.lessonId && completed[item.dataset.lessonId]);
+      item.toggleAttribute('data-complete', done);
+      const badge = item.querySelector<HTMLElement>('.sdv-map__done');
+      if (badge) badge.hidden = !done;
+    }
+  }
+
+  paint();
+  subscribeProgress(paint);
+</script>

@@ -1,0 +1,16 @@
+---
+interface Props {
+  title?: string;
+}
+const { title = 'Analogy' } = Astro.props;
+---
+
+<aside class="sdv-analogy" aria-label={title}>
+  <p class="sdv-analogy__title">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M9 18h6 M10 21h4 M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"></path>
+    </svg>
+    {title}
+  </p>
+  <slot />
+</aside>

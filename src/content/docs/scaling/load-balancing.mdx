@@ -1,0 +1,174 @@
+---
+title: The server melts
+description: Watch one server drown under a viral link, then rescue it with a bigger machine or a load balancer and more servers.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import ArcDiagram from '../../../components/viz/ArcDiagram';
+import ServerFarmWidget from '../../../components/widgets/ServerFarmWidget';
+
+export const quiz = [
+  {
+    prompt: 'A server can finish 100 requests per second. Traffic holds steady at 95 per second. What do users notice?',
+    options: [
+      { text: 'Nothing, since 95 is below 100', why: 'Requests arrive in bursts. At 95% busy, short bursts pile up into long queues, so waits grow sharply even though the average fits.' },
+      { text: 'Long and unpredictable waits', correct: true, why: 'Queueing delay explodes as a server nears 100% busy. That is why teams aim for about 70% at peak.' },
+      { text: 'Half of the requests fail', why: 'The queue absorbs bursts, so failures only start once it fills. The first symptom is waiting.' },
+      { text: 'The server speeds up to cope', why: 'A server has a fixed capacity. Extra demand turns into waiting, then errors.' },
+    ],
+  },
+  {
+    prompt: 'One server crashes behind a load balancer with health checks every 2 seconds. What happens?',
+    options: [
+      { text: 'No request ever fails', why: 'Until the health checks notice, the load balancer still sends some requests to the dead server, and those fail.' },
+      { text: 'Some requests fail for about 2 seconds, then traffic shifts to the healthy servers', correct: true, why: 'Detection takes time. After that, the remaining servers carry the load, as long as they have the spare capacity.' },
+      { text: 'Every request fails until an engineer steps in', why: 'Health checks remove the server automatically. No human needs to act.' },
+      { text: 'The load balancer restarts the server', why: 'A load balancer only decides where traffic goes. Restarting servers is a separate job for your platform.' },
+    ],
+  },
+  {
+    prompt: 'A few requests take 10 times longer than the rest. Which strategy keeps queues most even?',
+    options: [
+      { text: 'Round robin', why: 'Round robin hands out requests in turn, regardless of how busy each server is. A server stuck on slow requests keeps getting more.' },
+      { text: 'Random', why: 'Random choice ignores load too, and it adds its own unevenness on top.' },
+      { text: 'Least connections', correct: true, why: 'Sending each request to the server with the shortest queue steers work away from servers busy with slow requests.' },
+      { text: 'They all behave the same', why: 'They match only when every request costs the same. Try the slow requests slider in the simulation.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain why a server's response time explodes as it nears 100% busy.
+- Compare vertical scaling (a bigger machine) with horizontal scaling (more machines).
+- Describe how a load balancer spreads traffic and routes around a crashed server.
+- Choose between round robin, random, and least connections.
+
+</Objectives>
+
+## The failure: a link goes viral
+
+The URL shortener runs on one server that can redirect 100 requests per second. A celebrity posts a short link, and
+traffic jumps from 60 to 150 requests per second.
+
+<Predict
+  client:visible
+  question="What happens to the 50 extra requests arriving each second?"
+  options={[
+    'They wait a little, then every request gets served',
+    'The queue fills, the server starts rejecting requests, and everyone waits longer',
+    'The server works faster to keep up',
+    'Only the extra 50 fail, and everyone else sees normal speed',
+  ]}
+  answer={1}
+>
+
+The queue grows by 50 requests every second. In about a second it holds 60 requests, its limit, and the server starts
+answering **503 Service Unavailable**. Everyone suffers: every request that does get in waits behind 60 others, which
+adds about 600 ms. Press Play below to watch it happen.
+
+</Predict>
+
+<ServerFarmWidget
+  client:visible
+  servers={1}
+  rate={150}
+  showStrategy={false}
+  showHeavy={false}
+  title="One server, one viral link"
+  instructions="Press Play and watch the queue. Then try a bigger machine, or add servers, until the errors stop."
+/>
+
+## Why waiting explodes
+
+A server is a line at a counter. Requests arrive in random bursts, so even when the average fits, a burst can arrive
+faster than the server works. At 50% busy, the line clears quickly between bursts. At 95% busy, there is almost no
+quiet time to catch up, so the line keeps growing. The rule of thumb: **plan for about 70% busy at peak**.
+
+## Two ways out
+
+**Vertical scaling** buys a bigger machine. It needs no code changes, but machines only come so big, prices rise faster
+than power, and one machine is still one point of failure.
+
+**Horizontal scaling** adds more machines of the same size and puts a **load balancer** in front of them. Clients talk to
+the load balancer, which picks a server for each request.
+
+<ArcDiagram stage="single" caption="Before: one server does everything." />
+
+<ArcDiagram stage="scale-out" caption="After: a load balancer spreads requests over identical servers." />
+
+For this to work, the servers must be **stateless**: any server can answer any request, because links live in the shared
+database and nothing important lives in one server's memory.
+
+<Analogy>
+
+A supermarket with one cashier can hire a faster cashier (vertical) or open more lanes (horizontal). More lanes need
+someone at the front pointing shoppers to a free lane, and that person is the load balancer. If a cashier goes on break,
+the greeter stops sending people to that lane.
+
+</Analogy>
+
+## How a load balancer chooses
+
+- **Round robin** sends requests to each server in turn. Simple and fair when every request costs the same.
+- **Random** picks any server. Also simple, and slightly less even.
+- **Least connections** picks the server with the fewest requests in progress. It adapts when some requests are slow.
+
+The load balancer also runs **health checks**: it pings each server every few seconds and stops sending traffic to any
+server that fails to answer.
+
+## Try it: break things on purpose
+
+This farm starts with three servers at about 70% busy, plus a few slow requests. Try these experiments:
+
+1. Press Play and let it settle. Each server sits near 70% busy.
+2. Crash server 1. Requests fail for about 2 seconds until the health checks notice. Then watch the two survivors try to
+   carry 210 requests per second with 200 of capacity. Add a fourth server to rescue them.
+3. Raise slow requests to 30%, then switch between round robin and least connections. Compare the 95th percentile latency.
+
+<ServerFarmWidget
+  client:visible
+  servers={3}
+  rate={210}
+  heavyShare={0.1}
+  title="Load balancer lab"
+  instructions="Press Play and let the farm settle. Then crash a server, add one back, and compare strategies with more slow requests."
+/>
+
+## Trade-offs
+
+<TradeoffTable title="Bigger machine or more machines?">
+
+| Approach                     | What it buys                                        | What it costs                                                  |
+| ---------------------------- | --------------------------------------------------- | -------------------------------------------------------------- |
+| Vertical: a bigger machine   | No code changes, no new components                  | A hard ceiling, rising prices, and one machine that can fail    |
+| Horizontal: more machines    | Nearly unlimited growth, survives a crashed server  | A load balancer to run, and servers must stay stateless         |
+| Round robin                  | Simple and predictable                              | Uneven queues when request costs vary                           |
+| Least connections            | Adapts to slow requests and slow servers            | The balancer must track every server's open requests            |
+| Short health check interval  | Faster failover                                     | More check traffic, and a brief hiccup can eject a good server  |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+Peak traffic for the shortener is 1,200 redirects per second. One server handles 400 per second at full load. How many
+servers do you need, if you keep each one at most 70% busy **and** survive one server crashing at peak? What single
+component can still take the whole service down?
+
+<div slot="answer">
+
+- At 70%, each server takes 400 × 0.7 = 280 per second, so 1,200 ÷ 280 ≈ 4.3, which rounds up to **5 servers**.
+- To survive one crash at peak, add one more: **6 servers** (often written N+1).
+- The **load balancer itself** is now the single point of failure. Run two in an active and standby pair, or use a
+  managed load balancer that runs redundant copies for you.
+
+</div>
+
+</Challenge>

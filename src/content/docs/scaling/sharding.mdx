@@ -1,0 +1,163 @@
+---
+title: Sharding and consistent hashing
+description: Split the links across many databases, see why hash mod N reshuffles almost everything, and fix it with a consistent hashing ring.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import ArcDiagram from '../../../components/viz/ArcDiagram';
+import ShardingWidget from '../../../components/widgets/ShardingWidget';
+
+export const quiz = [
+  {
+    prompt: 'Links live on 9 shards placed with hash mod 9. You add a tenth shard. About what share of links move?',
+    options: [
+      { text: 'About 10%', why: 'That is the minimum, and only consistent hashing gets close to it. With mod N, a link stays put only when both remainders happen to match.' },
+      { text: 'About 50%', why: 'Mod N does worse than half. Try it in the first simulation.' },
+      { text: 'About 90%', correct: true, why: 'With mod N, a link keeps its shard only about 1 time in N + 1. Going from 9 to 10 shards moves roughly 9 links in 10.' },
+      { text: 'All of them', why: 'A few links land on the same shard by chance under both counts, so slightly fewer than all move.' },
+    ],
+  },
+  {
+    prompt: 'On a consistent hashing ring, which links move when a new shard joins?',
+    options: [
+      { text: 'Every link, since the ring gets redrawn', why: 'The ring stays put. Only the new shard\'s points get added to it.' },
+      { text: 'Only links in the arcs the new shard takes over', correct: true, why: 'Each link belongs to the next shard point clockwise. A new point only claims the arc just before it, and only from one neighbor.' },
+      { text: 'A random half of the links', why: 'Placement is deterministic. The same link always hashes to the same spot on the ring.' },
+      { text: 'None, since old links stay where they were', why: 'Some links must move, or the new shard would sit empty. The ring keeps that number near the minimum.' },
+    ],
+  },
+  {
+    prompt: 'Why give each shard many virtual nodes on the ring?',
+    options: [
+      { text: 'To store more copies of each link', why: 'Virtual nodes are extra positions for the same shard. They change placement and store no extra copies.' },
+      { text: 'To even out how much each shard owns', correct: true, why: 'With one point per shard, arcs vary wildly in length. Many small arcs per shard average out to a fair share.' },
+      { text: 'To make lookups faster', why: 'Lookups get slightly slower with more points to search. The goal is balance.' },
+      { text: 'To let shards run on fewer machines', why: 'Each shard is still one machine (or replica set). Virtual nodes only decide which keys it owns.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain sharding and how to pick a shard key.
+- Show why hash mod N moves almost every key when a shard joins.
+- Describe a consistent hashing ring, and how virtual nodes even out the load.
+- Name the costs of sharding: queries that span shards, hot keys, and rebalancing.
+
+</Objectives>
+
+## The failure: one primary runs out of room
+
+At 100 million users, the shortener stores hundreds of terabytes and accepts thousands of new links per second.
+Replicas copied the reads away, but one primary still has to take every write and hold every link. No single machine is
+that big.
+
+The fix is to **split the data**: each database (a **shard**) holds a slice of the links. The question is how to decide
+which shard owns which link.
+
+<Predict
+  client:visible
+  question="Links sit on 4 shards, placed with hash(code) mod 4. You add a fifth shard and switch to mod 5. About what share of the links must move?"
+  options={['About 20%', 'About 50%', 'About 80%', 'All of them']}
+  answer={2}
+>
+
+About **80%**. A link stays put only if `hash mod 4` and `hash mod 5` happen to give the same answer, which happens
+about 1 time in 5. Moving four fifths of hundreds of terabytes while serving traffic is a long, risky migration.
+The ideal is 20%: just enough to fill the new shard.
+
+</Predict>
+
+## The idea: give each link a home
+
+Choose a **shard key**, the field that decides where each record lives. For the shortener, the short code works well:
+every redirect looks up exactly one code, so every redirect touches exactly one shard.
+
+<ArcDiagram stage="shards" caption="Each shard owns a slice of the short codes." />
+
+The simplest placement hashes the key and takes the remainder: `shard = hash(code) mod N`. It spreads links evenly,
+until N changes.
+
+<ShardingWidget client:visible placement="modulo" showPlacement={false} />
+
+## Consistent hashing: a ring instead of a remainder
+
+Picture the hash values arranged around a circle. Each shard sits at a point on the circle. A link hashes to a point too,
+and it belongs to the **first shard clockwise** from it.
+
+When a new shard joins, it lands at one point and takes over only the arc just before it, from a single neighbor.
+Every other link stays where it was. When a shard leaves, its arc passes to the next shard clockwise.
+
+One point per shard leaves arcs of very uneven length, so one shard can own twice its fair share. The fix: give each
+shard many **virtual nodes**, points scattered around the ring. Many small arcs average out.
+
+<Analogy>
+
+Picture a round table where each guest takes the dishes in front of them, up to the next guest on their left. When a
+new guest sits down, only the neighbor on one side passes over some dishes. Everyone else keeps eating. Now give each
+guest several seats spread around the table, and everyone ends up with a fair share.
+
+</Analogy>
+
+## Try it: the ring
+
+Switch between `hash mod N` and the ring, add and remove shards, and slide the virtual nodes from 1 to 64. Watch both
+the share of links that move and how even the load bars get.
+
+<ShardingWidget client:visible placement="ring" virtualNodes={1} />
+
+What to look for:
+
+- **Mod N moves most links** on every change. The ring moves close to the minimum.
+- **One point per shard is lumpy.** The busiest shard can own far more than its share. Raise the virtual nodes and the
+  load bars level out.
+- **Removing a shard** hands its links to its clockwise neighbors. With many virtual nodes, those links spread over all
+  the remaining shards instead of landing on one.
+
+## What sharding costs
+
+- **Queries across shards.** "Show me all links created by Ada" now asks every shard and merges the answers, unless you
+  also keep an index keyed by user.
+- **Hot keys.** One viral link still lives on one shard. Sharding spreads many keys; the cache in front handles a single
+  hot one.
+- **Rebalancing.** Moving data between live shards takes careful tooling, even when the ring keeps the amount small.
+- **No easy joins or transactions** across shards. Keep data that changes together on the same shard.
+
+## Trade-offs
+
+<TradeoffTable title="Placement choices">
+
+| Choice                      | What it buys                                        | What it costs                                                |
+| --------------------------- | --------------------------------------------------- | ------------------------------------------------------------ |
+| hash mod N                  | Simple, even spread, one line of code               | Changing N moves almost every key                            |
+| Consistent hashing ring     | Adding or removing a shard moves about 1/N of keys  | More code, and uneven arcs without virtual nodes             |
+| Many virtual nodes          | Even load, and a lost shard's work spreads widely   | A bigger ring to store and search                            |
+| Range sharding (A to F...)  | Fast range scans, easy to split a busy range        | Sequential keys pile onto one shard                          |
+| Shard by user instead       | One user's links live together                     | Redirects must find the owner first, and big users run hot   |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+A chat app stores messages and wants to shard them. Two candidate shard keys: **message id** or **conversation id**.
+The most common query loads the last 50 messages of one conversation. Which key would you pick, and what risk comes with
+it?
+
+<div slot="answer">
+
+- **Conversation id.** Every message in a conversation lands on the same shard, so loading recent messages touches one
+  shard, and the shard can keep them sorted by time.
+- Message id would scatter a conversation across every shard, so each page load becomes a query to all shards.
+- The risk is **hot conversations**: a huge group chat sends all its traffic to one shard. Teams handle it by splitting
+  very large conversations further (for example by conversation id plus month) and by caching recent messages.
+
+</div>
+
+</Challenge>

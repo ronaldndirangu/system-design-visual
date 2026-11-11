@@ -1,0 +1,11 @@
+---
+interface Props {
+  title: string;
+}
+const { title } = Astro.props;
+---
+
+<figure class="sdv-tradeoffs">
+  <figcaption>{title}</figcaption>
+  <slot />
+</figure>

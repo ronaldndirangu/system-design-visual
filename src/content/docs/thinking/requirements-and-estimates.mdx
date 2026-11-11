@@ -1,0 +1,183 @@
+---
+title: Requirements and estimates
+description: Turn a vague product idea into numbers you can design against. Size a URL shortener from a side project to planet scale.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import EstimatorWidget from '../../../components/widgets/EstimatorWidget';
+
+export const nodes = [
+  { id: 'client', kind: 'client', x: 70, y: 130, label: 'Browser' },
+  { id: 'server', kind: 'server', x: 290, y: 130, label: 'App server' },
+  { id: 'db', kind: 'database', x: 510, y: 130, label: 'Database' },
+];
+export const edges = [
+  { from: 'client', to: 'server' },
+  { from: 'server', to: 'db' },
+];
+export const steps = [
+  {
+    title: 'Two features, nothing more',
+    text: 'People paste a long URL and get a short one back. Anyone who opens the short link lands on the long URL. Analytics and custom names stay out of scope for now.',
+    nodes: ['client'],
+  },
+  {
+    title: 'Create a link: one write',
+    text: 'POST /links sends the long URL. The server picks a short code such as abc123 and stores the pair in the database.',
+    nodes: ['client', 'server', 'db'],
+    flows: ['client>server', 'server>db'],
+  },
+  {
+    title: 'Follow a link: one read',
+    text: 'GET /abc123 asks for the code. The server looks it up and answers with a redirect to the long URL.',
+    nodes: ['client', 'server', 'db'],
+    flows: ['db>server', 'server>client'],
+  },
+  {
+    title: 'Count the arrows',
+    text: 'Each link is written once and clicked many times. That read to write ratio, often 100 to 1 for shorteners, shapes every later design decision.',
+    nodes: ['server', 'db'],
+    flows: ['client>server'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'A service stores 2 million new records a day. About how many writes per second is that on average?',
+    options: [
+      { text: 'About 2', why: 'That would be roughly 170,000 a day. Divide 2,000,000 by 86,400 seconds.' },
+      { text: 'About 23', correct: true, why: '2,000,000 ÷ 86,400 ≈ 23. A handy shortcut: 1 million a day is about 12 per second.' },
+      { text: 'About 230', why: 'That would be 20 million a day. Check the division by 86,400.' },
+      { text: 'About 2,300', why: 'That is two orders of magnitude too high. A day has 86,400 seconds, so daily totals shrink a lot per second.' },
+    ],
+  },
+  {
+    prompt: 'Why multiply the average request rate by a peak factor before counting servers?',
+    options: [
+      { text: 'Traffic arrives unevenly, and servers must survive the busiest minute', correct: true, why: 'Evenings, launches, and viral posts push traffic well above the daily average. Size for the peak, then add headroom.' },
+      { text: 'To pay for more servers than you need, just in case', why: 'The peak factor comes from measured traffic patterns. Headroom for surprises is a separate, smaller margin.' },
+      { text: 'Because servers slow down as they age', why: 'Hardware speed stays roughly constant. The factor models uneven demand.' },
+      { text: 'Because reads cost more than writes', why: 'The read to write ratio handles that separately. The peak factor is about time of day.' },
+    ],
+  },
+  {
+    prompt: 'You expect 3 trillion links over the life of the service. How many base62 characters does a short code need?',
+    options: [
+      { text: '5', why: '62⁵ is about 916 million codes, far short of 3 trillion.' },
+      { text: '6', why: '62⁶ is about 57 billion codes, still short of 3 trillion.' },
+      { text: '7', correct: true, why: '62⁷ is about 3.5 trillion codes, just enough. Many teams add one more character for headroom.' },
+      { text: '10', why: 'Ten characters work, but they make every link longer than it needs to be. Seven already covers 3.5 trillion.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Split a product idea into functional and non-functional requirements.
+- Estimate requests per second, storage, and server count with back-of-envelope math.
+- Explain why the read to write ratio and the peak factor matter more than precision.
+
+</Objectives>
+
+## The failure: a disk that fills in a month
+
+A small team ships a URL shortener on one server with a 100 GB disk. Nobody does the math. A few months later the disk is
+full, writes start failing, and every new short link returns an error.
+
+<Predict
+  client:visible
+  question="The growing startup scale adds 1 million links a day at about 500 bytes each. How much storage do 5 years of links need?"
+  options={['About 1 GB', 'About 100 GB', 'About 1 TB', 'About 100 TB']}
+  answer={2}
+>
+
+1,000,000 links × 365 days × 5 years ≈ 1.8 billion links. At 500 bytes each, that is about **900 GB**, close to 1 TB.
+A 100 GB disk lasts about 200 days at this rate, and much less if traffic grows. Ten minutes of arithmetic would have caught it.
+
+</Predict>
+
+## Requirements come first
+
+Before drawing a single box, write down two lists.
+
+- **Functional requirements** say what the system does: create a short link, and redirect anyone who opens it.
+- **Non-functional requirements** say how well it does it: redirects in under 100 ms, the service stays up 99.9% of the
+  time, and a link never changes once created.
+
+Then list what you will **not** build yet, such as analytics or custom aliases. Saying no out loud keeps the design small.
+
+<StepDiagram client:visible title="The two flows of a URL shortener" nodes={nodes} edges={edges} steps={steps} height={240} />
+
+<Analogy>
+
+Planning a wedding dinner works the same way. You first decide what you serve (the menu), then how well (hot food, no
+long waits). Only then do you count guests, estimate how many arrive at once, and pick the size of the kitchen.
+
+</Analogy>
+
+## Estimates in five lines
+
+Aim for the right **order of magnitude** and round freely: a day has about 100,000 seconds
+(86,400 exactly).
+
+```text
+writes per second = new links per day ÷ 86,400
+reads per second  = writes per second × clicks per link
+peak per second   = (writes + reads) × peak factor
+storage           = links per day × 365 × years × bytes per link
+servers           = peak ÷ (one server's capacity × 0.7)
+```
+
+The 0.7 keeps each server at most 70% busy, so a traffic spike or one lost server does not tip the rest over.
+
+## Try it
+
+Pick a scale and drag the sliders. Watch which numbers jump by a factor of 1,000 and which barely move.
+
+<EstimatorWidget client:visible />
+
+A few things to notice:
+
+- **Reads dwarf writes.** At 100 clicks per link, reads are 99% of all traffic. That is why the next lessons focus on
+  making reads cheap.
+- **Storage grows forever** unless links expire. Retention is a product decision with a big infrastructure bill.
+- **The short code barely grows.** Each extra base62 character multiplies capacity by 62, so 7 characters cover trillions
+  of links.
+
+## Trade-offs
+
+<TradeoffTable title="Every requirement has a price">
+
+| Requirement                    | What it buys                       | What it costs                                  |
+| ------------------------------ | ---------------------------------- | ---------------------------------------------- |
+| Redirects under 100 ms         | Links feel instant                 | Caches and servers close to users              |
+| 99.99% uptime instead of 99.9% | 8 hours less downtime a year       | Redundant servers, databases, and failover     |
+| Keep links forever             | No broken links in old posts       | Storage that grows without limit               |
+| Custom aliases                 | Memorable links such as sho.rt/sale | A uniqueness check on every write              |
+| Click analytics                | Insight for link owners            | A write on every click, so writes match reads  |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+Estimate a **paste sharing site**. People save 100,000 text snippets a day, each about 10 KB. Every paste is read 10 times
+on average, and pastes stay for 2 years. Work out writes per second, reads per second, and total storage.
+
+<div slot="answer">
+
+- Writes: 100,000 ÷ 86,400 ≈ **1.2 per second**.
+- Reads: 1.2 × 10 ≈ **12 per second**. One small server handles this easily.
+- Storage: 100,000 × 365 × 2 × 10 KB ≈ **730 GB**. Storage drives this design far more than traffic does, so cheap
+  object storage beats a bigger database server.
+
+</div>
+
+</Challenge>
