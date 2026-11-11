@@ -286,7 +286,7 @@ export const capstoneScenarios: Record<CapstoneScenarioId, CapstoneScenario> = {
   weak: {
     id: 'weak',
     label: 'Weak evidence',
-    diff: '5 requests. Two have no document that answers them, and one gets an answer that cites a document search never returned. Evidence gate 0.6.',
+    diff: '6 requests. Two have no document that answers them. One answer cites a document search never returned, and one cites a real hit that never states its claim. Evidence gate 0.6.',
     pool: 60,
     requests: [
       {
@@ -347,6 +347,18 @@ export const capstoneScenarios: Record<CapstoneScenarioId, CapstoneScenario> = {
         ],
         invents: 'offered 10% off for students',
         cites: 'pine/student-discount',
+      },
+      {
+        id: 'W6',
+        tenant: 'pine',
+        role: 'customer',
+        text: 'Can I pay for one order with two gift cards?',
+        cacheable: true,
+        hits: [
+          { doc: 'pine/gift-cards', score: 0.74 },
+          { doc: 'pine/returns', score: 0.33 },
+        ],
+        invents: 'promised that two gift cards can pay for one order',
       },
     ],
   },
@@ -589,6 +601,18 @@ export class SupportPipeline {
           note: `The answer cited ${cite}, a document search never returned. Checks rejected it and handed the question to staff.`,
         });
       }
+      // The fixture marks unsupported claims, so this toy support check never errs. Real checks miss some and over-reject some.
+      if (request.invents) {
+        path.push('staff');
+        const cited = getDoc(cite);
+        return done({
+          outcome: 'handoff',
+          cost: MODEL_CALL_UNITS,
+          cites: [],
+          fromCache: false,
+          note: `The answer ${request.invents}, and its cited passage, ${cited?.title ?? cite}, says only: “${cited?.says ?? ''}” The support check rejected the claim and handed the question to staff.`,
+        });
+      }
     }
 
     if (request.refund) return this.refund(request, request.refund, path, done);
@@ -619,10 +643,11 @@ export class SupportPipeline {
   ): RequestResult {
     const amount = money(ask.amount);
     const base = { cost: MODEL_CALL_UNITS, fromCache: false };
-    const duplicate = this.refunded.has(ask.order);
+    const idempotencyKey = `refund:${request.tenant}:${ask.order}`;
+    const duplicate = this.refunded.has(idempotencyKey);
     if (!this.guarded) {
       path.push('tool');
-      this.refunded.add(ask.order);
+      this.refunded.add(idempotencyKey);
       const harm: Harm | undefined = duplicate || !ask.valid ? 'badRefund' : undefined;
       return done({
         ...base,
@@ -643,7 +668,7 @@ export class SupportPipeline {
         ...base,
         outcome: 'answered',
         cites,
-        note: `Idempotency key refund:${ask.order} already exists, so the tool returned the first result. No second refund.`,
+        note: `Idempotency key ${idempotencyKey} already exists, so the tool returned the first result. No second refund.`,
       });
     }
     path.push('staff');
@@ -656,12 +681,12 @@ export class SupportPipeline {
       });
     }
     path.push('tool');
-    this.refunded.add(ask.order);
+    this.refunded.add(idempotencyKey);
     return done({
       ...base,
       outcome: 'refunded',
       cites,
-      note: `The model proposed a ${amount} refund for order ${ask.order}. Staff approved it (${ask.reason}), and the tool ran it once under key refund:${ask.order}.`,
+      note: `The model proposed a ${amount} refund for order ${ask.order}. Staff approved it (${ask.reason}), and the tool ran it once under key ${idempotencyKey}.`,
     });
   }
 }

@@ -18,7 +18,7 @@ export const nodes = [
   { id: 'cache', kind: 'cache', x: 340, y: 60, label: 'Answer cache', sublabel: 'keyed per store' },
   { id: 'index', kind: 'vectorIndex', x: 340, y: 240, label: 'Search', sublabel: 'store and role filter' },
   { id: 'model', kind: 'model', x: 480, y: 150, label: 'Model', sublabel: 'reply or tool call' },
-  { id: 'checks', kind: 'server', x: 620, y: 150, label: 'Checks', sublabel: 'schema, citations' },
+  { id: 'checks', kind: 'server', x: 620, y: 150, label: 'Checks', sublabel: 'schema, cites, support' },
   { id: 'staff', kind: 'client', x: 480, y: 60, label: 'Staff', sublabel: 'reviews, approves' },
   { id: 'tool', kind: 'server', x: 620, y: 60, label: 'Refund tool', sublabel: 'idempotent' },
 ];
@@ -58,7 +58,7 @@ export const steps = [
   },
   {
     title: 'Check before anything leaves',
-    text: 'Code checks the output against its schema and checks that every citation is a chunk search returned for this request. A failure goes to staff instead of the customer.',
+    text: 'Code checks the output against its schema and checks that every citation is a chunk search returned for this request. A support check then asks whether the cited passage states the claim. A failure goes to staff instead of the customer.',
     nodes: ['model', 'checks', 'staff'],
     flows: ['model>checks', 'checks>staff'],
   },
@@ -143,9 +143,9 @@ export const quiz = [
     prompt: 'In Refund requests, the customer double submits the valid refund for order 2201. What stops the second refund?',
     options: [
       {
-        text: 'The idempotency key refund:2201, which makes the tool return the first result',
+        text: 'The idempotency key refund:harbor:2201, which makes the tool return the first result',
         correct: true,
-        why: 'The tool records the key with the first refund. A repeat with the same key returns that record and moves no money.',
+        why: 'The tool records the key with the first refund. A repeat with the same key returns that record and moves no money. The store is part of the key, so Pine\u2019s order 2201 gets its own refund.',
       },
       {
         text: 'Asking the model to remember which refunds it already ran',
@@ -324,18 +324,23 @@ only document. The guarded design answers 4 and hands off 2. Its two handoffs (t
 customer asking about refund flags) find nothing above the evidence gate once search is filtered, so they cost no model
 units. Notice the cache: the guarded lane gets 1 hit instead of 2, because Pine can no longer reuse Harbor's answer.
 
-**Weak evidence.** The prototype answers all 5, and 3 of them state things no document supports: a promise about
-signed first editions, a price match, and a student discount. The guarded design hands off W2 (best score 0.52) and W3
-(0.41) before the model runs. W5 scores 0.62, just above the gate, so the model runs, and its answer cites
-pine/student-discount, a document search never returned. The citation check catches it. Result: 2 answered, 3 handed
-off, and 9 units spent instead of 15. This is the abstention path from [retrieval](../retrieval/).
+**Weak evidence.** The prototype answers all 6, and 4 of them state things no document supports: a promise about
+signed first editions, a price match, a student discount, and two gift cards on one order. The guarded design hands off
+W2 (best score 0.52) and W3 (0.41) before the model runs. W5 scores 0.62, just above the gate, so the model runs, and
+its answer cites pine/student-discount, a document search never returned. The citation check catches it. W6 is harder:
+its answer cites pine/gift-cards, a real hit at 0.74, so the citation check passes. The passage says only that gift
+cards come in amounts from $10 to $200 and never mentions paying with two, so the support check rejects the claim.
+Result: 2 answered, 4 handed off, and 12 units spent instead of 18. This is the abstention path from
+[retrieval](../retrieval/). The fixture marks which claims are unsupported, so this toy support check never errs. A real
+one compares each claim with its cited passage, often with a second model or a trained checker, and it both misses some
+unsupported claims and rejects some good answers.
 
 **Refund requests.** The model asks for a refund on all 4 requests. The prototype runs all of them and pays out $697 it
 should not have: a second $45 for a double submit, a $12 ebook the policy calls final sale, and a $640 bike outside the
 return window. The guarded design sends the first three to staff, who approve one and decline two. The fourth carries
-the idempotency key `refund:2201`, so the tool returns the first result and moves no money. Staff touch 3 requests
-instead of 0. That trade is the point of [agents and tools](../agents/): a model may propose an action, and code plus a
-person decide whether it runs.
+the idempotency key `refund:harbor:2201`, so the tool returns the first result and moves no money. The key includes the
+store, because order numbers are only unique within one store. Staff touch 3 requests instead of 0. That trade is the
+point of [agents and tools](../agents/): a model may propose an action, and code plus a person decide whether it runs.
 
 <Predict
   client:visible
@@ -366,6 +371,7 @@ anyone.
 | Store and visibility filter inside search | Other stores' chunks and staff only rules never reach the model | Every chunk needs the right tags, and a missing tag hides a document |
 | Evidence gate (hand off below 0.6) | Weak questions reach a person instead of a guess | Fewer automatic answers, and the threshold needs tuning on your eval set |
 | Citation check after the model | Catches answers that cite something search never returned | The model call is already paid for, and a strict check rejects some good answers |
+| Support check on the cited passage | Catches a real citation that never states the claim | Another check per answer, and real checkers miss some unsupported claims and reject some good answers |
 | Staff approval on every refund | No refund runs against policy | Staff time on every refund, and customers wait for a person |
 | Idempotency key on the refund tool | A double submit returns the first result | A table of keys, and a careful choice of what counts as the same refund |
 | Budget split per store | One store's spike cannot starve another | Unused share sits idle unless you add a shared burst pool |

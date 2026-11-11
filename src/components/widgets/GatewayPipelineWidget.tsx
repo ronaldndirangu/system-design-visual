@@ -338,7 +338,7 @@ export default function GatewayPipelineWidget({
               policies
                 ? 'The gateway checks each store’s quota and the response cache, calls Medium, validates the reply, and falls back to Small.'
                 : 'The gateway passes every request straight to Medium.'
-            } Medium and Small share an upstream limit of ${UPSTREAM_LIMIT} requests per second. ${nowText}`}
+            } Calls to Medium from all three stores share one upstream limit of ${UPSTREAM_LIMIT} requests per second. Small has no shared limit. ${nowText}`}
           >
             <ArrowDefs id={arrow} />
             {storeLinks.map((edge) => (

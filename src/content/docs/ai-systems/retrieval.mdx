@@ -294,9 +294,9 @@ a book from a wing you may not enter.
 ## Chunking: keep the rule with its exception
 
 Retrieval can only send what a chunk holds. Harbor's return policy is 45 words. Split it every 16 words with no
-overlap, and the first chunk ends at "within 30 days of" while the exception, "except final sale items, which cannot
-be returned", opens the next one. The first chunk matches the question best, so the model gets the rule without the
-exception and answers "Yes" with confidence.
+overlap, and the first chunk ends at "within 30 days of" while the exception, "except final sale items", lands in the
+next one. The first chunk matches the question best, so the model gets the rule without the exception and answers
+"Yes" with confidence.
 
 <Predict
   client:visible
@@ -306,9 +306,9 @@ exception and answers "Yes" with confidence.
 >
 
 **16 words, overlap 8.** Each chunk starts 8 words after the previous one, so one chunk spans the old boundary and holds
-both clauses. Smaller chunks without overlap cut the sentence in even more places. Larger chunks also work on this
-policy: every setting from 20 words up keeps the clauses together. The policy and the matching rule are fixtures, and
-the results are illustrative.
+both clauses. Chunks of 8 or 12 words are shorter than the 13 words from the rule to the end of its exception, so no
+overlap can save them. Larger chunks also work on this policy: every setting from 24 words up keeps the clauses
+together. The policy and the matching rule are fixtures, and the results are illustrative.
 
 </Predict>
 

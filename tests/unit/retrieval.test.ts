@@ -257,15 +257,19 @@ describe('chunking', () => {
 
   it('matches the pinned table of sizes and overlaps', () => {
     const correct = (size: number, overlap: number) => chunkPolicy(size, overlap).correct;
-    expect([correct(8, 0), correct(8, 4), correct(12, 0), correct(16, 0), correct(16, 4)]).toEqual([
-      false,
-      false,
-      false,
-      false,
-      false,
-    ]);
-    expect([correct(12, 4), correct(12, 8), correct(16, 8), correct(20, 0), correct(24, 0)]).toEqual([
-      true,
+    expect([
+      correct(8, 0),
+      correct(8, 4),
+      correct(12, 0),
+      correct(12, 4),
+      correct(12, 8),
+      correct(16, 0),
+      correct(16, 4),
+      correct(20, 0),
+      correct(20, 4),
+      correct(20, 8),
+    ]).toEqual(Array(10).fill(false));
+    expect([correct(16, 8), correct(16, 12), correct(20, 12), correct(24, 0)]).toEqual([
       true,
       true,
       true,
@@ -274,8 +278,8 @@ describe('chunking', () => {
     expect(chunkPolicy(24, 0).chunks).toHaveLength(2);
   });
 
-  it('keeps the exception with the rule at every slider setting from 20 words up', () => {
-    for (let size = 20; size <= 32; size += 4) {
+  it('keeps the exception with the rule at every slider setting from 24 words up', () => {
+    for (let size = 24; size <= 32; size += 4) {
       for (let overlap = 0; overlap < size; overlap += 4) {
         expect(chunkPolicy(size, overlap).correct).toBe(true);
       }

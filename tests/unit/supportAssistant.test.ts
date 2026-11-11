@@ -8,6 +8,7 @@ import {
   finishedCapstone,
   getDoc,
   type PipelineSummary,
+  SupportPipeline,
   summarizePipeline,
 } from '../../src/lib/models/supportAssistant';
 
@@ -97,9 +98,9 @@ describe('support assistant capstone model', () => {
 
   it('pins the weak evidence scenario', () => {
     const { prototype, guarded } = byPipeline('weak');
-    expect(prototype).toMatchObject({ answered: 5, handoff: 0, spent: 15 });
-    expect(prototype.harms.unsupported).toBe(3);
-    expect(guarded).toMatchObject({ answered: 2, handoff: 3, spent: 9, totalHarms: 0 });
+    expect(prototype).toMatchObject({ answered: 6, handoff: 0, spent: 18 });
+    expect(prototype.harms.unsupported).toBe(4);
+    expect(guarded).toMatchObject({ answered: 2, handoff: 4, staffTouches: 4, spent: 12, totalHarms: 0 });
     expect(EVIDENCE_THRESHOLD).toBe(0.6);
   });
 
@@ -110,6 +111,36 @@ describe('support assistant capstone model', () => {
     expect(caught?.outcome).toBe('handoff');
     expect(caught?.path).toContain('checks');
     expect(caught?.cost).toBe(3);
+  });
+
+  it('the support check catches a real citation that does not back the claim', () => {
+    const run = new CapstoneRun('weak');
+    run.finish();
+    const request = capstoneScenarios.weak.requests.find((r) => r.id === 'W6');
+    expect(request?.cites).toBeUndefined();
+    expect(request?.hits[0]?.score).toBeGreaterThanOrEqual(EVIDENCE_THRESHOLD);
+    const [prototype, guarded] = run.lanes.map((lane) => lane.results.find((r) => r.request.id === 'W6'));
+    expect(prototype).toMatchObject({ outcome: 'answered', harm: 'unsupported' });
+    expect(guarded).toMatchObject({ outcome: 'handoff', cost: 3, cites: [] });
+    expect(guarded?.path.slice(-2)).toEqual(['checks', 'staff']);
+  });
+
+  it('keys refunds by tenant, so two stores can refund the same order number', () => {
+    const pipeline = new SupportPipeline('guarded', 60);
+    const ask = { order: '2201', amount: 89, valid: true, reason: 'fixture approval' };
+    const results = (['harbor', 'pine'] as const).map((tenant) =>
+      pipeline.handle({
+        id: `X-${tenant}`,
+        tenant,
+        role: 'customer',
+        text: 'Please refund order 2201.',
+        cacheable: false,
+        hits: [{ doc: `${tenant}/returns`, score: 0.9 }],
+        refund: ask,
+      }),
+    );
+    expect(results.map((r) => r.outcome)).toEqual(['refunded', 'refunded']);
+    expect(results[1]?.note).toContain('refund:pine:2201');
   });
 
   it('pins the refund scenario', () => {

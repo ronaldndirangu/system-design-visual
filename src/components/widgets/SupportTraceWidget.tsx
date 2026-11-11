@@ -63,7 +63,7 @@ const sublabels: Record<SupportPipeline['id'], Record<StageId, string>> = {
     cache: 'scoped key',
     retrieve: 'filtered',
     model: 'fixture',
-    checks: 'citations',
+    checks: 'grounding',
     staff: 'approvals',
     tool: 'one key',
   },

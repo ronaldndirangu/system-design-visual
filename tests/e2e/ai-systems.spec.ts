@@ -480,8 +480,8 @@ test.describe('/ai-systems/support-assistant', () => {
     await chooseScenario(sim, /Weak evidence/);
     await expect(sim.getByText('Ready', { exact: true })).toBeVisible();
     await skipToEnd(sim);
-    await expect(row(sim, 'Harms')).toContainText('3 unsupported answers');
-    await expect(row(sim, 'Handed to staff')).toContainText('3');
+    await expect(row(sim, 'Harms')).toContainText('4 unsupported answers');
+    await expect(row(sim, 'Handed to staff')).toContainText('4');
 
     await chooseScenario(sim, /Refund requests/);
     await expect(sim.getByText('Ready', { exact: true })).toBeVisible();

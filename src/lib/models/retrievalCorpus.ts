@@ -334,11 +334,11 @@ export const EVAL_QUESTIONS: readonly EvalQuestion[] = [
 export const POLICY_DOC = {
   tenant: 'harbor' as TenantId,
   title: 'Harbor Bikes return policy',
-  text: 'Harbor Bikes return policy for orders placed online. Items can be returned within 30 days of delivery, except final sale items, which cannot be returned. Start a return from your order page and print the free label. Refunds reach your card within 5 business days.',
+  text: 'Harbor Bikes return policy for orders placed online. Items can be returned within 30 days of delivery, except final sale items. Start a return from your order page and print the free label. Refunds reach your card within 5 business days after the return arrives.',
   /** Word index span [start, end) of "Items can be returned within 30 days". */
   rule: { start: 8, end: 15 },
-  /** Word index span [start, end) of "except final sale". */
-  exception: { start: 17, end: 20 },
+  /** Word index span [start, end) of "except final sale items", the whole exception clause. */
+  exception: { start: 17, end: 21 },
   question: 'Can I return a sale item?',
   rightAnswer: 'Final sale items cannot be returned. Other items can be returned within 30 days of delivery.',
   wrongAnswer: 'Yes. Items can be returned within 30 days of delivery.',
