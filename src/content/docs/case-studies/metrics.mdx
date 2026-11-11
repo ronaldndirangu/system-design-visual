@@ -1,0 +1,550 @@
+---
+title: Metrics and alerting
+description: Ingest a million samples per second, keep label cardinality bounded, downsample old data, and page people only for real incidents.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import CardinalityWidget from '../../../components/widgets/CardinalityWidget';
+import RetentionTiersWidget from '../../../components/widgets/RetentionTiersWidget';
+import AlertRuleWidget from '../../../components/widgets/AlertRuleWidget';
+
+export const nodes = [
+  { id: 'agents', kind: 'server', x: 70, y: 60, label: 'Agents', sublabel: 'scrape every 10 s' },
+  { id: 'buffer', kind: 'queue', x: 220, y: 60, label: 'Write buffer', sublabel: 'absorbs bursts' },
+  { id: 'dist', kind: 'server', x: 370, y: 60, label: 'Distributor', sublabel: 'hash by series' },
+  { id: 'ingest', kind: 'database', x: 520, y: 60, label: 'Ingesters', sublabel: 'TSDB head in RAM' },
+  { id: 'alerts', kind: 'server', x: 70, y: 210, label: 'Alertmanager', sublabel: 'route, group, silence' },
+  { id: 'query', kind: 'server', x: 220, y: 210, label: 'Queriers', sublabel: 'dashboards, rules' },
+  { id: 'store', kind: 'database', x: 370, y: 210, label: 'Object storage', sublabel: 'compressed blocks' },
+  { id: 'compactor', kind: 'server', x: 520, y: 210, label: 'Compactor', sublabel: 'merge, downsample' },
+];
+
+export const edges = [
+  { from: 'agents', to: 'buffer' },
+  { from: 'buffer', to: 'dist' },
+  { from: 'dist', to: 'ingest' },
+  { from: 'ingest', to: 'store' },
+  { from: 'compactor', to: 'store', dashed: true },
+  { from: 'query', to: 'ingest' },
+  { from: 'query', to: 'store' },
+  { from: 'query', to: 'alerts' },
+];
+
+export const steps = [
+  {
+    title: 'Scrape and batch',
+    text: 'An agent on each host reads every exporter every 10 s, batches the samples, compresses the batch, and pushes it. 10,000 hosts with 1,000 series each make 1,000,000 samples per second.',
+    nodes: ['agents'],
+  },
+  {
+    title: 'Buffer the bursts',
+    text: 'A write buffer absorbs bursts and short outages further down the path. Some designs put a Kafka style log here; others rely on each agent keeping a retry queue on disk.',
+    nodes: ['agents', 'buffer'],
+    flows: ['agents>buffer'],
+  },
+  {
+    title: 'Hash each series',
+    text: 'The distributor checks labels and limits, hashes the metric name plus its labels, and sends each series to the 3 ingesters that own that hash.',
+    nodes: ['buffer', 'dist', 'ingest'],
+    flows: ['buffer>dist', 'dist>ingest'],
+  },
+  {
+    title: 'Hold the head in memory',
+    text: 'Ingesters append samples to an in-memory head block and a write-ahead log. Every 2 hours they cut an immutable, compressed block and upload it to object storage.',
+    nodes: ['ingest', 'store'],
+    flows: ['ingest>store'],
+  },
+  {
+    title: 'Compact and downsample',
+    text: 'The compactor merges small blocks into large ones, removes the duplicate copies the 3 replicas wrote, builds 1 minute and 1 hour rollups, and deletes blocks past retention.',
+    nodes: ['compactor', 'store'],
+    flows: ['compactor>store'],
+  },
+  {
+    title: 'Answer queries',
+    text: 'Queriers fan out by time: the last few hours come from ingesters, older data from object storage. Long ranges read rollups instead of raw samples.',
+    nodes: ['query', 'ingest', 'store'],
+    flows: ['query>ingest', 'query>store'],
+  },
+  {
+    title: 'Evaluate alert rules',
+    text: 'A ruler runs every alert rule through the same query path every 30 s and sends firing alerts to Alertmanager, which groups, routes, and silences them.',
+    nodes: ['query', 'alerts'],
+    flows: ['query>alerts'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'A request counter already has status and host labels. Which extra label belongs on it?',
+    options: [
+      {
+        text: 'user_id',
+        why: 'Every user creates new series for each status and host they touch, so the count grows with every signup. Per-user detail belongs in logs, traces, or an analytics store.',
+      },
+      {
+        text: 'The raw path, such as /orders/88123',
+        why: 'Anyone can mint new path values, including scanners. In the bot scan run, raw paths created 2,193 series and pushed the ingester to its limit.',
+      },
+      {
+        text: 'request_id',
+        why: 'The worst choice: every request becomes a new series that counts to 1 and then sits in memory, exported on every scrape.',
+      },
+      {
+        text: 'The route template, such as /orders/:id',
+        correct: true,
+        why: 'Routes come from your code, so their count is small and known in advance. In the duel, the allowlist lane never needs more than 108 series.',
+      },
+    ],
+  },
+  {
+    prompt: 'What mostly decides how much memory an ingester needs?',
+    options: [
+      {
+        text: 'Samples per second, since every sample waits in memory until someone queries it',
+        why: 'Samples compress to about 1.37 bytes and leave memory in each 2 hour block. Scraping twice as often adds bytes per series, while a new series adds a whole index entry and open chunk.',
+      },
+      {
+        text: 'The number of active series, since each holds an index entry and an open chunk',
+        correct: true,
+        why: 'At about 3 KB a series, 10 million series need about 30 GB per replica whatever the scrape interval. That is why one label can sink an ingester.',
+      },
+      {
+        text: 'The number of dashboards people have open',
+        why: 'Queries use CPU and short-lived memory. The memory an ingester keeps is its head block, sized by series count.',
+      },
+      {
+        text: 'How long data is retained',
+        why: 'Old blocks live in object storage. Retention changes the storage bill; the ingester holds only the last couple of hours.',
+      },
+    ],
+  },
+  {
+    prompt: 'A dashboard shows 30 days of checkout errors. With the tiers in this lesson, what answers it?',
+    options: [
+      {
+        text: 'Raw 10 s samples, 259,200 points per series',
+        why: 'Raw samples are kept for only 7 days here, and 259,200 points is 6 times more than the minute tier needs to draw the same chart.',
+      },
+      {
+        text: '1 minute rollups, 43,200 points per series',
+        correct: true,
+        why: 'The minute tier is the finest tier that still covers 30 days, so the planner picks it.',
+      },
+      {
+        text: '1 hour rollups, 720 points per series',
+        why: 'The hourly tier could draw it, but the planner picks the finest tier that covers the range. Hourly data answers the 1 year range, with 8,760 points.',
+      },
+      {
+        text: 'Whichever tier is newest, 360 points per series',
+        why: '360 points is the 1 hour range on raw data. The range a dashboard asks for decides the tier.',
+      },
+    ],
+  },
+  {
+    prompt: 'What does a for duration of 2 minutes on an alert rule buy, and what does it cost?',
+    options: [
+      {
+        text: 'The rule runs every 2 minutes, which saves query load',
+        why: 'The evaluation interval is a separate setting, 30 s in this lesson. The for duration says how long the condition must keep holding.',
+      },
+      {
+        text: 'Spikes shorter than 2 minutes never page, and real incidents page 2 minutes later',
+        correct: true,
+        why: 'In the alert widget, 2 minutes removes both false pages and pages at 8.5 min, 2 minutes after the incident starts.',
+      },
+      {
+        text: 'The alert stays quiet for 2 minutes after it fires',
+        why: 'That describes a silence, which people set in Alertmanager. The for duration acts before the alert fires.',
+      },
+      {
+        text: 'The error rate is averaged over 2 minutes',
+        why: 'The range inside rate(...[5m]) sets the averaging window. The for duration asks every evaluation in a row to stay above the threshold.',
+      },
+    ],
+  },
+];
+
+This case study builds on the **Async and streaming** module, especially Logs and pub/sub (the write buffer is a log) and
+Stream processing (rollups and alert rules are continuous queries over a stream of samples). It also pairs with
+Observability in the Reliability module, which covers what to measure; this lesson covers the system that stores it.
+
+<Objectives>
+
+- Estimate series count from label cardinalities and explain why ingester memory follows series count.
+- Predict what an unbounded label does to an ingester, and keep labels bounded with route templates, allowlists, and
+  limits.
+- Pick the downsampling tier that answers a dashboard range and size the storage it saves.
+- Tune an alert rule's `for` duration to trade false pages against detection delay.
+
+</Objectives>
+
+## The failure: one label on launch day
+
+A team counts requests with `requests_total{path, status, host}`. Before launch day, a developer adds `user_id` to the
+counter so support can see which customers hit errors. The change is one line, it passes review, and it ships in the
+morning.
+
+<Predict
+  client:visible
+  question="Launch traffic arrives, new users sign up all morning, and checkout starts failing at midday. The ingester has a limit of 1,000 series. What happens?"
+  options={[
+    'Nothing visible; each label costs a little disk',
+    'It fills its series limit, rejects new series, and most new checkout errors go uncounted',
+    'It slows down but stores every sample',
+    'It merges the series of each user so the count stays flat',
+  ]}
+  answer={1}
+>
+
+**It fills its series limit, then drops the errors you needed.** In the replay below, launch traffic pushes the raw
+label ingester past 800 series at 9 s and to its 1,000 series limit at 11.5 s. Every route fails about 1 request in 100
+all along, and checkout starts failing at 15 s. Each checkout 500 for a new user is a new series, so the ingester
+rejects it: the raw lane counts 3 of 45 checkout 500s, while the allowlist lane counts all 45. The checkout error panel
+and its alert see 3 of the 45 errors. A real ingester with no limit keeps allocating memory until it runs out and restarts, taking every series
+with it. You can replay this run in the deep dive.
+
+</Predict>
+
+## The constraint: write volume and series count
+
+Most systems in this course read far more than they write. A metrics store inverts that. Every host reports every series
+every 10 seconds whether anyone looks or not, so writes arrive as a steady flood, and almost every sample is read only as
+part of an aggregate: a sum over hosts, a rate over five minutes, one line on a chart.
+
+Two numbers decide the cost. **Samples per second** drive CPU, network, and disk, and samples compress to under a byte and
+a half each. **Active series** drive memory: each one holds an index entry and an open chunk in the ingester, whatever its
+sample rate. A series is cheap to add and expensive to keep, and the label set decides how many exist. The dangerous
+input here is a label value, a string a developer adds in one line of code.
+
+Losing a few samples is tolerable, since the next scrape 10 seconds later replaces them. Losing a whole series silently
+blinds every dashboard and alert built on it.
+
+The rest of this lesson walks the [design checklist](../../thinking/design-checklist/).
+
+## Requirements
+
+**Functional**
+
+- Accept samples from thousands of hosts: a metric name, a set of labels, a timestamp, and a float value.
+- Answer aggregate queries over time ranges for dashboards: rates, sums, and percentiles grouped by label.
+- Evaluate alert rules continuously and route firing alerts to the right on-call person.
+- Keep recent data at full resolution, keep older data at lower resolution, then delete it.
+
+**Non-functional** (illustrative targets)
+
+- Ingest 1,000,000 samples per second, with headroom for bursts.
+- Make new samples queryable within about 30 seconds.
+- Return a 1 day dashboard panel in under 2 seconds.
+- Evaluate alert rules every 30 seconds.
+- Stop one team's label mistake from taking down every other team's metrics.
+
+## Estimates
+
+These numbers are illustrative, chosen to show the shape of the problem (see
+[requirements and estimates](../../thinking/requirements-and-estimates/) for the method).
+
+| Quantity                       | Illustrative value                                       |
+| ------------------------------ | -------------------------------------------------------- |
+| Hosts                          | 10,000                                                   |
+| Active series per host         | 1,000                                                    |
+| Active series                  | 10,000,000                                               |
+| Scrape interval                | 10 s                                                     |
+| Samples per second             | 10,000,000 ÷ 10 s = 1,000,000                            |
+| Raw sample size                | 16 bytes (8 byte timestamp, 8 byte float)                |
+| Compressed sample size         | about 1.37 bytes (Gorilla style), 11.68× smaller         |
+| Samples per day                | 86.4 billion                                             |
+| Bytes per day, compressed      | about 118 GB (about 1.38 TB uncompressed)                |
+| Memory per active series       | about 3 KB (index entry plus open chunk)                 |
+| Memory for all active series   | about 30 GB per replica, about 90 GB with 3 replicas     |
+
+Two things stand out. First, compression makes disk the easy part: a day of a million samples per second fits in about
+118 GB. Second, memory follows series count. Scraping twice as often doubles the samples and barely moves memory;
+doubling the series doubles memory. The label set from the failure shows the danger: 20 endpoints × 5 status codes × 50
+hosts is 5,000 series, about 15 MB. Add `user_id` with 100,000 values and the worst case is 500,000,000 series, about
+1.5 TB of memory.
+
+## API
+
+```text
+POST /api/v1/push                       (remote write: a compressed batch of many series)
+  series: [
+    { labels: { __name__: "requests_total", route: "/checkout", status: "500", host: "h3" },
+      samples: [[1718000000000, 1042], [1718000010000, 1047]] }
+  ]
+  -> 200 OK, or a 4xx error naming the limit hit (the sender should not retry it)
+
+GET /api/v1/query_range?start=...&end=...&step=60s
+  query: sum by (status) (rate(requests_total{route="/checkout"}[5m]))
+  -> one line per status value, one point per step
+
+Alert rule (stored, evaluated every 30 s):
+  alert: CheckoutErrors
+  expr:  sum(rate(requests_total{route="/checkout", status="500"}[5m]))
+           / sum(rate(requests_total{route="/checkout"}[5m])) > 0.05
+  for:   2m
+  labels: { severity: page, team: payments }
+```
+
+Writes are batched pushes, so a million samples per second arrive as a few thousand requests. Reads select series by
+label matchers, which makes labels the only handle a query has: whatever you cannot label, you cannot group by. An alert
+rule is a stored query plus a `for` duration and routing labels.
+
+## Data model
+
+| Piece           | What it holds                                                    | Illustrative size                 |
+| --------------- | ---------------------------------------------------------------- | --------------------------------- |
+| Series identity | Metric name plus sorted label pairs, hashed to a series id       | One index entry per series        |
+| Sample          | A millisecond timestamp and a 64 bit float                       | 16 B raw, about 1.37 B compressed |
+| Chunk           | Up to about 120 samples of one series, compressed together       | A few hundred bytes               |
+| Head block      | The open chunk of every active series, plus a write-ahead log    | About 3 KB per series, in RAM     |
+| Block           | 2 hours of chunks plus an inverted index from labels to series   | Uploaded to object storage        |
+| Rollup          | Min, max, sum, and count per series per minute or per hour       | 4 values per point                |
+
+A time series is a metric name plus a set of label key value pairs, and each sample is a timestamp and a float. Change
+any label value and you have a different series, with its own index entry and its own chunk.
+
+Samples compress well because they are boring. Facebook's Gorilla paper (2015) stores each timestamp as the change in
+the gap between samples, which is usually zero for a steady scrape and fits in one bit. It stores each value as the XOR
+with the previous value, which is mostly zero bits when a gauge barely moves. Gorilla reported about 1.37 bytes per
+sample on average, and Prometheus uses the same ideas.
+
+Each ingester keeps the newest samples in an in-memory **head block** and cuts an immutable block every 2 hours. Blocks
+go to object storage, the same cheap, durable store the [video streaming](../video-streaming/) case study uses for
+video segments. Each block carries an inverted index from label values to series, much like the posting lists in the
+[search](../search/) case study, so a query for `route="/checkout"` finds its series without scanning the rest.
+
+## High-level design
+
+Agents scrape every host and push batches through a write buffer to a distributor. The distributor hashes each series to
+choose its ingesters, the way [sharding](../../scaling/sharding/) spreads keys, and writes it to 3 of them so a crash
+loses nothing. Ingesters hold the last couple of hours in memory and upload 2 hour blocks. A compactor merges blocks,
+builds rollups, and deletes expired ones. Queriers read recent data from ingesters and older data from object storage,
+and the ruler uses the same queriers to evaluate alerts every 30 seconds.
+
+<StepDiagram client:visible title="Write path, read path, and alert path" nodes={nodes} edges={edges} steps={steps} height={290} />
+
+<Analogy title="A filing cabinet with one folder per label combination">
+
+An ingester is a clerk with a filing cabinet. Each label combination gets its own folder, and each sample is a thin
+sheet dropped into the right folder. Sheets are cheap: thousands fit in a folder. Folders are expensive: each takes a
+slot in the drawer, and the drawers are full at 1,000 folders. Add `user_id` and every new customer needs a folder of
+their own for each page and host they touch. The drawers fill with folders holding a few sheets each, and the clerk
+starts turning away new folders, including the one labeled "checkout, 500".
+
+</Analogy>
+
+## Deep dive: keep labels bounded
+
+### Series multiply
+
+The worst case series count is the product of the label cardinalities. 20 endpoints × 5 status codes × 50 hosts is
+5,000 series. Add `user_id` with 100,000 values and the worst case becomes 500,000,000. Real counts are lower, since one
+user touches a handful of endpoints through a few hosts and mostly gets 200s. The count still grows with every new user,
+though, and it has no ceiling you control.
+
+Labels that are safe have values you can list in advance: route templates, status codes, hosts, regions. Labels that
+are dangerous come from the outside world: user ids, raw paths, email addresses, request ids, error message text.
+
+### What the ingester does at the limit
+
+Real systems fail in one of three ways when series explode:
+
+- **Per tenant series limit.** Mimir and Cortex reject samples for new series once a tenant reaches its limit, and keep
+  accepting samples for series they already hold. The toy below works this way.
+- **Per scrape sample limit.** Prometheus's `sample_limit` fails the whole scrape of a target that exports too many
+  samples, so every metric from that target vanishes at once.
+- **No limit.** Memory grows until the process runs out and restarts, and the restart replays a write-ahead log that
+  holds the same explosion.
+
+The first is the gentlest and still nasty: the series it rejects are the new ones. A brand new error is often a new
+series. The first checkout 500 on a host, or for a user, arrives after the limit, so the ingester drops exactly the
+signal the incident creates.
+
+### Try it
+
+Both lanes below receive the same seeded request stream, with new users arriving throughout. The raw labels lane keeps
+`path` and `user_id`. The allowlist lane relabels at ingest, keeping only `route`, `status`, and `host`. Each lane feeds
+a toy ingester with a limit of 1,000 series, about 3 MB. Every route fails about 1 request in 100 all along, and
+checkout starts failing at 15 s in every scenario.
+
+<CardinalityWidget client:visible initial="launch" />
+
+What to look for:
+
+- **The limit arrives before the incident.** On launch day the raw lane passes 800 series at 9 s and reaches 1,000 at
+  11.5 s. By the end it has created 2,570 series and stored 1,000. Checkout fails at 15 s, and the raw lane counts 3 of
+  45 checkout 500s. The allowlist lane ends at 75 series and counts all 45.
+- **Every sample is accounted for.** Received equals stored plus rejected: in the raw lane, 79,041 received is 49,716
+  stored plus 29,325 rejected. The allowlist lane rejects none.
+- **The dashboard pays too.** The checkout error panel reads 82 series in the raw lane and 12 in the allowlist lane, and
+  the cheaper query is also the correct one.
+- **Steady traffic looks harmless.** Pick it and the raw lane never hits the limit: 756 series at the end, 0 samples
+  rejected, 13 of 13 checkout 500s counted. Watch the line, though. It reached 445 series at 15 s and kept climbing by
+  311 more in the second half, while the allowlist lane ended at 60. A week of staging traffic looks like this, which is
+  how the label passes review.
+- **A bot scan needs no new users.** With `path` as a label, a scanner probing random URLs mints 2,193 series and hits
+  the limit at 13.5 s, and the raw lane counts 0 of 17 checkout 500s. The allowlist maps every unknown path to
+  `route="unmatched"` and ends at 61 series.
+
+### Fixes, from the source outward
+
+- **Label with route templates.** Instrument at the router, so the label reads `/orders/:id` and never `/orders/88123`.
+  In the duel the allowlist lane can never exceed 9 routes (8 plus `unmatched`) × 3 statuses × 4 hosts = 108 series.
+- **Aggregate before sending.** The toy's allowlist lane sums `user_id` away. In Prometheus, dropping a label with
+  `labeldrop` in `metric_relabel_configs` leaves several series with identical labels, which collide. The clean fix is
+  in the instrumentation, or in an agent that aggregates before it sends.
+- **Set limits, then alert on them.** A per scrape `sample_limit` and a per tenant series limit protect the shared
+  ingesters. Rejections are silent data loss, so alert on the rejected sample count itself.
+- **Put per-user detail where it belongs.** Logs, traces, and analytics stores are built for high cardinality: they
+  store each event once and index it for search. The user level events can flow through a log into a stream processor or
+  analytics store, the pattern the Logs and pub/sub and Stream processing lessons cover. Exemplars bridge the two: they
+  attach a trace id to a sample without making it a label.
+
+### Sharding spreads series and keeps the total
+
+The distributor hashes each series to pick its ingesters, so a label explosion lands on every shard at once. Adding
+ingesters buys time and leaves the growth in place. Replication makes it worse: 10 million series at 3 KB is about 30 GB
+per replica and about 90 GB across 3 replicas, and every extra series costs three times.
+
+## Downsampling and retention
+
+Old data is read coarsely. A chart covering a year is a few hundred pixels wide, so reading 3,153,600 raw points per
+series to draw it wastes almost all of the work. The compactor writes rollups alongside the raw data. Each rollup point
+stores **min, max, sum, and count**. An average alone cannot be merged correctly (the average of averages is wrong when
+counts differ) and hides spikes, while sum and count give an exact average at any coarser level and max keeps the spike.
+
+The illustrative tiers:
+
+- **Raw**: one value every 10 s, kept 7 days.
+- **1 minute rollups**: min, max, sum, and count, kept 30 days.
+- **1 hour rollups**: min, max, sum, and count, kept 1 year.
+
+Pick a dashboard range and see which tier answers it. The planner picks the finest tier that still covers the range.
+
+<RetentionTiersWidget client:visible initial="month" />
+
+- **1 hour and 1 day** come from raw samples: 360 and 8,640 points per series.
+- **30 days** comes from minute rollups: 43,200 points per series, 6× fewer than the 259,200 raw points.
+- **1 year** comes from hourly rollups: 8,760 points per series, 360× fewer than the 3,153,600 raw points.
+- **Storage per series** for all three tiers is about 368 KB, against about 4.32 MB to keep a year of raw samples:
+  11.75× less. Across 10 million series that is about 3.68 TB against 43.2 TB.
+
+### Expiry deletes whole blocks
+
+Blocks are immutable and cover a fixed time range, and the compactor merges small blocks into larger ones. Retention
+works on whole blocks: once a block's newest sample ages past the window, the store deletes the block, one object at a
+time. Deleting individual rows would mean rewriting files around tombstones. The price is coarse timing: data can
+outlive its window by up to one block's span.
+
+## Alerting
+
+An alert rule is a stored query the ruler evaluates every 30 seconds over recent raw data, such as "checkout error rate
+above 5%". Each rule moves through three states: **inactive** while the condition is false, **pending** once it is true,
+and **firing** after it has stayed true for the rule's `for` duration. Only firing alerts reach a person.
+
+<Predict
+  client:visible
+  question="An error rate rule pages above 5%. The rate spikes to 12% for one evaluation, blips above 5% for three evaluations, then a real incident starts. How many pages does a for duration of 0 send, and how many does 2 minutes send?"
+  options={[
+    'One page each, both for the incident',
+    'A for of 2 minutes sends nothing, since it ignores everything short',
+    'A for of 0 sends 3 pages, 2 of them false; 2 minutes sends 1, two minutes late',
+    'Three pages each, since every crossing pages',
+  ]}
+  answer={2}
+>
+
+**Three pages against one late page.** With no `for`, every crossing pages at once: the spike at 1.5 min, the blip at 4
+min, and the incident at 6.5 min. Two of those three pages wake someone for nothing. With 2 minutes, neither the spike
+nor the blip lasts long enough, and the incident pages at 8.5 min, 2 minutes after it starts.
+
+</Predict>
+
+One honest note: the toy rule reads each 30 s window's own error rate. Real rules usually wrap the expression in
+`rate(...[5m])`, which smooths spikes too, so the range and the `for` duration share the job.
+
+<AlertRuleWidget client:visible />
+
+With 1 minute, the blip still pages at 5 min (one false page), and the incident pages at 7.5 min. With 5 minutes, the
+only page arrives at 11.5 min, 5 minutes after checkout broke. No setting gives zero false pages and zero delay, so pick
+the `for` from how long a real problem can wait.
+
+Firing alerts go to **Alertmanager**, which decides who hears about them:
+
+- **Grouping** folds 40 hosts failing the same rule into one page.
+- **Routing** sends each alert to a team and channel by its labels, such as `team: payments` and `severity: page`.
+- **Inhibition** mutes the host alerts while a whole data center alert is firing.
+- **Silences** mute matching alerts during planned maintenance, set by a person, with an expiry.
+
+Two habits keep alerting honest. First, alert on what users feel, such as error rate and latency, and let the SLOs and
+measurement lesson's error budgets set the thresholds. Second, alert on the metrics system itself: on launch day the
+checkout error panel saw only 3 of 45 errors because their series were rejected, so a rule on rejected samples, or one
+that fires when an expected series goes missing, catches the failure this lesson opened with.
+
+## Trade-offs
+
+Every fix for cardinality gives up detail somewhere. The question is where the detail lives: in the metrics store,
+where it multiplies memory, or in a store built for one row per event. Downsampling makes the same trade along time,
+giving up shape inside each rollup for cheap long ranges.
+
+<TradeoffTable title="Ways to handle a high-cardinality label">
+
+| Design                                     | What it buys                                                          | What it costs                                                                       |
+| ------------------------------------------ | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Raw labels (keep `user_id`)                | Per-user breakdowns in the metrics store                              | Unbounded series; the ingester hits its limit or runs out of memory                 |
+| Route templates and an allowlist           | Bounded series (at most 108 in the duel); every checkout 500 counted  | Detail dropped at the source; someone maintains the list                            |
+| Per tenant series limit                    | One team's mistake cannot take down the shared ingesters              | New series vanish silently once it trips, so it needs its own alert                 |
+| Per-user detail in logs, traces, analytics | Full detail per request, searchable by user                           | A second system to run and pay for; slower aggregate queries                        |
+| Downsampling tiers                         | 11.75× less storage per series; a 1 year chart reads 8,760 points     | Shape inside each rollup is lost; compactor work; recent data stored in every tier  |
+
+</TradeoffTable>
+
+## Honest simplifications
+
+This lesson's model is a toy. Here is what it leaves out:
+
+- **No idle series expiry.** Every series in the toy exports a sample every tick for the rest of the run. A client
+  library on a long-lived process does keep exporting every labeled counter it has created, but real ingesters drop
+  series that stop receiving samples when they cut the next block.
+- **One ingester per lane.** The duel has no distributor, no replication, and no write-ahead log.
+- **One limit behavior.** The toy rejects samples for new series, as Mimir does. Prometheus's `sample_limit` fails the
+  whole scrape instead, and with no limit the process runs out of memory, which the toy does not model.
+- **Fixed memory per series.** 3 KB per series is a round illustrative figure. Real cost depends on label length, chunk
+  encoding, and how fast series churn.
+- **A sped up clock.** 30 seconds of toy time stands in for hours of user growth.
+- **A simple alert input.** The alert widget evaluates each 30 s window's own error rate over a fixed 13 minute trace.
+- **Overlapping tiers.** Each tier keeps its own full window, so the newest week is stored in all three, and the
+  estimate applies 1.37 bytes to every rollup value, which flatters sums and counts.
+
+## Check yourself
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+Your orders counter has 5,000 series. One team wants a `customer_tier` label with 3 values. Another wants `order_id`,
+at about 1,000,000 orders a day. Using about 3 KB per series, what does each label cost in ingester memory, and where
+should the order detail go instead?
+
+<div slot="answer">
+
+- **`customer_tier`**: the worst case is 5,000 × 3 = 15,000 series, about 45 MB per replica and about 135 MB across 3
+  replicas. The value set is fixed, so the cost is fixed. Add it.
+- **`order_id`**: every order creates at least one new series that counts to 1 and then sits in memory, exported on
+  every scrape. A million orders a day is about 1,000,000 new series and about 3 GB of head memory per replica per day,
+  about 9 GB across 3 replicas, and the total keeps growing. A series limit trips quickly; without one, the ingester
+  runs out of memory.
+- **Where the detail goes**: log each order with its id, or trace it, and query the logs or an analytics store for one
+  customer's orders. Keep the counter on `route`, `status`, and `customer_tier`, and attach a trace id as an exemplar
+  when you want to jump from a spike on the chart to one example order.
+
+</div>
+
+</Challenge>

@@ -373,8 +373,10 @@ export const curriculum: CourseModule[] = [
       {
         id: 'case-studies/metrics',
         title: 'Metrics and alerting',
-        summary: 'Ingest millions of writes per second, control label cardinality, and expire old data.',
-        status: 'soon',
+        summary:
+          'Ingest millions of writes per second, control label cardinality, downsample, and expire old data.',
+        status: 'ready',
+        minutes: 25,
         bestAfter: 'async',
       },
       {
