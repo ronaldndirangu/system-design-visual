@@ -193,22 +193,23 @@ diagrams still read in grayscale. The source of truth is `src/components/viz/kin
 | Component     | Shape                                                  | Color    | Role                                                  |
 | ------------- | ------------------------------------------------------ | -------- | ----------------------------------------------------- |
 | Client        | Rounded rectangle with a screen icon                   | Blue     | A browser or app that starts a request                |
-| DNS           | Card with a folded corner and a globe icon             | Teal     | Turns a name into an IP address                       |
+| DNS           | Card with a folded corner and a globe icon             | Sky blue | Turns a name into an IP address                       |
 | Server        | Rack box with side stripes                             | Violet   | Runs your application code                            |
-| Load balancer | Hexagon with a split arrow                             | Amber    | Spreads requests across servers, skips unhealthy ones |
-| Cache         | Square with a dashed inner border and a lightning bolt | Rose     | Keeps popular answers in memory                       |
-| Database      | Cylinder                                               | Green    | Stores data durably on disk                           |
-| Queue         | Pill with slots                                        | Cyan     | Holds work until a consumer is ready                  |
+| Load balancer | Hexagon with a split arrow                             | Yellow   | Spreads requests across servers, skips unhealthy ones |
+| Cache         | Square with a dashed inner border and a lightning bolt | Magenta  | Keeps popular answers in memory                       |
+| Database      | Cylinder                                               | Teal     | Stores data durably on disk                           |
+| Queue         | Pill with slots                                        | Slate    | Holds work until a consumer is ready                  |
 | CDN           | Cloud                                                  | Sky blue | Serves content close to people                        |
-| Model         | Chip with pins on both sides and a sparkle icon        | Fuchsia  | A machine learning model that turns input into output |
-| Vector index  | Slanted card with a scatter plot icon                  | Lime     | Finds stored items whose embeddings are closest       |
+| Model         | Chip with pins on both sides and a sparkle icon        | Pink     | A machine learning model that turns input into output |
+| Vector index  | Slanted card with a scatter plot icon                  | Teal     | Finds stored items whose embeddings are closest       |
 
 Status always pairs a color with an icon and a word: **Healthy** (check), **Strained** (exclamation mark), and **Down**
 (cross). In physics scenes, requests are balls: a solid ball is waiting, a ring was served, and a cross was dropped.
 
 When you add a new kind of component, add it to `kinds.ts`, `SystemNode.tsx`, and `icons.tsx`, give it a color for both
-themes (the AI kinds keep theirs in `src/components/viz/aiKinds.css`), then update this table. The AI systems module
-draws an AI gateway with the load balancer shape and a tool with the server shape, since both are ordinary services.
+themes in `src/styles/theme.css` (no kind may use a green, orange, or red hue, since those mean status), then update this
+table. The AI systems module draws an AI gateway with the load balancer shape and a tool with the server shape, since
+both are ordinary services.
 
 ## Pull requests
 

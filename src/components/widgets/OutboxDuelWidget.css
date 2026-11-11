@@ -1,4 +1,4 @@
-/* Outbox duel widget: the database is green, the broker is a queue (cyan), the relay is a server (violet). Click cells use a pattern per state. */
+/* Outbox duel widget: the database is teal, the broker is a queue (slate), the relay is a server (violet). Click cells use a pattern per state. */
 
 .sdv-outbox__path {
   color: var(--sl-color-gray-2);

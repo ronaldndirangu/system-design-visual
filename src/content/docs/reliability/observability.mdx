@@ -25,9 +25,9 @@ export const edges = [
   { from: 'client', to: 'gateway' },
   { from: 'gateway', to: 'api' },
   { from: 'api', to: 'db' },
-  { from: 'gateway', to: 'collector' },
-  { from: 'api', to: 'collector' },
-  { from: 'db', to: 'collector' },
+  { from: 'gateway', to: 'collector', dashed: true },
+  { from: 'api', to: 'collector', dashed: true },
+  { from: 'db', to: 'collector', dashed: true },
 ];
 export const steps = [
   {

@@ -24,9 +24,9 @@ export const nodes = [
 
 export const edges = [
   { from: 'redirect', to: 'db' },
-  { from: 'db', to: 'relay' },
-  { from: 'relay', to: 'topic' },
-  { from: 'topic', to: 'analytics' },
+  { from: 'db', to: 'relay', dashed: true },
+  { from: 'relay', to: 'topic', dashed: true },
+  { from: 'topic', to: 'analytics', dashed: true },
   { from: 'analytics', to: 'counts' },
 ];
 

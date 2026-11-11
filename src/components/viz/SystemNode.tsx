@@ -1,4 +1,3 @@
-import './aiKinds.css';
 import { KindIcon, StatusBadge } from './icons';
 import { type ComponentKind, kinds, type NodeStatus } from './kinds';
 

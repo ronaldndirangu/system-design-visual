@@ -1,5 +1,8 @@
 import type MatterNamespace from 'matter-js';
 import { type RefObject, useEffect, useRef, useState } from 'react';
+import { type Palette, readPalette } from './drawing';
+
+export { drawBall, hexagon, type Palette, readPalette } from './drawing';
 
 export type Matter = typeof MatterNamespace;
 
@@ -9,40 +12,6 @@ let matterPromise: Promise<Matter> | undefined;
 export function loadMatter(): Promise<Matter> {
   matterPromise ??= import('matter-js').then((mod) => mod.default);
   return matterPromise;
-}
-
-export interface Palette {
-  request: string;
-  ok: string;
-  bad: string;
-  warn: string;
-  text: string;
-  muted: string;
-  line: string;
-  surface: string;
-  client: string;
-  server: string;
-  lb: string;
-  font: string;
-}
-
-export function readPalette(element: Element): Palette {
-  const style = getComputedStyle(element);
-  const read = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
-  return {
-    request: read('--sdv-client', '#60a5fa'),
-    ok: read('--sdv-ok', '#4ade80'),
-    bad: read('--sdv-bad', '#f87171'),
-    warn: read('--sdv-warn', '#fbbf24'),
-    text: read('--sl-color-white', '#ffffff'),
-    muted: read('--sl-color-gray-2', '#c0c2c7'),
-    line: read('--sl-color-gray-4', '#545861'),
-    surface: read('--sl-color-bg', '#17181c'),
-    client: read('--sdv-client', '#60a5fa'),
-    server: read('--sdv-server', '#a78bfa'),
-    lb: read('--sdv-lb', '#fbbf24'),
-    font: read('--sl-font', 'system-ui, sans-serif'),
-  };
 }
 
 export interface Scene {
@@ -117,7 +86,11 @@ export function usePhysicsScene<T extends Scene>(
         resizeObserver.observe(canvas);
         cleanups.push(() => resizeObserver.disconnect());
 
-        const themeObserver = new MutationObserver(() => current?.setPalette(readPalette(canvas)));
+        const themeObserver = new MutationObserver(() => {
+          current?.setPalette(readPalette(canvas));
+          // A paused loop draws nothing, so repaint the frozen frame in the new colors.
+          if (pausedRef.current) current?.frame(0);
+        });
         themeObserver.observe(document.documentElement, {
           attributes: true,
           attributeFilter: ['data-theme'],
@@ -169,50 +142,4 @@ export function createStepper(stepMs = 1000 / 60, maxSteps = 4) {
     }
     if (steps === maxSteps) carry = 0;
   };
-}
-
-export function drawBall(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  r: number,
-  style: 'filled' | 'ring' | 'cross',
-  color: string,
-  alpha = 1,
-) {
-  ctx.globalAlpha = alpha;
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  if (style === 'ring') {
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = color;
-    ctx.stroke();
-  } else {
-    ctx.fillStyle = color;
-    ctx.fill();
-  }
-  if (style === 'cross') {
-    const d = r * 0.5;
-    ctx.beginPath();
-    ctx.moveTo(x - d, y - d);
-    ctx.lineTo(x + d, y + d);
-    ctx.moveTo(x + d, y - d);
-    ctx.lineTo(x - d, y + d);
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#0b0f19';
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-}
-
-export function hexagon(ctx: CanvasRenderingContext2D, cx: number, cy: number, w: number, h: number) {
-  const inset = Math.min(14, w / 4);
-  ctx.beginPath();
-  ctx.moveTo(cx - w / 2, cy);
-  ctx.lineTo(cx - w / 2 + inset, cy - h / 2);
-  ctx.lineTo(cx + w / 2 - inset, cy - h / 2);
-  ctx.lineTo(cx + w / 2, cy);
-  ctx.lineTo(cx + w / 2 - inset, cy + h / 2);
-  ctx.lineTo(cx - w / 2 + inset, cy + h / 2);
-  ctx.closePath();
 }

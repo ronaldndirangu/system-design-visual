@@ -29,25 +29,47 @@
   --sdv-accent-subtle: #1c1d3f;
   --sdv-accent-border: #3b3a85;
 
+  /* Component kinds tint strokes, icons and labels. No kind uses a green, orange or red hue,
+     so a kind color never reads as a status. */
   --sdv-client: #60a5fa;
-  --sdv-dns: #2dd4bf;
   --sdv-server: #a78bfa;
-  --sdv-lb: #fbbf24;
-  --sdv-cache: #fb7185;
-  --sdv-db: #4ade80;
-  --sdv-queue: #22d3ee;
-  --sdv-cdn: #38bdf8;
+  --sdv-lb: #facc15;
+  --sdv-cache: #e879f9;
+  --sdv-db: #2dd4bf;
+  --sdv-queue: #94a3b8;
+  --sdv-edge-kind: #7dd3fc;
+  --sdv-model: #f9a8d4;
 
   --sdv-ok: #4ade80;
-  --sdv-warn: #fbbf24;
+  --sdv-warn: #fb923c;
   --sdv-bad: #f87171;
   --sdv-ok-soft: #0f2a1b;
   --sdv-warn-soft: #2d1d0e;
   --sdv-bad-soft: #2d1416;
   --sdv-ink-on-status: #0b0f19;
-  --sdv-series-a: #60a5fa;
-  --sdv-series-b: #fb923c;
-  --sdv-series-c: #e879f9;
+
+  /* Kinds without their own hue borrow their family's. */
+  --sdv-dns: var(--sdv-edge-kind);
+  --sdv-cdn: var(--sdv-edge-kind);
+  --sdv-vector: var(--sdv-db);
+
+  /* SVG dots and canvas balls both draw requests in the packet color. */
+  --sdv-packet: var(--sdv-client);
+
+  /* Chart series pair a hue with a line style: a solid, b dashed 7 4, c dotted 2 4. */
+  --sdv-series-a: var(--sdv-client);
+  --sdv-series-b: var(--sdv-cache);
+  --sdv-series-c: var(--sdv-db);
+
+  /* Partitions A to H. Cells with text use a 22% tint; arcs and dots use the full hue. */
+  --sdv-shard-0: var(--sdv-client);
+  --sdv-shard-1: var(--sdv-server);
+  --sdv-shard-2: var(--sdv-lb);
+  --sdv-shard-3: var(--sdv-cache);
+  --sdv-shard-4: var(--sdv-db);
+  --sdv-shard-5: var(--sdv-edge-kind);
+  --sdv-shard-6: var(--sdv-model);
+  --sdv-shard-7: var(--sdv-queue);
 
   --sdv-shadow-overlay: 0 12px 32px rgb(0 0 0 / 0.35);
 
@@ -183,25 +205,22 @@
   --sdv-accent-subtle: #eef0ff;
   --sdv-accent-border: #c7cbfd;
 
-  --sdv-client: #1d4ed8;
-  --sdv-dns: #0f766e;
-  --sdv-server: #6d28d9;
-  --sdv-lb: #b45309;
-  --sdv-cache: #be123c;
-  --sdv-db: #15803d;
-  --sdv-queue: #0e7490;
-  --sdv-cdn: #0369a1;
+  --sdv-client: #2563eb;
+  --sdv-server: #7c3aed;
+  --sdv-lb: #a16207;
+  --sdv-cache: #a21caf;
+  --sdv-db: #0f766e;
+  --sdv-queue: #475569;
+  --sdv-edge-kind: #0369a1;
+  --sdv-model: #9d174d;
 
   --sdv-ok: #15803d;
-  --sdv-warn: #b45309;
+  --sdv-warn: #c2410c;
   --sdv-bad: #b91c1c;
   --sdv-ok-soft: #ecfdf3;
   --sdv-warn-soft: #fff7ed;
   --sdv-bad-soft: #fef2f2;
   --sdv-ink-on-status: #ffffff;
-  --sdv-series-a: #1d4ed8;
-  --sdv-series-b: #c2410c;
-  --sdv-series-c: #a21caf;
 
   --sdv-shadow-overlay: 0 12px 32px rgb(16 24 40 / 0.12);
 
@@ -273,9 +292,40 @@ body {
 .sdv-node--cdn {
   --node: var(--sdv-cdn);
 }
+.sdv-node--model {
+  --node: var(--sdv-model);
+}
+.sdv-node--vectorIndex {
+  --node: var(--sdv-vector);
+}
+
+[data-shard="0"] {
+  --shard: var(--sdv-shard-0);
+}
+[data-shard="1"] {
+  --shard: var(--sdv-shard-1);
+}
+[data-shard="2"] {
+  --shard: var(--sdv-shard-2);
+}
+[data-shard="3"] {
+  --shard: var(--sdv-shard-3);
+}
+[data-shard="4"] {
+  --shard: var(--sdv-shard-4);
+}
+[data-shard="5"] {
+  --shard: var(--sdv-shard-5);
+}
+[data-shard="6"] {
+  --shard: var(--sdv-shard-6);
+}
+[data-shard="7"] {
+  --shard: var(--sdv-shard-7);
+}
 
 .sdv-node__shape {
-  fill: color-mix(in oklab, var(--node) 16%, var(--sl-color-bg));
+  fill: color-mix(in oklab, var(--node) 14%, var(--sdv-surface-1));
   stroke: var(--node);
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
@@ -296,29 +346,37 @@ body {
   stroke-linejoin: round;
 }
 .sdv-node__label {
-  fill: var(--sl-color-white);
+  fill: var(--sdv-text-1);
   font-family: var(--sl-font);
   font-size: 14px;
   font-weight: 600;
 }
 .sdv-node__sublabel {
-  fill: var(--sl-color-gray-2);
+  fill: var(--sdv-text-2);
   font-family: var(--sl-font);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .sdv-node--highlight .sdv-node__shape {
   stroke-width: 3.5;
   filter: drop-shadow(0 0 6px color-mix(in oklab, var(--node) 70%, transparent));
 }
 .sdv-node--down .sdv-node__shape {
-  stroke-dasharray: 6 4;
-  fill: color-mix(in oklab, var(--sdv-bad) 10%, var(--sl-color-bg));
+  stroke-dasharray: 4 3;
+  fill: color-mix(in oklab, var(--sdv-bad) 10%, var(--sdv-surface-1));
 }
 .sdv-node--down .sdv-node__icon,
 .sdv-node--down .sdv-node__detail {
   opacity: 0.45;
 }
-.sdv-node--dim {
+/* Dimming fades shapes only; labels drop to text-2 and keep 4.5:1. */
+.sdv-node--dim :is(.sdv-node__shape, .sdv-node__detail, .sdv-node__icon) {
+  fill-opacity: 0.35;
+  stroke-opacity: 0.35;
+}
+.sdv-node--dim :is(.sdv-node__label, .sdv-node__sublabel) {
+  fill: var(--sdv-text-2);
+}
+.sdv-node--dim .sdv-status {
   opacity: 0.35;
 }
 
@@ -344,18 +402,18 @@ body {
   stroke-width: 1.5;
 }
 .sdv-edge--active {
-  stroke: var(--sl-color-text-accent);
+  stroke: var(--sdv-packet);
   stroke-width: 2.5;
 }
 .sdv-edge--dashed {
-  stroke-dasharray: 5 4;
+  stroke-dasharray: 6 4;
 }
 .sdv-arrowhead {
   fill: var(--sl-color-gray-3);
 }
 
 .sdv-dot {
-  fill: var(--sl-color-text-accent);
+  fill: var(--sdv-packet);
 }
 .sdv-dot--hit {
   fill: var(--sdv-ok);

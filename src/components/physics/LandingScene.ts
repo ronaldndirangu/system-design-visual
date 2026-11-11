@@ -456,7 +456,7 @@ export class LandingScene implements Scene {
     for (const ball of this.balls) {
       const { x, y } = ball.body.position;
       if (ball.state === 'served') drawBall(ctx, x, y, RADIUS, 'ring', palette.ok);
-      else if (ball.state === 'dropped') drawBall(ctx, x, y, RADIUS, 'cross', palette.bad);
+      else if (ball.state === 'dropped') drawBall(ctx, x, y, RADIUS, 'cross', palette.bad, 1, palette.ink);
       else drawBall(ctx, x, y, RADIUS, 'filled', palette.request);
     }
 

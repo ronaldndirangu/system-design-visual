@@ -1,4 +1,4 @@
-/* Ack mode widget: the log is a queue (cyan), the consumer is a server (violet). Offset cells use a pattern per state. */
+/* Ack mode widget: the log is a queue (slate), the consumer is a server (violet). Offset cells use a pattern per state. */
 
 .sdv-ack {
   display: flex;

@@ -1,4 +1,4 @@
-/* Component chips: each chip takes its kind color and icon from the shared visual language (client blue, server violet, database green, queue cyan). A stuck chip is hatched and dashed so it reads without color. */
+/* Component chips: each chip takes its kind color and icon from the shared visual language (client blue, server violet, database teal, queue slate). A stuck chip is hatched and dashed so it reads without color. */
 
 .sdv-chips {
   display: flex;

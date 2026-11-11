@@ -28,7 +28,7 @@ export const kinds: Record<ComponentKind, KindInfo> = {
   dns: {
     name: 'DNS',
     shape: 'Card with a folded corner and a globe icon',
-    color: 'Teal',
+    color: 'Sky blue',
     role: 'Turns a name such as sho.rt into an IP address.',
   },
   server: {
@@ -40,25 +40,25 @@ export const kinds: Record<ComponentKind, KindInfo> = {
   loadBalancer: {
     name: 'Load balancer',
     shape: 'Hexagon with a split arrow',
-    color: 'Amber',
+    color: 'Yellow',
     role: 'Spreads requests across servers and skips unhealthy ones.',
   },
   cache: {
     name: 'Cache',
     shape: 'Square with a dashed inner border and a lightning bolt',
-    color: 'Rose',
+    color: 'Magenta',
     role: 'Keeps popular answers in memory for fast reads.',
   },
   database: {
     name: 'Database',
     shape: 'Cylinder',
-    color: 'Green',
+    color: 'Teal',
     role: 'Stores data durably on disk.',
   },
   queue: {
     name: 'Queue',
     shape: 'Pill with slots',
-    color: 'Cyan',
+    color: 'Slate',
     role: 'Holds work until a consumer is ready for it.',
   },
   cdn: {
@@ -70,13 +70,13 @@ export const kinds: Record<ComponentKind, KindInfo> = {
   model: {
     name: 'Model',
     shape: 'Chip with pins on both sides and a sparkle icon',
-    color: 'Fuchsia',
+    color: 'Pink',
     role: 'A machine learning model, such as a language model, that turns an input into a prediction or text.',
   },
   vectorIndex: {
     name: 'Vector index',
     shape: 'Slanted card with a scatter plot icon',
-    color: 'Lime',
+    color: 'Teal',
     role: 'Finds the stored items whose embeddings sit closest to a query.',
   },
 };
