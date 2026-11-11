@@ -1,0 +1,104 @@
+.sdv-cc__controls {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.sdv-cc__clients {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-cc__client {
+  --cc-color: var(--sdv-border);
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-left: 4px solid var(--cc-color);
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 0.3rem;
+  align-content: start;
+  margin: 0;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+}
+.sdv-cc__client[data-outcome="ok"] {
+  --cc-color: var(--sdv-ok);
+}
+.sdv-cc__client[data-outcome="migrate"],
+.sdv-cc__client[data-outcome="silent"] {
+  --cc-color: var(--sdv-warn);
+}
+.sdv-cc__client[data-outcome="breaks"] {
+  --cc-color: var(--sdv-bad);
+  background: color-mix(in oklab, var(--sdv-bad) 10%, var(--sdv-surface));
+}
+.sdv-cc__client[data-outcome="silent"] {
+  border-left-style: dashed;
+}
+
+.sdv-cc__head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  justify-content: space-between;
+}
+.sdv-cc__name {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+  margin: 0;
+}
+.sdv-cc__badge {
+  display: inline-flex;
+}
+/* The stage rule stretches every svg to full width; keep badge icons at badge size. */
+.sdv-cc__badge .sdv-badge svg {
+  display: inline-block;
+  flex: none;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+
+.sdv-cc__detail,
+.sdv-cc__fields {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-cc__fields code {
+  color: var(--sl-color-white);
+  margin-right: 0.25rem;
+}
+.sdv-cc__reason {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+
+.sdv-cc__plan {
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.55rem 0.65rem;
+}
+.sdv-cc__plan-title {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+  margin: 0;
+}
+.sdv-cc__steps {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+  padding-left: 1.2rem;
+}
+.sdv-cc__steps li + li {
+  margin-top: 0.2rem;
+}

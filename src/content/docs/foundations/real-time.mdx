@@ -1,0 +1,194 @@
+---
+title: Real-time transport
+description: Four ways for a server to tell a browser that something changed. Polling, long polling, server-sent events, and WebSockets replay the same minute of clicks side by side.
+---
+
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import RealTimeWidget from '../../../components/widgets/RealTimeWidget';
+
+export const quiz = [
+  {
+    prompt:
+      'The shortener dashboard only receives click updates. The browser sends nothing back over the live channel. Which transport fits best?',
+    options: [
+      {
+        text: 'Server-sent events',
+        correct: true,
+        why: 'The data flows one way, from server to browser, which is exactly what SSE does. It runs over plain HTTP, and the browser reconnects on its own. Give each event an id and keep recent events on the server, and a reconnecting browser picks up where it left off.',
+      },
+      {
+        text: 'WebSocket',
+        why: 'It works, but the dashboard never uses the browser to server direction. You also take on reconnects, resume logic, and the load balancer upgrade path yourself.',
+      },
+      {
+        text: 'Polling every second',
+        why: 'Each viewer sends 60 requests a minute, most of them empty, and still sees each click up to a second late. Polling suits updates that are rare or allowed to lag.',
+      },
+      {
+        text: 'Long polling',
+        why: 'It delivers quickly, but every message ends a request. On a busy link the browser sends a fresh request per update, plus the overhead of each one.',
+      },
+    ],
+  },
+  {
+    prompt:
+      'Dashboards on quiet links lose their stream after exactly 60 seconds without a click. Busy links never drop. What is the likely cause?',
+    options: [
+      {
+        text: 'A proxy or load balancer closes connections that stay silent for 60 seconds',
+        correct: true,
+        why: 'Silence is the trigger, since busy streams survive. Send a small heartbeat (an SSE comment line or a WebSocket ping) every 15 to 30 seconds so the connection never looks idle.',
+      },
+      {
+        text: 'Server-sent events streams expire after one minute',
+        why: 'The protocol sets no time limit. Something on the path closes the connection, and only quiet streams trip it.',
+      },
+      {
+        text: 'The browser runs out of memory',
+        why: 'Memory trouble would not depend on how quiet the link is, and it would not strike at a round number of seconds.',
+      },
+      {
+        text: 'The server crashes on links with no clicks',
+        why: 'A crash would cut every stream on that server, busy or quiet. The exact 60-second pattern points at an idle timeout.',
+      },
+    ],
+  },
+  {
+    prompt:
+      '50,000 people keep the dashboard open. What cost does a stream add that polling every 5 seconds does not?',
+    options: [
+      {
+        text: '50,000 open connections, and a way to route each click to the server that holds the right connection',
+        correct: true,
+        why: 'Each stream pins memory and a socket on one server for as long as the tab stays open. A click handled by a different server must reach that one, usually through a shared pub/sub channel.',
+      },
+      {
+        text: 'More requests per second',
+        why: 'Streams send far fewer requests. Polling every 5 seconds sends 10,000 requests a second for 50,000 viewers, nearly all of them empty.',
+      },
+      {
+        text: 'Longer lag before a click appears',
+        why: 'Streams show a click about one network trip after it happens. Polling adds up to a full interval of lag.',
+      },
+      {
+        text: 'Larger responses',
+        why: 'Each stream message carries one small event. Polling responses repeat headers on every request.',
+      },
+    ],
+  },
+];
+
+The shortener has a live dashboard: open a link's stats page and its click count should tick up as people click.
+Plain HTTP only lets the browser ask and the server answer, so the server has no way to speak first. Four transports
+work around that. They differ in how quickly a click reaches the screen, how many requests they send, and what they
+hold open on the server.
+
+<Predict
+  client:visible
+  question="On a quiet link, 4 clicks arrive in one minute. The dashboard polls every 5 seconds, so it sends 12 requests. How many of those 12 come back with nothing new?"
+  options={['2', '6', '10', '12']}
+  answer={2}
+>
+
+**10 of 12.** Polling asks on a timer, whether or not anything happened. The 4 clicks fall into two 5-second windows,
+so two answers carry news and ten carry nothing. The dashboard still shows each click 2.0 s late on average, and 2.8 s
+late at worst.
+
+</Predict>
+
+## The four transports
+
+1. **Polling.** The browser asks "anything new?" every few seconds. It is the simplest option and works through every
+   proxy and cache. Each click waits for the next poll, and quiet periods produce empty answers.
+2. **Long polling.** The browser asks, and the server holds the request open until a click happens or a timeout
+   passes (25 s here). The answer ends the request, so the browser asks again straight away. Clicks arrive quickly,
+   at the cost of one held request per viewer and one new request per message.
+3. **Server-sent events (SSE).** The browser opens one HTTP request with `EventSource`, and the server never finishes
+   the response. It writes a `data:` line for every click. Messages flow from server to browser only. When the stream
+   drops, the browser reconnects on its own. Resuming takes server work too: tag each event with an `id:` line, and the
+   browser sends the last id it saw in a `Last-Event-ID` header. The server can then replay the events after it, as
+   long as it still keeps them.
+4. **WebSocket.** The browser sends an HTTP request with `Upgrade: websocket`, the server answers
+   `101 Switching Protocols`, and the connection becomes a two-way channel of text or binary frames. Either side can
+   send at any moment. Your code handles reconnects and resuming.
+
+<Predict
+  client:visible
+  question="On a steady link, 20 clicks arrive spread across the minute. Which transport sends the most requests?"
+  options={['Polling', 'Long polling', 'Server-sent events', 'WebSocket']}
+  answer={1}
+>
+
+**Long polling, with 21.** Every click ends the held request, so the browser opens a new one each time: 20 answers
+plus the request still waiting at the end. Polling sends 12 no matter what happens. Long polling cuts requests on
+quiet links and adds them on busy ones.
+
+</Predict>
+
+## Watch one minute
+
+Each lane replays the same clicks. The bars show a request or stream that is open, the diamonds show answers, and the
+lines underneath show how long each click waited before the dashboard displayed it. The model is a toy: one viewer, a
+fixed 100 ms one-way trip, and no lost packets. Its numbers are illustrative.
+
+<RealTimeWidget client:visible />
+
+What to look for:
+
+- **Quiet link.** Polling sends 12 requests and 10 come back empty. Long polling sends 7, and only its two timeouts
+  come back empty. Each stream sends 1 request and shows every click 0.1 s after it happens.
+- **Steady link.** Long polling climbs to 21 requests, more than polling's 12. Polling shows each click 2.5 s late on
+  average.
+- **Viral burst.** 16 clicks pile up between two polls and arrive in one answer, up to 4.5 s late. Long polling stays
+  at 0.2 s or less, and the streams at 0.1 s.
+- **The server's side.** Both streams hold a connection for 59.9 s of the minute, per viewer. Polling holds nothing
+  between requests.
+
+## Side by side
+
+| | Polling | Long polling | Server-sent events | WebSocket |
+| --- | --- | --- | --- | --- |
+| Who sends | Browser asks, server answers | Browser asks, server answers when there is news | Server pushes; the browser sends with ordinary requests | Both sides, any time |
+| Delay to show a click | Up to one poll interval | About one network trip | About one network trip | About one network trip |
+| Requests in the quiet minute (toy) | 12 | 7 | 1 | 1 |
+| Held on the server | Nothing between polls | One request per viewer, until news or timeout | One response per viewer, for the session | One connection per viewer, for the session |
+| Reconnect | The next poll | The next request | Built in; resuming needs event ids and server replay | Your code |
+| Payload | Any HTTP body | Any HTTP body | UTF-8 text events | Text or binary frames |
+
+## What the table leaves out
+
+- **Idle timeouts.** Proxies and load balancers close connections that stay silent too long, often after 60
+  seconds. Keep the long poll timeout under that limit, and send a heartbeat on streams every 15 to 30 seconds.
+- **Buffering.** A proxy that buffers responses holds SSE events back until its buffer fills. Turn buffering off for
+  the stream's route.
+- **Connection limits.** Over HTTP/1.1, a browser opens about six connections per host, and every SSE tab uses one.
+  HTTP/2 carries many streams over one connection and removes the problem.
+- **Fan-out.** A click lands on whichever app server the [load balancer](../../scaling/load-balancing/) picks, and the
+  viewer's stream lives on one particular server. A shared pub/sub channel carries the click to the server that holds
+  the stream. The Logs and pub/sub lesson in Module 4 covers that channel.
+- **Deploys.** Restarting a server drops every stream it holds, and all those browsers reconnect at once. Add a random
+  delay before each reconnect so the new servers do not take the whole crowd in the same second.
+- **TCP and UDP.** All four run over TCP in most setups. TCP delivers bytes in order and resends lost packets, so
+  nothing goes missing while the connection lives. The cost: one lost packet holds up every byte behind it until the
+  resend arrives. UDP sends separate datagrams with no ordering and no resend. Voice calls, video, and fast games
+  choose it, because waiting for a resend stalls playback and a frame that arrives after its moment is useless.
+  Browsers reach UDP through WebRTC. HTTP/3 also runs over UDP: its QUIC layer adds ordering and resends per stream,
+  so one lost packet stalls only its own stream.
+
+## When to use which
+
+- **Polling** when updates are rare or a few seconds of lag is fine: a report that refreshes each minute, or the
+  status of a long job.
+- **Long polling** when you need fast updates but the path between browser and server only passes plain
+  request and response, or as a fallback for the other two.
+- **Server-sent events** for feeds from server to browser: live dashboards, notifications, progress bars, streamed
+  text. The shortener's click dashboard fits here.
+- **WebSocket** when both sides talk often with little delay: chat, multiplayer games, shared editing, trading screens.
+
+All four still start with the HTTP request from [what happens when you click](../what-happens-when-you-click/).
+They change what happens after it.
+
+## Check yourself
+
+<Quiz client:visible questions={quiz} />

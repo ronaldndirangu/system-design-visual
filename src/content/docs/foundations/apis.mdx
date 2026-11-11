@@ -1,0 +1,479 @@
+---
+title: APIs and contracts
+description: Design endpoints that are easy to call correctly and hard to call wrong. Resource names, status codes, request IDs, cursor pagination, and changes that keep old clients working.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import PaginationWidget from '../../../components/widgets/PaginationWidget';
+import ContractChangeWidget from '../../../components/widgets/ContractChangeWidget';
+
+export const nodes = [
+  { id: 'dash', kind: 'client', x: 80, y: 60, label: 'Dashboard', sublabel: 'paging' },
+  { id: 'tab', kind: 'client', x: 80, y: 216, label: 'Another tab', sublabel: 'creating links' },
+  { id: 'api', kind: 'server', x: 250, y: 140, label: 'Links API', sublabel: '/v1/users/7/links' },
+  { id: 'db', kind: 'database', x: 420, y: 140, label: 'Database', sublabel: 'newest first' },
+];
+export const edges = [
+  { from: 'dash', to: 'api' },
+  { from: 'tab', to: 'api' },
+  { from: 'api', to: 'db' },
+];
+export const steps = [
+  {
+    title: 'Page 1',
+    text: 'The dashboard asks for page=1&size=10. The database sorts the user\'s links newest first and returns rows 1 to 10: links #50 to #41.',
+    nodes: ['dash', 'api', 'db'],
+    flows: ['dash>api', 'api>db', 'db>api', 'api>dash'],
+  },
+  {
+    title: 'A new link lands on top',
+    text: 'Another tab sends POST /v1/links and creates #51. It sorts first, so every older link moves down one row. Link #41 is now row 11.',
+    nodes: ['tab', 'api', 'db'],
+    flows: ['tab>api', 'api>db'],
+  },
+  {
+    title: 'Page 2 repeats a link',
+    text: 'The dashboard asks for page=2, which means rows 11 to 20. Row 11 now holds #41, which page 1 already showed. No error, just a duplicate.',
+    nodes: ['dash', 'api', 'db'],
+    flows: ['dash>api', 'api>db', 'db>api', 'api>dash'],
+  },
+  {
+    title: 'Fix: ask for what comes after #41',
+    text: 'The dashboard sends after=41 instead. The database finds #41 in an index and returns the next 10 older links, #40 to #31. New links on top cannot move that answer.',
+    nodes: ['dash', 'api', 'db'],
+    flows: ['dash>api', 'api>db', 'db>api', 'api>dash'],
+  },
+  {
+    title: 'Deletes and deep pages',
+    text: 'A delete slides rows up, so an offset jumps over a link it never showed. An offset also makes the database walk past every earlier row. A cursor seeks straight to its spot.',
+    nodes: ['tab', 'api', 'db'],
+    flows: ['tab>api', 'api>db'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'A user reads page 1 of their links with ?page=1&size=20. Before they press Next, 3 new links are created. What does page 2 start with?',
+    options: [
+      { text: 'The last 3 links from page 1, again', correct: true, why: 'The 3 new links sort first and push every older link down 3 rows. Rows 21 to 23 now hold links the user just saw.' },
+      { text: 'The 3 new links', why: 'New links sort to the top, so they land on page 1, which the user already left. Page 2 never shows them.' },
+      { text: 'Link number 21, as planned', why: 'The offset counts rows, and the rows moved. What used to be link 18 now sits at row 21.' },
+      { text: 'An error, since the list changed', why: 'The database answers OFFSET 20 without complaint. It has no idea the client saw a different list a moment ago.' },
+    ],
+  },
+  {
+    prompt: 'The marketing team wants every click on a short link counted. Which status should the redirect GET /{code} return?',
+    options: [
+      { text: '301 Moved Permanently', why: 'Browsers may cache a 301 with no expiry and go straight to the destination next time. Those repeat clicks never reach the server, so the count falls short.' },
+      { text: '302 Found, with Cache-Control: no-store', correct: true, why: 'A 302 marks the move as temporary, and no-store forbids every browser and proxy from keeping a copy. Each click reaches the server and gets counted, and the owner can still change the destination.' },
+      { text: '200 OK with a page that redirects', why: 'An HTML page with a refresh works in some browsers, but it adds a full page load, and API clients and crawlers do not treat it as a redirect.' },
+      { text: '404 Not Found', why: '404 tells the client the link does not exist. The browser shows an error page and goes nowhere.' },
+    ],
+  },
+  {
+    prompt: 'POST /v1/links asks for the custom alias sale, and another user already owns it. Which response helps the client most?',
+    options: [
+      { text: '409 Conflict with a machine readable code such as alias_taken', correct: true, why: 'The request was valid and clashes with current state. A specific code lets the app show "pick another alias" instead of a generic error.' },
+      { text: '500 Internal Server Error', why: '500 says the server broke. Clients may retry forever, and your error alerts fire for a normal user mistake.' },
+      { text: '400 Bad Request', why: '400 means the request was malformed. This one was well formed; it just asked for something taken.' },
+      { text: '200 OK with an error message in the body', why: 'Every client, proxy, and dashboard that reads the status code concludes the create worked.' },
+    ],
+  },
+  {
+    prompt: 'Which change to the link response can ship in /v1 without breaking a client that ignores unknown fields?',
+    options: [
+      { text: 'Add an optional "title" field', correct: true, why: 'A tolerant reader skips fields it does not know. Old clients keep working, and new ones can start reading "title".' },
+      { text: 'Rename "url" to "destination"', why: 'Every client that reads "url" finds nothing there, and every client that sends "url" on create gets rejected.' },
+      { text: 'Send "clicks" as the string "1,204"', why: 'Clients that decode "clicks" as a number fail to parse it. Same name, different type, still a breaking change.' },
+      { text: 'Switch the redirect default from 302 to 301', why: 'No client sees an error, which makes it worse. Browsers may cache the 301, and click counts quietly stop growing.' },
+    ],
+  },
+  {
+    prompt: 'You must rename "url" to "destination". Old mobile app versions stay installed for years. What plan keeps them working?',
+    options: [
+      { text: 'Rename it in place and email every user to update', why: 'Many phones never update. Those users hit errors the moment you deploy, and an email will not fix that.' },
+      { text: 'Return both fields in /v1, move clients to "destination", and drop "url" only in /v2', correct: true, why: 'Expand, migrate, then contract. Old apps keep reading "url" from /v1 while new clients use /v2, and you retire /v1 when its traffic reaches zero.' },
+      { text: 'Rename it in place at 3 a.m. when traffic is low', why: 'Fewer errors per minute at night. The old apps break the same way when their users wake up.' },
+      { text: 'Return 410 Gone to old app versions', why: 'That turns a broken screen into a different broken screen. The users still cannot see their links.' },
+    ],
+  },
+  {
+    prompt: 'The redirect service reports every click to your own analytics service, about 5,000 calls a second. Which style fits that call best?',
+    options: [
+      { text: 'A public REST endpoint with JSON', why: 'It works, but text JSON costs more to encode at this rate, and no shared schema gives both services typed code for the message.' },
+      { text: 'gRPC with a shared .proto file', correct: true, why: 'Both sides generate typed code from one schema, so a call with the wrong shape fails to compile. Messages are small and binary, and one HTTP/2 connection carries many calls. The services still deploy separately, so each .proto change must stay compatible with the version already running.' },
+      { text: 'GraphQL', why: 'GraphQL shines when callers pick which fields to read. This call is one fixed write, so the query layer adds work without any benefit.' },
+      { text: 'A GET request cached by a CDN', why: 'Recording a click is a write. A cache would answer repeat requests itself, and those clicks would never reach analytics.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Name resources with nouns and pick status codes, so a client knows what happened from the response alone.
+- Explain why offset pagination repeats and skips links on a changing list, and page with a cursor instead.
+- Return a request ID on every response, so one support ticket leads to one log line.
+- Tell a breaking change from a safe one, and ship breaking ones with expand then contract and a new version.
+- Choose between REST, gRPC, and GraphQL for a given caller.
+
+</Objectives>
+
+## The failure: page 2 repeats page 1
+
+The dashboard lists a user's links newest first, 10 per page, with `GET /v1/users/7/links?page=2&size=10`. Every test
+passes. Then a power user who creates links from a script while browsing writes in: page 2 shows links from page 1, and
+a link they know exists never appears on any page. Nothing errored, and the logs look clean.
+
+<Predict
+  client:visible
+  question="A user has 50 links and pages through them 10 at a time with ?page=N&size=10. While they read, a script creates about one new link every two seconds. What do they see on later pages?"
+  options={['Exactly the next 10 links each time', 'Some links they already saw on an earlier page', 'Only the new links', 'An error, since the list changed']}
+  answer={1}
+>
+
+**Some links they already saw.** Each new link sorts first and pushes every older link down one row. Page 2 still means
+rows 11 to 20, and the top of that range now holds links from page 1. In the busy creator run below, offset pagination
+shows **10 repeated rows** and needs a sixth page to reach the end of a 50 link list. Deletions do the reverse: rows
+slide up, and a link jumps over the page boundary unseen.
+
+</Predict>
+
+## The idea: name the last link you saw
+
+An offset says "skip 10 rows". Rows are positions, and positions move whenever the list changes above them. A cursor
+says "start after link #41". A link keeps its identity however many links arrive or vanish, so the next page starts in
+the right place every time.
+
+<StepDiagram client:visible title="Offset pagination on a changing list" nodes={nodes} edges={edges} steps={steps} height={290} />
+
+<Analogy>
+
+A friend reads your mail aloud from a pile, newest on top, and you say "read me letters 11 to 20". While they read, two
+new letters land on the pile. Letters 11 and 12 are now ones you already heard. If you say "read the 10 letters under
+the one from the bank" instead, it does not matter how many letters land on top.
+
+</Analogy>
+
+## Try it
+
+Two clients page through the same 50 links while the same links get created and deleted. The left lane asks for
+`?page=N&size=10`. The right lane asks for `?size=10&after=<last id>`. Press Play on the busy creator first, then try
+the other scenarios.
+
+The simulation is a toy model. The client fetches a page every 3 seconds, and the creates and deletes follow a seeded
+random schedule, so each scenario plays out the same way every run. The row counts are illustrative.
+
+<PaginationWidget client:visible />
+
+What to look for:
+
+- **Busy creator.** Offset pagination shows 10 repeated rows and needs 6 pages to reach the end of a 50 link list. The
+  cursor shows each of the 50 links once, in 5 pages. Both lanes leave out the 13 links created after page 1 loaded; a
+  refresh shows them at the top.
+- **Deletions.** Each delete slides the links below it up one row. Offset pagination skips 6 links it never showed. The
+  cursor skips none.
+- **Both.** Offset pagination shows 9 repeats and skips 5 links. Of the 41 links that existed for its whole session, 28
+  appear once, 8 appear twice or more, and 5 never appear: 28 + 8 + 5 = 41. The cursor lane finishes sooner, so 46
+  links last its whole session, and it shows each of them exactly once.
+- **Rows walked.** In the Both run, the database walks 201 rows to serve the offset pages and 48 for the cursor pages.
+  At page 500 with 20 links per page, an offset makes the database step over 10,000 rows to return 20. A cursor seeks
+  straight to its spot through an index.
+- **Quiet list.** With nothing changing, both lanes show all 50 links once. Offset pagination works fine on a list that
+  holds still, which is why the bug passes tests.
+
+## Cursors in practice
+
+The two lanes differ by one clause in the query.
+
+```sql
+-- Offset: page 3 walks past 20 rows, then returns 10.
+SELECT code, url FROM links
+WHERE user_id = 7
+ORDER BY id DESC
+LIMIT 10 OFFSET 20;
+
+-- Cursor: seek to the last link the client saw, then return 10.
+SELECT code, url FROM links
+WHERE user_id = 7 AND id < 41
+ORDER BY id DESC
+LIMIT 10;
+```
+
+The cursor query needs an index on `(user_id, id)` to seek instead of scan; the [indexes lesson](../indexes/) shows
+why. Sort on a key that never repeats. If you sort by `created_at`, add `id` as a tiebreaker and put both in the cursor.
+
+Hand the client an **opaque cursor**, such as `"next": "eyJpZCI6NDF9"`, instead of a raw id. The client sends it back
+unread, so you can change the sort order or the encoding later without breaking anyone. Return `"next": null` on the
+last page.
+
+Cursors give up two things: jumping straight to page 37, and a cheap total count. Infinite scroll and API clients rarely
+need either. Admin tables with page numbers over a list that rarely changes can keep offsets.
+
+## Name resources, let HTTP supply the verbs
+
+A good API reads like a list of nouns. The URL names a resource, the HTTP method says what to do with it, and the status
+code says what happened.
+
+```text
+POST   /v1/links               create a link           201 Created, Location: /v1/links/x7Kp2
+GET    /v1/links/{code}        read one link           200 OK
+PATCH  /v1/links/{code}        change fields           200 OK with the updated link
+DELETE /v1/links/{code}        delete it               204 No Content
+GET    /v1/users/{id}/links    the dashboard list      200 OK with one page and a next cursor
+GET    /{code}                 the redirect            302 Found, Location: the long URL, Cache-Control: no-store
+```
+
+Use plural nouns and stable identifiers. Avoid verbs in paths such as `/createLink` or `/getLinksForUser`; the method
+already carries the verb. `PATCH` sends only the fields that change, so two editors who change different fields do not
+erase each other. The `Location` header on a `201` tells the client where the new link lives.
+
+**The redirect: 301 or 302?** The status code says whether the move is permanent, and the `Cache-Control` header says
+who may remember it. Browsers may cache a `301 Moved Permanently` with no expiry, and many do. Once a browser holds it,
+later clicks from that browser skip your server: fast and cheap, yet those clicks never reach your counter, and the
+owner can no longer change where that browser goes. A `302 Found` (or `307 Temporary Redirect`) marks the move as
+temporary, so browsers keep it only when headers allow. Send `Cache-Control: no-store` with it, and no browser or proxy
+keeps a copy, so every click reaches the server and edits take effect at once. A shortener that sells click analytics
+answers `302` with `no-store`.
+
+## Status codes say what happened
+
+A client should know what happened, and what to do next, from the status code alone. The body adds detail.
+
+| Code | Meaning | Shortener example |
+| --- | --- | --- |
+| `200 OK` | It worked; here is the result | `GET /v1/links/x7Kp2` |
+| `201 Created` | A new resource exists at `Location` | `POST /v1/links` |
+| `204 No Content` | It worked; nothing to return | `DELETE /v1/links/x7Kp2` |
+| `301` / `302` | Go to `Location` instead | The redirect `GET /x7Kp2` |
+| `400 Bad Request` | The request is malformed | The body is not JSON, or `url` is missing |
+| `401 Unauthorized` | We do not know who you are | Missing or expired token |
+| `403 Forbidden` | We know who you are; you may not do this | Deleting another user's link |
+| `404 Not Found` | No such resource | `GET /v1/links/nope` |
+| `409 Conflict` | Clashes with the current state | The custom alias is taken (see [transactions](../transactions/)) |
+| `422 Unprocessable Content` | Well formed, but breaks a rule | `url` points back at the shortener itself |
+| `429 Too Many Requests` | Slow down; `Retry-After` says when | A script creating links in a tight loop |
+| `500 Internal Server Error` | The server has a bug | An unhandled exception |
+| `503 Service Unavailable` | Down for now; try again later | The database is failing over |
+
+A `4xx` code means the client must change the request before it tries again. A `5xx` code means the server failed, and
+the same request may work later. Retry `5xx` and `429` with backoff; retrying most `4xx` codes just repeats the
+mistake. The Rate limiting lesson covers how a server decides when to send `429`.
+
+Give every error the same body shape, with a stable machine readable code next to the human message:
+
+```json
+{
+  "error": {
+    "code": "alias_taken",
+    "message": "The alias sale is already in use.",
+    "request_id": "req_7Hq2LmX9"
+  }
+}
+```
+
+Apps branch on `code`, people read `message`, and support asks for `request_id`.
+
+**Retries need idempotency.** A phone on a train sends `POST /v1/links`, and the connection drops before the `201`
+arrives. The app cannot tell whether the link exists, so it retries, and the user may end up with two links. `GET`,
+`PUT`, and `DELETE` are idempotent by definition: sending one twice leaves the same result as sending it once. `POST` is
+not. The fix is an `Idempotency-Key` header: the client
+sends a random key with the request, and the server stores the first response under that key and returns it again for
+any repeat. The Idempotency lesson builds this in detail.
+
+## Request IDs connect a complaint to a log line
+
+A user writes in: "Creating a link failed this morning." Without more detail, you search millions of log lines by time
+and guess. With a request ID, you search for one string.
+
+The server assigns an ID to every request, or adopts the caller's `traceparent` header when one arrives, and does three
+things with it:
+
+1. Returns it on **every** response, errors included, as `X-Request-Id`.
+2. Writes it on every log line that request produces, and passes it along on every call to another service.
+3. Shows it in error messages, so the user can paste it into a support ticket.
+
+```http
+HTTP/1.1 409 Conflict
+X-Request-Id: req_7Hq2LmX9
+Content-Type: application/json
+```
+
+One ticket, one search, one request's full story across every service it touched.
+
+## Breaking changes
+
+Once a client ships, the API is a promise. The contract covers more than the URL list: field names, field types, which
+fields are required, the status codes, the error codes, and the defaults. A client written against `/v1` relies on all
+of it, and you cannot update every client on the day you deploy. Old phones keep old app versions for years, and a
+partner's integration changes on the partner's schedule.
+
+Some changes are safe for any client that ignores fields it does not know: adding an optional response field, adding an
+optional request parameter, adding a new endpoint. Others break clients the moment they deploy: renaming or removing a
+field, changing its type, making a parameter required. The worst ones break nothing loudly. Change the redirect default
+from `302` to `301`, and every client still gets a valid response while click counts quietly fall short.
+
+<ContractChangeWidget client:visible />
+
+What to look for:
+
+- **Rename a field, in place.** The old mobile app and the partner both use `url`, so both break on deploy. The web app
+  breaks too: its new code ships in the same deploy, yet every tab opened before the deploy still runs the old code until
+  the user reloads. Switch to **Expand, then contract**: nobody breaks, and the price is running `/v1` and `/v2` side by
+  side until the old clients retire.
+- **Change a default, in place.** No client sees an error, yet two of them are now wrong: browsers that cache the `301`
+  skip the server, and the dashboards undercount clicks. A silent break is harder to catch than a crash.
+- **Add an optional field, with the strict parser on.** The safest change on the list breaks the partner, because its
+  parser rejects any field it does not know. Turn the toggle off to see the same change break nobody.
+
+The last point is why clients should be **tolerant readers**: read the fields you need, ignore the rest, and treat a
+missing optional field as absent. Then the server can add fields freely. Most JSON libraries behave this way by
+default; strict schema validation on responses turns every addition into an outage.
+
+**Expand, then contract** turns one breaking change into three safe steps. Expand: add the new shape next to the old one
+and accept both. Migrate: move clients over, and track traffic per version and per client (an app version header makes
+this easy) to see who still calls the old shape. Contract: remove the old shape, but only in a new version, so clients
+that never migrate keep working on the old one.
+
+## Versioning
+
+A version gives breaking changes somewhere to live. Two common places to put it:
+
+- **In the URL**, as in `/v1/links` and `/v2/links`. Easy to see in logs, easy to route, and easy to try in a browser.
+  Caches treat the versions as different resources with no extra setup.
+- **In a header**, such as `Accept: application/vnd.shortener.v2+json` or a dated `Api-Version: 2025-06-01`. URLs stay
+  stable, and a client can move one request at a time. Logs and caches must read the header too, and a cache must list
+  it in `Vary` so it does not serve a `v1` body to a `v2` client.
+
+Either works when you are consistent. Bump the version only for breaking changes; additive changes ship in place. When
+you plan to retire a version, announce a date, return a `Sunset` header on its responses, and watch its traffic. Turn
+it off when the traffic reaches zero, or when the date arrives and the remaining callers have been told.
+
+## REST, RPC, and GraphQL
+
+Everything above uses REST: resources at URLs, HTTP methods as verbs, status codes as outcomes. Two other styles come up
+often, and one shortener can use all three in different places.
+
+**REST** for the public API. A client asks for a resource by URL:
+
+```http
+GET /v1/links/x7Kp2
+Accept: application/json
+```
+
+**RPC with gRPC** for the redirect service telling the analytics service about each click. A client calls a function
+whose signature lives in a shared `.proto` file:
+
+```proto
+service Analytics {
+  rpc RecordClick (Click) returns (Ack);
+}
+
+message Click {
+  string code = 1;
+  int64 clicked_at_ms = 2;
+}
+```
+
+**GraphQL** for a dashboard screen that shows each link with its owner and its recent clicks. A client sends one query
+to one endpoint, `POST /graphql`, and names every field it wants back:
+
+```graphql
+query {
+  user(id: 7) {
+    plan
+    links(first: 10) {
+      code
+      url
+      clicksLast7Days
+    }
+  }
+}
+```
+
+| | REST | gRPC | GraphQL |
+| --- | --- | --- | --- |
+| How a client asks | An HTTP method on a resource URL | A call to a generated function, sent as binary over HTTP/2 | A query listing exact fields, posted to a single endpoint |
+| The contract | URLs, methods, status codes, and JSON shapes, often written down in OpenAPI | A `.proto` schema; both sides generate typed code from it | One typed schema; the server checks every query against it |
+| Caching | Built in: browsers, CDNs, and proxies cache `GET` responses by URL | None at the HTTP layer; the caller caches in its own code | Hard at the HTTP layer, since most queries are POSTs to one URL; clients cache objects by id |
+| Fits best | Public APIs over resources, and anything a browser or `curl` calls | High volume calls between your own services | Screens that each need a different slice of related data |
+
+**REST** works with every HTTP tool ever written, and `GET` responses cache for free. A CDN can answer
+`GET /v1/links/x7Kp2` from an edge near the user with the right `Cache-Control` header. The cost shows on rich screens:
+a page that needs links, owners, and click stats may make several calls, or push you to add endpoints shaped for one
+screen.
+
+**gRPC** gives both sides generated code from one schema, so a call with the wrong field or type fails to compile inside
+each service. That check ends at the build: the two services deploy separately, so old and new versions talk to each
+other during every rollout. Protobuf makes careful evolution possible. It identifies fields by number, so adding a
+field with a new number is safe, renaming a field is safe on the binary wire, and reusing a number for a new meaning
+breaks old readers. A breaking change check in CI, such as `buf breaking`, compares each `.proto` edit against the last
+release, and a rollout test with old and new versions side by side catches the rest. Messages are small and binary, and
+one HTTP/2 connection carries many calls at once, plus streams. Browsers cannot call gRPC directly without a gRPC-Web
+proxy, and you cannot try it with plain `curl`.
+
+**GraphQL** lets the dashboard fetch exactly the fields one screen needs in one round trip, and the server can see which
+fields clients still request before it removes one. One innocent query can fan out into thousands of database reads,
+one per link per field, so servers batch lookups and cap query depth and cost. Errors usually arrive as `200 OK` with an
+`errors` list in the body, so monitoring must read bodies as well as status codes.
+
+Many systems mix them: REST at the public edge, gRPC between internal services, and sometimes GraphQL as a layer that
+gathers data from several services for one rich frontend.
+
+## Trade-offs
+
+<TradeoffTable title="Choices for the links API">
+
+| Choice                                   | What it buys                                                         | What it costs                                                                  |
+| ---------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Offset pagination (`?page=3&size=10`)    | Jump to any page; easy totals; simple SQL                            | Repeats and skips on a changing list; deep pages walk every earlier row        |
+| Cursor pagination (`?after=<cursor>`)    | Stable pages while the list changes; each page costs one index seek  | No jumping to page 37; no cheap total; needs a unique, indexed sort key        |
+| `302` redirect with `no-store`           | Every click reaches the server and counts; owners can edit the target | Every click costs a round trip to your server                                  |
+| `301` redirect                           | Browsers may cache it; repeat clicks can skip your servers           | Cached clicks go uncounted; you cannot change or expire a cached destination   |
+| Change the contract in place             | One version to run; fast to ship                                     | Old clients break on deploy, or worse, keep running and quietly go wrong       |
+| Expand, then contract, with `/v2`        | No client breaks; each one moves on its own schedule                 | Two versions to run, test, and document until the old one retires              |
+| REST                                     | Works with every HTTP tool; `GET` responses cache in browsers and CDNs | Rich screens need several calls or custom endpoints                          |
+| gRPC                                     | Typed generated stubs; compact binary messages; streaming            | Browsers need a proxy; no HTTP caching; harder to try by hand                  |
+| GraphQL                                  | Each client fetches exactly the fields it needs in one round trip    | HTTP caching is hard; one query can cost a lot without depth and cost limits   |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+Design the API for a new feature: a user uploads a CSV with 500 long URLs, and the shortener creates a link for each.
+
+1. Which endpoint, and what status code does a successful upload return?
+2. Row 212 asks for an alias someone else owns, and row 380 holds a URL that does not parse. What happens to the
+   other 498 rows, and how does the client find out?
+3. How does the client page through 500 results?
+4. The phone loses its connection mid upload. What makes the retry safe?
+5. How do clients that only know `/v1` keep working?
+
+<div slot="answer">
+
+1. **Treat the import as a resource:** `POST /v1/link-imports`. A small file can finish inside the request and return
+   `201 Created` with the import's summary. A large one should return `202 Accepted` with
+   `Location: /v1/link-imports/imp_42`, which the client polls until its status reads `done`. A file that is not a CSV
+   gets `400`; one over the size limit gets `413 Content Too Large`.
+2. **Partial success, reported per row.** Create the 498 good links and record each failure with its row number and the
+   same error codes the single create uses: `alias_taken` and `invalid_url`. The import's summary reports
+   `created: 498, failed: 2`. If some users need all or nothing, offer `"atomic": true`, which runs every insert in one
+   transaction and creates nothing when any row fails.
+3. **With a cursor:** `GET /v1/link-imports/imp_42/results?size=100&after=<cursor>`, ordered by row number, with a
+   filter such as `?status=failed` so the client can show just the two problems.
+4. **An `Idempotency-Key` header on the upload.** A retry with the same key returns the same import instead of creating
+   500 more links. Count all 500 creates against the user's rate limit, so an import cannot bypass the limit that single
+   creates obey.
+5. **The feature is purely additive:** new endpoints and new error codes in the same body shape. Nothing that `/v1`
+   clients already call changes, so no version bump is needed, and clients that ignore the feature never notice it.
+
+</div>
+
+</Challenge>
