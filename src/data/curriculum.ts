@@ -253,7 +253,8 @@ export const curriculum: CourseModule[] = [
         title: 'Stream processing',
         summary:
           'Count events in windows, handle late data with watermarks, and choose between batch and stream.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
       },
     ],
   },
