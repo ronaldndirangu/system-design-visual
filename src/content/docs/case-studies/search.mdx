@@ -1,0 +1,539 @@
+---
+title: Search
+description: Keep a news search index fresh without losing the ranking signals a full rebuild computes, then add typeahead.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import SearchFreshnessWidget from '../../../components/widgets/SearchFreshnessWidget';
+import InvertedIndexWidget from '../../../components/widgets/InvertedIndexWidget';
+import TypeaheadTrieWidget from '../../../components/widgets/TypeaheadTrieWidget';
+
+export const nodes = [
+  { id: 'reader', kind: 'client', x: 70, y: 50, label: 'Reader' },
+  { id: 'cache', kind: 'cache', x: 230, y: 50, label: 'Result cache' },
+  { id: 'query', kind: 'server', x: 390, y: 50, label: 'Query service', sublabel: 'fan out, merge top 10' },
+  { id: 'shards', kind: 'database', x: 550, y: 50, label: 'Index shards', sublabel: 'full signals' },
+  { id: 'queue', kind: 'queue', x: 70, y: 250, label: 'New docs' },
+  { id: 'indexer', kind: 'server', x: 230, y: 250, label: 'Indexer', sublabel: 'flush every 1 s' },
+  { id: 'live', kind: 'database', x: 390, y: 250, label: 'Live segments', sublabel: 'text match only' },
+  { id: 'build', kind: 'server', x: 550, y: 250, label: 'Nightly build', sublabel: 'clicks + quality' },
+];
+export const edges = [
+  { from: 'reader', to: 'cache' },
+  { from: 'cache', to: 'query' },
+  { from: 'query', to: 'shards' },
+  { from: 'query', to: 'live' },
+  { from: 'queue', to: 'indexer' },
+  { from: 'indexer', to: 'live' },
+  { from: 'build', to: 'shards' },
+  { from: 'build', to: 'live', dashed: true },
+];
+export const steps = [
+  {
+    title: 'A hot query hits the cache',
+    text: 'A reader searches for storm coast. During a big story, thousands of readers type the same words, so a result cache keyed by the normalized query answers most repeats without touching the index.',
+    nodes: ['reader', 'cache'],
+    flows: ['reader>cache'],
+  },
+  {
+    title: 'On a miss, fan out and merge',
+    text: "The query service sends the query to every index shard and to the live segments. Each one returns its own top 10, and the service merges those lists into one top 10.",
+    nodes: ['cache', 'query', 'shards', 'live'],
+    flows: ['cache>query', 'query>shards', 'query>live'],
+  },
+  {
+    title: 'A new story is searchable within 1 s',
+    text: 'The publishing system appends each new story to a queue. The indexer buffers new documents and flushes them into a small, immutable live segment every second. The story is searchable now, ranked on text match only.',
+    nodes: ['queue', 'indexer', 'live'],
+    flows: ['queue>indexer', 'indexer>live'],
+  },
+  {
+    title: 'Small segments merge in the background',
+    text: 'Every query pays for every live segment, so the indexer merges 4 small segments into 1 bigger one. While it rewrites them, it drops documents marked as deleted.',
+    nodes: ['indexer', 'live'],
+    flows: ['indexer>live'],
+  },
+  {
+    title: 'The nightly build folds everything in',
+    text: 'At 02:00 a batch job recomputes popularity and quality over the whole corpus and writes new shards. The build takes 3 h, so the shards go live at 05:00, and the live tier drops every document the build now covers.',
+    nodes: ['build', 'shards', 'live'],
+    flows: ['build>shards', 'build>live'],
+  },
+];
+export const quiz = [
+  {
+    prompt: "An editor fixes a typo in one story's headline. The index is built from immutable segments. What happens?",
+    options: [
+      {
+        text: 'The engine edits the posting lists in place',
+        why: 'Segments are written once, sorted, and compressed. An edit in place would shift every list after the change and could break a reader in the middle of a query.',
+      },
+      {
+        text: 'The whole index is rebuilt',
+        why: "With this lesson's estimates, a full build rewrites 540M documents and takes 3 h. Nobody pays that for one typo.",
+      },
+      {
+        text: 'The correction waits for the nightly build',
+        why: 'That is the nightly-only design, and readers would see the typo for hours. A real-time tier makes the corrected story searchable within seconds.',
+      },
+      {
+        text: 'The old copy gets a tombstone, the new copy goes into a new small segment, and a later merge drops the old copy',
+        correct: true,
+        why: 'An update is a delete plus an add. Queries skip tombstoned documents until a merge rewrites the segment without them.',
+      },
+    ],
+  },
+  {
+    prompt: 'The index is sharded by document across 18 shards. A reader searches for storm coast. Which shards does the query touch?',
+    options: [
+      {
+        text: 'Two shards, one per term',
+        why: 'That describes sharding by term. It touches fewer shards, but popular terms create hot shards, and an intersection has to ship whole posting lists between machines.',
+      },
+      {
+        text: 'Only the shard with the newest documents',
+        why: 'Sharding by document spreads documents by a hash of their id, whatever their age. Older storm stories sit on every shard.',
+      },
+      {
+        text: 'One shard, picked by hashing the query',
+        why: 'A hash of the query can pick a cache entry. The matching documents can live on any shard, so the query has to ask them all.',
+      },
+      {
+        text: 'All 18: each returns its top 10, and the query service merges them',
+        correct: true,
+        why: 'Any shard can hold a match. That is also why every shard sees the full 20,000 searches per second at peak and needs 10 replicas.',
+      },
+    ],
+  },
+  {
+    prompt: 'A recipe site mostly gets searches for recipes that are years old. Judging by the evergreen run, should it add a real-time tier?',
+    options: [
+      {
+        text: 'Yes, a real-time tier always lifts recall by a wide margin',
+        why: 'In the evergreen run recall is 95% for the nightly rebuild and 97% for the real-time tier, close enough that the table calls it a tie. The big win needs queries that chase new documents.',
+      },
+      {
+        text: 'Probably not: recall nearly ties, while every query searches 5.5 segments instead of 1 and merges add writes',
+        correct: true,
+        why: 'The tier only helps queries whose best answer arrived after the last build. When those are rare, its fan-out and merge work buy almost nothing.',
+      },
+      {
+        text: 'No, because the real-time tier lowers recall for old documents',
+        why: 'Old documents carry full signals in both lanes, so the tier leaves them alone. It costs extra work and helps little.',
+      },
+      {
+        text: 'Yes, because the real-time tier replaces the nightly build',
+        why: 'The tier keeps the nightly build and only fills the gap between builds. The site would pay for both.',
+      },
+    ],
+  },
+  {
+    prompt: 'Why does each node of the typeahead trie store its top 3 completions ahead of time?',
+    options: [
+      {
+        text: 'To save memory',
+        why: 'It costs memory. Every node keeps a list, and even the toy trie has more nodes than its log has queries.',
+      },
+      {
+        text: 'So a lookup costs one step per typed character, with no scan of the queries below the node',
+        correct: true,
+        why: 'A short prefix like s sits above a large share of the whole log. Precomputing turns that subtree search into one read, which fits a budget under 100 ms.',
+      },
+      {
+        text: 'Because the query log changes on every keystroke',
+        why: 'The log changes slowly, and that is what makes an offline top k safe. Rebuilding the trie every hour or day keeps it fresh enough for most prefixes.',
+      },
+      {
+        text: 'So the trie can suggest queries nobody has searched for yet',
+        why: 'Completions come only from the log. A query nobody has typed has no count and no node.',
+      },
+    ],
+  },
+];
+
+This case study builds on the **Scaling the URL shortener** module: [Caching](../../scaling/caching/),
+[Read replicas](../../scaling/read-replicas/), and [Sharding and consistent hashing](../../scaling/sharding/) all return
+here. The Indexes lesson finds one row by its key with a B-tree. Search asks the reverse question: given a few words,
+which documents contain them, and which of those are best?
+
+<Objectives>
+
+- Build an inverted index and answer a query by intersecting posting lists.
+- Explain why the best ranking signals make a full index build slow and rare.
+- Compare a nightly rebuild with a real-time tier on freshness, recall, fan-out, and write work.
+- Serve typeahead from a trie whose nodes store precomputed top completions.
+
+</Objectives>
+
+## The failure: a storm the index has never heard of
+
+The first design builds one index each night. A batch job reads every document, computes ranking signals over the whole
+corpus and the day's clicks, and writes a fresh index that goes live by morning. Searches for anything older than the
+build get excellent results. Then a storm makes landfall at 00:30. Thousands of readers search for it within minutes,
+and the index has never seen a single word about it.
+
+The widget below runs one toy news day, and every number in it is illustrative. It starts with 1,800 older documents
+across 30 topics. Three stories break at 00:30, 10:30, and 18:30, and 191 new documents arrive over the day, most of
+them about those stories. Every 15 simulated minutes, 48 queries arrive, and once a story has broken, 70% of them chase
+one. Both lanes run the same full
+build, which starts at 02:00 and takes 3 h. The second lane also writes each new document into a small live segment that
+is searchable within 1 s. Recall@10 compares each lane's top 10 with an ideal ranking that knows every document.
+
+<Predict
+  client:visible
+  question="Over the whole day, what share of queries does the nightly rebuild answer without the ideal top result?"
+  options={[
+    'About 5%',
+    'About 20%',
+    'About half',
+    'Every one',
+  ]}
+  answer={2}
+>
+
+**About half.** In this seeded run, 47% of queries miss the ideal top result, and recall@10 averages 38%. A new document
+waits 9.5 h on average before the nightly rebuild can find it, and by the end of the day 168 of the day's 191 new
+documents are still unsearchable. Some queries still do well: about 30% look for older documents, which the nightly
+index ranks with full signals, and the 02:00 build covers the first story's first 90 minutes. The real-time tier never
+misses the ideal top result, reaches 75% recall, and makes every new document searchable within 1 s.
+
+</Predict>
+
+<SearchFreshnessWidget
+  client:visible
+  scenarios={['breaking']}
+/>
+
+What to look for:
+
+- **The sawtooth.** The nightly line drops each time a story breaks. The 02:00 build goes live at 05:00 and lifts it,
+  but only partly: that build holds what had arrived by 02:00.
+- **The long afternoon.** No build starts after 02:00, so the 10:30 and 18:30 stories never reach the nightly index.
+  From 10:30 to midnight, recall averages 33% for the nightly rebuild and 77% for the real-time tier.
+- **Never behind.** In this scenario the real-time tier matches or beats the nightly rebuild at every 15-minute tick.
+- **The bill.** The real-time tier searches 5.5 segments per query on average instead of 1, and it writes 2,524
+  documents against 1,823, counting its flushes and merges. At 19:45 it merges 4 level 2 segments into one level 3
+  segment and rewrites 128 documents in one go.
+
+The real-time tier still stops at 75%. Its live documents rank on text match alone, so a keyword-stuffed page about the
+storm can outrank the story everyone reads until the next full build scores both.
+
+## The constraint: the best ranking needs the whole corpus
+
+Text match alone ranks badly. A page that repeats "storm" three times beats the story everyone reads. Good ranking adds
+signals that come from outside the document: how often readers click it, how trusted its source is, whether a spam
+model flags it. Those signals need data about the whole corpus and the whole click log, so a batch job computes them,
+and the full build that bakes them into the index takes hours.
+
+New documents arrive every second, and a reader searching for breaking news wants them now. So the design trades
+**retrieval quality** against **index freshness**: rebuild rarely and rank well, or index at once and rank on less.
+The answer in this lesson keeps both by running two indexes side by side.
+
+The rest of this lesson walks the [design checklist](../../thinking/design-checklist/).
+
+## Requirements
+
+**Functional**
+
+- A reader searches news with a few words and gets the 10 best documents in ranked order.
+- A newly published story is searchable within seconds.
+- Editors can correct or take down a story, and search reflects it within seconds.
+- As the reader types, the search box suggests completions (the extension at the end).
+
+**Non-functional** (illustrative targets)
+
+- A search answers within a few hundred milliseconds at peak.
+- 20,000 searches per second at peak, with room to grow.
+- Older documents keep the full-signal ranking at all times.
+- Typeahead answers in under 100 ms end to end.
+
+## Estimates
+
+These numbers are illustrative. Assume 540M documents of about 1 KB of index each, 60 new documents per second, and 576M
+searches a day with a peak 3 times the average. A build machine pool indexes 50,000 documents per second, one shard holds
+30 GB of index, and one replica serves 2,000 searches per second.
+
+| Quantity                           | Illustrative value                                              |
+| ---------------------------------- | --------------------------------------------------------------- |
+| Index size                         | 540M × 1 KB = 540 GB                                            |
+| Shards                             | 540 GB ÷ 30 GB = 18                                             |
+| New documents                      | 60 per second, 5,184,000 per day (0.96% of the corpus)          |
+| Searches, average                  | 576M ÷ 86,400 s, about 6,667 per second                         |
+| Searches, peak (3×)                | 20,000 per second                                               |
+| Full rebuild                       | 540M ÷ 50,000 per second = 10,800 s = 3 h                       |
+| New documents during one rebuild   | 60 × 10,800 s = 648,000                                         |
+| Full builds per day, back to back  | at most 8                                                       |
+| Rebuild every minute               | 540M ÷ 3,600 new documents = 150,000 rewrites per new document  |
+| Replicas per shard                 | 20,000 ÷ 2,000 = 10, so 18 × 10 = 180 search servers            |
+| Typeahead, peak (6 keystrokes)     | 20,000 × 6 = 120,000 requests per second                        |
+
+Two things stand out. First, a full rebuild every few seconds is impossible: even one per minute would rewrite 150,000
+documents for each new one, and a build takes 3 h anyway. A fresh build is already 648,000 documents behind when it goes
+live. Second, new documents are small next to the corpus, under 1% a day, so a separate small index for them is cheap to
+search and cheap to rewrite.
+
+## API
+
+```text
+GET    /search?q=storm+coast&page=1
+       returns { results: [{ docId, title, snippet, publishedAt }], nextPage }
+
+POST   /documents
+       body { docId, title, body, publishedAt }
+       returns 202: searchable within seconds, fully ranked after the next build
+
+DELETE /documents/{docId}
+       returns 202: hidden from results at once, removed from disk at the next merge
+
+GET    /suggest?prefix=sto
+       returns { completions: ["storm", "stock market today", "storm tracker"] }
+```
+
+`POST /documents` returns 202 because indexing runs after the call returns. The API promises two stages: the document
+becomes searchable within seconds with text-only ranking, and it gains full ranking signals after the next full build.
+`DELETE` hides the document at once with a tombstone and frees its space later. `GET /suggest` serves typeahead and never
+touches the search index.
+
+## Data model
+
+| Table           | Key         | Holds                                                                                  |
+| --------------- | ----------- | -------------------------------------------------------------------------------------- |
+| Posting lists   | `term`      | Sorted document ids with term frequency, one list per term in each segment             |
+| Document store  | `docId`     | Title, body, and publish time, for snippets and for the next build                     |
+| Ranking signals | `docId`     | Popularity from clicks, source quality, and spam score, computed by the batch job      |
+| Live segments   | `segmentId` | Small inverted indexes for documents since the last build, plus a set of tombstones    |
+| Typeahead trie  | `prefix`    | The top completions under that prefix, counted from the query log                      |
+
+The document store is the source of truth. Every index here is derived from it and can be rebuilt from it, which is what
+makes a nightly rebuild possible at all. The posting lists answer "which documents contain this word?", and the ranking
+signals answer "which of those should come first?" The Data modeling and storage choice lesson covers the stores
+themselves.
+
+## High-level design
+
+Two paths serve every query. The main index shards hold every document up to the last full build, ranked with every
+signal. The live segments hold everything newer, ranked on text match only. A query searches both and merges the
+results, and the next full build folds the live documents into the main index.
+
+<StepDiagram client:visible title="A query and a breaking story" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy title="A printed catalog and a new-arrivals cart">
+
+A big library prints its catalog once a night. Every book in it is cross-referenced and starred by the librarians who
+read it. A book delivered at 10:00 is missing from that catalog until tomorrow, so the library parks a new-arrivals cart
+by the door, sorted by title only. You can find today's books, though nobody has rated them yet. Each night the cart
+empties into the catalog. Checking both takes a little longer than checking one, and a busy day means a long cart.
+
+</Analogy>
+
+## Deep dive: indexing, ranking, and freshness
+
+### The inverted index
+
+A book's index maps a word to the pages that use it. An inverted index does the same for documents: for each term, it
+keeps a **posting list** of the documents that contain it, sorted by document id, often with the term's count in each
+document. Indexing splits each document into terms, lowercases them, and drops stopwords such as "the" and "on". A query
+reads only its own terms' lists. To find documents with every term, it walks the sorted lists side by side and keeps the
+ids that appear in all of them, so the work grows with the length of those lists and never touches the rest of the
+corpus.
+
+<InvertedIndexWidget client:visible />
+
+What to look for:
+
+- **Two lists out of 16.** The query storm coast reads 2 of the 16 posting lists. The storm list holds d1, d2, d3
+  (3 times), and d6. Only d1, d2, and d3 also appear in the coast list.
+- **Keyword stuffing wins.** On text alone, d3, "Storm storm storm coast deals", scores 1.14 and beats the real story,
+  d1, at 0.88.
+- **A signal from outside the text fixes it.** Turn on the popularity signal and d1 leads with 1.78, then d2 at 1.48 and
+  d3 at 1.19.
+
+### Ranking: text match, then signals from the whole corpus
+
+The widget scores text with a simplified BM25, a standard relevance formula. Each query term adds to the score. A rare
+term adds more than a common one, because it says more about the document. A term that repeats adds more, with
+diminishing returns: the third "storm" in d3 counts for less than the first. Real engines also adjust for document
+length, which the toy skips.
+
+Text relevance cannot tell a trusted story from a page that repeats the right words. So the score adds signals computed
+offline: click popularity, source quality, spam scores, often combined by a learned ranking model. Each one needs data
+about the whole corpus or the whole click log, which is why the full build runs as a batch job and takes hours. A
+brand-new story has no clicks yet anyway. In the duel, a live document gets a neutral quality score until the next build
+measures the real one.
+
+### Why one new document is expensive: immutable segments
+
+Search engines write each index file once and never edit it. Posting lists are sorted and compressed, so inserting one
+id would shift everything after it. Files that never change also let thousands of queries read them without locks and
+let the operating system cache them freely. So the engine handles change around the files:
+
+- **An add** goes into a new small segment.
+- **A delete** becomes a tombstone, an entry in a deleted set that every query filters out.
+- **An update** is a delete plus an add.
+
+Every query searches every segment and merges the results, so small segments cannot pile up forever. A **merge policy**
+rewrites them: in the duel, whenever 4 segments share a level, the indexer merges them into one segment a level up and
+drops tombstoned documents on the way. Each document gets rewritten once per level, which keeps both the segment count
+and the rewrite work small. The 19:45 merge in the breaking run, 4 level 2 segments into one level 3 segment holding 128
+documents, is one of those rewrites. Log-structured storage engines use the same write-once-then-compact pattern.
+
+<Predict
+  client:visible
+  question="Now flip the day: only 5% of queries chase a breaking story, and the rest look for older documents. How does the real-time tier compare with the nightly rebuild?"
+  options={[
+    'It still wins recall by a wide margin',
+    'Recall nearly ties, and the tier still pays for its fan-out and merges',
+    'The nightly rebuild wins recall clearly',
+    'Both lose recall, because older documents are harder to rank',
+  ]}
+  answer={1}
+>
+
+**Recall nearly ties.** The nightly rebuild reaches 95% and the real-time tier 97%, close enough that the table marks
+neither as better. Older documents carry full signals in both lanes. The tier still searches 5.5 segments per query
+instead of 1 and writes 2,524 documents against 1,823. When people mostly search old documents, the extra tier buys
+little.
+
+</Predict>
+
+<SearchFreshnessWidget
+  client:visible
+  scenarios={['evergreen', 'rebuild4h']}
+  initial="evergreen"
+  title="Same duel, different day: evergreen queries and faster rebuilds"
+/>
+
+Now pick **Rebuild every 4 hours**. The breaking news day returns, and the first lane starts a full build every 4 hours
+instead of nightly. Each build still takes 3 h, so new indexes go live at 05:00, 09:00, 13:00, 17:00, and 21:00.
+
+- **Fresher.** Recall rises to 49% from 38%, the share of queries missing the ideal top result falls to 42% from 47%,
+  and the average wait for a new document drops to 4.5 h.
+- **Sharp swings.** Recall reaches 100% after the 09:00 build goes live, then crashes when the 10:30 story breaks. Later
+  in the day it edges past the real-time tier at a few ticks, because every document it serves carries full signals.
+- **Expensive.** It starts 6 builds and writes 11,355 documents, 6.2× the nightly rebuild's 1,823, and still averages
+  49% against the real-time tier's 75%. At this lesson's scale, each of those builds rewrites all 540M documents.
+
+### Sharding the index
+
+At 540 GB, the index needs 18 shards. [Sharding and consistent hashing](../../scaling/sharding/) gives two ways to split
+it:
+
+- **By document.** Each shard holds a complete inverted index for its slice of the documents. A query goes to all 18
+  shards, each returns its own top 10, and the query service merges them. Indexing one document touches one shard. The
+  catch: every query waits for the slowest shard.
+- **By term.** Each shard holds the full posting lists for some terms. A two-term query touches at most two shards, but
+  a hot term makes a hot shard, intersecting lists means shipping them between machines, and indexing one document
+  touches a shard for every distinct term in it.
+
+Most engines shard by document. Since every query visits every shard, each shard sees the full peak of 20,000 searches
+per second. At 2,000 per replica, that means 10 [read replicas](../../scaling/read-replicas/) per shard and 180 search
+servers, with a [load balancer](../../scaling/load-balancing/) choosing a replica for each shard. The live segments shard
+the same way, so the real-time tier adds a little fan-out inside each shard.
+
+### Caching hot queries
+
+Search traffic is skewed: during a big story, thousands of readers type the same few words. A
+[result cache](../../scaling/caching/) keyed by the normalized query (lowercased, stopwords dropped) answers those
+repeats without any fan-out. Freshness bites again here. A cached result hides any story published after it was cached,
+so hot queries get a short time to live, a few seconds to a minute, and the cache stores only the first page.
+
+## Trade-offs
+
+The nightly rebuild is simple and ranks well, and it is blind to anything newer than its last build. Rebuilding more
+often narrows that window at the cost of rewriting the whole corpus each time. The real-time tier closes the window
+almost completely, and every query pays for the extra segments.
+
+<TradeoffTable title="Keeping a search index fresh">
+
+| Design                       | What it buys                                                               | What it costs                                                                                    |
+| ---------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Nightly rebuild only         | One index, full signals on every document, 1 segment per query             | New documents stay invisible for hours: 38% recall and a 9.5 h wait on the toy breaking day      |
+| Rebuild every few hours      | Fresher results with the same simple serving path                         | Rewrites the whole corpus each time: 6 builds and 11,355 writes in the toy, still hours behind   |
+| Batch index + real-time tier | New documents searchable within 1 s, full signals for everything older     | 5.5 segments per query in the toy, merge work, text-only ranking for new documents, two paths    |
+| Sharding by term             | A query touches only the shards that hold its terms                        | Hot shards for popular terms, intersections across machines, many shards per indexed document    |
+
+</TradeoffTable>
+
+The real-time tier wins when queries chase new documents: news, social posts, job listings, fresh products. For a
+catalog of old documents, a nightly rebuild loses little and costs far less.
+
+## Extension: typeahead
+
+Typeahead suggests completions while the reader types. It fires on every keystroke, so at 6 keystrokes per search it
+takes 120,000 requests per second at peak. Each answer must arrive in under 100 ms end to end (illustrative), and the
+network round trip uses most of that, so the lookup itself has to run in memory in about a millisecond.
+
+A **trie** stores one node per prefix: s, st, sto, and so on. Finding a prefix takes one step per typed character.
+Collecting every query under a short prefix like s would still scan a large share of the log, so each node stores its
+**top k completions**, computed ahead of time. An offline job counts queries in the log every hour or day, builds a new
+trie, and swaps it in.
+
+<TypeaheadTrieWidget client:visible />
+
+What to look for:
+
+- **One step per character.** The prefix sto visits 4 nodes, the root plus one per letter, and reads the stored answer:
+  storm, stock market today, storm tracker.
+- **The scan reads everything.** Without the trie, every prefix reads all 16 logged queries, and a real log holds
+  millions.
+- **A dead end stops early.** The prefix stx visits 3 nodes and returns nothing.
+- **Memory buys speed.** The trie has more nodes than the log has queries, and each node keeps its own list.
+
+The freshness problem returns in miniature. A query that starts trending at 10:30 stays out of the suggestions until
+the next offline count. The same fix applies: a small, fast-updating list of trending queries, merged with the trie's
+answer at serve time. Short prefixes are few and hot, so a cache in front of the trie, or in the browser, absorbs much of
+the load.
+
+## Honest simplifications
+
+This lesson's model is a toy. Here is what it leaves out:
+
+- **The ideal ranking is an oracle.** It knows every document and its full-signal score the moment it exists. Real
+  teams estimate recall from human relevance judgments and click logs.
+- **One shard, one machine.** The duel has no network, replicas, or tail latency. Segments per query stands in for the
+  cost of fan-out.
+- **A neutral score for new documents.** Live documents get a flat quality score. Real systems guess better from the
+  source's reputation or a fast spam classifier.
+- **No edits or deletes in the duel.** Documents only arrive; tombstones appear in the prose only.
+- **Toy scores.** Each document's text relevance and quality are seeded random draws, and spam is a share of documents
+  with high text scores and low quality.
+- **A fixed merge policy.** The duel merges any 4 segments on one level. Real policies weigh segment sizes and the share
+  of deleted documents.
+- **15-minute ticks.** The real-time tier flushes once per tick, and the lesson reports its wait as the 1 s refresh
+  interval.
+- **Builds snapshot at their start.** A build covers everything that arrived before it started and nothing from its 3 h
+  run.
+- **Simplified BM25.** The inverted index widget skips length normalization and uses one popularity signal with a fixed
+  weight.
+
+## Check yourself
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+The same engine now serves a shop with 540M product listings. Titles rarely change, but price and stock change 2,000
+times per second across the catalog. Using this lesson's numbers, why is sending each change through the real-time tier
+a bad idea, and what would you do instead?
+
+<div slot="answer">
+
+- 2,000 changes per second is **172.8M** a day, about **32%** of the catalog, and **33** times the 60 new documents per
+  second the real-time tier was sized for.
+- Each change through the tier is a delete plus an add: a tombstone and a fresh copy of the whole listing, title and
+  all. Merges would rewrite the same listings again and again.
+- Split the fast fields out. Keep price and stock in a column store keyed by document id and update it in place. At
+  **16 bytes** per listing that is **8.64 GB**, or **480 MB** per shard across 18 shards, small enough to hold in memory.
+- At query time, each shard matches text in its segments as before, then reads price and stock for the candidates. It
+  drops out-of-stock items and applies price filters and price sorts from the fresh column.
+- Titles and descriptions keep the batch index plus real-time tier, so new listings still appear within seconds.
+
+</div>
+
+</Challenge>

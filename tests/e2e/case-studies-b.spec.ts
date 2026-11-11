@@ -12,7 +12,9 @@ async function axeViolations(page: Page): Promise<string[]> {
   );
 }
 
-test('the convergence duel shows index edits diverging and CRDT ids converging', async ({ page }) => {
+test('/case-studies/collaborative-editor/ convergence duel shows index edits diverging and CRDT ids converging', async ({
+  page,
+}) => {
   await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
   await page.goto('case-studies/collaborative-editor/');
   const duel = page.getByRole('region', { name: 'Simulation: Two copies, two sync designs' });
@@ -120,5 +122,94 @@ test('/case-studies/ride-sharing/ geohash explorer encodes the test point by key
   await expect(explorer.getByRole('row', { name: /Hash so far/ })).toContainText('s00000');
   await explorer.getByRole('radio', { name: /South west of 0°, 0°/ }).check();
   await expect(explorer.getByRole('row', { name: /Hash so far/ })).toContainText('7zzzzz');
+  expect(await axeViolations(page)).toEqual([]);
+});
+test('/case-studies/video-streaming/ widgets pin stalls, upload waste, and the egress bill', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+  await page.goto('case-studies/video-streaming/');
+
+  const duel = page.getByRole('region', { name: 'Simulation: Fixed 1080p versus adaptive ladder' });
+  await duel.scrollIntoViewIfNeeded();
+  const skip = duel.getByRole('button', { name: 'Skip to the end' });
+  await expect(skip).toBeEnabled();
+  await duel.getByRole('radio', { name: /Train through tunnels/ }).check();
+  await skip.focus();
+  await page.keyboard.press('Enter');
+  await expect(duel.getByRole('row', { name: /^Stalls/ })).toContainText(/3\D*1/);
+  const startup = duel.getByRole('row', { name: /Startup time/ });
+  await expect(startup).toContainText('3 s');
+  await expect(startup).toContainText('0.5 s');
+  await expect(duel.getByText('4 s buffered: playback can start')).toBeVisible();
+
+  const upload = page.getByRole('region', { name: 'Interactive: One request versus multipart upload' });
+  await upload.scrollIntoViewIfNeeded();
+  await expect(upload.getByRole('row', { name: /^One request/ })).toContainText('5,000 MB sent');
+  await expect(upload.getByRole('row', { name: /Multipart, resumable/ })).toContainText('2,600 MB sent');
+  const drops = upload.getByRole('slider', { name: 'Connection drops during the upload' });
+  await expect(drops).toBeEnabled();
+  await drops.focus();
+  await page.keyboard.press('Home');
+  await expect(upload.getByRole('row', { name: /Multipart, resumable/ })).toContainText('2,000 MB sent');
+  await expect(upload.getByText('No drops, nothing sent twice')).toBeVisible();
+
+  const egress = page.getByRole('region', { name: 'Interactive: What serving the video costs each month' });
+  await egress.scrollIntoViewIfNeeded();
+  await expect(egress.getByRole('row', { name: /Bill without a CDN/ })).toContainText('$63,000');
+  await expect(egress.getByRole('row', { name: /Bill with a CDN/ })).toContainText('$31,500');
+  expect(await axeViolations(page)).toEqual([]);
+});
+
+test('/case-studies/search/ widgets pin recall, rebuild cost, ranking, and typeahead', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+  await page.goto('case-studies/search/');
+
+  const day = page.getByRole('region', {
+    name: 'Simulation: One day of search: nightly rebuild versus a real-time tier',
+  });
+  await day.scrollIntoViewIfNeeded();
+  const skip = day.getByRole('button', { name: 'Skip to the end' });
+  await expect(skip).toBeEnabled();
+  await skip.focus();
+  await page.keyboard.press('Enter');
+  const recall = day.getByRole('row', { name: /Recall@10/ });
+  await expect(recall).toContainText('38%');
+  await expect(recall).toContainText('75%');
+  await expect(day.getByRole('row', { name: /Average wait/ })).toContainText('9.5 h');
+
+  const rerun = page.getByRole('region', {
+    name: 'Simulation: Same duel, different day: evergreen queries and faster rebuilds',
+  });
+  await rerun.scrollIntoViewIfNeeded();
+  const rerunSkip = rerun.getByRole('button', { name: 'Skip to the end' });
+  await expect(rerunSkip).toBeEnabled();
+  await rerun.getByRole('radio', { name: /Rebuild every 4 hours/ }).check();
+  await rerun.getByRole('button', { name: 'Skip to the end' }).click();
+  await expect(rerun.getByRole('row', { name: /Documents written/ })).toContainText('11,355');
+  await expect(rerun.getByRole('row', { name: /Full index builds/ })).toContainText('6');
+
+  const index = page.getByRole('region', { name: 'Interactive: Look up a query in an inverted index' });
+  await index.scrollIntoViewIfNeeded();
+  const popularity = index.getByRole('switch', { name: 'Add the offline popularity signal' });
+  await expect(popularity).toBeEnabled();
+  await expect(index.getByRole('row', { name: /Top result/ })).toContainText('d3');
+  await popularity.focus();
+  await page.keyboard.press('Space');
+  await expect(index.getByRole('row', { name: /Top result/ })).toContainText('d1');
+  await expect(index.getByText('d1 on top')).toBeVisible();
+
+  const typeahead = page.getByRole('region', {
+    name: 'Interactive: Typeahead from a trie of precomputed completions',
+  });
+  await typeahead.scrollIntoViewIfNeeded();
+  const prefix = typeahead.getByRole('textbox', { name: 'Prefix typed so far' });
+  await expect(prefix).toBeEditable();
+  await prefix.fill('stx');
+  await expect(typeahead.getByRole('row', { name: /Trie nodes visited/ })).toContainText('3');
+  await expect(typeahead.getByText('No logged query starts here')).toBeVisible();
+  await typeahead.getByRole('button', { name: 'Type "sto"' }).click();
+  await expect(typeahead.getByRole('row', { name: /Trie nodes visited/ })).toContainText('4');
+  await expect(typeahead.getByRole('row', { name: /^Suggestions/ })).toContainText('storm tracker');
   expect(await axeViolations(page)).toEqual([]);
 });
