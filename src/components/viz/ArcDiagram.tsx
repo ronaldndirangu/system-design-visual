@@ -1,8 +1,9 @@
 import { useId } from 'react';
 import { DiagramScroll } from './DiagramScroll';
 import { ArrowDefs, Edge, SystemNode, safeId } from './SystemNode';
+import './ArcDiagram.css';
 
-export type ArcStage = 'dns' | 'single' | 'scale-out' | 'cache' | 'replicas' | 'shards';
+export type ArcStage = 'dns' | 'single' | 'scale-out' | 'cache' | 'cdn' | 'replicas' | 'shards';
 
 interface StageInfo {
   title: string;
@@ -26,6 +27,12 @@ export const arcStages: Record<Exclude<ArcStage, 'dns'>, StageInfo> = {
     title: 'Cache',
     users: '1M users',
     description: 'Servers check an in-memory cache before the database, which now sees only cache misses.',
+  },
+  cdn: {
+    title: 'CDN',
+    users: '3M users',
+    description:
+      'Clients reach a CDN edge server near them first. The edge answers cached redirects and assets, and only edge misses travel on to the load balancer.',
   },
   replicas: {
     title: 'Read replicas',
@@ -53,6 +60,7 @@ interface Props {
 export default function ArcDiagram({ stage, caption }: Props) {
   const arrow = safeId(useId(), 'arc-arrow');
   const multi = stage !== 'single' && stage !== 'dns';
+  const withCdn = stage === 'cdn' || stage === 'replicas' || stage === 'shards';
   const serverYs = multi ? [80, 160, 240] : [160];
   const serverX = 336;
   const busX = 414;
@@ -80,9 +88,17 @@ export default function ArcDiagram({ stage, caption }: Props) {
             </>
           )}
 
+          {withCdn && (
+            <>
+              <Edge from={[62, 128]} to={[62, 92]} marker={arrow} />
+              <Edge from={[118, 52]} to={[196, 124]} via={[196, 52]} marker={arrow} />
+              <SystemNode kind="cdn" x={62} y={52} label="CDN edge" highlight={stage === 'cdn'} />
+            </>
+          )}
+
           {multi ? (
             <>
-              <Edge from={[124, 160]} to={[146, 160]} marker={arrow} />
+              {!withCdn && <Edge from={[124, 160]} to={[146, 160]} marker={arrow} />}
               {serverYs.map((y) => (
                 <Edge key={y} from={[254, 160]} to={[276, y]} marker={arrow} />
               ))}
@@ -131,7 +147,7 @@ export default function ArcDiagram({ stage, caption }: Props) {
 }
 
 function DataTier({ stage, arrow, busX }: { stage: ArcStage; arrow: string; busX: number }) {
-  const withCache = stage === 'cache' || stage === 'replicas' || stage === 'shards';
+  const withCache = stage === 'cache' || stage === 'cdn' || stage === 'replicas' || stage === 'shards';
   const multi = stage !== 'single' && stage !== 'dns';
   const fromX = multi ? busX : 398;
   return (
@@ -151,7 +167,7 @@ function DataTier({ stage, arrow, busX }: { stage: ArcStage; arrow: string; busX
         </>
       )}
 
-      {stage === 'cache' && (
+      {(stage === 'cache' || stage === 'cdn') && (
         <>
           <Edge from={[busX, 200]} to={[478, 200]} marker={arrow} />
           <SystemNode kind="database" x={540} y={200} sublabel="misses only" />
