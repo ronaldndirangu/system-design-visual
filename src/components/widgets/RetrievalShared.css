@@ -1,0 +1,77 @@
+.sdv-rag {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.sdv-rag svg {
+  display: inline;
+  flex: none;
+  height: 0.85rem;
+  vertical-align: -0.1em;
+  width: 0.85rem;
+}
+
+.sdv-rag-panel {
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.6rem 0.8rem;
+}
+
+.sdv-rag-title {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.sdv-rag-meta {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+
+.sdv-rag-pill {
+  border: 1px solid var(--sdv-border);
+  border-radius: 999px;
+  font-size: var(--sl-text-xs);
+  padding: 0 0.45rem;
+}
+
+.sdv-rag-pill[data-tenant="pine"] {
+  border-color: var(--sdv-series-b);
+  border-style: dashed;
+}
+
+.sdv-rag-answer {
+  display: grid;
+  gap: 0.45rem;
+  justify-items: start;
+}
+
+.sdv-rag-answer__text {
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+
+.sdv-rag-cite {
+  align-items: center;
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.3rem;
+  display: inline-flex;
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-xs);
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0.05rem 0.4rem;
+}
+
+.sdv-rag-cite[data-leak="true"] {
+  border-color: var(--sdv-bad);
+  border-width: 2px;
+  color: var(--sdv-bad);
+}

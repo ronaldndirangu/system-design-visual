@@ -1,0 +1,75 @@
+.sdv-rag-chunks {
+  display: grid;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+}
+
+.sdv-rag-chunk {
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.4rem;
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+}
+
+.sdv-rag-chunk[data-sent="true"] {
+  background: var(--sdv-surface-raised);
+  border-color: var(--sl-color-text-accent);
+  border-width: 3px;
+}
+
+.sdv-rag-chunk__head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+}
+
+.sdv-rag-chunk__id {
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-xs);
+  font-weight: 700;
+}
+
+.sdv-rag-chunk__text {
+  font-size: var(--sl-text-sm);
+  line-height: 1.7;
+  margin: 0;
+}
+
+.sdv-rag-tag {
+  border: 1px solid var(--sdv-border);
+  border-radius: 999px;
+  font-size: var(--sl-text-xs);
+  padding: 0 0.45rem;
+}
+
+.sdv-rag-tag--rule {
+  border-color: var(--sdv-series-a);
+}
+
+.sdv-rag-tag--exception {
+  border-color: var(--sdv-warn);
+  border-style: dashed;
+}
+
+.sdv-rag-word {
+  background: none;
+  color: inherit;
+  padding: 0 0.1rem;
+}
+
+.sdv-rag-word--rule {
+  text-decoration: underline solid var(--sdv-series-a) 2px;
+  text-underline-offset: 0.2em;
+}
+
+.sdv-rag-word--exception {
+  border: 2px dashed var(--sdv-warn);
+  border-radius: 0.2rem;
+  font-weight: 700;
+  margin-inline: 0.12rem;
+}

@@ -1,0 +1,226 @@
+.sdv-gw-now {
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 0.4rem;
+  min-height: 5.5rem;
+  padding: 0.6rem 0.8rem;
+}
+.sdv-gw-title {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin: 0;
+  text-transform: uppercase;
+}
+.sdv-gw-now-body {
+  display: grid;
+  gap: 0.4rem;
+}
+.sdv-gw-line {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  margin: 0;
+}
+.sdv-gw-id {
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-xs);
+  font-weight: 700;
+}
+.sdv-gw-pill {
+  border: 1px solid var(--sdv-border);
+  border-radius: 999px;
+  font-size: var(--sl-text-xs);
+  padding: 0 0.45rem;
+}
+.sdv-gw-pill[data-emphasis="true"] {
+  border-style: dashed;
+  font-weight: 700;
+}
+.sdv-gw-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-gw-badges li {
+  margin: 0;
+}
+.sdv-gw-badges .sdv-badge {
+  line-height: 1.3;
+  white-space: normal;
+}
+/* The stage rule sizes every svg to 100%, so pin the badge icons back to badge size. */
+.sdv-gw-pin .sdv-badge svg,
+.sdv-gw-badges .sdv-badge svg {
+  display: inline;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.sdv-gw-meta {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0.4rem 0 0;
+}
+.sdv-gw-diagram {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+/* The diagrams render at about 0.73 scale, so text is enlarged to stay readable. */
+.sdv-gw-diagram .sdv-node__sublabel,
+.sdv-gw-diagram .sdv-chart__label {
+  font-size: 14px;
+}
+.sdv-gw-table td {
+  vertical-align: top;
+}
+.sdv-gw-strip-mark {
+  align-items: center;
+  border: 1.5px solid var(--sdv-border);
+  border-radius: 3px;
+  color: var(--sl-color-white);
+  display: inline-flex;
+  font-family: var(--sl-font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  height: 1.15rem;
+  justify-content: center;
+  line-height: 1;
+  width: 1.15rem;
+}
+.sdv-gw-strip-mark[data-tone="ok"] {
+  background: var(--sdv-ok);
+  border-color: var(--sdv-ok);
+  color: var(--sdv-ink-on-status);
+}
+.sdv-gw-strip-mark[data-tone="warn"] {
+  background: var(--sdv-warn);
+  border-color: var(--sdv-warn);
+  color: var(--sdv-ink-on-status);
+}
+.sdv-gw-strip-mark[data-tone="bad"] {
+  background: var(--sdv-bad);
+  border-color: var(--sdv-bad);
+  color: var(--sdv-ink-on-status);
+}
+.sdv-gw-strip-mark[data-tone="neutral"] {
+  background: var(--sdv-surface-raised);
+}
+.sdv-gw-flag {
+  outline: 2px solid var(--sdv-warn);
+  outline-offset: 2px;
+}
+.sdv-gw-svg-title {
+  fill: var(--sl-color-white);
+  font-family: var(--sl-font);
+  font-size: 15px;
+  font-weight: 700;
+}
+.sdv-gw-divider {
+  stroke: var(--sdv-border);
+  stroke-dasharray: 4 4;
+  stroke-width: 1;
+}
+.sdv-gw-fields {
+  gap: 0.5rem;
+}
+.sdv-gw-alert {
+  align-items: flex-start;
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-inline-start: 4px solid var(--sdv-border);
+  border-radius: 0.4rem;
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.6rem 0;
+  padding: 0.5rem 0.75rem;
+}
+.sdv-gw-alert[data-tone="ok"] {
+  border-inline-start-color: var(--sdv-ok);
+}
+.sdv-gw-alert[data-tone="bad"] {
+  border-inline-start-color: var(--sdv-bad);
+  border-inline-start-width: 6px;
+}
+.sdv-gw-alert > svg {
+  display: inline;
+  flex: none;
+  height: 1.1rem;
+  margin-top: 0.15rem;
+  width: 1.1rem;
+}
+.sdv-gw-alert p,
+.sdv-gw-alert ul {
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+.sdv-gw-alert ul {
+  display: grid;
+  gap: 0.3rem;
+  padding-inline-start: 1rem;
+}
+.sdv-gw-key {
+  display: inline-block;
+  font-size: var(--sl-text-xs);
+  min-width: 13rem;
+  overflow-wrap: normal;
+  white-space: normal;
+  word-break: normal;
+}
+table.sdv-gw-pin {
+  min-width: 48rem;
+}
+table.sdv-gw-pin tbody th {
+  width: auto;
+}
+table.sdv-gw-pin td:nth-child(2) {
+  min-width: 10rem;
+}
+table.sdv-gw-pin td:last-child {
+  min-width: 11rem;
+}
+.sdv-gw-table tr[data-outcome="wrongHit"] th,
+.sdv-gw-table tr[data-outcome="wrongHit"] td {
+  background: var(--sdv-surface-raised);
+}
+.sdv-gw-table tr[data-outcome="wrongHit"] th {
+  border-inline-start: 4px solid var(--sdv-bad);
+}
+.sdv-gw-segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  list-style: none;
+  margin: 0.6rem 0;
+  padding: 0;
+}
+.sdv-gw-segments > li {
+  margin: 0;
+}
+.sdv-gw-segment {
+  display: grid;
+  gap: 0.25rem;
+}
+.sdv-gw-segment-label {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-weight: 700;
+}
+.sdv-gw-blocks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-gw-blocks li {
+  margin: 0;
+}

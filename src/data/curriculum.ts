@@ -413,48 +413,55 @@ export const curriculum: CourseModule[] = [
         title: 'Evaluation and budgets',
         summary:
           'Define the task, build an evaluation set, and set quality, latency, and cost budgets before choosing a model.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'ai-systems/gateway',
         title: 'The AI gateway',
         summary:
           'Route and cascade model calls, cache safely, enforce quotas, validate output, and fall back.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
       },
       {
         id: 'ai-systems/retrieval',
         title: 'Retrieval',
         summary:
           'Ground answers in your documents with chunking, hybrid search, tenant scoping, and citations.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
       },
       {
         id: 'ai-systems/llm-serving',
         title: 'Serving models',
         summary:
           'See why prefill and decode behave differently, and how batching and KV cache memory set throughput.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
       },
       {
         id: 'ai-systems/agents',
         title: 'Agents and tools',
         summary:
           'Let a model call tools with authorization, injection boundaries, budgets, and cancellation.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
       },
       {
         id: 'ai-systems/recommendations',
         title: 'Recommendation systems',
         summary: 'Narrow millions of items to a handful with candidate generation, then ranking.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'ai-systems/support-assistant',
         title: 'Capstone: support assistant',
         summary:
           'Design a multi-tenant assistant with citations, an abstention path, one approved action, and a fixed budget.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
       },
     ],
   },

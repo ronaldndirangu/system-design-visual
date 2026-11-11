@@ -1,0 +1,47 @@
+.sdv-serve-chunk__grid {
+  stroke: var(--sdv-border);
+  stroke-width: 0.6;
+  stroke-dasharray: 2 3;
+}
+.sdv-serve-chunk__bar--a {
+  fill: var(--sdv-series-a);
+}
+.sdv-serve-chunk__bar--b {
+  fill: var(--sdv-series-b);
+}
+.sdv-serve-chunk__bar--prefill {
+  stroke: var(--sdv-model, var(--sdv-server));
+  stroke-width: 0.6;
+}
+.sdv-serve-chunk__prefill-bg {
+  fill: color-mix(in oklab, var(--sdv-model, var(--sdv-server)) 25%, transparent);
+}
+.sdv-serve-chunk__hatch {
+  stroke: var(--sdv-model, var(--sdv-server));
+  stroke-width: 2;
+}
+.sdv-serve-chunk__marker {
+  stroke: var(--sdv-warn);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 3;
+}
+.sdv-serve-chunk__marker--first {
+  stroke: var(--sdv-ok);
+}
+.sdv-serve-chunk__key--prefill {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--sdv-model, var(--sdv-server)) 0 2px,
+    color-mix(in oklab, var(--sdv-model, var(--sdv-server)) 25%, transparent) 2px 5px
+  );
+}
+.sdv-serve-chunk__key--decode {
+  background: linear-gradient(90deg, var(--sdv-series-a) 0 50%, var(--sdv-series-b) 50% 100%);
+}
+.sdv-serve-chunk__key--marker {
+  display: inline-block;
+  width: 1.2rem;
+  height: 0;
+  vertical-align: middle;
+  border-top: 2px dashed var(--sdv-warn);
+}
