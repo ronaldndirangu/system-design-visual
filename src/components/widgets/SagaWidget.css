@@ -1,0 +1,205 @@
+.sdv-saga__intro,
+.sdv-saga__note {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+.sdv-saga__lane {
+  min-width: 0;
+}
+@media (max-width: 40rem) {
+  .sdv-scroll-x > svg.sdv-saga__svg {
+    min-width: 22rem;
+  }
+}
+
+.sdv-saga__grid {
+  border-collapse: collapse;
+  font-size: var(--sl-text-xs);
+  margin: 0;
+  width: 100%;
+}
+.sdv-saga__grid-title {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin: 0;
+  text-transform: uppercase;
+}
+.sdv-saga__grid th,
+.sdv-saga__grid td {
+  border: 0;
+  border-top: 1px solid var(--sdv-border);
+  padding: 0.3rem 0.25rem;
+  text-align: start;
+  vertical-align: top;
+}
+.sdv-saga__grid thead th {
+  color: var(--sl-color-gray-2);
+  font-weight: 600;
+}
+.sdv-saga__grid tbody th {
+  color: var(--sl-color-white);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sdv-saga__grid tr[data-focus] > * {
+  background: color-mix(in srgb, var(--sl-color-text-accent) 10%, transparent);
+}
+.sdv-saga__grid tr[data-focus] > th {
+  box-shadow: inset 3px 0 0 var(--sl-color-text-accent);
+}
+.sdv-saga__order {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.sdv-saga__watch {
+  border: 1px solid var(--sl-color-text-accent);
+  border-radius: 999px;
+  color: var(--sl-color-white);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0 0.35rem;
+  text-transform: uppercase;
+}
+.sdv-saga__outcome {
+  color: var(--sl-color-gray-2);
+  display: block;
+  font-weight: 500;
+}
+.sdv-saga__outcome[data-outcome="compensated"] {
+  font-style: italic;
+}
+
+.sdv-saga__cell {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  color: var(--sl-color-white);
+  display: inline-flex;
+  gap: 0.25rem;
+  line-height: 1.3;
+  padding: 0.1rem 0.35rem;
+}
+.sdv-sim__stage .sdv-saga__cell svg {
+  flex: none;
+  height: 1em;
+  width: 1em;
+}
+.sdv-saga__cell[data-status="waiting"],
+.sdv-saga__cell[data-status="skipped"] {
+  color: var(--sl-color-gray-2);
+}
+.sdv-saga__cell[data-status="skipped"] {
+  font-style: italic;
+}
+.sdv-saga__cell[data-status="active"] {
+  background: color-mix(in srgb, var(--sl-color-text-accent) 12%, transparent);
+  border-color: var(--sl-color-text-accent);
+}
+.sdv-saga__cell[data-status="done"] {
+  background: color-mix(in srgb, var(--sdv-ok) 18%, transparent);
+  border-color: var(--sdv-ok);
+}
+.sdv-saga__cell[data-status="doubled"] {
+  background: color-mix(in srgb, var(--sdv-warn) 22%, transparent);
+  border: 2px solid var(--sdv-warn);
+  font-weight: 700;
+}
+.sdv-saga__cell[data-status="failed"] {
+  background: color-mix(in srgb, var(--sdv-bad) 15%, transparent);
+  border: 1px dashed var(--sdv-bad);
+}
+.sdv-saga__cell[data-status="undone"] {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--sdv-bad) 16%, transparent) 0 4px,
+    transparent 4px 8px
+  );
+  border-color: var(--sl-color-gray-3);
+}
+
+.sdv-saga__where {
+  border-top: 1px solid var(--sdv-border);
+  display: grid;
+  gap: 0.35rem;
+  padding-top: 0.5rem;
+}
+.sdv-saga__where-title {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  font-weight: 700;
+  margin: 0;
+}
+.sdv-saga__where-list {
+  display: grid;
+  font-size: var(--sl-text-xs);
+  gap: 0.25rem;
+  margin: 0;
+}
+.sdv-saga__where-list > div {
+  display: grid;
+  gap: 0 0.5rem;
+  grid-template-columns: minmax(4.5rem, auto) 1fr;
+}
+.sdv-saga__where-list dt {
+  color: var(--sl-color-gray-2);
+  font-weight: 600;
+}
+.sdv-saga__where-list dd {
+  color: var(--sl-color-white);
+  margin: 0;
+}
+
+.sdv-saga__legend {
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  gap: 0.4rem 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-saga__legend li {
+  align-items: center;
+  color: var(--sl-color-gray-2);
+  display: flex;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+.sdv-saga__transcript {
+  font-size: var(--sl-text-sm);
+}
+.sdv-saga__transcript summary {
+  color: var(--sl-color-white);
+  cursor: pointer;
+  font-weight: 600;
+}
+.sdv-saga__transcript summary:focus-visible {
+  outline: 2px solid var(--sl-color-text-accent);
+  outline-offset: 2px;
+}
+.sdv-saga__transcript ol {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0.5rem 0 0;
+  padding-inline-start: 2rem;
+}
+.sdv-saga__transcript li {
+  color: var(--sl-color-gray-2);
+  margin: 0;
+}
+.sdv-saga__transcript time {
+  color: var(--sl-color-white);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  margin-inline-end: 0.4rem;
+}
+.sdv-saga__mark {
+  color: var(--sl-color-white);
+  font-style: italic;
+}

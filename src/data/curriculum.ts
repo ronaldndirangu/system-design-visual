@@ -293,7 +293,8 @@ export const curriculum: CourseModule[] = [
         id: 'distributed-data/sagas',
         title: 'Sagas',
         summary: 'Coordinate a multi-step business process with compensating steps instead of a global lock.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 22,
         advanced: true,
       },
       {
