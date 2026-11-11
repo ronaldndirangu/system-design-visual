@@ -1,0 +1,197 @@
+.sdv-raft__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.sdv-raft__hint {
+  color: var(--sl-color-gray-2);
+  flex-basis: 100%;
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+
+.sdv-raft__link {
+  stroke: var(--sl-color-gray-5);
+  stroke-width: 1;
+}
+.sdv-raft__link--cut {
+  stroke: var(--sdv-bad);
+  stroke-dasharray: 6 5;
+  stroke-width: 1.5;
+}
+.sdv-raft__panel {
+  fill: var(--sdv-surface);
+  stroke: var(--sdv-border);
+}
+.sdv-raft__star {
+  fill: var(--sl-color-text-accent);
+  stroke: var(--sdv-surface);
+  stroke-width: 1;
+}
+.sdv-raft__timer {
+  fill: var(--sdv-surface);
+  stroke: var(--sdv-border);
+}
+.sdv-raft__timer-fill {
+  fill: var(--sdv-server);
+}
+
+.sdv-raft__msg {
+  transition: transform 90ms linear;
+}
+.sdv-raft--still .sdv-raft__msg {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sdv-raft__msg {
+    transition: none;
+  }
+}
+.sdv-raft__glyph-fill {
+  fill: var(--sl-color-text-accent);
+}
+.sdv-raft__glyph-line {
+  fill: var(--sdv-surface);
+  stroke: var(--sl-color-text-accent);
+  stroke-width: 1.5;
+}
+.sdv-raft__glyph-line--dashed {
+  stroke-dasharray: 2 2;
+}
+
+.sdv-raft svg.sdv-raft__glyph {
+  display: inline-block;
+  flex: none;
+  height: 1rem;
+  overflow: visible;
+  vertical-align: middle;
+  width: 1rem;
+}
+.sdv-raft__bar-swatch {
+  background: var(--sdv-server);
+  border: 1px solid var(--sdv-border);
+  border-radius: 3px;
+  display: inline-block;
+  height: 0.4rem;
+  vertical-align: middle;
+  width: 1.5rem;
+}
+
+.sdv-raft__logs {
+  display: grid;
+  gap: 0.5rem;
+}
+.sdv-raft__row {
+  border: 1px solid var(--sdv-border);
+  border-radius: var(--sdv-radius);
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.4rem 0.6rem;
+}
+.sdv-raft__row--down {
+  border-color: var(--sdv-bad);
+  border-style: dashed;
+}
+.sdv-raft__row-head {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-raft__row-head strong {
+  color: var(--sl-color-white);
+}
+.sdv-raft__empty {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-style: italic;
+  margin: 0;
+}
+.sdv-raft__cells {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-raft__cells li {
+  margin: 0;
+}
+.sdv-raft__cell {
+  align-items: center;
+  border: 1px dashed var(--sdv-server);
+  border-radius: 4px;
+  color: var(--sl-color-white);
+  display: inline-flex;
+  font-size: var(--sl-text-xs);
+  gap: 0.25rem;
+  line-height: 1.3;
+  padding: 0.1rem 0.4rem;
+  white-space: nowrap;
+}
+.sdv-raft__cell--committed {
+  background: var(--sdv-server);
+  border-style: solid;
+  color: var(--sdv-ink-on-status);
+}
+.sdv-raft__cell-term {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.sdv-raft .sdv-raft__cell svg {
+  display: inline-block;
+  flex: none;
+  height: 0.8rem;
+  width: 0.8rem;
+}
+.sdv-raft__chat {
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+
+.sdv-raft__readout {
+  display: grid;
+  gap: 1rem;
+}
+.sdv-raft__timeline {
+  display: grid;
+  gap: 0.35rem;
+}
+.sdv-raft__lane {
+  fill: var(--sdv-surface);
+  stroke: var(--sdv-border);
+}
+.sdv-raft__run {
+  fill: var(--sdv-server);
+}
+.sdv-raft__run--none {
+  stroke: var(--sdv-bad);
+  stroke-dasharray: 4 3;
+}
+.sdv-raft__hatch-line {
+  stroke: var(--sdv-bad);
+  stroke-width: 2;
+}
+.sdv-raft__run-label {
+  fill: var(--sdv-ink-on-status);
+  font-size: 12px;
+  font-weight: 700;
+}
+.sdv-raft__now {
+  stroke: var(--sl-color-white);
+  stroke-width: 1.5;
+}
+.sdv-raft__swatch {
+  background: var(--sdv-server);
+  border: 1px solid var(--sdv-border);
+  display: inline-block;
+  height: 0.8rem;
+  vertical-align: middle;
+  width: 1.2rem;
+}
+.sdv-raft__swatch--none {
+  background: repeating-linear-gradient(45deg, var(--sdv-bad) 0 2px, transparent 2px 6px);
+  border: 1px dashed var(--sdv-bad);
+}

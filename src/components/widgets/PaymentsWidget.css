@@ -1,0 +1,62 @@
+.sdv-paygrid {
+  display: grid;
+  gap: 3px;
+  max-width: 19rem;
+}
+.sdv-paytile {
+  align-items: center;
+  aspect-ratio: 1.5;
+  border: 1.5px solid var(--sl-color-gray-4);
+  border-radius: 0.2rem;
+  box-sizing: border-box;
+  display: inline-flex;
+  font-size: 0.6rem;
+  font-weight: 700;
+  justify-content: center;
+  line-height: 1;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+.sdv-paytile[data-view="pending"] {
+  background: repeating-linear-gradient(45deg, var(--sdv-warn) 0 2px, transparent 2px 5px);
+  border-color: var(--sdv-warn);
+}
+.sdv-paytile[data-view="paid"] {
+  background: var(--sdv-ok);
+  border-color: var(--sdv-ok);
+  color: var(--sdv-ink-on-status);
+}
+.sdv-paytile[data-view="doubled"] {
+  background: var(--sdv-bad);
+  border-color: var(--sdv-bad);
+  color: var(--sdv-ink-on-status);
+}
+.sdv-paytile[data-view="unknown"] {
+  border-color: var(--sl-color-gray-2);
+  border-style: dashed;
+  color: var(--sl-color-gray-2);
+}
+.sdv-paytile[data-view="failed"] {
+  background: var(--sl-color-gray-5);
+  border-color: var(--sl-color-gray-3);
+  color: var(--sl-color-gray-2);
+}
+.sdv-paygrid__legend .sdv-paytile {
+  width: 1.5rem;
+}
+.sdv-paygrid__tally {
+  color: var(--sl-color-gray-2);
+  display: grid;
+  font-size: var(--sl-text-xs);
+  gap: 0.15rem;
+  margin: 0;
+}
+.sdv-paygrid__tally p {
+  margin: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sdv-paytile {
+    transition: none;
+  }
+}
