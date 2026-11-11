@@ -11,6 +11,7 @@ import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import ArcDiagram from '../../../components/viz/ArcDiagram';
 import ServerFarmWidget from '../../../components/widgets/ServerFarmWidget';
+import BalancerDuelWidget from '../../../components/widgets/BalancerDuelWidget';
 
 export const quiz = [
   {
@@ -37,7 +38,16 @@ export const quiz = [
       { text: 'Round robin', why: 'Round robin hands out requests in turn, regardless of how busy each server is. A server stuck on slow requests keeps getting more.' },
       { text: 'Random', why: 'Random choice ignores load too, and it adds its own unevenness on top.' },
       { text: 'Least connections', correct: true, why: 'Sending each request to the server with the shortest queue steers work away from servers busy with slow requests.' },
-      { text: 'They all behave the same', why: 'They match only when every request costs the same. Try the slow requests slider in the simulation.' },
+      { text: 'They all behave the same', why: 'They match only when every request costs the same. Try the Equal requests scenario in the side by side comparison.' },
+    ],
+  },
+  {
+    prompt: 'Your load balancer uses least connections. One server starts answering every request instantly with an error. Before the health check notices, what happens?',
+    options: [
+      { text: 'It gets the same share as every other server', why: 'That is round robin. Least connections looks at requests in progress, and the broken server has none.' },
+      { text: 'It gets more than its share, so even more requests fail', correct: true, why: 'Errors return instantly, so the broken server always looks the least busy. Outlier detection, which ejects a server after a run of errors, closes this gap.' },
+      { text: 'It gets no traffic, because least connections avoids failing servers', why: 'Least connections only counts open requests. It never sees whether a response succeeded.' },
+      { text: 'Traffic shifts away at once, because the errors are fast', why: 'Speed is the problem: a fast error frees the slot at once, which invites the next request.' },
     ],
   },
 ];
@@ -48,6 +58,7 @@ export const quiz = [
 - Compare vertical scaling (a bigger machine) with horizontal scaling (more machines).
 - Describe how a load balancer spreads traffic and routes around a crashed server.
 - Choose between round robin, random, and least connections.
+- Spot the failure that makes least connections send more traffic to a broken server.
 
 </Objectives>
 
@@ -122,6 +133,77 @@ the greeter stops sending people to that lane.
 The load balancer also runs **health checks**: it pings each server every few seconds and stops sending traffic to any
 server that fails to answer.
 
+## Same traffic, two balancers
+
+Below, two copies of the same three server farm receive the exact same stream of requests: the same arrival times and
+the same request sizes. One copy uses round robin; the other uses least connections. Any difference you see comes from
+the routing alone.
+
+<Predict
+  client:visible
+  question="10% of requests now take 20 times as long as the rest, and the average cost stays the same. Which balancer keeps the 95th percentile latency lower?"
+  options={[
+    'Round robin, because it spreads requests evenly',
+    'Least connections',
+    'They tie, since each server gets the same share of requests on average',
+  ]}
+  answer={1}
+>
+
+Least connections. Round robin evens out the **count** of requests, yet one slow request keeps a server busy as long as
+twenty normal ones. Round robin still hands that server its turn, so a line forms behind the slow request. Least
+connections sees the longer line and sends new requests elsewhere. In this toy model with seed 42, the whole run p95
+drops from about 193 ms to 90 ms, and the largest queue (sampled every 0.1 s) falls from 26 to 11. The exact numbers
+depend on the random traffic; least connections won in all 30 random seeds we tried.
+
+</Predict>
+
+<BalancerDuelWidget
+  client:visible
+  scenarios={['equal', 'slow']}
+  initial="slow"
+  title="Same traffic, two balancers"
+  instructions="Press Play to check your prediction. Then pick Equal requests: when every request costs the same, the two balancers tie exactly."
+/>
+
+## When least connections backfires
+
+Least connections has a blind spot. A crashed server often fails fast: it refuses each request at once, so it never has
+a request in progress. To a simple least connections balancer that checks every server, the broken server looks like
+the least busy one in the farm.
+
+<Predict
+  client:visible
+  question="Server 1 crashes at 3 s, and health checks need 2 s to remove it. Which balancer fails more requests in that window?"
+  options={['Round robin', 'Least connections', 'They fail the same number, since the window is the same']}
+  answer={1}
+>
+
+Least connections, by about 1.5 times in this toy model. Round robin keeps sending the broken server its usual third of
+the traffic, about 70 requests per second. Least connections sees a server with nothing in progress and sends it about
+half of all traffic, about 100 per second. It stops short of all traffic because an idle healthy server also has
+nothing in progress and ties with the broken one. With seed 42, 139 requests fail under round robin and 211 under least
+connections.
+
+</Predict>
+
+<BalancerDuelWidget
+  client:visible
+  scenarios={['crash']}
+  title="A crash in the pool"
+  instructions="Press Play and compare the Sent rate on server 1 in each lane until the health checks remove it."
+/>
+
+Production load balancers defend against this in two ways:
+
+- **Outlier detection**, which Envoy offers, ejects a server after a run of failed responses without waiting for the
+  next health check.
+- **Sampling two servers at random** and sending the request to the one with fewer active requests (the power of two
+  choices). Envoy's least request balancer does this by default when all servers have equal weights. A broken server
+  wins only when it lands in the sample, so on average it receives at most twice its equal share. In a pool of 50
+  servers, that cap is 4% of traffic, though short bursts can run higher. Health checks or outlier detection still have
+  to remove it.
+
 ## Try it: break things on purpose
 
 This farm starts with three servers at about 70% busy, plus a few slow requests. Try these experiments:
@@ -129,7 +211,8 @@ This farm starts with three servers at about 70% busy, plus a few slow requests.
 1. Press Play and let it settle. Each server sits near 70% busy.
 2. Crash server 1. Requests fail for about 2 seconds until the health checks notice. Then watch the two survivors try to
    carry 210 requests per second with 200 of capacity. Add a fourth server to rescue them.
-3. Raise slow requests to 30%, then switch between round robin and least connections. Compare the 95th percentile latency.
+3. Switch from round robin to random and compare the queues and the 95th percentile latency. Random ignores load, so
+   some queues grow longer by chance even though the traffic is the same.
 
 <ServerFarmWidget
   client:visible
@@ -149,7 +232,7 @@ This farm starts with three servers at about 70% busy, plus a few slow requests.
 | Vertical: a bigger machine   | No code changes, no new components                  | A hard ceiling, rising prices, and one machine that can fail    |
 | Horizontal: more machines    | Nearly unlimited growth, survives a crashed server  | A load balancer to run, and servers must stay stateless         |
 | Round robin                  | Simple and predictable                              | Uneven queues when request costs vary                           |
-| Least connections            | Adapts to slow requests and slow servers            | The balancer must track every server's open requests            |
+| Least connections            | Adapts to slow requests and slow servers            | Tracks every server's open requests, and favors a server that fails fast |
 | Short health check interval  | Faster failover                                     | More check traffic, and a brief hiccup can eject a good server  |
 
 </TradeoffTable>

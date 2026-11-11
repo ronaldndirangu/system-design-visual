@@ -91,7 +91,15 @@ function views(farm: ServerFarm): BucketView[] {
   }));
 }
 
-const emptyTick: FarmTick = { time: 0, arrived: 0, served: 0, rejected: 0, failed: 0, servers: [] };
+const emptyTick: FarmTick = {
+  time: 0,
+  arrived: 0,
+  served: 0,
+  rejected: 0,
+  failed: 0,
+  servers: [],
+  latencies: [],
+};
 
 const perSecond = (value: number) => `${Math.round(value)}/s`;
 const percent = (value: number) => `${Math.round(value * 100)}%`;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { percentile, ServerFarm } from '../../src/lib/models/serverFarm';
+import { niceScale } from '../../src/lib/niceScale';
 
 function run(farm: ServerFarm, seconds: number) {
   const ticks = Math.round(seconds / 0.1);
@@ -68,6 +69,38 @@ describe('ServerFarm', () => {
     expect(farm.serverStates.some((server) => server.draining)).toBe(true);
     run(farm, 5);
     expect(farm.serverStates).toHaveLength(1);
+  });
+
+  it('gives random routing a worse p95 than round robin at the lab settings', () => {
+    const p95 = (strategy: 'round-robin' | 'random', seed: number) => {
+      const farm = new ServerFarm({
+        capacities: [100, 100, 100],
+        arrivalRate: 210,
+        heavyShare: 0.1,
+        queueLimit: 60,
+        strategy,
+        seed,
+      });
+      const latencies: number[] = [];
+      for (let tick = 0; tick < 300; tick += 1) latencies.push(...farm.step().latencies);
+      return percentile(
+        latencies.sort((a, b) => a - b),
+        0.95,
+      );
+    };
+    for (let seed = 1; seed <= 12; seed += 1) {
+      expect(p95('random', seed)).toBeGreaterThan(p95('round-robin', seed));
+    }
+  });
+});
+
+describe('niceScale', () => {
+  it('rounds axis maximums up to whole steps of 1, 2, or 5', () => {
+    expect(niceScale(0)).toEqual({ max: 4, step: 1 });
+    expect(niceScale(3)).toEqual({ max: 3, step: 1 });
+    expect(niceScale(21)).toEqual({ max: 30, step: 10 });
+    expect(niceScale(333)).toEqual({ max: 400, step: 100 });
+    expect(niceScale(100)).toEqual({ max: 100, step: 50 });
   });
 });
 

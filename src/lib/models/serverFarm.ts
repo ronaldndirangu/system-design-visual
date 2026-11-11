@@ -1,4 +1,5 @@
-import { createRng, poisson, type Rng } from '../rng';
+import { createRng, poisson, type SeededRng } from '../rng';
+import type { ModelAdapter } from './adapter';
 
 /**
  * A deliberately small model of servers behind a load balancer.
@@ -7,6 +8,10 @@ import { createRng, poisson, type Rng } from '../rng';
  * fixed capacity. A request that finds a full queue gets rejected (HTTP 503).
  * A request routed to a crashed server fails until health checks remove it.
  * The model is the source of truth; animations only display its state.
+ *
+ * Arrivals and request costs come from one random stream and routing from
+ * another, so two farms with the same seed see identical traffic whatever
+ * strategy they use. That makes side by side comparisons fair.
  */
 export type Strategy = 'round-robin' | 'random' | 'least-connections';
 
@@ -40,9 +45,11 @@ export const defaultFarmConfig: FarmConfig = {
   seed: 42,
 };
 
-interface QueuedRequest {
+export interface QueuedRequest {
   arrivedAt: number;
   remaining: number;
+  /** Drawn as one of the expensive requests. */
+  slow: boolean;
 }
 
 export interface ServerState {
@@ -76,6 +83,8 @@ export interface FarmTick {
   served: number;
   rejected: number;
   failed: number;
+  /** Latency in ms of every request that finished during this tick. */
+  latencies: number[];
   servers: ServerTick[];
 }
 
@@ -92,21 +101,63 @@ export interface FarmStats {
   utilization: number;
 }
 
-const STATS_WINDOW_SECONDS = 5;
+/** Running counts since the farm started. */
+export interface FarmTotals {
+  arrived: number;
+  served: number;
+  rejected: number;
+  failed: number;
+}
 
-export class ServerFarm {
+export type FarmCommand =
+  | { type: 'rate'; value: number }
+  | { type: 'strategy'; value: Strategy }
+  | { type: 'heavy-share'; value: number }
+  | { type: 'capacities'; value: number[] }
+  | { type: 'crash'; server: number }
+  | { type: 'recover'; server: number };
+
+export interface FarmCheckpoint {
+  config: FarmConfig;
+  servers: ServerState[];
+  nextId: number;
+  cursor: number;
+  time: number;
+  ticks: number;
+  history: FarmTick[];
+  latencies: { time: number; ms: number }[];
+  totals: FarmTotals;
+  workloadState: number;
+  policyState: number;
+}
+
+interface ServerProgress {
+  clock: number;
+  busy: number;
+  served: number;
+}
+
+const STATS_WINDOW_SECONDS = 5;
+const POLICY_STREAM = 0x9e3779b9;
+
+export class ServerFarm implements ModelAdapter<FarmCommand, FarmTick, FarmCheckpoint> {
   private config: FarmConfig;
-  private rng: Rng;
+  private workload: SeededRng;
+  private policy: SeededRng;
   private servers: ServerState[] = [];
   private nextId = 0;
   private cursor = 0;
   private time = 0;
+  private tickCount = 0;
   private history: FarmTick[] = [];
   private latencies: { time: number; ms: number }[] = [];
+  private running: FarmTotals = { arrived: 0, served: 0, rejected: 0, failed: 0 };
 
   constructor(config: Partial<FarmConfig> = {}) {
     this.config = { ...defaultFarmConfig, ...config };
-    this.rng = createRng(this.config.seed);
+    this.config.capacities = [...this.config.capacities];
+    this.workload = createRng(this.config.seed);
+    this.policy = createRng(this.config.seed ^ POLICY_STREAM);
     for (const capacity of this.config.capacities) this.addServer(capacity);
   }
 
@@ -114,8 +165,75 @@ export class ServerFarm {
     return this.time;
   }
 
+  get ticks(): number {
+    return this.tickCount;
+  }
+
   get serverStates(): readonly ServerState[] {
     return this.servers;
+  }
+
+  get totals(): Readonly<FarmTotals> {
+    return this.running;
+  }
+
+  /** Requests accepted into a queue and not yet finished. */
+  get inFlight(): number {
+    return this.servers.reduce((sum, server) => sum + server.queue.length, 0);
+  }
+
+  apply(command: FarmCommand): void {
+    switch (command.type) {
+      case 'rate':
+        this.setArrivalRate(command.value);
+        break;
+      case 'strategy':
+        this.setStrategy(command.value);
+        break;
+      case 'heavy-share':
+        this.setHeavyShare(command.value);
+        break;
+      case 'capacities':
+        this.setCapacities(command.value);
+        break;
+      case 'crash':
+        this.crash(command.server);
+        break;
+      case 'recover':
+        this.recover(command.server);
+        break;
+    }
+  }
+
+  checkpoint(): FarmCheckpoint {
+    return structuredClone({
+      config: this.config,
+      servers: this.servers,
+      nextId: this.nextId,
+      cursor: this.cursor,
+      time: this.time,
+      ticks: this.tickCount,
+      history: this.history,
+      latencies: this.latencies,
+      totals: this.running,
+      workloadState: this.workload.getState(),
+      policyState: this.policy.getState(),
+    });
+  }
+
+  restore(checkpoint: FarmCheckpoint): void {
+    const copy = structuredClone(checkpoint);
+    this.config = copy.config;
+    this.servers = copy.servers;
+    this.nextId = copy.nextId;
+    this.cursor = copy.cursor;
+    this.time = copy.time;
+    this.tickCount = copy.ticks;
+    this.history = copy.history;
+    this.latencies = copy.latencies;
+    this.running = copy.totals;
+    this.workload.setState(copy.workloadState);
+    this.policy.setState(copy.policyState);
   }
 
   setArrivalRate(rate: number): void {
@@ -180,9 +298,29 @@ export class ServerFarm {
 
     let failed = this.runHealthChecks(ticks);
 
-    const arrived = poisson(this.rng, this.config.arrivalRate * dt);
+    const start = this.time;
+    const arrived = poisson(this.workload, this.config.arrivalRate * dt);
+    // Given their count, Poisson arrivals fall at uniform random times within the tick.
+    // Every cost is drawn up front, so routing cannot shift the traffic.
+    const arrivals = Array.from({ length: arrived }, () => ({
+      at: start + this.workload() * dt,
+      ...this.drawRequest(),
+    })).sort((a, b) => a.at - b.at);
+
+    const progress = new Map<number, ServerProgress>();
+    for (const server of this.servers) progress.set(server.id, { clock: start, busy: 0, served: 0 });
+    const finished: number[] = [];
+    const advanceAll = (to: number) => {
+      for (const server of this.servers) {
+        const state = progress.get(server.id);
+        if (state && server.up) this.advance(server, state, to, finished);
+      }
+    };
+
     let rejected = 0;
-    for (let i = 0; i < arrived; i += 1) {
+    for (const { at, ...request } of arrivals) {
+      // Servers work up to this moment first, so the balancer sees live queue lengths.
+      advanceAll(at);
       const target = this.pickServer();
       if (!target) {
         rejected += 1;
@@ -198,25 +336,29 @@ export class ServerFarm {
         tick.rejected += 1;
         rejected += 1;
       } else {
-        target.queue.push({ arrivedAt: this.time, remaining: this.drawCost() });
+        target.queue.push({ arrivedAt: at, ...request });
       }
     }
+    advanceAll(start + dt);
 
     let served = 0;
     for (const server of this.servers) {
       const tick = ticks.get(server.id);
-      if (!tick) continue;
-      if (server.up) {
-        const done = this.process(server, dt);
-        tick.served = done.served;
-        tick.utilization = done.utilization;
-        served += done.served;
-      }
+      const state = progress.get(server.id);
+      if (!tick || !state) continue;
+      tick.served = state.served;
+      tick.utilization = state.busy / dt;
       tick.queueLength = server.queue.length;
+      served += state.served;
     }
 
     this.servers = this.servers.filter((server) => !(server.draining && server.queue.length === 0));
     this.time = round(this.time + dt);
+    this.tickCount += 1;
+    this.running.arrived += arrived;
+    this.running.served += served;
+    this.running.rejected += rejected;
+    this.running.failed += failed;
 
     const result: FarmTick = {
       time: this.time,
@@ -224,6 +366,7 @@ export class ServerFarm {
       served,
       rejected,
       failed,
+      latencies: finished,
       servers: [...ticks.values()],
     };
     this.history.push(result);
@@ -300,7 +443,7 @@ export class ServerFarm {
     if (pool.length === 0) return undefined;
     switch (this.config.strategy) {
       case 'random':
-        return pool[Math.floor(this.rng() * pool.length)];
+        return pool[Math.floor(this.policy() * pool.length)];
       case 'least-connections': {
         // Start the scan at a rotating offset so ties do not always favor server 0.
         let best: ServerState | undefined;
@@ -320,31 +463,32 @@ export class ServerFarm {
   }
 
   /** Request cost in "average requests", so capacity stays in requests per second. */
-  private drawCost(): number {
+  private drawRequest(): { remaining: number; slow: boolean } {
     const { heavyShare, heavyFactor } = this.config;
     const light = 1 / (1 - heavyShare + heavyShare * heavyFactor);
-    return this.rng() < heavyShare ? light * heavyFactor : light;
+    const slow = this.workload() < heavyShare;
+    return { remaining: slow ? light * heavyFactor : light, slow };
   }
 
-  private process(server: ServerState, dt: number): { served: number; utilization: number } {
-    const budget = server.capacity * dt;
-    let remaining = budget;
-    let clock = this.time;
-    let served = 0;
-    while (server.queue.length > 0 && remaining > 1e-9) {
+  /** Works through the queue in continuous time until `to`, idling while it is empty. */
+  private advance(server: ServerState, state: ServerProgress, to: number, finished: number[]): void {
+    if (server.capacity <= 0) return;
+    while (server.queue.length > 0 && state.clock < to - 1e-12) {
       const head = server.queue[0];
       if (!head) break;
-      const work = Math.min(head.remaining, remaining);
-      head.remaining -= work;
-      remaining -= work;
-      clock += work / server.capacity;
+      const begin = Math.max(state.clock, head.arrivedAt);
+      const span = Math.min(head.remaining / server.capacity, to - begin);
+      head.remaining -= span * server.capacity;
+      state.busy += span;
+      state.clock = begin + span;
       if (head.remaining <= 1e-9) {
         server.queue.shift();
-        served += 1;
-        this.latencies.push({ time: this.time + dt, ms: (clock - head.arrivedAt) * 1000 });
+        state.served += 1;
+        const ms = (state.clock - head.arrivedAt) * 1000;
+        finished.push(ms);
+        this.latencies.push({ time: state.clock, ms });
       }
     }
-    return { served, utilization: budget === 0 ? 0 : (budget - remaining) / budget };
   }
 }
 

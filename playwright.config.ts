@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const port = 4321;
+const port = Number(process.env.E2E_PORT ?? 4321);
 const baseURL = `http://localhost:${port}/system-design-visual/`;
 const ci = Boolean(process.env.CI);
 

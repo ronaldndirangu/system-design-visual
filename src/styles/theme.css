@@ -21,6 +21,8 @@
   --sdv-warn: #fbbf24;
   --sdv-bad: #f87171;
   --sdv-ink-on-status: #0b0f19;
+  --sdv-series-a: #60a5fa;
+  --sdv-series-b: #fb923c;
 
   --sdv-surface: color-mix(in oklab, var(--sl-color-gray-6) 70%, var(--sl-color-black));
   --sdv-surface-raised: var(--sl-color-gray-6);
@@ -47,6 +49,8 @@
   --sdv-warn: #b45309;
   --sdv-bad: #b91c1c;
   --sdv-ink-on-status: #ffffff;
+  --sdv-series-a: #1d4ed8;
+  --sdv-series-b: #c2410c;
 
   --sdv-surface: var(--sl-color-gray-7);
   --sdv-surface-raised: var(--sl-color-black);

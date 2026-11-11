@@ -41,21 +41,29 @@ async function hydrateAll(page: Page) {
   await page.waitForLoadState('networkidle');
 }
 
-for (const { path, heading } of pages) {
-  test(`${path} renders, hydrates, and passes axe`, async ({ page }) => {
-    const errors = collectErrors(page);
-    await page.goto(path);
-    await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible();
-    await hydrateAll(page);
-    expect(errors).toEqual([]);
+async function axeViolations(page: Page): Promise<string[]> {
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    // Starlight's search button shows a "Ctrl K" hint (exposed via aria-keyshortcuts) that axe reads as label text.
+    .exclude('button[data-open-modal]')
+    .analyze();
+  return results.violations.flatMap((violation) =>
+    violation.nodes.map((node) => `${violation.id}: ${node.target.join(' ')} ${node.failureSummary}`),
+  );
+}
 
-    const results = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-      // Starlight's search button shows a "Ctrl K" hint (exposed via aria-keyshortcuts) that axe reads as label text.
-      .exclude('button[data-open-modal]')
-      .analyze();
-    expect(results.violations.map((violation) => `${violation.id}: ${violation.help}`)).toEqual([]);
-  });
+for (const { path, heading } of pages) {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    test(`${path} renders, hydrates, and passes axe in ${colorScheme} mode`, async ({ page }) => {
+      const errors = collectErrors(page);
+      await page.emulateMedia({ colorScheme });
+      await page.goto(path);
+      await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible();
+      await hydrateAll(page);
+      expect(errors).toEqual([]);
+      expect(await axeViolations(page)).toEqual([]);
+    });
+  }
 }
 
 test('every page fits a phone screen without sideways scrolling', async ({ page }) => {
@@ -116,6 +124,49 @@ test('a simulation steps forward and updates its readout', async ({ page }) => {
   const before = await table.textContent();
   for (let i = 0; i < 20; i += 1) await sim.getByRole('button', { name: 'Step' }).click();
   await expect.poll(async () => table.textContent()).not.toBe(before);
+});
+
+test('the balancer duel runs by keyboard and badges only clear winners', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+  await page.goto('scaling/load-balancing/');
+  const duel = page.getByRole('region', { name: 'Simulation: Same traffic, two balancers' });
+  await duel.scrollIntoViewIfNeeded();
+  const skip = duel.getByRole('button', { name: 'Skip to the end' });
+  const p95 = duel.getByRole('row', { name: /p95 latency/ });
+
+  await expect(skip).toBeEnabled();
+  await skip.focus();
+  await page.keyboard.press('Enter');
+  await expect(p95).toContainText('Better');
+  expect(await axeViolations(page)).toEqual([]);
+
+  await duel.getByRole('radio', { name: /Some slow requests/ }).focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect(duel.getByRole('radio', { name: /Equal requests/ })).toBeChecked();
+  await skip.focus();
+  await page.keyboard.press('Enter');
+  await expect(p95).toContainText('ms');
+  await expect(duel.getByRole('table').last()).not.toContainText('Better');
+});
+
+test('switching the duel scenario mid run pauses it and keeps focus', async ({ page }) => {
+  await page.goto('scaling/load-balancing/');
+  const duel = page.getByRole('region', { name: 'Simulation: Same traffic, two balancers' });
+  await duel.scrollIntoViewIfNeeded();
+  await expect(duel.getByRole('button', { name: 'Skip to the end' })).toBeEnabled();
+
+  await duel.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(duel.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  await expect(duel.getByText(/s of 20 s$/)).toBeVisible();
+
+  await duel.getByRole('radio', { name: /Some slow requests/ }).focus();
+  await page.keyboard.press('ArrowLeft');
+  const equal = duel.getByRole('radio', { name: /Equal requests/ });
+  await expect(equal).toBeChecked();
+  await expect(equal).toBeFocused();
+  await expect(duel.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
+  await page.waitForTimeout(600);
+  await expect(duel.getByText('Ready', { exact: true })).toBeVisible();
 });
 
 test('marking a lesson complete updates the course map', async ({ page }) => {

@@ -4,16 +4,28 @@
  */
 export type Rng = () => number;
 
+/** An Rng whose position can be saved and restored, so a run can resume exactly. */
+export interface SeededRng extends Rng {
+  getState(): number;
+  setState(state: number): void;
+}
+
 /** mulberry32: tiny, fast, and good enough for teaching simulations. */
-export function createRng(seed: number): Rng {
+export function createRng(seed: number): SeededRng {
   let state = seed >>> 0;
-  return () => {
+  const next = () => {
     state = (state + 0x6d2b79f5) >>> 0;
     let t = state;
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+  return Object.assign(next, {
+    getState: () => state,
+    setState: (value: number) => {
+      state = value >>> 0;
+    },
+  });
 }
 
 /** Integer in [min, max], inclusive. */

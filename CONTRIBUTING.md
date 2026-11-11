@@ -23,6 +23,7 @@ pnpm dev
 ```
 
 Before you push, run `pnpm verify` (lint, type check, unit tests, build) and `pnpm test:e2e`.
+End to end tests serve the build on port 4321. Set `E2E_PORT` to use another port, for example when two checkouts run tests at once.
 
 ## How to add a lesson
 
@@ -129,6 +130,32 @@ Keep logic and visuals apart:
 
 Avoid a general-purpose simulator. A lesson needs one small model that tells one true story.
 
+#### Comparing two strategies
+
+When a lesson contrasts two choices (round robin and least connections, for example), run both on the same traffic
+side by side. The load balancing lesson's `BalancerDuelWidget` is the reference.
+
+- **Model contract.** Implement `ModelAdapter` from `src/lib/models/adapter.ts`: time moves only through `step()`,
+  `apply()` queues a change for the next tick, and `checkpoint()` and `restore()` copy every random stream. Scripted
+  events (a server crash at 3 seconds) go in a `ScheduledCommand` list run by `stepScheduled`, so widgets and tests
+  replay them the same way.
+- **Same traffic, both panes.** Give arrivals and service times separate random streams, seeded identically in both
+  panes. Then any gap in the results comes from the strategy alone.
+- **One shell.** Put both panes inside a single `SimulationShell` so one Play button drives both. Pass a `readout` with
+  a `CompareTable` in place of `stats`.
+- **Scenarios as chips.** Offer two or three presets with `ScenarioChips`. Each chip states its `diff` in plain words
+  (for example, "Each slow one takes 20 times as long; the average stays 10 ms"), so no choice hides its parameters. Changing the chip resets
+  the model; pass the scenario id as the shell's `resetKey` so playback pauses too.
+- **Trace over time.** `TraceChart` draws one solid and one dashed line, so the series differ without color. Number the
+  key moments with `markers` and explain each one in the text transcript below the chart.
+- **Honest badges.** `CompareTable` marks a value "Better" only through `betterIndex` in `src/lib/compare.ts`. Values
+  that format identically, or differ by less than `TIE_MARGIN` (5%), tie and get no badge. Include at least one chip
+  where the strategies tie, so learners see when a choice does not matter.
+- **Tests.** Pin each scenario's headline numbers for a fixed seed, assert the same seed replays identically, and test
+  that `checkpoint()` then `restore()` reproduces the same future ticks.
+
+Keep the parameters realistic. Never tune them to widen a gap; if the effect is small, the lesson says so.
+
 ### 4. Check it
 
 ```sh
@@ -136,7 +163,8 @@ pnpm verify
 pnpm test:e2e
 ```
 
-The browser tests open every ready lesson, hydrate every widget, fail on console errors or broken links, and run axe.
+The browser tests open every ready lesson, hydrate every widget, fail on console errors or broken links, and run axe in
+both light and dark color schemes.
 Also try the lesson with the keyboard only, in dark and light themes, at phone width, and with reduced motion turned
 on in your operating system.
 

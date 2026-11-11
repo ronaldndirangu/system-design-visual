@@ -675,6 +675,9 @@ button[data-tone="bad"] {
   font-size: var(--sl-text-xs);
   font-variant-numeric: tabular-nums;
 }
+.sdv-arc__stages li[aria-current="step"] .sdv-arc__users {
+  color: var(--sl-color-gray-2);
+}
 .sdv-arc__title {
   color: var(--sl-color-white);
   font-size: var(--sl-text-sm);
@@ -1484,6 +1487,9 @@ a.sdv-map__link:hover {
   font-size: var(--sl-text-sm);
   grid-column: 1;
 }
+.sdv-map__lesson[data-status="ready"] .sdv-map__lesson-summary {
+  color: var(--sl-color-gray-2);
+}
 .sdv-map__tags {
   align-items: start;
   display: flex;
@@ -1596,4 +1602,388 @@ a.sdv-map__link:hover {
   .sdv-notfound {
     justify-content: flex-start;
   }
+}
+
+/* ---------- Scenario chips ---------- */
+
+.sdv-chips {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+.sdv-chips > legend {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+  padding: 0;
+}
+.sdv-chips__options {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+.sdv-chips__chip {
+  margin: 0;
+  position: relative;
+}
+.sdv-chips__chip input {
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+}
+.sdv-chips__body {
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.6rem;
+  cursor: pointer;
+  display: grid;
+  gap: 0.2rem;
+  height: 100%;
+  padding: 0.55rem 0.75rem;
+}
+.sdv-chips__label {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  font-weight: 700;
+}
+.sdv-chips__label::before {
+  border: 2px solid var(--sl-color-gray-3);
+  border-radius: 50%;
+  content: "";
+  display: inline-block;
+  height: 0.8rem;
+  margin-inline-end: 0.45rem;
+  vertical-align: -0.05rem;
+  width: 0.8rem;
+}
+.sdv-chips__diff {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+}
+.sdv-chips__chip:hover .sdv-chips__body {
+  border-color: var(--sl-color-gray-3);
+}
+.sdv-chips__chip input:checked + .sdv-chips__body {
+  background: var(--sl-color-accent-low);
+  border-color: var(--sl-color-text-accent);
+  box-shadow: inset 0 0 0 1px var(--sl-color-text-accent);
+}
+.sdv-chips__chip input:checked + .sdv-chips__body .sdv-chips__label::before {
+  background: var(--sl-color-text-accent);
+  border-color: var(--sl-color-text-accent);
+  box-shadow: inset 0 0 0 2px var(--sl-color-accent-low);
+}
+.sdv-chips__chip input:focus-visible + .sdv-chips__body {
+  outline: 3px solid var(--sl-color-text-accent);
+  outline-offset: 2px;
+}
+.sdv-chips:disabled .sdv-chips__body {
+  cursor: default;
+}
+.sdv-chips__single {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+.sdv-chips__single strong {
+  color: var(--sl-color-white);
+}
+
+/* ---------- Side by side comparison ---------- */
+
+.sdv-duel__lanes {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+}
+.sdv-duel__lane {
+  align-content: start;
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.6rem;
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
+  padding: 0.6rem 0.65rem 0.7rem;
+}
+.sdv-duel__lane .sdv-qtracks__meta {
+  flex-direction: column;
+  gap: 0;
+}
+.sdv-duel__lane-title {
+  align-items: center;
+  color: var(--sl-color-white);
+  display: flex;
+  font-size: var(--sl-text-base);
+  gap: 0.5rem;
+  margin: 0;
+}
+.sdv-duel__extra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.sdv-swatch,
+.sdv-sim__stage .sdv-swatch {
+  display: inline-block;
+  flex: none;
+  height: 10px;
+  width: 28px;
+}
+
+.sdv-qtracks {
+  display: grid;
+  gap: 0.65rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-qtracks__row {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+}
+.sdv-qtracks__head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  min-height: 1.5rem;
+}
+.sdv-qtracks__name {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+}
+.sdv-qtracks__track {
+  background-color: var(--sdv-surface-raised);
+  /* A faint gridline every 100 ms of work. */
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0 calc(20% - 1px),
+    var(--sdv-border) calc(20% - 1px) 20%
+  );
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.35rem;
+  display: flex;
+  height: 1.25rem;
+  overflow: hidden;
+  position: relative;
+}
+.sdv-qtracks__row[data-down] .sdv-qtracks__track {
+  background-image: repeating-linear-gradient(
+    45deg,
+    color-mix(in oklab, var(--sdv-bad) 35%, transparent) 0 2px,
+    transparent 2px 9px
+  );
+  border-color: var(--sdv-bad);
+  border-style: dashed;
+}
+.sdv-qtracks__req {
+  background: color-mix(in oklab, var(--sdv-server) 75%, var(--sl-color-bg));
+  box-shadow: inset -1px 0 0 var(--sl-color-bg);
+  display: inline-block;
+  flex: none;
+  height: 100%;
+}
+.sdv-qtracks__req[data-slow] {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-warn) 0 4px,
+    color-mix(in oklab, var(--sdv-warn) 40%, var(--sl-color-bg)) 4px 8px
+  );
+}
+.sdv-qtracks__req[data-head] {
+  outline: 2px solid var(--sl-color-white);
+  outline-offset: -2px;
+}
+.sdv-qtracks__more {
+  background: var(--sl-color-bg);
+  border-inline-start: 1px solid var(--sdv-border);
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  inset-block: 0;
+  inset-inline-end: 0;
+  line-height: 1.15rem;
+  padding: 0 0.35rem;
+  position: absolute;
+}
+.sdv-qtracks__meta {
+  color: var(--sl-color-gray-2);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  font-variant-numeric: tabular-nums;
+  gap: 0.1rem 0.75rem;
+  justify-content: space-between;
+  margin: 0;
+}
+.sdv-qtracks__legend {
+  color: var(--sl-color-gray-2);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  gap: 0.35rem 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-qtracks__legend li {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.4rem;
+  margin: 0;
+}
+.sdv-qtracks__legend .sdv-qtracks__req {
+  border-radius: 0.2rem;
+  height: 0.9rem;
+  width: 1.4rem;
+}
+
+/* ---------- Trace chart and transcript ---------- */
+
+.sdv-trace {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  min-width: 0;
+}
+.sdv-trace__caption {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-sm);
+  gap: 0.25rem 1rem;
+  justify-content: space-between;
+}
+.sdv-trace__title {
+  color: var(--sl-color-white);
+  font-weight: 600;
+}
+.sdv-trace__legend {
+  color: var(--sl-color-gray-2);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  gap: 0.25rem 0.9rem;
+}
+.sdv-trace__key {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.35rem;
+}
+.sdv-trace__frame {
+  min-width: 0;
+  overflow: hidden;
+  width: 100%;
+}
+.sdv-trace__frame svg {
+  display: block;
+}
+.sdv-trace__grid {
+  stroke: var(--sdv-border);
+  stroke-width: 1;
+}
+.sdv-trace__tick {
+  fill: var(--sl-color-gray-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.sdv-trace__line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+}
+.sdv-trace__line--a {
+  stroke: var(--sdv-series-a);
+}
+.sdv-trace__line--b {
+  stroke: var(--sdv-series-b);
+  stroke-dasharray: 7 4;
+}
+.sdv-trace__marker line {
+  stroke: var(--sl-color-gray-3);
+  stroke-dasharray: 2 3;
+}
+.sdv-trace__marker circle {
+  fill: var(--sl-color-text-accent);
+}
+.sdv-trace__marker text {
+  fill: var(--sl-color-black);
+  font-size: 11px;
+  font-weight: 700;
+}
+.sdv-trace__log {
+  display: grid;
+  gap: 0.35rem;
+}
+.sdv-trace__log-title {
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin: 0;
+  text-transform: uppercase;
+}
+.sdv-trace__log ol {
+  display: grid;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-trace__log li {
+  align-items: baseline;
+  display: flex;
+  font-size: var(--sl-text-sm);
+  gap: 0.5rem;
+  margin: 0;
+}
+.sdv-trace__log time {
+  color: var(--sl-color-white);
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.sdv-trace__num {
+  background: var(--sl-color-text-accent);
+  border-radius: 50%;
+  color: var(--sl-color-black);
+  display: inline-grid;
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  height: 1.15rem;
+  place-items: center;
+  width: 1.15rem;
+}
+.sdv-trace__empty,
+.sdv-trace__note {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+
+.sdv-compare thead th {
+  color: var(--sl-color-white);
+  font-weight: 600;
+  width: auto;
+}
+.sdv-compare thead td,
+.sdv-compare thead th {
+  border-top: 0;
+}
+.sdv-compare tbody th {
+  width: 40%;
+}
+.sdv-compare__head {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
 }

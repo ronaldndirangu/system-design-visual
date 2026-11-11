@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useRef } from 'react';
+import { type RefObject, useEffect, useLayoutEffect, useRef } from 'react';
 
 const MAX_CATCH_UP_TICKS = 5;
 
@@ -15,6 +15,12 @@ export function useTicker(
 ): void {
   const tickRef = useRef(onTick);
   tickRef.current = onTick;
+  // The loop below stops in a passive effect, which can land a frame late.
+  // This flag flips before paint, so a pause never lets one more tick through.
+  const runningRef = useRef(running);
+  useLayoutEffect(() => {
+    runningRef.current = running;
+  }, [running]);
 
   useEffect(() => {
     if (!running || ticksPerSecond <= 0) return;
@@ -36,7 +42,7 @@ export function useTicker(
       frame = requestAnimationFrame(loop);
       const elapsed = now - last;
       last = now;
-      if (document.hidden || !visible) return;
+      if (!runningRef.current || document.hidden || !visible) return;
       carry += elapsed;
       let ticks = 0;
       while (carry >= interval && ticks < MAX_CATCH_UP_TICKS) {

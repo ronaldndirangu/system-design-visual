@@ -235,7 +235,14 @@ export const curriculum: CourseModule[] = [
         id: 'async/delivery-semantics',
         title: 'Delivery semantics and the outbox',
         summary:
-          'At most once, at least once, and effectively once, plus the outbox that keeps events and data in step.',
+          'At most once, at least once, and effectively once through idempotent consumers, plus the outbox that keeps events and data in step.',
+        status: 'soon',
+      },
+      {
+        id: 'async/event-driven-design',
+        title: 'Event-driven design',
+        summary:
+          'Choose between thin and fat events, choreography and orchestration, evolve event schemas safely, and park poison messages in a dead-letter queue.',
         status: 'soon',
       },
       {

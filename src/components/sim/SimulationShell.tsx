@@ -15,13 +15,17 @@ export interface SimulationShellProps {
   onReset: () => void;
   /** Plain sentence describing the current state, announced to screen readers. */
   summary: string;
-  stats: StatRow[];
+  stats?: StatRow[];
+  /** Replaces the stats table when a simulation needs a richer text readout, such as a comparison. */
+  readout?: ReactNode;
   status?: { tone: Tone; text: string };
   controls?: ReactNode;
   children: ReactNode;
   ticksPerSecond?: number;
   /** When true the run stops; pressing Play again starts over. */
   finished?: boolean;
+  /** Changing this value pauses the run, for example when the learner picks a new scenario. */
+  resetKey?: string;
 }
 
 /**
@@ -35,12 +39,14 @@ export function SimulationShell({
   onTick,
   onReset,
   summary,
-  stats,
+  stats = [],
+  readout,
   status,
   controls,
   children,
   ticksPerSecond = 10,
   finished = false,
+  resetKey,
 }: SimulationShellProps) {
   const rootRef = useRef<HTMLElement>(null);
   const [running, setRunning] = useState(false);
@@ -66,6 +72,19 @@ export function SimulationShell({
     setRunning(false);
     setAnnouncement(summaryRef.current);
   }, [finished]);
+
+  // Pausing during render means the render that shows a new scenario never ticks it.
+  const [pausedForKey, setPausedForKey] = useState(resetKey);
+  if (pausedForKey !== resetKey) {
+    setPausedForKey(resetKey);
+    setRunning(false);
+  }
+  const lastResetKey = useRef(resetKey);
+  useEffect(() => {
+    if (lastResetKey.current === resetKey) return;
+    lastResetKey.current = resetKey;
+    setAnnouncement(summaryRef.current);
+  }, [resetKey]);
 
   const toggle = () => {
     if (!running && finished) onReset();
@@ -120,7 +139,7 @@ export function SimulationShell({
         </button>
       </div>
       {controls && <div className="sdv-sim__controls">{controls}</div>}
-      <StatTable rows={stats} />
+      {readout ?? <StatTable rows={stats} />}
       <p className="sdv-visually-hidden" aria-live="polite" aria-atomic="true">
         {announcement}
       </p>
