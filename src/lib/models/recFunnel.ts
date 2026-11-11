@@ -6,6 +6,10 @@ import { createRng, hashString } from '../rng';
  * from a catalog of 3,000,000 items. Only 26 items are named fixtures written
  * for this lesson; every other catalog item is anonymous and scores below
  * them. Every latency number is illustrative, and nothing here calls a model.
+ *
+ * Eligibility (ships to this address, not recalled) is known before the
+ * request, so it runs with candidate generation and the ranker never scores an
+ * item the customer cannot buy. Only live stock is checked after ranking.
  */
 export type SourceId = 'embed' | 'together' | 'category' | 'storewide';
 export type StageId = 'candidates' | 'ranker' | 'filters' | 'final';
@@ -81,9 +85,9 @@ export interface FunnelResult {
   /** Anonymous catalog items that filled a shown slot. */
   shownOther: number;
   totalMs: number;
-  /** Known good items that reached the ranker. */
+  /** Known good items this customer can buy that reached the ranker. */
   relevantReached: number;
-  /** Share of known good items that reached the ranker. */
+  /** Share of known good items this customer can buy that reached the ranker. */
   recall: number;
   goodShown: number;
   overBudget: boolean;
@@ -115,7 +119,7 @@ const sourceOrder: SourceId[] = ['embed', 'together', 'category', 'storewide'];
 export const stageInfo: Record<StageId, { label: string; column: string }> = {
   candidates: { label: 'Candidate generation', column: 'Candidates' },
   ranker: { label: 'Ranker', column: 'Ranked' },
-  filters: { label: 'Filters', column: 'Filtered' },
+  filters: { label: 'Stock check', column: 'In stock' },
   final: { label: 'Re-rank and pick', column: 'Shown' },
 };
 export const stageOrder: StageId[] = ['candidates', 'ranker', 'filters', 'final'];
@@ -123,9 +127,9 @@ export const stageOrder: StageId[] = ['candidates', 'ranker', 'filters', 'final'
 export const dropLabels: Record<DropReason, string> = {
   missed: 'Missed by candidates',
   belowRanker: `Below the ranker\u2019s top ${RANKER_KEEP}`,
-  outOfStock: 'Filtered: out of stock',
-  noShip: 'Filtered: does not ship here',
-  recalled: 'Filtered: recalled',
+  outOfStock: 'Stock check: out of stock',
+  noShip: 'Not eligible: does not ship here',
+  recalled: 'Not eligible: recalled',
   diversity: 'Skipped for diversity',
   belowTop5: `Below the top ${SHOWN}`,
 };
@@ -325,7 +329,17 @@ export const items: RecItem[] = [
 ];
 
 const byId = new Map(items.map((item) => [item.id, item]));
-export const RELEVANT_TOTAL = items.filter((item) => item.relevant).length;
+
+/** Why this customer can never buy the item, known before the request arrives. */
+export function ineligibleReason(item: RecItem): 'noShip' | 'recalled' | null {
+  if (item.noShip) return 'noShip';
+  if (item.recalled) return 'recalled';
+  return null;
+}
+
+/** A good replacement this customer can actually buy. */
+export const isKnownGood = (item: RecItem) => item.relevant && ineligibleReason(item) === null;
+export const RELEVANT_TOTAL = items.filter(isKnownGood).length;
 
 export function itemById(id: string): RecItem {
   const item = byId.get(id);
@@ -344,7 +358,7 @@ export const recScenarios: Record<RecScenarioId, RecScenario> = {
   score: {
     id: 'score',
     label: 'Score everything',
-    diff: 'no candidate stage: the ranker scores all 3,000,000 items',
+    diff: 'no candidate retrieval: the ranker scores every eligible item in the 3,000,000 item catalog',
     config: { sources: {}, rank: true },
   },
   funnel: {
@@ -371,6 +385,11 @@ export const recScenarioIds: RecScenarioId[] = ['score', 'funnel', 'few', 'popul
 const bestRank = (item: RecItem) =>
   Math.min(...sourceOrder.map((source) => item.ranks[source] ?? Number.POSITIVE_INFINITY));
 const byScore = (a: string, b: string) => itemById(b).score - itemById(a).score;
+const ineligibleDrops = (ids: string[]): StageResult['namedDropped'] =>
+  ids.flatMap((id) => {
+    const reason = ineligibleReason(itemById(id));
+    return reason ? [{ id, reason }] : [];
+  });
 
 function stage(
   id: StageId,
@@ -415,26 +434,31 @@ export function runFunnel(config: FunnelConfig): FunnelResult {
   let currentCount: number;
 
   if (sources.length === 0) {
-    current = [...allIds];
-    currentCount = CATALOG_SIZE;
-    stages.push(stage('candidates', CATALOG_SIZE, CATALOG_SIZE, 0, allIds, current, [], true));
+    const dropped = ineligibleDrops(allIds);
+    current = allIds.filter((id) => ineligibleReason(itemById(id)) === null);
+    currentCount = CATALOG_SIZE - dropped.length;
+    stages.push(stage('candidates', CATALOG_SIZE, currentCount, 0, allIds, current, dropped));
   } else {
     rawEntries = sources.reduce((sum, run) => sum + run.returned, 0);
     const namedEntries = sources.reduce((sum, run) => sum + run.named.length, 0);
     const unique = new Set(sources.flatMap((run) => run.named));
     duplicates = namedEntries - unique.size;
-    current = items
+    const found = items
       .filter((item) => unique.has(item.id))
-      .sort((a, b) => bestRank(a) - bestRank(b) || a.id.localeCompare(b.id))
-      .map((item) => item.id);
-    currentCount = rawEntries - duplicates;
+      .sort((a, b) => bestRank(a) - bestRank(b) || a.id.localeCompare(b.id));
+    current = found.filter((item) => ineligibleReason(item) === null).map((item) => item.id);
+    currentCount = rawEntries - duplicates - (found.length - current.length);
     const slowest = Math.max(...sources.map((run) => run.ms));
     const ms = slowest + (sources.length > 1 ? MERGE_MS : 0);
-    const dropped = allIds.filter((id) => !unique.has(id)).map((id) => ({ id, reason: 'missed' as const }));
+    const dropped = allIds.flatMap((id): StageResult['namedDropped'] => {
+      if (!unique.has(id)) return [{ id, reason: 'missed' }];
+      const reason = ineligibleReason(itemById(id));
+      return reason ? [{ id, reason }] : [];
+    });
     stages.push(stage('candidates', CATALOG_SIZE, currentCount, ms, allIds, current, dropped));
   }
 
-  const relevantReached = current.filter((id) => itemById(id).relevant).length;
+  const relevantReached = current.filter((id) => isKnownGood(itemById(id))).length;
 
   if (config.rank) {
     const sorted = [...current].sort(byScore);
@@ -450,13 +474,10 @@ export function runFunnel(config: FunnelConfig): FunnelResult {
     stages.push(stage('ranker', currentCount, currentCount, 0, current, current, [], true));
   }
 
-  const filterReason = (item: RecItem): DropReason | null =>
-    item.outOfStock ? 'outOfStock' : item.noShip ? 'noShip' : item.recalled ? 'recalled' : null;
-  const filtered = current.filter((id) => filterReason(itemById(id)) === null);
-  const filterDrops = current.flatMap((id) => {
-    const reason = filterReason(itemById(id));
-    return reason ? [{ id, reason }] : [];
-  });
+  const filtered = current.filter((id) => !itemById(id).outOfStock);
+  const filterDrops = current.flatMap((id) =>
+    itemById(id).outOfStock ? [{ id, reason: 'outOfStock' as const }] : [],
+  );
   const afterFilters = currentCount - filterDrops.length;
   stages.push(stage('filters', currentCount, afterFilters, FILTER_MS, current, filtered, filterDrops));
 
@@ -489,7 +510,7 @@ export function runFunnel(config: FunnelConfig): FunnelResult {
     totalMs,
     relevantReached,
     recall: relevantReached / RELEVANT_TOTAL,
-    goodShown: shown.filter((id) => itemById(id).relevant).length,
+    goodShown: shown.filter((id) => isKnownGood(itemById(id))).length,
     overBudget: totalMs > REC_BUDGET_MS,
   };
 }
@@ -618,12 +639,15 @@ export class RecRun {
 
 function stageEvents(result: FunnelResult, s: StageResult): { text: string; marker: boolean }[] {
   const names = (list: { id: string }[]) => joinNames(list.map((entry) => itemById(entry.id).name));
+  const withReasons = (list: StageResult['namedDropped']) =>
+    joinNames(list.map((drop) => `${itemById(drop.id).name} (${filterWords[drop.reason] ?? drop.reason})`));
   switch (s.stage) {
     case 'candidates': {
-      if (s.skipped) {
+      const ineligible = s.namedDropped.filter((drop) => drop.reason !== 'missed');
+      if (result.sources.length === 0) {
         return [
           {
-            text: `No candidate stage: all ${count(CATALOG_SIZE)} catalog items go straight to the ranker.`,
+            text: `No candidate retrieval: an eligibility filter on the catalog removes ${withReasons(ineligible)}, and the other ${count(s.passed)} items go straight to the ranker.`,
             marker: false,
           },
         ];
@@ -632,16 +656,23 @@ function stageEvents(result: FunnelResult, s: StageResult): { text: string; mark
         (run) => `${sourceInfo[run.source].label} returned ${count(run.returned)}`,
       );
       const slowest = Math.max(...result.sources.map((run) => run.ms));
+      const unique = result.rawEntries - result.duplicates;
       const merge =
         result.sources.length > 1
-          ? ` Merging removed ${result.duplicates} duplicates in ${MERGE_MS} ms, leaving ${count(s.passed)} unique candidates.`
-          : ` That list goes on unchanged: ${count(s.passed)} candidates.`;
+          ? ` Merging removed ${result.duplicates} duplicates in ${MERGE_MS} ms, leaving ${count(unique)} unique candidates.`
+          : ` That list goes on unchanged: ${count(unique)} candidates.`;
+      const eligibility =
+        ineligible.length > 0
+          ? ` Before ranking, the eligibility filter removed ${withReasons(ineligible)}, leaving ${count(s.passed)}.`
+          : '';
       const ran =
         result.sources.length === 1
           ? `One source ran: ${joinNames(parts)} in ${formatMs(slowest)}.`
           : `${result.sources.length} sources ran side by side: ${joinNames(parts)}. The slowest took ${formatMs(slowest)}.`;
-      const events = [{ text: `${ran}${merge}`, marker: false }];
-      const missed = s.namedDropped.filter((drop) => itemById(drop.id).relevant);
+      const events = [{ text: `${ran}${merge}${eligibility}`, marker: false }];
+      const missed = s.namedDropped.filter(
+        (drop) => drop.reason === 'missed' && isKnownGood(itemById(drop.id)),
+      );
       if (missed.length === RELEVANT_TOTAL) {
         events.push({
           text: `Candidates missed all ${RELEVANT_TOTAL} known good items, including the best replacement. The ranker could never recover them.`,
@@ -675,18 +706,14 @@ function stageEvents(result: FunnelResult, s: StageResult): { text: string; mark
       if (s.namedDropped.length === 0) {
         return [
           {
-            text: 'Filters removed nothing: every item is in stock, ships here, and passes the business rules.',
+            text: 'The live stock check removed nothing: every ranked item is in stock right now.',
             marker: false,
           },
         ];
       }
       return [
         {
-          text: `Filters removed ${joinNames(
-            s.namedDropped.map(
-              (drop) => `${itemById(drop.id).name} (${filterWords[drop.reason] ?? drop.reason})`,
-            ),
-          )}. ${s.passed} remain.`,
+          text: `The live stock check removed ${withReasons(s.namedDropped)}. ${s.passed} remain.`,
           marker: false,
         },
       ];
@@ -720,7 +747,7 @@ function stageEvents(result: FunnelResult, s: StageResult): { text: string; mark
 
 const filterWords: Partial<Record<DropReason, string>> = {
   outOfStock: 'out of stock',
-  noShip: 'does not ship to this address',
+  noShip: 'does not ship here',
   recalled: 'recalled',
 };
 

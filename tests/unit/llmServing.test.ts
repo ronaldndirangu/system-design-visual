@@ -8,6 +8,7 @@ import {
   CHUNK_BUDGETS,
   chunkLaneConfigs,
   chunkWorkload,
+  computeMs,
   createBatchDuel,
   createChunkDuel,
   createKvDuel,
@@ -20,7 +21,9 @@ import {
   LLAMA3_8B,
   LLAMA3_8B_NO_GQA,
   MIB,
+  memoryMs,
   PER_SEQUENCE_MS,
+  RIDGE_TOKENS,
   runToEnd,
   type ServeDuel,
   ServeLane,
@@ -100,11 +103,28 @@ describe('toy step cost', () => {
     expect(Math.round(1000 / PER_SEQUENCE_MS)).toBe(6667);
   });
 
-  it('grows prefill time with prompt length', () => {
+  it('prices a step by its slower resource: the weight read or the math', () => {
     expect(stepMs(0, 0)).toBe(0);
-    expect(stepMs(0, 100)).toBe(20);
-    expect(stepMs(0, 1000)).toBe(110);
+    expect(stepMs(0, 100)).toBe(10);
+    expect(stepMs(0, 1000)).toBe(33.25);
     expect(stepMs(4, 0)).toBe(10.6);
+  });
+
+  it('crosses from memory bound to compute bound at the 256-token ridge', () => {
+    expect(RIDGE_TOKENS).toBe(256);
+    expect(computeMs(0, RIDGE_TOKENS)).toBe(memoryMs(0));
+    for (const prompt of [1, 64, 128, 255, 256]) expect(stepMs(0, prompt)).toBe(10);
+    expect(stepMs(0, 257)).toBeGreaterThan(stepMs(0, 256));
+    expect(stepMs(0, 512)).toBe(18);
+    expect(stepMs(0, 1024)).toBe(34);
+    for (let decoders = 1; decoders <= 512; decoders += 1) {
+      expect(stepMs(decoders, 0)).toBe(round(2 + memoryMs(decoders), 6));
+    }
+  });
+
+  it('lets a prompt chunk below the ridge ride on a decode step for free', () => {
+    expect(stepMs(8, 248)).toBe(stepMs(8, 0));
+    expect(stepMs(8, 1024)).toBeGreaterThan(3 * stepMs(8, 0));
   });
 });
 
@@ -176,24 +196,24 @@ describe('static versus continuous batching', () => {
     const [stat, cont] = finishedPair(createBatchDuel('mixed'));
     expect(pin(stat)).toMatchObject({
       steps: 89,
-      elapsedMs: 1047,
+      elapsedMs: 920,
       outputTokens: 159,
-      ttftP50: 249,
-      ttftP95: 650,
+      ttftP50: 201,
+      ttftP95: 523,
       tpotMean: 10.45,
-      tokensPerSecond: 152,
+      tokensPerSecond: 173,
       tokensPerStep: 1.79,
       idleWhileWaiting: 179,
     });
     expect(pin(cont)).toMatchObject({
-      steps: 47,
-      elapsedMs: 627,
+      steps: 50,
+      elapsedMs: 521,
       outputTokens: 159,
-      ttftP50: 57,
-      ttftP95: 222,
-      tpotMean: 12.22,
-      tokensPerSecond: 253,
-      tokensPerStep: 3.38,
+      ttftP50: 17,
+      ttftP95: 96,
+      tpotMean: 10.49,
+      tokensPerSecond: 305,
+      tokensPerStep: 3.18,
       idleWhileWaiting: 0,
     });
   });
@@ -201,20 +221,20 @@ describe('static versus continuous batching', () => {
   it('ties when every answer has the same length and requests arrive in batch-sized groups', () => {
     const [stat, cont] = finishedPair(createBatchDuel('uniform'));
     expect(pin(stat)).toEqual(pin(cont));
-    expect(pin(stat)).toMatchObject({ steps: 48, elapsedMs: 632, tokensPerStep: 4, idleWhileWaiting: 0 });
+    expect(pin(stat)).toMatchObject({ steps: 48, elapsedMs: 607, tokensPerStep: 4, idleWhileWaiting: 0 });
   });
 
   it('pins the burst numbers quoted in the lesson', () => {
     const [stat, cont] = finishedPair(createBatchDuel('burst'));
     expect(pin(stat)).toMatchObject({
-      elapsedMs: 1053,
-      ttftP95: 777,
+      elapsedMs: 941,
+      ttftP95: 665,
       tokensPerStep: 2.08,
       idleWhileWaiting: 104,
     });
     expect(pin(cont)).toMatchObject({
-      elapsedMs: 803,
-      ttftP95: 528,
+      elapsedMs: 686,
+      ttftP95: 411,
       tokensPerStep: 2.86,
       idleWhileWaiting: 0,
     });
@@ -238,19 +258,19 @@ describe('KV cache allocation', () => {
   it('pins the chat traffic numbers quoted in the lesson', () => {
     const [reserve, paged] = finishedPair(createKvDuel('chat'));
     expect(pin(reserve)).toMatchObject({
-      elapsedMs: 1922,
+      elapsedMs: 1865,
       outputTokens: 582,
-      ttftP50: 299,
-      ttftP95: 1073,
+      ttftP50: 269,
+      ttftP95: 1016,
       peakRunning: 4,
       tokenSharePct: 34.3,
       preemptions: 0,
     });
     expect(pin(paged)).toMatchObject({
-      elapsedMs: 1162,
+      elapsedMs: 1135,
       outputTokens: 582,
-      ttftP50: 25,
-      ttftP95: 313,
+      ttftP50: 19,
+      ttftP95: 277,
       peakRunning: 8,
       tokenSharePct: 88.9,
       preemptions: 0,
@@ -261,15 +281,15 @@ describe('KV cache allocation', () => {
     const duel = createKvDuel('squeeze');
     const [reserve, paged] = finishedPair(duel);
     expect(pin(reserve)).toMatchObject({
-      elapsedMs: 3164,
-      ttftP50: 858,
+      elapsedMs: 3134,
+      ttftP50: 843,
       peakRunning: 4,
       tokenSharePct: 47.5,
       preemptions: 0,
     });
     expect(pin(paged)).toMatchObject({
-      elapsedMs: 2262,
-      ttftP50: 28,
+      elapsedMs: 2214,
+      ttftP50: 16,
       peakRunning: 8,
       tokenSharePct: 91.3,
       preemptions: 2,
@@ -277,8 +297,8 @@ describe('KV cache allocation', () => {
     });
     const preempts = duel.lanes[1].events.filter((event) => event.kind === 'preempt');
     expect(preempts.map((event) => [event.step, event.text.split(' ')[0]])).toEqual([
-      [65, 'R8'],
-      [79, 'R7'],
+      [66, 'R8'],
+      [80, 'R7'],
     ]);
     const hit = duel.lanes[1].results.filter((r) => r.preemptions > 0).map((r) => r.id);
     expect(hit.sort()).toEqual(['R7', 'R8']);
@@ -303,20 +323,21 @@ describe('chunked prefill', () => {
     }
   });
 
-  it('flattens the decode stall and delays the first token of the long prompt, more so for small chunks', () => {
+  it('keeps decode gaps flat with chunks up to the ridge, and a smaller chunk only delays first tokens', () => {
     const smallDuel = createChunkDuel(64);
     const largeDuel = createChunkDuel(256);
     const [whole, small] = finishedPair(smallDuel);
     const [, large] = finishedPair(largeDuel);
-    expect(pin(whole)).toMatchObject({ elapsedMs: 1104, worstGapMs: 113.3, p95GapMs: 11.2, longTtft: 120 });
-    expect(pin(small)).toMatchObject({ elapsedMs: 1104, worstGapMs: 16.7, p95GapMs: 16.7, longTtft: 307 });
-    expect(pin(large)).toMatchObject({ elapsedMs: 1104, worstGapMs: 35.9, p95GapMs: 35.9, longTtft: 167 });
+    expect(pin(whole)).toMatchObject({ elapsedMs: 1004, worstGapMs: 34.2, p95GapMs: 11.2, longTtft: 35 });
+    expect(pin(small)).toMatchObject({ elapsedMs: 981, worstGapMs: 11.2, p95GapMs: 11.2, longTtft: 197 });
+    expect(pin(large)).toMatchObject({ elapsedMs: 981, worstGapMs: 11.2, p95GapMs: 11.2, longTtft: 55 });
+    expect(large.longTtft).toBeLessThan(small.longTtft ?? 0);
     const r8Ttft = (lane: ServeLane) => {
       const result = lane.results.find((r) => r.id === 'R8');
       return result ? Math.round(result.firstTokenMs - result.arrivalMs) : null;
     };
     expect([r8Ttft(smallDuel.lanes[0]), r8Ttft(smallDuel.lanes[1]), r8Ttft(largeDuel.lanes[1])]).toEqual([
-      25, 209, 57,
+      13, 98, 11,
     ]);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BACKGROUND_SCORE,
   CapstoneRun,
   type CapstoneScenarioId,
   capstoneScenarioOrder,
@@ -9,7 +10,9 @@ import {
   getDoc,
   type PipelineSummary,
   SupportPipeline,
+  searchHits,
   summarizePipeline,
+  TOP_K,
 } from '../../src/lib/models/supportAssistant';
 
 function byPipeline(id: CapstoneScenarioId): { prototype: PipelineSummary; guarded: PipelineSummary } {
@@ -72,6 +75,35 @@ describe('support assistant capstone model', () => {
         expect([...scores].sort((a, b) => b - a)).toEqual(scores);
       }
     }
+  });
+
+  it('guarded search filters before ranking: a full top k of documents the asker may read', () => {
+    for (const id of capstoneScenarioOrder) {
+      for (const request of capstoneScenarios[id].requests) {
+        const scoped = searchHits(request, true);
+        expect(scoped).toHaveLength(TOP_K);
+        for (const hit of scoped) {
+          const doc = getDoc(hit.doc);
+          expect(doc?.tenant).toBe(request.tenant);
+          if (request.role !== 'staff') expect(doc?.staffOnly).toBe(false);
+        }
+        const scores = scoped.map((hit) => hit.score);
+        expect([...scores].sort((a, b) => b - a)).toEqual(scores);
+        expect(searchHits(request, false)[0]).toEqual(request.hits[0]);
+      }
+    }
+  });
+
+  it('a blocked top hit frees its slot for the next document the asker may read', () => {
+    const request = capstoneScenarios.leak.requests.find((r) => r.id === 'L3');
+    if (!request) throw new Error('missing L3');
+    expect(getDoc(request.hits[0]?.doc ?? '')?.tenant).not.toBe(request.tenant);
+    expect(searchHits(request, true).map((hit) => hit.doc)).toEqual(['pine/returns', 'pine/ebooks']);
+    expect(searchHits(request, true)[1]?.score).toBe(BACKGROUND_SCORE);
+    const run = new CapstoneRun('leak');
+    run.finish();
+    const result = run.lanes[1]?.results.find((r) => r.request.id === 'L3');
+    expect(result).toMatchObject({ outcome: 'handoff', cost: 0, cites: [] });
   });
 
   it('pins the tenant leak probe', () => {

@@ -38,12 +38,19 @@ const summaries = (id: BreakerScenarioId, seed = 42) =>
   run(new BreakerDuel(breakerScenarios[id], seed)).lanes.map(summarizeBreaker);
 
 describe('BreakerServer playback', () => {
-  it('feeds every policy the same redirects', () => {
-    const arrived = policies.map((policy) => {
-      const server = new BreakerServer({ policy });
-      return play(server, 200).map(() => server.totals.arrived);
-    });
-    for (const other of arrived.slice(1)) expect(other).toEqual(arrived[0]);
+  it('feeds every policy the same redirects, tick by tick', () => {
+    for (const id of scenarioIds) {
+      const { schedule } = breakerScenarios[id];
+      const arrived = policies.map((policy) => {
+        const server = new BreakerServer({ policy });
+        return Array.from({ length: 200 }, () => {
+          stepScheduled(server, schedule);
+          return server.totals.arrived;
+        });
+      });
+      expect(new Set(arrived[0]).size).toBeGreaterThan(100);
+      for (const other of arrived.slice(1)) expect(other).toEqual(arrived[0]);
+    }
   });
 
   it('replays a scripted run exactly', () => {

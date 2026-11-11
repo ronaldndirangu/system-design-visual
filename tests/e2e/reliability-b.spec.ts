@@ -29,7 +29,7 @@ test.describe('/reliability/rate-limiting/', () => {
     await expect(served).toContainText('2,001 (67%)');
     await expect(served).toContainText('2,992 (100%)');
     await expect(table.getByRole('row', { name: /Polite requests shed with 503/ })).toContainText('983');
-    await expect(table.getByRole('row', { name: /Client A requests that got 429/ })).toContainText('4,450');
+    await expect(table.getByRole('row', { name: /Client A requests that got 429/ })).toContainText('4,441');
   });
 
   test('scenario chips reset the run, keep focus, and the calm chip ties', async ({ page }) => {
@@ -71,7 +71,7 @@ test.describe('/reliability/rate-limiting/', () => {
       .getByRole('table')
       .first()
       .getByRole('row', { name: /Gave up after 3 retries/ });
-    await expect(gaveUp.getByRole('cell')).toContainText(['181', '32']);
+    await expect(gaveUp.getByRole('cell')).toContainText(['181', '57']);
   });
 
   test('token bucket playground drains on a burst and reacts to the refill slider', async ({ page }) => {
@@ -88,7 +88,7 @@ test.describe('/reliability/rate-limiting/', () => {
     for (let i = 0; i < 20; i += 1) await page.keyboard.press('ArrowRight');
     await expect(refill).toHaveValue('20');
     await skip.click();
-    await expect(sim).toContainText('111 of 115 requests served, 4 got 429');
+    await expect(sim).toContainText('112 of 115 requests served, 3 got 429');
   });
 
   test('reflows at 320 px without page scroll', async ({ page }) => {
@@ -156,18 +156,24 @@ test.describe('/reliability/observability/', () => {
     await expect(hunt).not.toContainText(/from this request and \d+ others/);
   });
 
-  test('sampling duel keeps every failure with tail sampling and ties on a quiet day', async ({ page }) => {
+  test('sampling duel spends one budget, and tail sampling keeps more failures', async ({ page }) => {
     const { sim, skip } = await openSim(page, path, 'Head sampling against tail sampling');
     await skip.click();
     await expect(sim.getByText('Run complete', { exact: true })).toBeVisible();
     const table = sim.getByRole('table').first();
     await expect(
       table.getByRole('row', { name: /Failed requests you can open/ }).getByRole('cell'),
-    ).toContainText(['3', '50']);
+    ).toContainText(['3', '36']);
     await expect(table.getByRole('row', { name: /Traces stored/ }).getByRole('cell')).toContainText([
       '262',
-      '489',
+      '234',
     ]);
+    await expect(
+      table.getByRole('row', { name: /Share of decided requests stored/ }).getByRole('cell'),
+    ).toContainText(['11.2%', '10.0%']);
+    await expect(
+      table.getByRole('row', { name: /Failed or slow requests dropped/ }).getByRole('cell'),
+    ).toContainText(['227', '153']);
 
     await sim.getByRole('radio', { name: /Quiet day/ }).click();
     await expect(sim.getByText('Ready', { exact: true })).toBeVisible();
@@ -178,6 +184,6 @@ test.describe('/reliability/observability/', () => {
         .first()
         .getByRole('row', { name: /Traces stored/ })
         .getByRole('cell'),
-    ).toContainText(['262', '262']);
+    ).toContainText(['262', '234']);
   });
 });
