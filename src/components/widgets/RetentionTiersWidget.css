@@ -1,0 +1,132 @@
+.sdv-retention {
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.sdv-retention__caption,
+.sdv-retention__note {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+
+.sdv-retention__tiers {
+  display: grid;
+  gap: 0.6rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sdv-retention__row {
+  align-items: center;
+  display: grid;
+  gap: 0.35rem 0.75rem;
+  grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+  margin: 0;
+  min-width: 0;
+}
+
+.sdv-retention__name .sdv-badge svg {
+  flex: none;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+
+.sdv-retention__name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  font-size: var(--sl-text-sm);
+  min-width: 0;
+}
+
+.sdv-retention__tier {
+  font-weight: 600;
+}
+
+.sdv-retention__values,
+.sdv-retention__why {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+}
+
+.sdv-retention__track {
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 999px;
+  display: block;
+  height: 0.85rem;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.sdv-retention__range,
+.sdv-retention__bar {
+  display: block;
+  height: 100%;
+  transition: width 250ms ease;
+}
+
+.sdv-retention__range {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sl-color-text-accent) 0 3px,
+    color-mix(in oklab, var(--sl-color-text-accent) 30%, transparent) 3px 6px
+  );
+}
+
+.sdv-retention__bar {
+  background: var(--sl-color-gray-4);
+}
+
+.sdv-retention__row[data-used] .sdv-retention__bar {
+  background: var(--sl-color-text-accent);
+}
+
+.sdv-retention__row[data-used] .sdv-retention__track {
+  border-color: var(--sl-color-text-accent);
+}
+
+.sdv-retention__axis {
+  display: block;
+  height: 1.2rem;
+  position: relative;
+}
+
+.sdv-retention__mark {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.sdv-retention__mark:first-child {
+  transform: none;
+}
+
+.sdv-retention__mark:last-child {
+  transform: translateX(-100%);
+}
+
+@media (max-width: 40rem) {
+  .sdv-retention__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sdv-retention__row--axis > span:first-child {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sdv-retention__range,
+  .sdv-retention__bar {
+    transition: none;
+  }
+}

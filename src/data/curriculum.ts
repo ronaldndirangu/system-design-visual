@@ -324,7 +324,8 @@ export const curriculum: CourseModule[] = [
         id: 'case-studies/search',
         title: 'Search',
         summary: 'Trade retrieval quality against index freshness, then add typeahead as an extension.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
         bestAfter: 'scaling',
       },
       {
@@ -337,8 +338,10 @@ export const curriculum: CourseModule[] = [
       {
         id: 'case-studies/video-streaming',
         title: 'Video streaming',
-        summary: 'Store large files in object storage, transcode them, and pay for bandwidth wisely.',
-        status: 'soon',
+        summary:
+          'Store large files in object storage, upload them in parts, transcode a bitrate ladder, and pay for bandwidth wisely.',
+        status: 'ready',
+        minutes: 25,
         bestAfter: 'reliability',
       },
       {
@@ -375,21 +378,25 @@ export const curriculum: CourseModule[] = [
         id: 'case-studies/ride-sharing',
         title: 'Ride sharing',
         summary: 'Index fast-changing locations with one geospatial scheme and match riders to drivers.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
         bestAfter: 'async',
       },
       {
         id: 'case-studies/metrics',
         title: 'Metrics and alerting',
-        summary: 'Ingest millions of writes per second, control label cardinality, and expire old data.',
-        status: 'soon',
+        summary:
+          'Ingest millions of writes per second, control label cardinality, downsample, and expire old data.',
+        status: 'ready',
+        minutes: 25,
         bestAfter: 'async',
       },
       {
         id: 'case-studies/collaborative-editor',
         title: 'Collaborative editor',
         summary: 'Merge concurrent edits so every copy of the document converges.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
         bestAfter: 'distributed-data',
       },
     ],

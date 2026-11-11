@@ -1,0 +1,126 @@
+.sdv-geo {
+  display: grid;
+  gap: 0.75rem;
+}
+.sdv-geo__figure {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+}
+.sdv-sim__stage .sdv-geo__map {
+  background: var(--sdv-surface);
+  border-radius: 0.4rem;
+  margin-inline: auto;
+  max-width: 26rem;
+}
+.sdv-geo__title {
+  fill: var(--sl-color-white);
+  font-size: 12px;
+  font-weight: 600;
+}
+.sdv-geo__half {
+  fill: none;
+  stroke: var(--sdv-border);
+  stroke-width: 1.5;
+}
+.sdv-geo__half--kept {
+  fill: color-mix(in oklab, var(--sl-color-accent) 18%, transparent);
+  stroke: var(--sl-color-accent);
+  stroke-width: 2;
+}
+.sdv-geo__hatch-line {
+  stroke: var(--sl-color-accent);
+  stroke-opacity: 0.45;
+  stroke-width: 2;
+}
+.sdv-geo__split {
+  stroke: var(--sl-color-white);
+  stroke-dasharray: 5 4;
+  stroke-width: 2;
+}
+.sdv-geo__digit {
+  fill: var(--sl-color-white);
+  font-size: 22px;
+  font-weight: 700;
+}
+.sdv-geo__word,
+.sdv-geo__mid {
+  fill: var(--sl-color-gray-2);
+  font-size: 11px;
+}
+.sdv-geo__point-ring {
+  fill: none;
+  stroke: var(--sl-color-white);
+  stroke-width: 2;
+}
+.sdv-geo__point {
+  fill: var(--sl-color-white);
+}
+.sdv-geo__caption,
+.sdv-geo__legend {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-geo__strip {
+  display: grid;
+  gap: 0.4rem;
+}
+.sdv-geo__groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-geo__groups > li {
+  margin: 0;
+}
+.sdv-geo__group {
+  align-items: center;
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.4rem;
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.2rem 0.35rem;
+}
+.sdv-geo__group[data-done] {
+  border-color: var(--sl-color-accent);
+}
+.sdv-geo__bits {
+  display: flex;
+  gap: 0.1rem;
+}
+.sdv-geo__bit {
+  border-radius: 0.2rem;
+  display: grid;
+  font-family: var(--sl-font-mono);
+  justify-items: center;
+  line-height: 1.1;
+  min-width: 0.95rem;
+}
+.sdv-geo__bit[data-pending] {
+  color: var(--sl-color-gray-3);
+}
+.sdv-geo__bit[data-current] {
+  outline: 2px solid var(--sl-color-accent);
+  outline-offset: 1px;
+}
+.sdv-geo__bit-value {
+  font-size: var(--sl-text-sm);
+}
+.sdv-geo__bit-axis {
+  color: var(--sl-color-gray-3);
+  font-size: 0.65rem;
+}
+.sdv-geo__char {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sdv-geo__group[data-done] .sdv-geo__char code {
+  color: var(--sl-color-white);
+  font-weight: 700;
+}
