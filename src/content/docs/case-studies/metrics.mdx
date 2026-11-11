@@ -171,9 +171,9 @@ export const quiz = [
   },
 ];
 
-This case study builds on the **Async and streaming** module, especially Logs and pub/sub (the write buffer is a log) and
-Stream processing (rollups and alert rules are continuous queries over a stream of samples). It also pairs with
-Observability in the Reliability module, which covers what to measure; this lesson covers the system that stores it.
+This case study builds on the **Async and streaming** module, especially [Logs and pub/sub](../../async/logs-and-pubsub/) (the write buffer is a log) and
+[Stream processing](../../async/stream-processing/) (rollups and alert rules are continuous queries over a stream of samples). It also pairs with
+[Observability](../../reliability/observability/) in the Reliability module, which covers what to measure; this lesson covers the system that stores it.
 
 <Objectives>
 
@@ -404,7 +404,7 @@ What to look for:
   ingesters. Rejections are silent data loss, so alert on the rejected sample count itself.
 - **Put per-user detail where it belongs.** Logs, traces, and analytics stores are built for high cardinality: they
   store each event once and index it for search. The user level events can flow through a log into a stream processor or
-  analytics store, the pattern the Logs and pub/sub and Stream processing lessons cover. Exemplars bridge the two: they
+  analytics store, the pattern the [Logs and pub/sub](../../async/logs-and-pubsub/) and [Stream processing](../../async/stream-processing/) lessons cover. Exemplars bridge the two: they
   attach a trace id to a sample without making it a label.
 
 ### Sharding spreads series and keeps the total
@@ -491,8 +491,8 @@ Firing alerts go to **Alertmanager**, which decides who hears about them:
 - **Inhibition** mutes the host alerts while a whole data center alert is firing.
 - **Silences** mute matching alerts during planned maintenance, set by a person, with an expiry.
 
-Two habits keep alerting honest. First, alert on what users feel, such as error rate and latency, and let the SLOs and
-measurement lesson's error budgets set the thresholds. Second, alert on the metrics system itself: on launch day the
+Two habits keep alerting honest. First, alert on what users feel, such as error rate and latency, and let the [SLOs and
+measurement](../../thinking/slos/) lesson's error budgets set the thresholds. Second, alert on the metrics system itself: on launch day the
 checkout error panel saw only 3 of 45 errors because their series were rejected, so a rule on rejected samples, or one
 that fires when an expected series goes missing, catches the failure this lesson opened with.
 

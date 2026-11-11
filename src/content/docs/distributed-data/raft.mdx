@@ -312,7 +312,7 @@ other, and Nodes 1, 4, and 5 can reach only each other.
 Every server ends with the same chat: hi, hey!, noon?, sure, see you. Five of seven messages committed, the two sent to
 the old leader were lost, and the chat had no working leader for 240 ms. No committed message was lost. Neither erased
 message was ever confirmed, so a real chat client would time out and resend it to the new leader. That resend is why
-each message needs an ID the server can check for duplicates, which the Idempotency lesson covers.
+each message needs an ID the server can check for duplicates, which the [Idempotency](../../reliability/idempotency/) lesson covers.
 
 The minority side stayed consistent by refusing to commit: it gave up availability for writes during the partition.
 That is the choice [CAP and PACELC](../cap-and-pacelc/) describes, and Raft always makes it the same way.

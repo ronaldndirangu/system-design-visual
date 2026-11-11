@@ -315,7 +315,7 @@ The widget is a toy, and real systems differ from it in a few important ways:
   return an add that Sam was told failed. Retries must be safe to repeat.
 - **Concurrent writers need a merge rule.** One shopper writes this cart, so its versions form a simple sequence. When
   two devices write at once, stores tag versions with timestamps or vector clocks and must merge siblings, with the
-  same risks the CAP lesson shows.
+  same risks the [CAP lesson](../../distributed-data/cap-and-pacelc/) shows.
 
 ## Trade-offs
 

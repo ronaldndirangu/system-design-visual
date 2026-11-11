@@ -243,7 +243,7 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
 6. **Deep dive: the retry.** This is where the design breaks first, and the simulations below live here. After a timeout
    there are three possible worlds: the request was lost, the bank declined, or the bank charged and the reply was lost.
    Only the bank knows which. A retry with the same key asks the bank to answer from its key store, so all three worlds
-   end with one charge at most. The Idempotency lesson covers key stores in depth, and Retries with backoff and jitter
+   end with one charge at most. The [Idempotency](../../reliability/idempotency/) lesson covers key stores in depth, and [Retries with backoff and jitter](../../reliability/retries/)
    covers spacing the attempts. When every attempt times out, the payment stays unknown until reconciliation settles it.
 
 7. **Trade-offs.** Timeout length, how long to keep keys, how often to reconcile, and what to show the shopper while a
@@ -286,7 +286,7 @@ A payment service keeps its own record of every cent, separate from the bank's. 
 | 3     | 71      | Merchant payable (refund of $15)           | $15   |        |
 | 4     | 71      | Card network receivable (refund of $15)    |       | $15    |
 
-Write both entries of a pair in one database transaction (the Transactions and constraints lesson covers this), and
+Write both entries of a pair in one database transaction (the [Transactions and constraints](../../foundations/transactions/) lesson covers this), and
 store amounts as integer cents so rounding never creates or destroys money.
 
 ## Reconcile with the bank
@@ -308,7 +308,7 @@ What to look for:
   value: it proves the books balance.
 
 A payment that spans several services (reserve stock, charge the card, book shipping) also needs a plan for undoing the
-earlier steps when a later one fails. The Sagas lesson covers that, and Delivery semantics and the outbox covers sending
+earlier steps when a later one fails. The [Sagas](../../distributed-data/sagas/) lesson covers that, and [Delivery semantics and the outbox](../../async/delivery-semantics/) covers sending
 the "payment succeeded" event exactly when the ledger commits.
 
 ## Payments versus ticketing

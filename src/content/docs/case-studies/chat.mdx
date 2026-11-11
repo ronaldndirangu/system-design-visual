@@ -245,8 +245,8 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
 5. **High-level design.** Gateways hold sockets and know nothing about chats. The chat service numbers messages, writes
    them to the log, and publishes them. Push workers read the topic and route each message to the gateways that hold its
    readers' sockets, using a presence map of who is connected where. A load balancer spreads new sockets across gateways
-   by connection count (see [load balancing](../../scaling/load-balancing/)). The Real-time transport lesson compares
-   sockets, server-sent events, and long polling, and the Logs and pub/sub lesson covers the topic in the middle.
+   by connection count (see [load balancing](../../scaling/load-balancing/)). The [Real-time transport](../../foundations/real-time/) lesson compares
+   sockets, server-sent events, and long polling, and the [Logs and pub/sub](../../async/logs-and-pubsub/) lesson covers the topic in the middle.
 
 6. **Deep dive: order and gaps.** This is where the design breaks first, and both simulations below live here. Parallel
    push workers reorder messages, and a socket that died silently swallows them. Sequence numbers fix the first. Cursors
@@ -310,7 +310,7 @@ What to look for:
 A cursor needs a log to read from. Keep each conversation's messages, numbered, for as long as a device might stay
 offline, and a phone or laptop of any age can resync with one question. A device asleep longer than the log keeps
 messages needs a full resync. When a gateway restarts, its 100,000 phones reconnect at once and all ask for catch-up, so
-phones wait a random moment before reconnecting. The Retries with backoff and jitter lesson covers that spread.
+phones wait a random moment before reconnecting. The [Retries with backoff and jitter](../../reliability/retries/) lesson covers that spread.
 
 ## Chat versus notifications
 

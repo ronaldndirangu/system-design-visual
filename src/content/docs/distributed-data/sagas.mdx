@@ -129,7 +129,7 @@ export const quiz = [
 
 The online store has grown into separate services. Checking out a cart now touches three of them, and each owns its
 own database: **Inventory** reserves the items, **Payments** charges the card, and **Shipping** books a courier.
-Inside one database, a transaction makes a change all or nothing (the Transactions and constraints lesson covers how).
+Inside one database, a transaction makes a change all or nothing (the [Transactions and constraints](../../foundations/transactions/) lesson covers how).
 Nothing like that spans three databases.
 
 You have two obvious options, and both hurt:
@@ -263,7 +263,7 @@ Designs that live with this:
 A lost reply and a lost request look the same to the sender, so the orchestrator resends a command after a timeout,
 and the bus redelivers an event that nobody acknowledged. Every step and every compensation can therefore run more
 than once. Payments must key each charge by order id, see that order 2 is already charged, and return its first answer.
-Refunds need the same guard, or a retried refund pays the customer back twice. The Idempotency lesson covers these
+Refunds need the same guard, or a retried refund pays the customer back twice. The [Idempotency](../../reliability/idempotency/) lesson covers these
 keys in depth.
 
 Retries also cost time. With the lost reply, order 2 finishes in **1000 ms** under orchestration and **1200 ms** under
@@ -272,7 +272,7 @@ retrying a refund until it succeeds, and alert a person if it keeps failing.
 
 One more trap: a service must save its change and publish its event together. If it crashes between the two, the saga
 stalls forever. The usual fix writes the event to an outbox table in the same local transaction, and a relay publishes
-it later. The Event-driven design lesson covers that pattern.
+it later. The [Event-driven design](../../async/event-driven-design/) lesson covers that pattern.
 
 ## Trade-offs
 

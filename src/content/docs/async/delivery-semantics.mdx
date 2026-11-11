@@ -208,7 +208,7 @@ Where the consumer puts the commit decides what a crash costs:
   again. Nothing is ever lost.
 - **Effectively once**: count, then commit, and make a repeat harmless. The consumer records each click id it counted
   **in the same transaction as the count**, and skips ids it has seen. Delivery is still at least once, and the effect
-  happens once. The **Idempotency** lesson covers this pattern in depth.
+  happens once. The [**Idempotency**](../../reliability/idempotency/) lesson covers this pattern in depth.
 
 <Predict
   client:visible

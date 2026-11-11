@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { allLessons, anchorFor, curriculum, findModule } from '../../src/data/curriculum';
@@ -9,7 +10,12 @@ const lessonFile = (id: string) => `${docsDir}${id}.mdx`;
 const filesUnder = (dir: string) =>
   readdirSync(dir, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile())
-    .map((entry) => `${entry.parentPath}/${entry.name}`.replaceAll('\\', '/'));
+    .map((entry) => join(entry.parentPath, entry.name).replaceAll('\\', '/'));
+const docsRoot = join(docsDir, '/').replaceAll('\\', '/');
+const routeOf = (file: string) => {
+  const slug = file.slice(docsRoot.length).replace(/\.mdx$/, '');
+  return slug === 'index' ? '/' : `/${slug}/`;
+};
 
 describe('curriculum', () => {
   it('has unique lesson ids and module numbers in order', () => {
@@ -43,6 +49,19 @@ describe('curriculum', () => {
   it('never promises content that is coming soon', () => {
     const offenders = filesUnder(srcDir).filter((file) => /coming soon/i.test(readFileSync(file, 'utf8')));
     expect(offenders).toEqual([]);
+  });
+
+  it('points every relative link in a page at another page', () => {
+    const pages = filesUnder(docsDir).filter((file) => file.endsWith('.mdx'));
+    const routes = new Set(pages.map(routeOf));
+    const broken = pages.flatMap((file) =>
+      [...readFileSync(file, 'utf8').matchAll(/\]\((\.{1,2}\/[^)\s#]*)/g)]
+        .map((match) => new URL(match[1] as string, `https://site${routeOf(file)}`).pathname)
+        .filter((target) => !routes.has(target))
+        .map((target) => `${routeOf(file)} links to missing ${target}`),
+    );
+    expect(pages.length).toBeGreaterThan(50);
+    expect(broken).toEqual([]);
   });
 
   it('builds URL-safe anchors', () => {

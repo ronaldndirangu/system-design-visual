@@ -263,7 +263,7 @@ A client should know what happened, and what to do next, from the status code al
 
 A `4xx` code means the client must change the request before it tries again. A `5xx` code means the server failed, and
 the same request may work later. Retry `5xx` and `429` with backoff; retrying most `4xx` codes just repeats the
-mistake. The Rate limiting lesson covers how a server decides when to send `429`.
+mistake. The [Rate limiting](../../reliability/rate-limiting/) lesson covers how a server decides when to send `429`.
 
 Give every error the same body shape, with a stable machine readable code next to the human message:
 
@@ -284,7 +284,7 @@ arrives. The app cannot tell whether the link exists, so it retries, and the use
 `PUT`, and `DELETE` are idempotent by definition: sending one twice leaves the same result as sending it once. `POST` is
 not. The fix is an `Idempotency-Key` header: the client
 sends a random key with the request, and the server stores the first response under that key and returns it again for
-any repeat. The Idempotency lesson builds this in detail.
+any repeat. The [Idempotency](../../reliability/idempotency/) lesson builds this in detail.
 
 ## Request IDs connect a complaint to a log line
 

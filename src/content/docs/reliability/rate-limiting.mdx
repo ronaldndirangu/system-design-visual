@@ -269,8 +269,8 @@ A limiter should reject with a clear, cheap answer:
   draft standard names them `RateLimit` and `RateLimit-Policy`; many APIs use older `X-RateLimit-Remaining` style names.
 
 The client decides what happens next. A careless client retries at once. A well-behaved one waits for Retry-After, adds
-a little random jitter so many clients do not return in the same instant, and stops after a few tries. The retries
-lesson covers backoff and jitter in depth.
+a little random jitter so many clients do not return in the same instant, and stops after a few tries. The
+[retries lesson](../../reliability/retries/) covers backoff and jitter in depth.
 
 <Predict
   client:visible
@@ -309,7 +309,7 @@ Limits work best in layers, each keyed by what that layer knows.
   Only the service knows that one request can cost a thousand times another.
 
 Rate limits keep clients fair. When every client stays under its limit and the sum still exceeds capacity, the service
-has to shed load on its own; the queues and backpressure lesson covers that. Set the limits themselves from measured
+has to shed load on its own; the [queues and backpressure](../../reliability/queues-and-backpressure/) lesson covers that. Set the limits themselves from measured
 capacity and your latency goal. The [SLOs lesson](../../thinking/slos/) shows how to define that goal.
 
 ## Limits across many gateways

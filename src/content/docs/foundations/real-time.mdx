@@ -166,7 +166,7 @@ What to look for:
   HTTP/2 carries many streams over one connection and removes the problem.
 - **Fan-out.** A click lands on whichever app server the [load balancer](../../scaling/load-balancing/) picks, and the
   viewer's stream lives on one particular server. A shared pub/sub channel carries the click to the server that holds
-  the stream. The Logs and pub/sub lesson in Module 4 covers that channel.
+  the stream. The [Logs and pub/sub](../../async/logs-and-pubsub/) lesson in Module 4 covers that channel.
 - **Deploys.** Restarting a server drops every stream it holds, and all those browsers reconnect at once. Add a random
   delay before each reconnect so the new servers do not take the whole crowd in the same second.
 - **TCP and UDP.** All four run over TCP in most setups. TCP delivers bytes in order and resends lost packets, so

@@ -252,7 +252,7 @@ Two habits make this work in a real system:
 - **Link metrics to traces.** Many metrics stores attach an **exemplar**, a trace ID, to a histogram bucket, so you can
   jump from the spike on a chart straight to a slow request inside it.
 
-The timeouts, retries, and circuit breakers lessons show what the shop should do next: stop waiting a full second for a
+The [timeouts](../../reliability/timeouts/), [retries](../../reliability/retries/), and [circuit breakers](../../reliability/circuit-breakers/) lessons show what the shop should do next: stop waiting a full second for a
 connection, avoid retrying into a saturated pool, and cut off a dependency that keeps failing. Observability tells you
 which of those you need.
 

@@ -159,7 +159,7 @@ export const quiz = [
 
 This case study builds on the **Scaling the URL shortener** module: [Caching](../../scaling/caching/),
 [Read replicas](../../scaling/read-replicas/), and [Sharding and consistent hashing](../../scaling/sharding/) all return
-here. The Indexes lesson finds one row by its key with a B-tree. Search asks the reverse question: given a few words,
+here. The [Indexes](../../foundations/indexes/) lesson finds one row by its key with a B-tree. Search asks the reverse question: given a few words,
 which documents contain them, and which of those are best?
 
 <Objectives>
@@ -315,7 +315,7 @@ touches the search index.
 
 The document store is the source of truth. Every index here is derived from it and can be rebuilt from it, which is what
 makes a nightly rebuild possible at all. The posting lists answer "which documents contain this word?", and the ranking
-signals answer "which of those should come first?" The Data modeling and storage choice lesson covers the stores
+signals answer "which of those should come first?" The [Data modeling and storage choice](../../foundations/data-modeling/) lesson covers the stores
 themselves.
 
 ## High-level design

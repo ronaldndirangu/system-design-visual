@@ -292,8 +292,8 @@ GET  {cdn}/videos/{videoId}/720p/seg_00012.ts
 The status moves from uploading to processing to ready, or to failed. The API server never touches video bytes. It hands
 out pre-signed URLs, reports which parts arrived, and queues the transcode once the client calls complete. The complete
 call carries the part list so the server can check every part before processing starts, and a client that calls it
-twice after a timeout must not start two transcodes. The Idempotency lesson covers that guarantee, and the APIs and
-contracts lesson covers how to evolve endpoints like these.
+twice after a timeout must not start two transcodes. The [Idempotency](../../reliability/idempotency/) lesson covers that guarantee, and the [APIs and
+contracts](../../foundations/apis/) lesson covers how to evolve endpoints like these.
 
 ## Data model
 
@@ -328,7 +328,7 @@ videos/{videoId}/720p/seg_00012.ts
 - **New content, new key.** Because objects never change, a new encode gets new keys. A cache can keep a segment for as
   long as it likes and never serve a stale copy.
 
-The Data modeling and storage choice lesson compares these stores in depth. The rule of thumb for this design: put the
+The [Data modeling and storage choice](../../foundations/data-modeling/) lesson compares these stores in depth. The rule of thumb for this design: put the
 bytes in object storage and the facts about the bytes in a database.
 
 ## High-level design
@@ -473,7 +473,7 @@ Multipart upload splits the file into numbered parts and sends each part as its 
 When the connection drops, only the parts in flight fail. The client asks which parts arrived and retries only the
 missing ones. If the app restarts, it resumes from the same list. Retries should wait a little longer each time and add
 random jitter, so that thousands of phones coming back online after an outage do not all retry in the same instant. The
-Retries with backoff and jitter lesson covers that pattern. Object storage also needs a cleanup rule that deletes parts
+[Retries with backoff and jitter](../../reliability/retries/) lesson covers that pattern. Object storage also needs a cleanup rule that deletes parts
 of uploads nobody completed, or abandoned parts pile up and cost money forever.
 
 ### Pre-signed URLs
@@ -528,9 +528,9 @@ Workers crash and tasks time out, so the queue redelivers tasks. A redelivered t
 deterministic keys make it safe: the task for segment 12 at 720p always writes `videos/{videoId}/720p/seg_00012.ts`.
 Running it twice writes the same object twice, and the second write replaces the first with identical bytes. The step
 that marks the video ready checks the current status first, so a duplicate "all done" message changes nothing. The
-Idempotency lesson covers this pattern in depth.
+[Idempotency](../../reliability/idempotency/) lesson covers this pattern in depth.
 
-When uploads spike, the queue grows and the workers keep their pace. The Queues and backpressure lesson covers how to
+When uploads spike, the queue grows and the workers keep their pace. The [Queues and backpressure](../../reliability/queues-and-backpressure/) lesson covers how to
 watch queue depth, add workers, and decide what to delay when the queue keeps growing. Here a sensible priority is to
 encode the lower rungs before the top ones, so a new video can go live early at modest quality.
 
@@ -548,7 +548,7 @@ other traffic, so the egress bill is the number to watch.
 Without a CDN, every segment comes from object storage at the origin, and every byte pays origin egress prices. With a
 CDN, viewers fetch segments from edge servers near them. The edge keeps popular segments in its cache. On a miss, it
 pulls the segment from the origin once and serves it to everyone nearby who asks next. Video segments suit a CDN
-perfectly: they are immutable, identical for every viewer, and requested again and again for popular videos. The CDNs
+perfectly: they are immutable, identical for every viewer, and requested again and again for popular videos. The [CDNs](../../scaling/cdn/)
 lesson covers edge placement and routing, and [Caching](../../scaling/caching/) covers hit ratios and eviction.
 
 ### Try it

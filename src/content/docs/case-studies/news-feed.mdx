@@ -263,7 +263,7 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
    the follow graph and writes post ids into feed lists. A feed service reads the feed list, merges in celebrity
    posts, and fetches post bodies. The feed lists and celebrity posts sit in an in-memory
    [cache](../../scaling/caching/), and the follow graph serves its heavy read traffic from
-   [read replicas](../../scaling/read-replicas/). The Queues and backpressure lesson covers why the fanout queue
+   [read replicas](../../scaling/read-replicas/). The [Queues and backpressure](../../reliability/queues-and-backpressure/) lesson covers why the fanout queue
    keeps posting fast when the fleet falls behind.
 
 6. **Deep dive: the fanout queue under a celebrity post.** This is where the design breaks first, and both simulations

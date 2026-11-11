@@ -145,7 +145,7 @@ name two changes that make links faster for the Australian half, and estimate th
 
 - **Run a second copy in Australia** and let DNS send each person to the nearest one. The round trip drops from about
   150 ms to about 10 ms, so a first click falls from roughly 490 ms to roughly 70 ms. Both copies need the same link
-  data, which the replication lesson covers.
+  data, which the [replication lesson](../../scaling/read-replicas/) covers.
 - **Keep connections open** (HTTP keep-alive, HTTP/2). Repeat clicks skip TCP and TLS, saving two round trips, about
   300 ms from Australia.
 - **Use TLS 1.3** if the server still runs 1.2. That removes one round trip from every new connection.

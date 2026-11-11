@@ -189,7 +189,7 @@ need? And what breaks if a new feature pushes writes to 5,000 per second?
   one spare to survive a crash: **5**.
 - At 5,000 writes per second, replicas stop helping. The single primary must accept every write, and every replica must
   replay all 5,000 of them on top of its reads. To grow past one machine's write limit, you split the data itself across
-  machines. That is sharding, the next lesson.
+  machines. That is [sharding](../../scaling/sharding/), the next lesson.
 
 </div>
 
