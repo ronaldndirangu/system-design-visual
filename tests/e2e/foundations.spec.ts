@@ -215,8 +215,11 @@ test('apis: offset pages repeat and skip, and expand-then-contract breaks no cli
   const contract = page.getByRole('region', { name: 'Interactive: One change, three clients' });
   await contract.scrollIntoViewIfNeeded();
   await expect(contract.getByText('No client breaks', { exact: true })).toBeVisible();
+  // The server render disables the radios until the island hydrates, and a disabled radio ignores focus.
+  const optionalField = contract.getByRole('radio', { name: /^Add an optional field/ });
+  await expect(optionalField).toBeEnabled();
 
-  await contract.getByRole('radio', { name: /^Add an optional field/ }).focus();
+  await optionalField.focus();
   await page.keyboard.press('ArrowRight');
   await expect(contract.getByRole('radio', { name: /^Rename a field/ })).toBeChecked();
   await expect(contract.getByText('3 clients broken', { exact: true })).toBeVisible();
