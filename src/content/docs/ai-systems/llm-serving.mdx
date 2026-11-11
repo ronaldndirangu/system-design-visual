@@ -413,9 +413,9 @@ full blocks only, and each block's hash includes the block before it, so a chang
 block matches. A cache salt keeps one tenant's cached blocks out of reach of another. It is the
 [caching](../../scaling/caching/) idea applied inside one server. The widgets in this lesson do not model it.
 
-In the full system, an AI gateway sits in front of model servers like this one. It decides which model and which server
-each request goes to, and how many requests each caller may send. The next lesson, Agents and tools, lets the model call
-tools with authorization, budgets, and cancellation.
+In the full system, an [AI gateway](../gateway/) sits in front of model servers like this one. It decides which model
+and which server each request goes to, and how many requests each caller may send. The next lesson,
+[Agents and tools](../agents/), lets the model call tools with authorization, budgets, and cancellation.
 
 ## Trade-offs
 

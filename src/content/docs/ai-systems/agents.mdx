@@ -364,9 +364,10 @@ Cancellation races with work already in progress, so side effecting tools need t
   refund through the normal refund process, and log both actions so support can see what happened.
 
 Add these to your [design checklist](../../thinking/design-checklist/): who authorizes each tool, which text counts as
-data, which actions need a person, what the budgets are, and how cancellation reaches the tools. Retrieval, earlier in
-this module, is where most untrusted text enters the context. The AI gateway is a natural home for the identity check
-and the budget meter. Capstone: support assistant puts all of these pieces together.
+data, which actions need a person, what the budgets are, and how cancellation reaches the tools.
+[Retrieval](../retrieval/), earlier in this module, is where most untrusted text enters the context.
+[The AI gateway](../gateway/) is a natural home for the identity check and the budget meter.
+[Capstone: support assistant](../support-assistant/) puts all of these pieces together.
 
 ## Trade-offs
 
