@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CACHE_MS,
+  clickKey,
   DB_MS,
   summarize,
   WriteDuel,
@@ -87,12 +88,24 @@ describe('WriteDuel', () => {
     }
   });
 
-  it('merges click counts with write-behind and empties the cache with write-around', () => {
+  it('merges click counts with write-behind and keeps the redirect hit ratio with write-around', () => {
     for (let seed = 1; seed <= 12; seed += 1) {
       const { through, behind, around } = play('clicks', seed);
       expect(behind.dbWrites).toBeLessThan(through.dbWrites * 0.5);
-      expect(around.hitRatio).toBeLessThan(0.2);
-      expect(through.hitRatio).toBeGreaterThan(0.7);
+      expect(around.dbWrites).toBe(around.writes);
+      expect(around.hitRatio).toBeGreaterThan(through.hitRatio);
+    }
+  });
+
+  it('stores click counts under their own keys, so counting leaves the write-around hit ratio unchanged', () => {
+    expect(clickKey(7)).not.toBe(7);
+    for (let seed = 1; seed <= 12; seed += 1) {
+      const counted = play('clicks', seed).around;
+      const plain = run(new WriteDuel({ ...writeScenarios.clicks, countClicks: false }, seed)).lanes.map(
+        summarize,
+      )[2];
+      expect(counted.reads).toBe(plain?.reads);
+      expect(counted.hitRatio).toBe(plain?.hitRatio);
     }
   });
 
@@ -128,9 +141,11 @@ describe('WriteDuel', () => {
 
     const clicks = play('clicks');
     expect([clicks.through.dbWrites, clicks.behind.dbWrites, clicks.around.dbWrites]).toEqual([
-      4015, 1319, 4015,
+      4015, 1501, 4015,
     ]);
-    expect(Math.round(clicks.around.hitRatio * 1000)).toBe(37);
+    expect(
+      [clicks.through, clicks.behind, clicks.around].map((sum) => Math.round(sum.hitRatio * 1000)),
+    ).toEqual([692, 692, 844]);
 
     expect(transcript(play('import').duel)).toEqual([
       '1.4 Imported links push popular links out of the write-through and write-behind caches. Hits over the last second: 68%.',
