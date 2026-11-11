@@ -1,0 +1,371 @@
+---
+title: Chat
+description: Deliver every message in order per conversation and resync phones that drop offline. Watch parallel push workers scramble a group chat and a tunnel swallow messages, then fix both with sequence numbers, heartbeats, and cursor catch-up.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import ChatWidget from '../../../components/widgets/ChatWidget';
+
+export const nodes = [
+  { id: 'sender', kind: 'client', x: 70, y: 60, label: 'Sender', sublabel: 'phone' },
+  { id: 'gwIn', kind: 'server', x: 230, y: 60, label: 'Gateway', sublabel: "sender's socket" },
+  { id: 'chat', kind: 'server', x: 390, y: 60, label: 'Chat service' },
+  { id: 'log', kind: 'database', x: 550, y: 60, label: 'Message log', sublabel: 'per conversation' },
+  { id: 'bus', kind: 'queue', x: 390, y: 240, label: 'Pub/sub', sublabel: 'push workers' },
+  { id: 'gwOut', kind: 'server', x: 230, y: 240, label: 'Gateway', sublabel: "reader's socket" },
+  { id: 'reader', kind: 'client', x: 70, y: 240, label: 'Reader', sublabel: 'phone' },
+];
+export const edges = [
+  { from: 'sender', to: 'gwIn' },
+  { from: 'gwIn', to: 'chat' },
+  { from: 'chat', to: 'log' },
+  { from: 'chat', to: 'bus' },
+  { from: 'bus', to: 'gwOut' },
+  { from: 'gwOut', to: 'reader' },
+  { from: 'gwOut', to: 'chat', dashed: true },
+];
+export const steps = [
+  {
+    title: 'Send over an open socket',
+    text: 'The sender types a message. Her phone already holds an open socket to a gateway, so the text goes out at once with a client message ID. If the upload stalls and the phone resends, the server spots the same ID and stores the message once.',
+    nodes: ['sender', 'gwIn', 'chat'],
+    flows: ['sender>gwIn', 'gwIn>chat'],
+  },
+  {
+    title: 'Number it within the conversation',
+    text: 'The chat service gives the message the next sequence number for this conversation, say 42, and appends it to the message log. That number is the official order. Every phone in the group will show 41 above 42.',
+    nodes: ['chat', 'log'],
+    flows: ['chat>log'],
+  },
+  {
+    title: 'Publish and push',
+    text: "The service publishes the message on the conversation's topic. Push workers pick it up and hand it to the gateway that holds each reader's socket. With several workers, a stalled one lets later messages overtake earlier ones.",
+    nodes: ['chat', 'bus', 'gwOut'],
+    flows: ['chat>bus', 'bus>gwOut'],
+  },
+  {
+    title: 'Deliver, and keep the line alive',
+    text: 'The gateway writes the message to the reader\'s socket. Every so often the phone and the gateway trade a heartbeat. When heartbeats stop, the gateway knows the socket died, even though no goodbye arrived.',
+    nodes: ['gwOut', 'reader'],
+    flows: ['gwOut>reader', 'reader>gwOut'],
+  },
+  {
+    title: 'Show in sequence order',
+    text: 'The phone shows message 42 only after 41. If 43 lands first, the phone holds it in a reorder buffer until 42 arrives. After a short wait it asks the server for the gap instead of waiting forever.',
+    nodes: ['reader'],
+    flows: [],
+  },
+  {
+    title: 'Reconnect with a cursor',
+    text: 'After a tunnel, the phone opens a new socket and says the last message it showed is 29. The gateway asks the chat service, which reads everything after 29 from the log and sends it down. Messages that vanished into the dead socket come back.',
+    nodes: ['reader', 'gwOut', 'chat', 'log'],
+    flows: ['reader>gwOut', 'gwOut>chat', 'log>chat'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'Two people in a group chat send messages within the same second. Who decides which one every phone shows first?',
+    options: [
+      {
+        text: 'The chat service, by giving each message the next sequence number for that conversation',
+        correct: true,
+        why: 'One counter per conversation gives one official order. Every phone sorts by that number, so every phone in the group agrees.',
+      },
+      {
+        text: "Each sender's clock",
+        why: 'Phone clocks drift and disagree by seconds. Two senders can each believe they spoke first, and readers would see different orders.',
+      },
+      {
+        text: 'Each reader, by arrival order',
+        why: 'Arrival order depends on which push worker stalled. In the busy group run, 25 of 96 messages land out of order that way.',
+      },
+      {
+        text: 'A random message ID',
+        why: 'A random ID is good for spotting a resent message. It carries no order at all.',
+      },
+    ],
+  },
+  {
+    prompt: 'The reorder buffer cuts out-of-order messages from 25 to 0 in the busy group run. What does it cost?',
+    options: [
+      {
+        text: 'Time: 34 messages wait on the phone, up to 1.7 s, and the average delay rises from 0.6 s to 0.8 s',
+        correct: true,
+        why: 'A message that overtook an earlier one must wait for it. Order always costs some delay. Routing every message through one worker costs the same 0.8 s here.',
+      },
+      {
+        text: 'Some messages get lost',
+        why: 'The buffer drops nothing. Both lanes show all 96 messages by the end of the run.',
+      },
+      {
+        text: 'Nothing, because the buffer only reorders',
+        why: 'Reordering means holding. The compare table shows 34 messages held back.',
+      },
+      {
+        text: 'Load on the chat service',
+        why: 'The buffer lives on the phone. The server sends exactly the same messages to both lanes.',
+      },
+    ],
+  },
+  {
+    prompt: 'After the tunnel, the push lane shows 84 of 96 messages with a 1.1 s average delay. The catch-up lane shows all 96 with a 1.7 s average. Why is the push lane faster?',
+    options: [
+      {
+        text: 'It never shows the 12 messages that would have waited longest, so they drop out of its average',
+        correct: true,
+        why: 'The catch-up lane delivers the 12 lost messages after the reconnect, and their long wait raises its average. A delay figure means nothing until you count what is missing.',
+      },
+      {
+        text: 'Pushing from a queue is quicker than reading the log',
+        why: 'Both lanes reconnect at the same moment and get their backlog at the same time. The difference is which messages they get.',
+      },
+      {
+        text: 'The catch-up lane sends every message twice',
+        why: 'It replays the 37 messages after the cursor once each. The phone dedupes by sequence number anyway.',
+      },
+      {
+        text: 'Its heartbeat is faster',
+        why: 'Both lanes share the same connection and the same 3 s heartbeat timeout. Only the reconnect differs.',
+      },
+    ],
+  },
+  {
+    prompt: 'A faster heartbeat timeout (3 s to 1 s) cuts the lost messages from 12 to 3. Why add a cursor as well?',
+    options: [
+      {
+        text: 'Any timeout leaves a window of pushes into a dead socket, and faster heartbeats drain batteries and load the gateways',
+        correct: true,
+        why: 'The window shrinks and never closes. A cursor closes it, because the phone asks for everything after the last message it actually showed.',
+      },
+      {
+        text: 'A 1 s timeout is too slow to matter',
+        why: 'It helps a lot: 3 lost instead of 12. It still loses 3.',
+      },
+      {
+        text: 'Heartbeats only work on Wi-Fi',
+        why: 'Heartbeats work on any connection. Their cost is radio wakeups and server work, and that cost grows as the interval shrinks.',
+      },
+      {
+        text: 'The cursor makes heartbeats unnecessary',
+        why: 'The gateway still needs heartbeats to notice a dead socket, stop pushing, and free its memory. The cursor repairs what slipped through.',
+      },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain why parallel delivery paths scramble a conversation, and fix the order with per-conversation sequence numbers and a reorder buffer.
+- Weigh the delay that ordering costs, whether it comes from a buffer or a single path.
+- Explain how a socket can die silently, and how heartbeats detect it.
+- Sync a phone that dropped offline with a cursor into a per-conversation message log.
+- Contrast chat with notifications.
+
+</Objectives>
+
+## The failure: the answer above the question
+
+A group of five plans dinner. Ana asks "Thai or pizza?" and Ben answers "Thai!" a moment later. On Chen's phone,
+"Thai!" appears first, and the question lands below it. Two minutes later Chen rides through a tunnel. When the signal
+returns, the chat looks complete, yet the message with the restaurant address never arrives. Nothing on screen says
+anything is missing.
+
+Both bugs come from the same place. The server pushes messages down a pipe it does not fully control: several workers
+deliver in parallel, and a phone's connection can die without telling anyone.
+
+<Predict
+  client:visible
+  question="In the toy run below, a group chat receives 96 messages in 20 s. Four push workers deliver them, and 15% of messages meet a worker that stalls for 1 to 2.5 s. The phone shows each message the moment it lands. How many land out of order?"
+  options={['None: one conversation keeps its order', 'About 1 in 20', 'About 1 in 4', 'About 3 in 4']}
+  answer={2}
+>
+
+**25 of 96, about 1 in 4**, land below a message sent after them. Each worker delivers in order, so a stall delays the
+messages queued behind it on that worker, and messages on the other three workers overtake them all. More stalls make it
+worse: at 35% stalled, **46** land out of order.
+
+</Predict>
+
+## The idea: the server numbers, the phone sorts, the cursor repairs
+
+This case study has one dominant constraint: **every device shows every message of a conversation, in the same order,
+even though connections come and go.** The volume is large, yet each message is small and cheap. Order and completeness
+are the hard part.
+
+The chat service gives each message a **sequence number** within its conversation, so the order exists in one place. The
+phone shows messages in sequence order and holds back any that arrive early, in a **reorder buffer**. Heartbeats detect
+sockets that died silently. When a phone reconnects, it sends a **cursor**, the sequence number of the last message it
+showed, and the server replays everything after it from the **message log**.
+
+<StepDiagram client:visible title="A chat message, step by step" nodes={nodes} edges={edges} steps={steps} height={290} />
+
+<Analogy>
+
+A serialized novel mailed one chapter at a time. Each envelope carries a chapter number, so if chapter 7 arrives before
+chapter 6, you set it aside until 6 shows up. Back from a holiday, you do not trust the mailbox. You tell the publisher
+"the last chapter I read was 12", and they send 13 onward from their archive, including any the post office lost.
+
+</Analogy>
+
+## Walk the design checklist
+
+The seven steps from the [design checklist](../../thinking/design-checklist/), applied to a chat service.
+
+<Steps>
+
+1. **Requirements.** One-to-one and group chats of up to a few hundred members. A message reaches an online reader within
+   a second. Every device shows a conversation in the same order. A phone or laptop that was offline catches up with
+   everything it missed. Calls, media, search, and end-to-end encryption stay out of scope.
+
+2. **Estimates (illustrative).** Fifty million daily users who send 40 messages each make **2 billion messages a day**,
+   about **23,148 per second** on average and **69,444 per second** at a 3× peak. Each message reaches 5 readers on
+   average, so the push side handles about **347,222 deliveries per second** at peak. If 40% of users are online at peak,
+   that is **20 million open sockets**, and at 100,000 sockets per gateway, **200 gateway servers**. A heartbeat every
+   30 s on each socket adds **666,667 heartbeats per second**. At 200 bytes a message, the log grows by about **400 GB a
+   day**. (See [requirements and estimates](../../thinking/requirements-and-estimates/) for the method.)
+
+3. **API.** The phone opens a long-lived socket (`wss://chat.example/ws`). It sends
+   `send {conversation, clientMessageId, text}` and gets back `ack {sequence}`. The server sends
+   `message {conversation, sequence, sender, text}`, and both sides trade `ping` and `pong`. Catch-up uses plain HTTP:
+   `GET /conversations/{id}/messages?after=29&limit=100`. Read receipts post `POST /conversations/{id}/read {upTo}`.
+
+4. **Data model.** A `messages` table keyed by `(conversation_id, sequence)`, with the sender, the client message ID
+   (unique per sender, to drop resends), the text, and the time. A `members` table holds each member of a conversation
+   with the highest sequence they have read. Each device keeps its own cursor per conversation. Shard the log by
+   conversation ID (see [sharding](../../scaling/sharding/)), so one conversation's counter lives on one shard.
+
+5. **High-level design.** Gateways hold sockets and know nothing about chats. The chat service numbers messages, writes
+   them to the log, and publishes them. Push workers read the topic and route each message to the gateways that hold its
+   readers' sockets, using a presence map of who is connected where. A load balancer spreads new sockets across gateways
+   by connection count (see [load balancing](../../scaling/load-balancing/)). The Real-time transport lesson compares
+   sockets, server-sent events, and long polling, and the Logs and pub/sub lesson covers the topic in the middle.
+
+6. **Deep dive: order and gaps.** This is where the design breaks first, and both simulations below live here. Parallel
+   push workers reorder messages, and a socket that died silently swallows them. Sequence numbers fix the first. Cursors
+   fix the second.
+
+7. **Trade-offs.** One push path or many, the heartbeat interval, and server-side queues or a replayable log. The table at
+   the end of this page lays them out.
+
+</Steps>
+
+## Try it: show a busy group in order
+
+Both lanes receive the same 96 messages over the same four push workers, and the same messages meet the same stalls.
+Only the phone differs. The run covers 30 seconds and plays in real time at 1×.
+
+<ChatWidget client:visible duel="ordering" />
+
+What to look for:
+
+- **Busy group.** At 0.9 s message 4 arrives before message 2. The arrival-order phone shows it at once, and **25 of 96**
+  messages end up below a message sent after them. The buffered phone shows **0** out of order. It holds **34**
+  messages back, **0.7 s** on average and **1.7 s** at most, and its average delay rises from **0.6 s** to **0.8 s**.
+- **More stalls.** At 35% stalled, the arrival-order phone shows **46** out of order. The buffer still shows none, and
+  holds back more.
+- **One worker per chat.** Route each conversation through a single worker, and nothing can overtake. Both lanes show
+  **0** out of order with the same **0.8 s** average delay. The single path pays in head-of-line blocking: one stall
+  delays every message behind it. Order costs about the same delay either way, so most chat systems pin each
+  conversation to one partition and keep a small reorder buffer on the phone for the races that remain.
+
+## Heartbeats and silent disconnects
+
+A phone that enters a tunnel does not hang up. Its radio just stops, so the server's socket stays open and accepts writes
+that go nowhere. The gateway learns about it only when something it expects stops arriving. That is the job of the
+heartbeat: if no ping arrives within a timeout, the gateway closes the socket and marks the phone offline.
+
+A short timeout finds dead sockets sooner, at a price. At the illustrative scale above, cutting the heartbeat interval
+from 30 s to 10 s triples the load to **2 million heartbeats per second** and wakes every phone's radio three times as
+often. Any timeout leaves a window in which the server pushes into a socket that is already dead.
+
+## Try it: catch up after a tunnel
+
+Both lanes receive the same 96 messages and lose signal at the same moment. The server queues messages for a phone it
+knows is offline, and pushes them when it reconnects. Only the catch-up lane also sends a cursor when it reconnects.
+
+<ChatWidget client:visible duel="sync" />
+
+What to look for:
+
+- **Tunnel.** The phone loses signal at 6 s. The server notices at 9.1 s, after **12 messages** went into the dead
+  socket, and queues the rest. The phone reconnects at 14.1 s, and at 14.4 s the push lane receives the **25 queued
+  messages** and never the 12. It shows **84 of 96**. Sequence numbers would expose the jump, yet this lane never checks
+  for gaps, so nothing asks the server to replay them; the dashed note above its screen marks what is missing. The
+  catch-up phone says the last message it showed is **29**, and the server replays the **37 messages**
+  after it, including the 12. It shows all **96**.
+- **The average delay.** The push lane averages **1.1 s** and the catch-up lane **1.7 s**. The push lane looks faster
+  only because the 12 slowest messages never reach it.
+- **Quick heartbeat.** A 1 s timeout cuts the loss to **3 messages**. The window shrinks and stays open, and the cursor
+  still recovers every one.
+- **Stays online.** No tunnel, no queue, no replay. The lanes match.
+
+A cursor needs a log to read from. Keep each conversation's messages, numbered, for as long as a device might stay
+offline, and a phone or laptop of any age can resync with one question. A device asleep longer than the log keeps
+messages needs a full resync. When a gateway restarts, its 100,000 phones reconnect at once and all ask for catch-up, so
+phones wait a random moment before reconnecting. The Retries with backoff and jitter lesson covers that spread.
+
+## Chat versus notifications
+
+[Notifications](../notifications/) is the other half of this pair. Both deliver short messages to people's devices, and
+they guard different things.
+
+| Question           | Chat                                                   | Notifications                                             |
+| ------------------ | ------------------------------------------------------ | --------------------------------------------------------- |
+| Who owns delivery? | Your gateways, over sockets you hold open              | External providers (push services, SMS, email)            |
+| What must hold?    | Order within a conversation, and nothing missing       | Arrival before a deadline, within the user's choices      |
+| What goes wrong?   | Messages overtake each other or vanish in dead sockets | A provider throttles or fails, and the code expires       |
+| The guard          | Sequence numbers and a cursor into a replayable log    | Priority lanes, deadlines, and failover between providers |
+| Late is…           | Fine, if the order is right                            | Often worthless: a login code that arrives late is junk   |
+
+Chat systems use notifications too: when the app is closed, the server asks the phone's push service to wake it, and the
+phone then opens its socket and catches up with its cursor.
+
+## Trade-offs
+
+<TradeoffTable title="Designing a chat service">
+
+| Choice                               | What it buys                                              | What it costs                                                   |
+| ------------------------------------ | --------------------------------------------------------- | --------------------------------------------------------------- |
+| One push path per conversation       | Order with no work on the phone                           | One stall delays every message behind it                        |
+| Parallel paths and a reorder buffer  | No head-of-line blocking between messages                 | The phone holds messages, and must ask for gaps after a wait    |
+| Short heartbeat timeout              | Dead sockets found within seconds                         | Battery, radio wakeups, and heartbeat load on every gateway     |
+| Long heartbeat timeout               | Cheap, quiet connections                                  | A longer window of pushes into dead sockets                     |
+| Queue on the server per device       | Simple push on reconnect                                  | Storage per device, and anything pushed into a dead socket is gone |
+| Per-conversation log and cursors     | Any device resyncs, and lost pushes come back             | Each device tracks cursors, and mass reconnects spike reads     |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+Mia uses chat on her phone and her laptop. She reads a long conversation on the phone during a week away, while the
+laptop sleeps. Design the sync so that when the laptop wakes, it shows every message in order, its unread badges match
+the phone, and the server keeps no per-device queues.
+
+<div slot="answer">
+
+**Store conversations once, and let each device carry its own cursors.**
+
+- **One log per conversation:** messages live in `messages`, keyed by `(conversation_id, sequence)`, with no copy per
+  device. Keep them as long as a device may stay away, say 30 days, and fall back to a full resync after that.
+- **A cursor per device per conversation:** the laptop remembers the last sequence it showed in each conversation. On
+  wake it asks for everything after each cursor, newest conversations first, 100 messages a page, and shows them in
+  sequence order.
+- **Read state as a number:** `members.read_up_to` stores the highest sequence Mia has read. The phone raises it as she
+  reads, and the laptop fetches it on wake, so unread counts are the difference between the latest sequence and
+  `read_up_to`. A higher value always wins, so two devices can never move it backwards.
+- **Wake the laptop gently:** while the laptop sleeps, a notification at most nudges it. Once awake it opens a socket and
+  syncs, with a random delay so a fleet of laptops waking at 9:00 does not reconnect at the same instant.
+
+</div>
+
+</Challenge>

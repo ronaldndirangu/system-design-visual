@@ -338,7 +338,8 @@ export const curriculum: CourseModule[] = [
         id: 'case-studies/news-feed',
         title: 'News feed',
         summary: 'Fan out on write or on read, and handle the celebrity whose post reaches millions.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
         bestAfter: 'reliability',
       },
       {
@@ -354,7 +355,8 @@ export const curriculum: CourseModule[] = [
         id: 'case-studies/ticketing',
         title: 'Flash-sale ticketing',
         summary: 'Sell 10,000 seats to a million people without selling one seat twice.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
         bestAfter: 'reliability',
       },
       {
@@ -362,14 +364,16 @@ export const curriculum: CourseModule[] = [
         title: 'Payments',
         summary:
           'Move money exactly once, reconcile with banks, and compare the failure modes with ticketing.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
         bestAfter: 'async',
       },
       {
         id: 'case-studies/chat',
         title: 'Chat',
         summary: 'Keep connections alive, deliver messages in order, and sync devices that were offline.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
         bestAfter: 'async',
       },
       {
@@ -377,7 +381,8 @@ export const curriculum: CourseModule[] = [
         title: 'Notifications',
         summary:
           'Deliver through external providers with deadlines and preferences, and contrast it with chat.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
         bestAfter: 'async',
       },
       {
