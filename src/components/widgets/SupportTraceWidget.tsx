@@ -15,8 +15,10 @@ import {
   type StageId,
   type SupportPipeline,
   type SupportRequest,
+  searchHits,
   stageOrder,
   summarizePipeline,
+  TOP_K,
   tenants,
 } from '../../lib/models/supportAssistant';
 import { MotionRoot } from '../sim/MotionRoot';
@@ -61,7 +63,7 @@ const sublabels: Record<SupportPipeline['id'], Record<StageId, string>> = {
   guarded: {
     gateway: 'per store',
     cache: 'scoped key',
-    retrieve: 'filtered',
+    retrieve: 'pre-filtered',
     model: 'fixture',
     checks: 'grounding',
     staff: 'approvals',
@@ -218,22 +220,38 @@ function StageMap({ run, markerId }: { run: CapstoneRun; markerId: string }) {
 }
 
 function SearchHits({ request }: { request: SupportRequest }) {
-  return (
-    <ul className="sdv-cap__hits" aria-label="Fixture search results over every store, best first">
-      {request.hits.map((hit) => {
-        const doc = getDoc(hit.doc);
-        const other = doc && doc.tenant !== request.tenant;
-        const staffOnly = doc?.staffOnly && request.role !== 'staff';
-        const tag = other ? `${tenants[doc.tenant].short} only` : staffOnly ? 'staff only' : undefined;
-        return (
-          <li key={hit.doc} data-blocked={tag ? 'true' : undefined}>
-            <span className="sdv-cap__score">{hit.score.toFixed(2)}</span> {doc?.title ?? hit.doc}
-            {tag && <span className="sdv-cap__tag">{tag}</span>}
-          </li>
-        );
-      })}
-    </ul>
-  );
+  const baseId = useId();
+  const scopes: { guarded: boolean; label: string }[] = [
+    { guarded: false, label: `Prototype top ${TOP_K}: every store` },
+    {
+      guarded: true,
+      label: `Guarded top ${TOP_K}: ${tenants[request.tenant].short} documents a ${request.role} may read`,
+    },
+  ];
+  return scopes.map(({ guarded, label }) => {
+    const labelId = `${baseId}-${guarded ? 'guarded' : 'prototype'}`;
+    return (
+      <div key={labelId}>
+        <p className="sdv-cap__now-title" id={labelId}>
+          {label}
+        </p>
+        <ul className="sdv-cap__hits" aria-labelledby={labelId}>
+          {searchHits(request, guarded).map((hit) => {
+            const doc = getDoc(hit.doc);
+            const other = doc && doc.tenant !== request.tenant;
+            const staffOnly = doc?.staffOnly && request.role !== 'staff';
+            const tag = other ? `${tenants[doc.tenant].short} only` : staffOnly ? 'staff only' : undefined;
+            return (
+              <li key={hit.doc} data-blocked={tag ? 'true' : undefined}>
+                <span className="sdv-cap__score">{hit.score.toFixed(2)}</span> {doc?.title ?? hit.doc}
+                {tag && <span className="sdv-cap__tag">{tag}</span>}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    );
+  });
 }
 
 export default function SupportTraceWidget({

@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   budgetCrossing,
   CATALOG_SIZE,
+  CURVE_CANDIDATES,
   candidateCurve,
   crowdDotCount,
   crowdDots,
   type FunnelResult,
+  ineligibleReason,
   itemById,
   REC_BUDGET_MS,
+  RELEVANT_TOTAL,
   RecRun,
   type RecScenarioId,
   recScenarioIds,
@@ -85,23 +88,42 @@ describe('runFunnel', () => {
     }
   });
 
+  it('removes ineligible items before the ranker in every run', () => {
+    const runs = [
+      ...recScenarioIds.map(result),
+      ...CURVE_CANDIDATES.map((candidates) => runFunnel(splitBudget(candidates))),
+    ];
+    for (const r of runs) {
+      const ranker = r.stages.find((s) => s.stage === 'ranker');
+      expect(ranker?.namedIn.filter((id) => ineligibleReason(itemById(id)) !== null)).toEqual([]);
+      for (const s of r.stages.slice(1)) {
+        expect(s.namedDropped.filter((d) => d.reason === 'noShip' || d.reason === 'recalled')).toEqual([]);
+      }
+    }
+  });
+
   it('pins score everything: perfect list, 30,001 ms', () => {
     const r = result('score');
     expect(stageCounts(r)).toEqual([
-      [3_000_000, 3_000_000, 0],
-      [3_000_000, 15, 30_000],
-      [15, 12, 0.5],
-      [12, 5, 0.5],
+      [3_000_000, 2_999_998, 0],
+      [2_999_998, 15, 29_999.98],
+      [15, 14, 0.5],
+      [14, 5, 0.5],
     ]);
-    expect(r.stages[0]?.skipped).toBe(true);
-    expect(r.totalMs).toBe(30_001);
+    expect(r.stages[0]?.skipped).toBe(false);
+    expect(r.stages[0]?.namedDropped).toEqual([
+      { id: 'g8', reason: 'noShip' },
+      { id: 'n10', reason: 'recalled' },
+    ]);
+    expect(r.totalMs).toBe(30_000.98);
     expect(r.overBudget).toBe(true);
-    expect(r.relevantReached).toBe(10);
+    expect(RELEVANT_TOTAL).toBe(9);
+    expect(r.relevantReached).toBe(9);
     expect(r.shown).toEqual(['g1', 'g2', 'g9', 'g3', 'g7']);
     expect(r.goodShown).toBe(5);
   });
 
-  it('pins the funnel: same top 5 in 14.89 ms', () => {
+  it('pins the funnel: same top 5 in 14.87 ms', () => {
     const r = result('funnel');
     expect(r.sources.map((s) => [s.source, s.returned, s.ms])).toEqual([
       ['embed', 300, 8],
@@ -111,15 +133,21 @@ describe('runFunnel', () => {
     expect(r.rawEntries).toBe(500);
     expect(r.duplicates).toBe(11);
     expect(stageCounts(r)).toEqual([
-      [3_000_000, 489, 9],
-      [489, 15, 4.89],
-      [15, 12, 0.5],
-      [12, 5, 0.5],
+      [3_000_000, 487, 9],
+      [487, 15, 4.87],
+      [15, 14, 0.5],
+      [14, 5, 0.5],
     ]);
-    expect(r.totalMs).toBe(14.89);
-    expect(r.relevantReached).toBe(9);
-    expect(r.stages[0]?.namedDropped.filter((d) => itemById(d.id).relevant).map((d) => d.id)).toEqual([
-      'g10',
+    expect(r.totalMs).toBe(14.87);
+    expect(r.relevantReached).toBe(8);
+    expect(
+      r.stages[0]?.namedDropped
+        .filter((d) => d.reason === 'missed' && itemById(d.id).relevant)
+        .map((d) => d.id),
+    ).toEqual(['g10']);
+    expect(r.stages[0]?.namedDropped.filter((d) => d.reason !== 'missed')).toEqual([
+      { id: 'g8', reason: 'noShip' },
+      { id: 'n10', reason: 'recalled' },
     ]);
     expect(r.shown).toEqual(result('score').shown);
     expect(r.stages[3]?.namedDropped[0]).toEqual({ id: 'g5', reason: 'diversity' });
@@ -130,12 +158,12 @@ describe('runFunnel', () => {
     expect(r.sources.map((s) => s.returned)).toEqual([12, 5, 3]);
     expect(r.duplicates).toBe(7);
     expect(stageCounts(r)).toEqual([
-      [3_000_000, 13, 6.12],
-      [13, 13, 0.13],
-      [13, 11, 0.5],
+      [3_000_000, 12, 6.12],
+      [12, 12, 0.12],
+      [12, 11, 0.5],
       [11, 5, 0.5],
     ]);
-    expect(r.totalMs).toBe(7.25);
+    expect(r.totalMs).toBe(7.24);
     expect(r.relevantReached).toBe(4);
     expect(r.stages[0]?.namedDropped).toContainEqual({ id: 'g1', reason: 'missed' });
     expect(r.shown).toEqual(['g2', 'g9', 'g5', 'n1', 'n4']);
@@ -173,9 +201,11 @@ describe('candidateCurve', () => {
 
   it('pins recall rising then saturating while latency keeps growing', () => {
     const curve = candidateCurve();
-    expect(curve.map((p) => p.recall * 100)).toEqual([30, 40, 70, 70, 80, 90, 90, 100, 100, 100, 100]);
+    expect(curve.map((p) => Math.round(p.recall * RELEVANT_TOTAL))).toEqual([
+      3, 4, 7, 7, 8, 8, 8, 9, 9, 9, 9,
+    ]);
     expect(curve.map((p) => p.totalMs)).toEqual([
-      7.13, 7.25, 7.72, 8.5, 10.09, 14.89, 22.89, 38.89, 86.89, 166.89, 326.89,
+      7.13, 7.24, 7.71, 8.49, 10.08, 14.87, 22.87, 38.87, 86.87, 166.87, 326.87,
     ]);
     const firstOver = curve.find((p) => p.totalMs > REC_BUDGET_MS);
     expect(firstOver?.candidates).toBe(5000);
@@ -192,7 +222,7 @@ describe('candidateCurve', () => {
       true,
       true,
     ]);
-    expect(Math.round(budgetCrossing(curve) ?? 0)).toBe(2694);
+    expect(Math.round(budgetCrossing(curve) ?? 0)).toBe(2696);
     for (let index = 1; index < curve.length; index += 1) {
       expect(curve[index]?.recall).toBeGreaterThanOrEqual(curve[index - 1]?.recall ?? 0);
       expect(curve[index]?.totalMs).toBeGreaterThan(curve[index - 1]?.totalMs ?? 0);
