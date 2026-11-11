@@ -353,7 +353,8 @@ export const curriculum: CourseModule[] = [
         id: 'case-studies/chat',
         title: 'Chat',
         summary: 'Keep connections alive, deliver messages in order, and sync devices that were offline.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
         bestAfter: 'async',
       },
       {
