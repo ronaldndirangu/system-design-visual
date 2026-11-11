@@ -67,22 +67,23 @@
 }
 .sdv-hero__kicker {
   color: var(--sl-color-text-accent);
-  font-size: var(--sl-text-sm);
+  font-size: var(--sdv-text-sm);
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--sdv-tracking-overline);
   margin: 0;
   text-transform: uppercase;
 }
 .sdv-hero h1 {
   color: var(--sl-color-white);
-  font-size: clamp(2.2rem, 5vw, 3.6rem);
-  font-weight: 800;
-  line-height: 1.05;
+  font-size: var(--sdv-text-display);
+  font-weight: var(--sdv-weight-hero);
+  letter-spacing: var(--sdv-tracking-display);
+  line-height: var(--sdv-leading-display);
   margin: 0;
 }
 .sdv-hero__tagline {
   color: var(--sl-color-gray-2);
-  font-size: clamp(1.05rem, 2vw, 1.3rem);
+  font-size: var(--sdv-text-lg);
   margin: 0;
   max-width: 34rem;
 }

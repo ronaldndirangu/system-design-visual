@@ -185,3 +185,81 @@ test.describe('diagram scroll boxes on desktop', () => {
     await expect(page.locator('.sdv-scroll', { has: ring }).locator('.sdv-scroll-cue')).toHaveCount(0);
   });
 });
+
+async function useTheme(page: Page, theme: 'dark' | 'light') {
+  await page.addInitScript((value) => localStorage.setItem('starlight-theme', value), theme);
+}
+
+async function cumulativeLayoutShift(page: Page) {
+  return page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return new Promise<number>((resolve) => {
+      let total = 0;
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries() as (PerformanceEntry & {
+          value: number;
+          hadRecentInput: boolean;
+        })[]) {
+          if (!entry.hadRecentInput) total += entry.value;
+        }
+        resolve(total);
+      }).observe({ type: 'layout-shift', buffered: true });
+      setTimeout(() => resolve(total), 250);
+    });
+  });
+}
+
+test.describe('type and tokens', () => {
+  test('body text uses Inter and code uses JetBrains Mono within the font budget', async ({ page }) => {
+    const fontBytes: Promise<number>[] = [];
+    page.on('response', (response) => {
+      if (response.request().resourceType() === 'font') fontBytes.push(response.body().then((b) => b.length));
+    });
+    await page.goto('distributed-data/quorums/');
+    const fonts = await page.evaluate(async () => {
+      await document.fonts.ready;
+      const code = document.querySelector('.sl-markdown-content code');
+      return {
+        body: getComputedStyle(document.body).fontFamily,
+        code: code ? getComputedStyle(code).fontFamily : '',
+        loaded: [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family),
+      };
+    });
+    expect(fonts.body).toContain('Inter Variable');
+    expect(fonts.code).toContain('JetBrains Mono Variable');
+    expect(fonts.loaded.map((f) => f.replaceAll('"', ''))).toContain('Inter Variable');
+    const total = (await Promise.all(fontBytes)).reduce((sum, n) => sum + n, 0);
+    expect(total).toBeGreaterThan(0);
+    expect(total).toBeLessThanOrEqual(120 * 1024);
+  });
+
+  test('the head preloads Inter and sets a theme color per scheme', async ({ page }) => {
+    await page.goto('');
+    await expect(page.locator('link[rel="preload"][as="font"][href*="inter-latin-wght-normal"]')).toHaveCount(
+      1,
+    );
+    await expect(page.locator('meta[name="theme-color"]')).toHaveCount(2);
+  });
+
+  for (const [theme, background] of [
+    ['dark', 'rgb(94, 92, 230)'],
+    ['light', 'rgb(79, 70, 229)'],
+  ] as const) {
+    test(`the primary call to action is white on the accent in the ${theme} theme`, async ({ page }) => {
+      await useTheme(page, theme);
+      await page.goto('');
+      const cta = page.locator('.sl-link-button.primary').first();
+      await expect(cta).toHaveCSS('color', 'rgb(255, 255, 255)');
+      await expect(cta).toHaveCSS('background-color', background);
+    });
+  }
+
+  for (const path of ['', 'distributed-data/quorums/']) {
+    test(`/${path} shifts layout by less than 0.05 while fonts load`, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(path);
+      expect(await cumulativeLayoutShift(page)).toBeLessThan(0.05);
+    });
+  }
+});
