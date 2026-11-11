@@ -97,3 +97,29 @@ test('real-time: one minute of clicks matches the numbers the card quotes', asyn
 
   await expectAxeCleanInBothThemes(page);
 });
+
+test('security: each missing defense lets through the pinned wrong requests', async ({ page }) => {
+  const sim = await openSimulation(page, 'foundations/security/', 'Same requests, two sets of defenses');
+
+  await skipByKeyboard(page, sim);
+  expect(await cellsOf(sim, /^Requests arrived/)).toEqual(['33', '33']);
+  expect(await cellsOf(sim, /^Wrongly allowed/)).toEqual(['10', expect.stringMatching(/^0/)]);
+  expect(await cellsOf(sim, /^Still in flight/)).toEqual(['0', '0']);
+
+  await nextScenario(page, sim, /No ownership check/, /Expired tokens accepted/);
+  await skipByKeyboard(page, sim);
+  expect(await cellsOf(sim, /^Wrongly allowed/)).toEqual(['10', expect.stringMatching(/^0/)]);
+
+  await nextScenario(page, sim, /Expired tokens accepted/, /Plain HTTP/);
+  await skipByKeyboard(page, sim);
+  expect(await cellsOf(sim, /^Requests arrived/)).toEqual(['32', '32']);
+  expect(await cellsOf(sim, /^Wrongly allowed/)).toEqual(['6', expect.stringMatching(/^0/)]);
+  await expect(sim.getByText('Sessions a listener could copy: Ben')).toBeVisible();
+
+  await nextScenario(page, sim, /Plain HTTP/, /Admin key in the repo/);
+  await skipByKeyboard(page, sim);
+  expect(await cellsOf(sim, /^Wrongly allowed/)).toEqual(['3', expect.stringMatching(/^0/)]);
+  expect(await cellsOf(sim, /^Wrongly rejected/)).toEqual(['2', expect.stringMatching(/^0/)]);
+
+  await expectAxeCleanInBothThemes(page);
+});

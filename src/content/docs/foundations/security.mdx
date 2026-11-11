@@ -1,0 +1,327 @@
+---
+title: Security basics
+description: Any signed-in user can delete anyone's short link. Fix it by answering four questions on every request, in order, whether the channel is private, who is calling, whether they may touch this object, and where the keys live.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import SecurityWidget from '../../../components/widgets/SecurityWidget';
+
+export const nodes = [
+  { id: 'client', kind: 'client', x: 70, y: 80, label: "Ben's browser", sublabel: 'DELETE a link' },
+  { id: 'edge', kind: 'loadBalancer', x: 230, y: 80, label: 'HTTPS edge', sublabel: 'private channel?' },
+  { id: 'signin', kind: 'server', x: 390, y: 80, label: 'Sign-in check', sublabel: 'who is calling?' },
+  { id: 'handler', kind: 'server', x: 550, y: 80, label: 'Delete handler', sublabel: 'may they?' },
+  { id: 'db', kind: 'database', x: 710, y: 80, label: 'Links table', sublabel: 'owner column' },
+  { id: 'vault', kind: 'database', x: 470, y: 220, label: 'Secret manager', sublabel: 'where keys live' },
+];
+export const edges = [
+  { from: 'client', to: 'edge' },
+  { from: 'edge', to: 'signin' },
+  { from: 'signin', to: 'handler' },
+  { from: 'handler', to: 'db' },
+  { from: 'vault', to: 'signin', dashed: true },
+  { from: 'vault', to: 'handler', dashed: true },
+];
+export const steps = [
+  {
+    title: 'Is the channel private?',
+    text: "Ben's browser opens a TLS connection to the HTTPS edge. The edge proves it holds the certificate for sho.rt, and from then on the request, cookie and all, crosses the cafe Wi-Fi as ciphertext. The edge refuses plain HTTP.",
+    nodes: ['client', 'edge'],
+    flows: ['client>edge'],
+  },
+  {
+    title: 'Who is calling?',
+    text: 'The sign-in check reads the session cookie or token, verifies its signature with a key from the secret manager, and reads its expiry time. A missing, forged, or expired credential stops here with 401 Unauthorized.',
+    nodes: ['edge', 'signin', 'vault'],
+    flows: ['edge>signin', 'vault>signin'],
+  },
+  {
+    title: 'May Ben delete this link?',
+    text: 'The handler loads the link and compares its owner with the caller. It deletes only for the owner or an admin. Every other caller stops here with 403 Forbidden, whatever client sent the request.',
+    nodes: ['signin', 'handler', 'db'],
+    flows: ['signin>handler', 'db>handler'],
+  },
+  {
+    title: 'Delete and record',
+    text: 'The handler deletes the row and writes an audit line: who, which link, when, and the result. The line names Ben and the link code. It holds no cookie, token, or password.',
+    nodes: ['handler', 'db'],
+    flows: ['handler>db'],
+  },
+  {
+    title: 'Where do the keys live?',
+    text: 'The token signing key and the database password live only in the secret manager. The deploy injects them into the running service, so the repo, the build logs, and every laptop clone hold none of them. Rotating a key means changing it in one place.',
+    nodes: ['vault', 'signin', 'handler'],
+    flows: ['vault>signin', 'vault>handler'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'A request to DELETE /links/k7wp carries a signed token that expired yesterday. What should the API answer?',
+    options: [
+      { text: '401 Unauthorized', correct: true, why: 'The server cannot trust who is calling, so authentication fails. The client should sign in again and retry.' },
+      { text: '403 Forbidden', why: '403 means the server knows the caller and refuses the action. An expired token proves nothing about the caller.' },
+      { text: '204 No Content, since the signature is valid', why: 'A valid signature shows the server once issued the token. The expiry time says it stopped vouching for it.' },
+      { text: '500 Internal Server Error', why: 'Nothing broke on the server. The caller sent a credential that no longer counts, which is a client error.' },
+    ],
+  },
+  {
+    prompt: "Ana is signed in with a fresh token and asks to delete Ben's link. What should the API answer?",
+    options: [
+      { text: '401 Unauthorized', why: "Ana's credential is fine. The server knows exactly who is calling." },
+      { text: '403 Forbidden', correct: true, why: 'The server knows the caller and the rule says no. Some APIs answer 404 Not Found instead, so strangers cannot tell which codes exist. Either way, the link stays.' },
+      { text: '204 No Content, because she is signed in', why: 'This is the bug from the start of the lesson. Signing in answers who is calling, and says nothing about which links Ana may touch.' },
+      { text: '409 Conflict', why: '409 signals a clash with the current state, such as a taken alias. Ownership is a permission question.' },
+    ],
+  },
+  {
+    prompt: 'The web app hides the Delete button on links you do not own. What does that protect?',
+    options: [
+      { text: 'Everything, since nobody can click a hidden button', why: 'Any HTTP client can send DELETE /links/k7wp without the web app. The button is only one way in.' },
+      { text: 'Nothing on its own; the server must check ownership on every request', correct: true, why: 'Hiding the button is good design for honest users. The rule only holds when the server enforces it for each object.' },
+      { text: 'Everything, as long as link codes are long and random', why: 'Codes appear in every shared URL, so they are public by design. Long codes make guessing slower, which still leaves every shared link exposed.' },
+      { text: 'Everything, as long as the site uses HTTPS', why: 'TLS keeps the channel private. It does nothing about a signed-in user who asks for something they may not have.' },
+    ],
+  },
+  {
+    prompt: 'You discover that an admin API key was committed to the repo a month ago. What comes first?',
+    options: [
+      { text: 'Delete the line and push', why: 'The key stays in git history, in every clone, and in old build logs. Deleting the line hides it from new readers only.' },
+      { text: 'Rotate: issue a new key, move every service to it, then revoke the old one', correct: true, why: 'Only revoking the leaked key makes every copy useless. Then clean up history, move the key into a secret manager, and check the audit log for its use.' },
+      { text: 'Make the repository private', why: 'Everyone who already had read access, and every clone, still holds the key.' },
+      { text: 'Add the file to .gitignore', why: '.gitignore only stops new files from being tracked. The committed key is already in history.' },
+    ],
+  },
+  {
+    prompt: 'Why store passwords with bcrypt or Argon2 instead of a single SHA-256 hash?',
+    options: [
+      { text: 'They are slow and salted, so each guess against a stolen table costs real time', correct: true, why: 'A salt makes identical passwords hash differently, and a deliberately slow hash turns billions of fast guesses into a costly crawl.' },
+      { text: 'They can be decrypted when a user forgets a password', why: 'Password hashes are one way. A reset replaces the password; nobody recovers the old one.' },
+      { text: 'They produce shorter hashes', why: 'Hash length barely matters here. Speed and salting decide how hard a stolen table is to crack.' },
+      { text: 'SHA-256 is broken', why: 'SHA-256 is fine for checksums and signatures. It is fast, which is exactly what someone guessing passwords wants.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Name the four questions every request answers, in order: is the channel private, who is calling, may this caller do
+  this to this object, and where do the keys live.
+- Choose between 401 Unauthorized and 403 Forbidden.
+- Check ownership or role on the server for every object, and deny by default.
+- Walk a secret through its lifecycle: store, inject, rotate, revoke, and audit.
+
+</Objectives>
+
+## The failure: any signed-in user can delete any link
+
+The shortener lets people delete their own links with `DELETE /links/{code}`. The handler checks that the caller has a
+valid session, then deletes the row with that code. It never compares the link's owner with the caller. Every test
+passes, because each tester deletes their own links.
+
+In production, any signed-in user who knows a code can delete someone else's link, including one printed on a
+thousand posters. The server logs each delete as a normal, authenticated request, so nothing looks wrong until the
+owner complains. Security reviewers call this missing object-level authorization, and it tops the OWASP list of API
+security risks.
+
+<Predict
+  client:visible
+  question="Which check would have stopped this: TLS, password hashing, the login check, or an ownership check?"
+  options={['TLS', 'Password hashing', 'The login check', 'An ownership check']}
+  answer={3}
+>
+
+**An ownership check.** TLS keeps the request private on the network, password hashing protects stored passwords, and
+the login check passed: the caller really is signed in. Only a rule that asks "does this caller own this link?" stops
+the delete. In the simulation below, 10 of 33 requests come from signed-in users deleting a link they do not own.
+Without the ownership check, all 10 succeed. With it, all 10 get 403 Forbidden, and the same 15 legitimate deletes go
+through.
+
+</Predict>
+
+## The idea: four questions, in order
+
+Every request has to answer four questions before the handler touches data. Each question has its own defense, and the
+other three cannot stand in for a missing one.
+
+1. **Is the channel private?** TLS (HTTPS) encrypts traffic between the client and the server and proves the server
+   owns the domain. Without it, anyone on a shared network can read the request, cookies included.
+2. **Who is calling?** This is authentication. The server checks a credential: a session cookie that maps to a session
+   it stores, or a signed token whose signature and expiry it verifies on every request. Passwords live only as slow,
+   salted hashes such as bcrypt or Argon2, and multi-factor authentication (MFA) means a stolen password alone gets
+   nobody in.
+3. **May this caller do this to this object?** This is authorization. Deny by default, then allow when a rule says yes:
+   the caller owns the link, or holds a role such as admin. Check on the server, on every request, for the exact
+   object. Give each person and service the least privilege its job needs.
+4. **Where do the keys live?** The server's own secrets, such as API keys, database passwords, and token signing keys,
+   live in a secret manager and reach the service as environment variables or files injected at deploy. They never
+   appear in source code or logs, and they rotate on a schedule and at once after a leak.
+
+<StepDiagram client:visible title="One delete request, four questions" nodes={nodes} edges={edges} steps={steps} height={290} />
+
+<Analogy>
+
+Picture an office building. The locked front door keeps the street out (TLS). The badge reader in the lobby checks who
+you are and whether your badge has expired (authentication). Each room has its own access list, so a valid badge
+opens your team's rooms and no others (authorization). The master keys sit in a locked cabinet with a sign-out sheet,
+and nobody tapes a spare under the reception desk (secrets). This lesson's bug is a building where any valid badge
+opens every room.
+
+</Analogy>
+
+## Try it
+
+The simulation sends the same stream of requests through two copies of the API. The lane on the left misses one
+defense, which you pick with the scenario chips. The lane on the right has all of them. Each request crosses three
+checkpoints (TLS, sign-in, and access) and ends deleted or rejected with a reason.
+
+The stream mixes link owners, other signed-in users, expired tokens, anonymous callers, and an admin. Solid outlines
+mark callers who should get through; dashed outlines mark callers who should be stopped. Watch **Wrongly allowed**:
+each one is a link deleted by someone with no right to it.
+
+The simulation is a toy model. Real checks take microseconds, and the callers, counts, and timings here are
+illustrative. The same seed always replays the same stream.
+
+<SecurityWidget client:visible />
+
+What to look for:
+
+- **No ownership check.** The left lane deletes all 10 links that signed-in users ask to delete without owning them.
+  The right lane stops the same 10 with 403 Forbidden. Both lanes allow the same 15 legitimate deletes.
+- **Expired tokens accepted.** Ten requests carry tokens that expired days ago. Their signatures still verify, so the
+  left lane lets all 10 delete links. The right lane answers 401 Unauthorized, and each holder has to sign in again.
+- **Plain HTTP on the cafe Wi-Fi hop.** At 2.6 s, Ben's delete crosses the cafe network in plain text, and the wire
+  panel shows his readable headers. Later, someone on that network reuses Ben's session, and the left lane allows 6
+  deletes, because sign-in and ownership both see Ben. On the right, the same listener saw only ciphertext and gets 401.
+- **Admin key in the repo.** Anyone who can read the repo holds the key. The left lane allows 3 deletes by repo
+  readers before the team notices at 10 s and revokes the key at 12 s. The rotation also breaks the cleanup job, whose
+  key lives in its code: 2 of its runs fail with 401 until a new build ships at 16 s. The right lane's repo holds no
+  key, so repo readers get 401 and the job never breaks.
+
+## 401 or 403
+
+The two codes answer different questions, and clients act on them differently.
+
+- **401 Unauthorized** means "I cannot tell who you are." The credential is missing, forged, or expired. Despite its
+  name, 401 is about authentication. The client should sign in again or refresh its token.
+- **403 Forbidden** means "I know who you are, and the answer is no." Signing in again changes nothing. The caller
+  needs a different role or a different object.
+
+Some APIs answer 404 Not Found for objects the caller may not see, so a stranger cannot learn which codes exist. Pick
+one rule and apply it everywhere. [APIs and contracts](../apis/) covers the rest of the status codes.
+
+## Authorization lives on the server
+
+Hiding the Delete button on other people's links is good design for honest users, and it protects nothing. Any HTTP
+client can send the same request without your web app. The rule holds only when the server enforces it.
+
+- **Check every object.** Signing in proves who the caller is. It says nothing about which links they may touch.
+- **Check in one place.** Put the rule in one function that every handler calls, or in the query itself, so a new
+  endpoint cannot forget it.
+- **Deny by default.** A new endpoint starts closed and opens only for the callers a rule names.
+- **Grant least privilege.** The cleanup job needs to delete expired links. It does not need an admin key that can
+  delete anything.
+
+```ts
+async function deleteLink(caller: User, code: string): Promise<Response> {
+  const link = await links.find(code);
+  if (!link) return status(404);
+  const allowed = link.ownerId === caller.id || caller.role === 'admin';
+  if (!allowed) return status(403);
+  await links.remove(code);
+  return status(204);
+}
+```
+
+Long random link codes do not help here. Every shared URL publishes its code, so codes are public by design.
+
+## Proving who is calling
+
+**Passwords.** Store a slow, salted hash from bcrypt, scrypt, or Argon2, never the password itself. The salt makes
+identical passwords hash differently, and the slowness makes each guess against a stolen table expensive. Add MFA so a
+leaked password alone gets nobody in, and put rate limiting on the sign-in endpoint to slow guessing.
+
+**Sessions.** After sign-in, the server stores a session and hands the browser a long random ID in a cookie marked
+`Secure`, `HttpOnly`, and `SameSite`. Each request costs a lookup, and signing out deletes the session at once.
+
+**Signed tokens.** The server signs a token that names the user and an expiry time, and any service holding the key
+can verify it without a lookup. A token keeps working until it expires, so keep lifetimes short (minutes) and pair them
+with a refresh step. Always check the signature and the expiry; the second scenario shows what happens when you skip
+one.
+
+## Secrets: store, inject, rotate, revoke, audit
+
+A secret is any value that grants access: an API key, a database password, a token signing key. Treat each one as
+having a lifecycle.
+
+1. **Store** it in a secret manager, encrypted, with access granted per service.
+2. **Inject** it at deploy or startup as an environment variable or mounted file. Code reads it by name and never
+   holds the value.
+3. **Rotate** it on a schedule and at once after a suspected leak. Accept the old and new keys for a short overlap, so
+   nothing breaks mid switch.
+4. **Revoke** the old key once nothing uses it. Revocation is what makes a leaked copy worthless.
+5. **Audit** every read and use. An admin delete from an unfamiliar service is how the team in the simulation noticed.
+
+A key committed to a repo stays in git history, every clone, and old build logs, even after someone deletes the line.
+Rotate first, then clean up. Secret scanning in CI catches most of these before they merge.
+
+## Encryption at rest
+
+Disk, database, and backup encryption protect data when someone walks off with a drive or copies a snapshot. They do
+nothing about a request your own app accepts, because the app reads decrypted data. Keep the encryption keys in a key
+management service, apart from the data. For a few especially sensitive fields, encrypt the field itself so even a
+database administrator sees ciphertext.
+
+## Defense in depth
+
+Each scenario in the simulation removes one defense and keeps the other three, and harm still gets through. Layers
+work because each one catches what the others miss: TLS protects the cookie, sign-in rejects the stale token,
+authorization stops the wrong user, and the secret manager limits who holds the keys.
+
+Log enough to investigate: who called, which object, what happened, and a request ID. Leave out the secrets. Redact
+`Authorization` headers, cookies, tokens, and passwords before a line is written, because logs get copied to many
+places and kept for a long time. Rate limiting on expensive and sensitive endpoints adds one more layer. For how TLS
+sets up the private channel, see the handshake in [What happens when you click a link](../what-happens-when-you-click/).
+
+## Trade-offs
+
+<TradeoffTable title="Securing a small API">
+
+| Choice                                | What it buys                                           | What it costs                                                         |
+| ------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------- |
+| Server sessions (random ID in cookie) | Instant sign-out and revocation; a tiny cookie         | A session lookup on every request; a store to run                     |
+| Signed tokens with short expiry       | No lookup; any service with the key can verify         | Revocation waits for expiry; a refresh flow and key rotation to build |
+| Ownership check on every object       | Stops cross-user access on every endpoint              | One more lookup or condition per request; every endpoint must call it |
+| Roles such as admin                   | Simple rules for broad powers                          | Coarse; an admin account or key becomes the prize worth stealing      |
+| Secret manager with injection         | One place to store, rotate, revoke, and audit          | A startup dependency and some setup work                              |
+| TLS on every hop, internal included   | Privacy and tamper protection everywhere               | Certificates to issue and renew; a small handshake cost               |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+The shortener adds teams: several users manage one workspace's links together, as viewers, editors, or owners. Which
+of the four checks change, and where does each rule live?
+
+<div slot="answer">
+
+- **Authorization changes the most.** Each link gets a `workspace_id`, and a memberships table records each user's
+  role in each workspace. The rule becomes "the caller is an editor or owner in this link's workspace." It lives in one
+  server-side function that every handler calls, for reads and lists as well as deletes.
+- **Check membership on every request.** Removing someone from a workspace should cut access at once. If tokens carry
+  roles, keep them short lived or look roles up per request, so a removed member does not keep access until expiry.
+- **Authentication stays the same.** Sign-in still answers who is calling. Workspace automation can get its own API
+  keys, scoped to one workspace, stored in the secret manager on your side, and revocable on their own.
+- **TLS and secrets stay the same.** Audit lines gain the workspace, so owners can see who changed what.
+
+</div>
+
+</Challenge>

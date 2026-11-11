@@ -1,0 +1,286 @@
+/* The stage rule stretches every svg to full width; keep these icons at their own size. */
+.sdv-sim__stage svg.sdv-sec__icon {
+  display: inline-block;
+  flex: none;
+  height: 1rem;
+  width: 1rem;
+}
+.sdv-sec__lane .sdv-badge svg {
+  display: inline-block;
+  flex: none;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+
+.sdv-sec__label,
+.sdv-sec__muted,
+.sdv-sec__note,
+.sdv-sec__latest-text {
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-sec__label,
+.sdv-sec__muted {
+  color: var(--sl-color-gray-2);
+}
+.sdv-sec__note,
+.sdv-sec__latest-text {
+  color: var(--sl-color-white);
+}
+.sdv-sec__latest {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.sdv-sec__defenses {
+  display: grid;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-sec__defenses li {
+  align-items: center;
+  color: var(--sl-color-white);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  gap: 0.35rem;
+  margin: 0;
+}
+.sdv-sec__defenses li[data-on="false"] {
+  color: var(--sdv-bad);
+}
+.sdv-sec__defense-text {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.sdv-sec__track {
+  --sec-inset: 2.4rem;
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.4rem;
+  container-type: inline-size;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.35rem 0 0.25rem;
+}
+/* Narrow tracks show gate icons only; the legend below names each icon. */
+@container (max-width: 21rem) {
+  .sdv-sec__gate-text {
+    display: none;
+  }
+}
+.sdv-sec__head,
+.sdv-sec__field {
+  position: relative;
+}
+.sdv-sec__head {
+  height: 2.3rem;
+}
+.sdv-sec__rail {
+  bottom: 0;
+  left: var(--sec-inset);
+  position: absolute;
+  right: var(--sec-inset);
+  top: 0;
+}
+.sdv-sec__gate-label {
+  align-items: center;
+  color: var(--sl-color-gray-2);
+  display: flex;
+  flex-direction: column;
+  font-size: 0.7rem;
+  gap: 0.1rem;
+  line-height: 1.2;
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.sdv-sec__gate-label--end {
+  left: calc(100% + var(--sec-inset) - 0.3rem);
+  transform: translateX(-100%);
+}
+.sdv-sec__gate-name {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.2rem;
+}
+.sdv-sec__gate-label[data-gap] {
+  color: var(--sdv-bad);
+}
+.sdv-sec__gap {
+  border: 1px dashed var(--sdv-bad);
+  border-radius: 0.25rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0 0.25rem;
+  text-transform: uppercase;
+}
+.sdv-sec__gate-line {
+  border-left: 2px solid var(--sl-color-gray-3);
+  bottom: 0;
+  position: absolute;
+  top: 0;
+  transform: translateX(-1px);
+}
+.sdv-sec__gate-line[data-gap] {
+  border-left: 2px dashed var(--sdv-bad);
+}
+.sdv-sec__end {
+  background: color-mix(in oklab, var(--sl-color-gray-3) 14%, transparent);
+  border-left: 1px dashed var(--sl-color-gray-3);
+  bottom: 0;
+  position: absolute;
+  right: calc(-1 * var(--sec-inset));
+  top: 0;
+  width: calc(2 * var(--sec-inset) - 0.4rem);
+}
+.sdv-sec__slot {
+  height: 1.3rem;
+  position: absolute;
+  width: 0;
+  z-index: 1;
+}
+.sdv-sec__slot > .sdv-sec__token {
+  left: 0;
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+}
+
+.sdv-sec__token {
+  --sec-color: var(--sl-color-gray-3);
+  align-items: center;
+  background: color-mix(in oklab, var(--sec-color) 16%, var(--sl-color-bg));
+  border: 1.5px solid var(--sec-color);
+  border-radius: 999px;
+  color: var(--sl-color-white);
+  display: inline-flex;
+  flex: none;
+  font-size: 0.7rem;
+  gap: 0.15rem;
+  line-height: 1.2;
+  padding: 0.08rem 0.4rem;
+  white-space: nowrap;
+}
+.sdv-sec__token[data-legit="false"] {
+  border-style: dashed;
+}
+.sdv-sec__token[data-verdict="allowedCorrect"] {
+  --sec-color: var(--sdv-ok);
+}
+.sdv-sec__token[data-verdict="rejectedCorrect"] {
+  --sec-color: var(--sl-color-gray-2);
+}
+.sdv-sec__token[data-verdict="wronglyAllowed"] {
+  --sec-color: var(--sdv-bad);
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in oklab, var(--sdv-bad) 55%, var(--sl-color-bg)) 0 2px,
+    color-mix(in oklab, var(--sdv-bad) 18%, var(--sl-color-bg)) 2px 5px
+  );
+  font-weight: 600;
+}
+.sdv-sec__token[data-verdict="wronglyRejected"] {
+  --sec-color: var(--sdv-warn);
+  border-style: double;
+  border-width: 3px;
+}
+.sdv-sec__mark {
+  font-weight: 700;
+}
+
+.sdv-sec__panel {
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.4rem;
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.45rem 0.55rem;
+}
+.sdv-sec__wire {
+  background: var(--sl-color-bg);
+  border: 1.5px solid var(--sdv-border);
+  border-radius: 0.3rem;
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 0.35rem 0.45rem;
+  white-space: pre-wrap;
+}
+.sdv-sec__wire[data-readable="true"] {
+  border-color: var(--sdv-bad);
+  border-style: dashed;
+}
+.sdv-sec__wire[data-readable="false"] {
+  border-color: var(--sdv-ok);
+  color: var(--sl-color-gray-2);
+}
+
+.sdv-sec__holders,
+.sdv-sec__steps {
+  display: grid;
+  gap: 0.2rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-sec__holders li,
+.sdv-sec__steps li {
+  align-items: center;
+  color: var(--sl-color-white);
+  display: flex;
+  font-size: var(--sl-text-xs);
+  gap: 0.35rem;
+  margin: 0;
+}
+.sdv-sec__steps li {
+  color: var(--sl-color-gray-2);
+}
+.sdv-sec__steps li[data-done] {
+  color: var(--sl-color-white);
+}
+.sdv-sec__steps time {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  width: 3.2rem;
+}
+.sdv-sec__step-mark {
+  flex: none;
+  width: 0.9rem;
+}
+.sdv-sec__progress {
+  background: var(--sdv-border);
+  border-radius: 999px;
+  height: 4px;
+  overflow: hidden;
+}
+.sdv-sec__progress span {
+  background: var(--sdv-warn);
+  display: block;
+  height: 100%;
+}
+
+.sdv-sec__legend {
+  color: var(--sl-color-gray-2);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  gap: 0.35rem 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-sec__legend li {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+}
