@@ -114,8 +114,9 @@ export const curriculum: CourseModule[] = [
         id: 'foundations/real-time',
         title: 'Real-time transport',
         summary: 'Compare polling, long polling, server-sent events, and WebSockets.',
-        status: 'soon',
+        status: 'ready',
         format: 'card',
+        minutes: 8,
       },
       {
         id: 'foundations/security',
