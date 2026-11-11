@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  decideSampling,
   findExemplars,
   IncidentRun,
   incidentScenarios,
-  keeps,
   logsDuring,
   logsFor,
   SamplingRun,
+  samplerBudget,
   samplingScenarios,
   samplingTotals,
   selfTime,
@@ -125,6 +126,27 @@ describe('trace exemplars', () => {
     expect(root?.duration).toBe(771);
   });
 
+  it('counts parallel children once, as the union of their time', () => {
+    const span = (id: string, parent: string | null, start: number, duration: number) => ({
+      id,
+      parent,
+      name: id,
+      service: 'shop',
+      start,
+      duration,
+    });
+    const root = span('root', null, 0, 100);
+    const trace = {
+      ...exemplars.typical.trace,
+      spans: [root, span('a', 'root', 10, 80), span('b', 'root', 10, 80)],
+    };
+    expect(selfTime(trace, root)).toBe(20);
+    const staggered = { ...trace, spans: [root, span('a', 'root', 0, 60), span('b', 'root', 40, 50)] };
+    expect(selfTime(staggered, root)).toBe(10);
+    const overrun = { ...trace, spans: [root, span('a', 'root', 50, 80), span('b', 'root', -10, 30)] };
+    expect(selfTime(overrun, root)).toBe(30);
+  });
+
   it('tags every log line with the correlation ID and interleaves other requests', () => {
     const trace = exemplars.slowBrowse.trace;
     const own = logsFor(trace, result.config.poolSize);
@@ -146,6 +168,9 @@ describe('sampling', () => {
           const totals = samplingTotals(sampler, result.traces, now);
           expect(totals.kept + totals.dropped + totals.pending).toBe(totals.completed);
           expect(totals.errorsKept + totals.slowKept + totals.baselineKept).toBe(totals.kept);
+          if (now === Number.POSITIVE_INFINITY) {
+            expect(totals.missed).toBe(totals.errors + totals.slow - totals.errorsKept - totals.slowKept);
+          }
         }
       }
     }
@@ -165,11 +190,45 @@ describe('sampling', () => {
     expect(final.pending).toBe(0);
   });
 
-  it('makes tail sampling keep every error and every slow trace', () => {
+  it('makes tail sampling fill each window with failures first, then slow requests, then the rest', () => {
     const result = simulateIncident();
     const tail = samplingScenarios.incident.lanes[1];
-    for (const trace of result.traces) {
-      if (trace.status === 503 || trace.duration > 1000) expect(keeps(tail, trace)).toBe(true);
+    const rank = (trace: (typeof result.traces)[number]) =>
+      trace.status === 503 ? 0 : trace.duration > 1000 ? 1 : 2;
+    const windows = new Map<number, { kept: number[]; dropped: number[] }>();
+    decideSampling(tail, result.traces).forEach((decision, index) => {
+      const window = windows.get(decision.at) ?? { kept: [], dropped: [] };
+      const trace = result.traces[index];
+      if (trace) (decision.kept ? window.kept : window.dropped).push(rank(trace));
+      windows.set(decision.at, window);
+    });
+    for (const { kept, dropped } of windows.values()) {
+      if (kept.length > 0 && dropped.length > 0) {
+        expect(Math.min(...dropped)).toBeGreaterThanOrEqual(Math.max(...kept));
+      }
+    }
+  });
+
+  it('makes every sampling policy retain the same budget', () => {
+    for (const scenario of Object.values(samplingScenarios)) {
+      const run = new SamplingRun(scenario);
+      const [headSampler, tailSampler] = scenario.lanes;
+      expect(samplerBudget(headSampler)).toBe(samplerBudget(tailSampler));
+      const budget = samplerBudget(tailSampler);
+      while (!run.done) {
+        run.step();
+        const [, tail] = run.totals();
+        const decided = tail.kept + tail.dropped;
+        expect(tail.kept).toBe(Math.floor(budget * decided + 1e-9));
+      }
+      const [head] = run.totals();
+      const spread = 3 * Math.sqrt(head.completed * budget * (1 - budget));
+      expect(Math.abs(head.kept - budget * head.completed)).toBeLessThanOrEqual(spread);
+    }
+    for (const seed of [1, 7, 99]) {
+      const { traces } = simulateIncident({ seed });
+      const tail = samplingTotals(samplingScenarios.incident.lanes[1], traces, Number.POSITIVE_INFINITY);
+      expect(tail.kept).toBe(Math.floor(0.1 * tail.completed + 1e-9));
     }
   });
 
@@ -182,25 +241,27 @@ describe('sampling', () => {
   });
 
   it('pins the illustrative seed 42 incident duel', () => {
-    const [head, tail] = finish(new SamplingRun(samplingScenarios.incident)).totals();
-    expect([head.kept, head.errorsKept, head.slowKept]).toEqual([262, 3, 21]);
-    expect([tail.kept, tail.errorsKept, tail.slowKept]).toEqual([489, 50, 201]);
-    expect([head.peakBuffered, tail.peakBuffered]).toEqual([0, 772]);
+    const run = finish(new SamplingRun(samplingScenarios.incident));
+    const [head, tail] = run.totals();
+    expect([head.kept, head.errorsKept, head.slowKept, head.missed]).toEqual([262, 3, 21, 227]);
+    expect([tail.kept, tail.errorsKept, tail.slowKept, tail.missed]).toEqual([234, 36, 62, 153]);
+    expect([head.peakBuffered, tail.peakBuffered]).toEqual([0, 945]);
+    expect(run.events.at(-1)?.text).toContain('153 failed or slow requests overflowed the tail budget');
   });
 
-  it('ties on a quiet day except for the spans tail sampling holds', () => {
+  it('spends the budget on ordinary traces on a quiet day, while tail sampling holds spans', () => {
     const run = finish(new SamplingRun(samplingScenarios.quiet));
     const [head, tail] = run.totals();
-    expect(head.kept).toBe(262);
-    expect(tail.kept).toBe(head.kept);
-    expect(tail.spansStored).toBe(head.spansStored);
-    expect(tail.peakBuffered).toBe(726);
-    expect(run.events.at(-1)?.text).toContain('A tie');
+    expect([head.errors, head.slow]).toEqual([0, 0]);
+    expect([head.kept, head.baselineKept]).toEqual([262, 262]);
+    expect([tail.kept, tail.baselineKept]).toEqual([234, 234]);
+    expect([head.peakBuffered, tail.peakBuffered]).toEqual([0, 952]);
+    expect(run.events.at(-1)?.text).toContain('Both spent the budget on ordinary traces');
   });
 
   it('pins the illustrative seed 42 tight budget duel', () => {
     const [head, tail] = finish(new SamplingRun(samplingScenarios.budget)).totals();
     expect([head.kept, head.errorsKept]).toEqual([31, 0]);
-    expect([tail.kept, tail.errorsKept]).toEqual([280, 50]);
+    expect([tail.kept, tail.errorsKept, tail.baselineKept, tail.missed]).toEqual([23, 4, 12, 240]);
   });
 });

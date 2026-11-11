@@ -40,12 +40,19 @@ const summaries = (id: RetryScenarioId, seed = 42) =>
   run(new RetryDuel(retryScenarios[id], seed)).lanes.map(summarizeRetries);
 
 describe('RetryServer playback', () => {
-  it('feeds every policy the same clicks', () => {
-    const arrived = policies.map((policy) => {
-      const server = new RetryServer({ policy });
-      return play(server, 200).map(() => server.totals.arrived);
-    });
-    for (const other of arrived.slice(1)) expect(other).toEqual(arrived[0]);
+  it('feeds every policy the same clicks, tick by tick', () => {
+    for (const id of scenarioIds) {
+      const { schedule } = retryScenarios[id];
+      const arrived = policies.map((policy) => {
+        const server = new RetryServer({ policy });
+        return Array.from({ length: 200 }, () => {
+          stepScheduled(server, schedule);
+          return server.totals.arrived;
+        });
+      });
+      expect(new Set(arrived[0]).size).toBeGreaterThan(100);
+      for (const other of arrived.slice(1)) expect(other).toEqual(arrived[0]);
+    }
   });
 
   it('replays a scripted run exactly', () => {

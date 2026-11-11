@@ -126,7 +126,43 @@ describe('RateLimitModel', () => {
     expect(first.admitted).toBe(20);
     expect(first.limited).toBe(20);
     for (let i = 0; i < 9; i += 1) model.step();
-    expect(model.step().allowance[0]).toBeCloseTo(10);
+    // The first request finds a full bucket 1.25 ms in, then the bucket earns 10 per second until 1.1 s.
+    expect(model.step().allowance[0]).toBeCloseTo(10.9875);
+  });
+
+  it('admits the refill rate whatever the tick length', () => {
+    const seconds = 10;
+    const demand = 2000;
+    for (const tickSeconds of [0.001, 0.01, 0.1, 1]) {
+      for (const [rate, burst] of [
+        [5, 1],
+        [20, 1],
+        [100, 10],
+      ] as const) {
+        const perTick = Math.round(demand * tickSeconds);
+        const model = new RateLimitModel({
+          clients: [
+            {
+              id: 'a',
+              label: 'A',
+              rate: 0,
+              polite: true,
+              edges: { burst: perTick, periodTicks: 1, offsets: [0] },
+            },
+          ],
+          limiter: { kind: 'tokenBucket', rate, burst },
+          capacity: demand,
+          queueLimit: demand,
+          tickSeconds,
+        });
+        let admitted = 0;
+        for (let i = 0; i < Math.round(seconds / tickSeconds); i += 1) admitted += model.step().admitted;
+        const expected = burst + rate * seconds;
+        expect(Math.abs(admitted - expected) / expected, `tick ${tickSeconds}, rate ${rate}`).toBeLessThan(
+          0.02,
+        );
+      }
+    }
   });
 
   it('lets a fixed window admit twice its limit across a boundary, unlike a sliding window', () => {
@@ -197,14 +233,15 @@ describe('Rate limit duels', () => {
     expect(open?.politeServed).toBe(2001);
     expect(open?.politeArrived).toBe(2992);
     expect(limited?.politeServed).toBe(2992);
+    expect(limited?.noisyLimited).toBe(4441);
     const [fixed, sliding] = summaries(duelScenarios.edges);
     expect(fixed?.peakLoad).toBe(295);
     expect(sliding?.peakLoad).toBe(195);
     const [eager, patient] = summaries(duelScenarios.retries);
     expect(eager?.limited).toBe(181);
-    expect(patient?.limited).toBe(32);
-    expect(eager?.rejections).toBe(1126);
-    expect(patient?.rejections).toBe(721);
+    expect(patient?.limited).toBe(57);
+    expect(eager?.rejections).toBe(927);
+    expect(patient?.rejections).toBe(633);
     const [bucket] = summaries(bucketScenarios.burst);
     expect(bucket?.limited).toBe(22);
   });
