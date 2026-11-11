@@ -1,9 +1,14 @@
+import { readFileSync } from 'node:fs';
 import react from '@astrojs/react';
 import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';
 import { buildSidebar } from './src/data/sidebar';
 
 const repository = 'https://github.com/ronaldndirangu/system-design-visual';
+const earlyClickReplay = readFileSync(
+  new URL('./src/scripts/early-click-replay.js', import.meta.url),
+  'utf8',
+);
 
 export default defineConfig({
   site: 'https://ronaldndirangu.github.io',
@@ -20,6 +25,14 @@ export default defineConfig({
       editLink: { baseUrl: `${repository}/edit/main/` },
       lastUpdated: false,
       customCss: ['./src/styles/theme.css', './src/styles/components.css'],
+      head: [
+        { tag: 'script', content: earlyClickReplay },
+        // Sliders and selects would drift from the widget state if dragged before their island hydrates.
+        {
+          tag: 'style',
+          content: 'astro-island[ssr] :is(input[type="range"], select) { pointer-events: none; }',
+        },
+      ],
       sidebar: buildSidebar(),
       routeMiddleware: './src/routeData.ts',
       components: {
