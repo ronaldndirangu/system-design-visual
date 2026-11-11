@@ -1,0 +1,79 @@
+.sdv-serve-log li {
+  align-items: start;
+}
+.sdv-serve-log__icon {
+  color: var(--sl-color-gray-2);
+  display: inline-grid;
+  flex: none;
+  height: 1.15rem;
+  place-items: center;
+  width: 1.15rem;
+}
+.sdv-serve-log li[data-kind="preempt"] .sdv-serve-log__icon,
+.sdv-serve-log li[data-kind="wait"] .sdv-serve-log__icon {
+  color: var(--sdv-warn);
+}
+.sdv-serve-log li[data-kind="held"] .sdv-serve-log__icon {
+  color: var(--sdv-bad);
+}
+.sdv-serve-log li[data-kind="resume"] .sdv-serve-log__icon,
+.sdv-serve-log li[data-kind="first"] .sdv-serve-log__icon {
+  color: var(--sdv-ok);
+}
+/* The stage rule sizes every svg to 100%, so pin icons back to text size. */
+.sdv-serve-log .sdv-serve-log__icon svg,
+.sdv-sim__stage .sdv-serve-log__icon svg {
+  display: inline;
+  height: 0.9rem;
+  width: 0.9rem;
+}
+.sdv-serve-log__text {
+  flex: 1;
+  min-width: 0;
+}
+.sdv-serve-log__tag {
+  align-items: center;
+  color: var(--sl-color-white);
+  display: inline-flex;
+  font-weight: 600;
+  gap: 0.35rem;
+}
+.sdv-serve-meta {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-serve-meta strong {
+  color: var(--sl-color-white);
+}
+.sdv-serve-svg {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+/* Each lane holds a wide step grid, so stack the pair before its text shrinks below reading size. */
+.sdv-duel__lanes.sdv-serve-lanes {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
+}
+.sdv-sim__stage .sdv-serve-lanes .sdv-serve-svg {
+  max-width: 26rem;
+}
+.sdv-serve-svg text {
+  fill: var(--sl-color-white);
+  font-size: 11px;
+}
+.sdv-serve-svg .sdv-serve-svg__label {
+  font-size: 12px;
+  font-weight: 600;
+}
+.sdv-serve-svg .sdv-serve-svg__muted {
+  fill: var(--sl-color-gray-2);
+}
+.sdv-serve-swatch {
+  border: 1px solid var(--sl-color-gray-3);
+  border-radius: 2px;
+  display: inline-block;
+  flex: none;
+  height: 0.85rem;
+  width: 0.85rem;
+}
