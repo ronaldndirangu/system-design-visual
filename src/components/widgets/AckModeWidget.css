@@ -1,0 +1,156 @@
+/* Ack mode widget: the log is a queue (cyan), the consumer is a server (violet). Offset cells use a pattern per state. */
+
+.sdv-ack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.sdv-ack__topic {
+  display: grid;
+  flex: 2 1 20rem;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.sdv-ack__member {
+  align-content: start;
+  display: grid;
+  flex: 1 1 13rem;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.sdv-ack__heading {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+.sdv-ack__log {
+  display: grid;
+  gap: 0.3rem;
+}
+.sdv-ack__strip {
+  background: var(--sdv-surface-raised);
+  border: 1px solid color-mix(in oklab, var(--sdv-queue) 60%, var(--sdv-border));
+  border-radius: 0.4rem;
+  padding: 4px 3px;
+}
+.sdv-ack__cells {
+  display: grid;
+  gap: 1px;
+  grid-template-columns: repeat(40, minmax(0, 1fr));
+  position: relative;
+}
+.sdv-ack__cell {
+  border: 1px solid transparent;
+  border-radius: 2px;
+  box-sizing: border-box;
+  display: block;
+  height: 1.4rem;
+}
+.sdv-ack__key {
+  display: inline-block;
+  flex: none;
+  height: 0.9rem;
+  width: 1.1rem;
+}
+.sdv-ack__cell[data-state="counted"] {
+  background: var(--sdv-ok);
+}
+.sdv-ack__cell[data-state="double"] {
+  background:
+    linear-gradient(var(--sdv-warn) 0 0) top / 100% 40% no-repeat,
+    linear-gradient(var(--sdv-warn) 0 0) bottom / 100% 40% no-repeat;
+  border-color: var(--sdv-warn);
+}
+.sdv-ack__cell[data-state="lost"] {
+  background:
+    repeating-linear-gradient(45deg, var(--sdv-bad) 0 2px, transparent 2px 5px),
+    repeating-linear-gradient(-45deg, var(--sdv-bad) 0 2px, transparent 2px 5px),
+    color-mix(in oklab, var(--sdv-bad) 20%, var(--sl-color-bg));
+}
+.sdv-ack__cell[data-state="in-hand"] {
+  background: color-mix(in oklab, var(--sdv-server) 20%, transparent);
+  border: 2px solid var(--sdv-server);
+}
+.sdv-ack__cell[data-state="waiting"] {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-queue) 0 3px,
+    color-mix(in oklab, var(--sdv-queue) 35%, var(--sl-color-bg)) 3px 6px
+  );
+}
+.sdv-ack__cursor,
+.sdv-ack__committed {
+  inset-block: -3px;
+  position: absolute;
+  transform: translateX(-50%);
+}
+.sdv-ack__cursor {
+  background: var(--sl-color-white);
+  width: 3px;
+}
+.sdv-ack__committed {
+  border-inline-start: 2px dashed var(--sdv-warn);
+  width: 0;
+}
+.sdv-ack__key--cursor {
+  background: var(--sl-color-white);
+  width: 3px;
+}
+.sdv-ack__key--committed {
+  border-inline-start: 2px dashed var(--sdv-warn);
+  width: 0;
+}
+.sdv-ack__strip-text {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-ack__consumer {
+  border: 1px solid var(--sdv-border);
+  border-inline-start: 4px solid var(--node);
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 0.2rem;
+  justify-items: start;
+  padding: 0.4rem 0.55rem;
+}
+.sdv-ack__consumer[data-status="down"] {
+  background-image: repeating-linear-gradient(
+    45deg,
+    color-mix(in oklab, var(--sdv-bad) 18%, transparent) 0 2px,
+    transparent 2px 9px
+  );
+  border-inline-start-color: var(--sdv-bad);
+  border-style: dashed;
+}
+.sdv-ack__consumer[data-status="down"] .sdv-ack__icon {
+  opacity: 0.45;
+}
+.sdv-ack__consumer-name {
+  align-items: center;
+  color: var(--sl-color-white);
+  display: inline-flex;
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+  gap: 0.35rem;
+}
+/* Two classes outrank the shared stage rule that stretches every svg to full width. */
+.sdv-ack__consumer .sdv-ack__icon {
+  flex: none;
+  height: 1.1rem;
+  width: 1.1rem;
+}
+.sdv-ack__consumer-meta {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+}
+/* The shared stage rule stretches every svg to full width, so badge icons need their size back. */
+.sdv-ack__consumer .sdv-badge svg {
+  display: inline-block;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.sdv-ack__skip {
+  align-items: flex-start;
+  align-self: start;
+}

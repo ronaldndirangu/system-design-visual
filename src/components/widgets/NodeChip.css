@@ -1,0 +1,63 @@
+/* Component chips: each chip takes its kind color and icon from the shared visual language (client blue, server violet, database green, queue cyan). A stuck chip is hatched and dashed so it reads without color. */
+
+.sdv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-chip {
+  align-items: center;
+  border: 1px solid var(--sdv-border);
+  border-inline-start: 4px solid var(--node);
+  border-radius: 0.5rem;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  max-width: 100%;
+  padding: 0.25rem 0.45rem;
+}
+.sdv-chip .sdv-badge {
+  flex: none;
+  max-width: 100%;
+  white-space: normal;
+}
+.sdv-chip[data-status="stuck"] {
+  background-image: repeating-linear-gradient(
+    45deg,
+    color-mix(in oklab, var(--sdv-bad) 18%, transparent) 0 2px,
+    transparent 2px 9px
+  );
+  border-inline-start-color: var(--sdv-bad);
+  border-style: dashed;
+}
+/* Two classes outrank the shared stage rule that stretches every svg to full width. */
+.sdv-chip .sdv-chip__icon {
+  flex: none;
+  height: 1.1rem;
+  width: 1.1rem;
+}
+.sdv-chip__name {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+}
+.sdv-chip .sdv-badge svg,
+.sdv-verdicts .sdv-badge svg {
+  display: inline-block;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.sdv-verdicts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.sdv-verdicts .sdv-badge {
+  max-width: 100%;
+  white-space: normal;
+}
