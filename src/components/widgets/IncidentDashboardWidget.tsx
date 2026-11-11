@@ -113,7 +113,7 @@ function PoolStrip({ point, poolSize }: { point: TickPoint | null; poolSize: num
       <p className="sdv-pool__legend">
         <span className="sdv-pool__slot" data-busy="true" aria-hidden="true" /> Busy connection (filled green
         square) <span className="sdv-pool__slot" aria-hidden="true" /> Free connection (empty square){' '}
-        <span className="sdv-pool__waiter" aria-hidden="true" /> Request waiting (amber dot)
+        <span className="sdv-pool__waiter" aria-hidden="true" /> Request waiting (orange dot)
       </p>
     </div>
   );

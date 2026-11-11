@@ -37,4 +37,41 @@ describe('theme tokens', () => {
       expect(css, alias).toMatch(new RegExp(`--sdv-${alias}:\\s*var\\(--sdv-`));
     }
   });
+
+  it.each([
+    ['dns', 'edge-kind'],
+    ['cdn', 'edge-kind'],
+    ['vector', 'db'],
+    ['packet', 'client'],
+    ['series-a', 'client'],
+    ['series-b', 'cache'],
+    ['series-c', 'db'],
+    ['shard-0', 'client'],
+    ['shard-1', 'server'],
+    ['shard-2', 'lb'],
+    ['shard-3', 'cache'],
+    ['shard-4', 'db'],
+    ['shard-5', 'edge-kind'],
+    ['shard-6', 'model'],
+    ['shard-7', 'queue'],
+  ])('derives --sdv-%s from the --sdv-%s kind color', (alias, kind) => {
+    expect(css).toMatch(new RegExp(`--sdv-${alias}:\\s*var\\(--sdv-${kind}\\);`));
+  });
+
+  it('keeps every kind hue away from the status hues', () => {
+    const kindNames = ['client', 'server', 'lb', 'cache', 'db', 'queue', 'edge-kind', 'model'];
+    for (const tokens of [dark, light]) {
+      const status = new Set(['ok', 'warn', 'bad'].map((name) => tokens[name]));
+      for (const name of kindNames) expect(status.has(tokens[name]), name).toBe(false);
+    }
+  });
+
+  it('dims a node without fading its label below text contrast', () => {
+    const labelRule = css.match(/\.sdv-node--dim :is\(\.sdv-node__label, \.sdv-node__sublabel\) \{([^}]*)\}/);
+    expect(labelRule?.[1]).toMatch(/fill:\s*var\(--sdv-text-2\)/);
+    expect(labelRule?.[1]).not.toMatch(/opacity/);
+    for (const tokens of [dark, light]) {
+      expect(contrast(tokens['text-2'] ?? '', tokens['surface-1'] ?? '')).toBeGreaterThanOrEqual(4.5);
+    }
+  });
 });

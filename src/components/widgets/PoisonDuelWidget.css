@@ -1,4 +1,4 @@
-/* Poison duel widget: the partition and the dead-letter queue are queues (cyan), the consumer is a server (violet). Click cells use a pattern per state, and a cross marks a malformed click. */
+/* Poison duel widget: the partition and the dead-letter queue are queues (slate), the consumer is a server (violet). Click cells use a pattern per state, and a cross marks a malformed click. */
 
 .sdv-poison__path {
   color: var(--sl-color-gray-2);

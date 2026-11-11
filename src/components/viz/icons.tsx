@@ -44,7 +44,7 @@ const statusGlyph: Record<NodeStatus, string> = {
 
 export function StatusBadge({ status, x, y }: { status: NodeStatus; x: number; y: number }) {
   return (
-    <g transform={`translate(${x} ${y})`}>
+    <g className="sdv-status" transform={`translate(${x} ${y})`}>
       <circle r={9} className={`sdv-status--${status}`} />
       <path d={statusGlyph[status]} className="sdv-status__glyph" />
     </g>
