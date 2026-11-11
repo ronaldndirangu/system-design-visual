@@ -109,7 +109,8 @@ export const curriculum: CourseModule[] = [
         title: 'Indexes',
         summary:
           'Find one row among billions without reading them all, and see what every index costs on write.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'foundations/real-time',

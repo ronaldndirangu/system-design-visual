@@ -52,6 +52,14 @@ function cellsOf(sim: Locator, rowName: RegExp): Promise<string[]> {
   return sim.getByRole('row', { name: rowName }).getByRole('cell').allTextContents();
 }
 
+async function toggleByKeyboard(page: Page, scope: Locator, name: string, checked: boolean): Promise<void> {
+  const toggle = scope.getByRole('switch', { name, exact: true });
+  await expect(toggle).toBeEnabled();
+  await toggle.focus();
+  await page.keyboard.press('Space');
+  await expect(toggle).toBeChecked({ checked });
+}
+
 test('transactions: the duel replays pinned harm counts by keyboard', async ({ page }) => {
   const sim = await openSimulation(page, 'foundations/transactions/', 'Same requests, two ways to write');
 
@@ -156,6 +164,39 @@ test('data modeling: each query replays its pinned toy latency in every shape', 
     expect.stringMatching(/^0\.51 ms/),
   ]);
   await expect(sim.getByRole('row', { name: /^Dashboard/ })).toHaveAttribute('data-current');
+
+  await expectAxeCleanInBothThemes(page);
+});
+
+test('indexes: the scan falls behind the B-tree, and each index costs a write', async ({ page }) => {
+  const sim = await openSimulation(page, 'foundations/indexes/', 'Same lookups, scan versus index');
+
+  await nextScenario(page, sim, /^10 thousand links/, /^10 million links/);
+  await skipByKeyboard(page, sim);
+  expect(await cellsOf(sim, /^Answered/)).toEqual(['9', expect.stringMatching(/^43/)]);
+  expect(await cellsOf(sim, /^Pages read so far/)).toEqual(['980,000', expect.stringMatching(/^172/)]);
+  await expect(
+    sim.getByText(
+      'Run ends. 43 lookups arrived. The B-tree answered 43 and read 172 pages in total. The full scan answered 9 and read 980,000 pages.',
+    ),
+  ).toBeVisible();
+
+  await nextScenario(page, sim, /^10 million links/, /^10 billion links/);
+  await skipByKeyboard(page, sim);
+  expect(await cellsOf(sim, /^Answered/)).toEqual(['0', expect.stringMatching(/^43/)]);
+  expect(await cellsOf(sim, /^Pages read so far/)).toEqual(['980,000', expect.stringMatching(/^215/)]);
+
+  const writes = page.getByRole('region', { name: 'Interactive: What one INSERT writes' });
+  await writes.scrollIntoViewIfNeeded();
+  await expect(writes.getByText('2 pages per insert', { exact: true })).toBeVisible();
+  await toggleByKeyboard(page, writes, 'Index on (user_id)', true);
+  await toggleByKeyboard(page, writes, 'Index on (user_id, created_at)', true);
+  await expect(writes.getByText('One index is redundant', { exact: true })).toBeVisible();
+  await expect(writes.getByRole('row', { name: /^Pages written per insert/ })).toContainText('4');
+  await expect(writes.getByRole('row', { name: /^Redundant indexes/ })).toContainText('(user_id)');
+
+  await toggleByKeyboard(page, writes, 'Index on UNIQUE (code)', false);
+  await expect(writes.getByText('Redirects scan the table', { exact: true })).toBeVisible();
 
   await expectAxeCleanInBothThemes(page);
 });
