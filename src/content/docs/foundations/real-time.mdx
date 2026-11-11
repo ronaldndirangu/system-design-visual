@@ -168,6 +168,12 @@ What to look for:
   the stream. The Logs and pub/sub lesson in Module 4 covers that channel.
 - **Deploys.** Restarting a server drops every stream it holds, and all those browsers reconnect at once. Add a random
   delay before each reconnect so the new servers do not take the whole crowd in the same second.
+- **TCP and UDP.** All four run over TCP in most setups. TCP delivers bytes in order and resends lost packets, so
+  nothing goes missing while the connection lives. The cost: one lost packet holds up every byte behind it until the
+  resend arrives. UDP sends separate datagrams with no ordering and no resend. Voice calls, video, and fast games
+  choose it, because waiting for a resend stalls playback and a frame that arrives after its moment is useless.
+  Browsers reach UDP through WebRTC. HTTP/3 also runs over UDP: its QUIC layer adds ordering and resends per stream,
+  so one lost packet stalls only its own stream.
 
 ## When to use which
 
