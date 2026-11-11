@@ -72,7 +72,10 @@ export default function TokenBucketWidget({
 
   const syncScene = useCallback(() => {
     const model = runRef.current?.lanes[0];
-    if (model) scene?.setTokens(Math.floor(model.allowanceOf(0)), burstRef.current);
+    if (!model || !scene) return;
+    scene.setTokens(Math.floor(model.allowanceOf(0)), burstRef.current);
+    const counts = summarize(model);
+    scene.syncCounts(counts.served, counts.rejections);
   }, [scene]);
 
   useEffect(() => {

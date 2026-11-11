@@ -138,17 +138,31 @@ describe('trace exemplars', () => {
 });
 
 describe('sampling', () => {
-  it('conserves traces: kept plus dropped equals completed', () => {
+  it('conserves traces: kept plus dropped plus pending equals completed', () => {
     const result = simulateIncident();
     for (const scenario of Object.values(samplingScenarios)) {
       for (const sampler of scenario.lanes) {
         for (const now of [10_000, 30_000, Number.POSITIVE_INFINITY]) {
           const totals = samplingTotals(sampler, result.traces, now);
-          expect(totals.kept + totals.dropped).toBe(totals.completed);
+          expect(totals.kept + totals.dropped + totals.pending).toBe(totals.completed);
           expect(totals.errorsKept + totals.slowKept + totals.baselineKept).toBe(totals.kept);
         }
       }
     }
+  });
+
+  it('counts the same finished requests in both lanes mid run, with tail decisions still pending', () => {
+    const result = simulateIncident();
+    const [headSampler, tailSampler] = samplingScenarios.incident.lanes;
+    const head = samplingTotals(headSampler, result.traces, 30_000);
+    const tail = samplingTotals(tailSampler, result.traces, 30_000);
+    expect(tail.completed).toBe(head.completed);
+    expect(tail.errors).toBe(head.errors);
+    expect(tail.slow).toBe(head.slow);
+    expect(head.pending).toBe(0);
+    expect(tail.pending).toBeGreaterThan(0);
+    const final = samplingTotals(tailSampler, result.traces, Number.POSITIVE_INFINITY);
+    expect(final.pending).toBe(0);
   });
 
   it('makes tail sampling keep every error and every slow trace', () => {

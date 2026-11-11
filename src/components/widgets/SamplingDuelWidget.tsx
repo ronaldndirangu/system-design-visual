@@ -72,7 +72,8 @@ function LanePane({
         ]}
       />
       <p className="sdv-sim__note">
-        Spans held in memory awaiting a decision: {count(totals.buffered)} now, {count(peak)} at the peak
+        Finished requests awaiting a decision: {count(totals.pending)}. Spans held in memory:{' '}
+        {count(totals.buffered)} now, {count(peak)} at the peak
       </p>
     </section>
   );

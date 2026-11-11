@@ -293,8 +293,9 @@ this run, head sampling keeps 262 traces and only 3 of the 50 failures. Tail sam
 
 On a **quiet day** the two tie at 262 traces, because no request fails or runs slow; tail sampling still pays for its
 buffer. With a **tight budget** of 1%, head sampling keeps 31 traces and none of the 50 failures, while tail sampling
-still keeps all 50. Many teams combine both: head sampling at a low rate in every service, plus tail sampling in the
-collector for errors and slow requests.
+still keeps all 50. Tail sampling only sees what reaches the collector, so every service must export every span. A
+head sampler in front of it would drop most failures before the tail sampler could judge them. Teams that need to cut
+export volume can head sample at the edge and accept that some failures go missing.
 
 ## Trade-offs
 
@@ -308,7 +309,7 @@ collector for errors and slow requests.
 | RED dashboards          | What callers feel, per service                         | Shows symptoms; the cause may sit in a shared resource            |
 | USE dashboards          | Which resource is full or queueing                     | One per resource, and you must know which resources matter        |
 | Head sampling           | Simple, consistent, no buffering                       | Keeps rare failures at the same low rate as everything else       |
-| Tail sampling           | Keeps every error and slow trace                       | Memory to buffer spans, and routing so a trace lands in one place |
+| Tail sampling           | Keeps every error and slow trace                       | Every span exported, memory to buffer, routing to one collector    |
 
 </TradeoffTable>
 
@@ -332,7 +333,10 @@ requests, the sampling policy, and what every service must do for this to work.
    queue grows before the slow pages appear, that is the lead.
 3. **Exemplars.** Attach trace IDs to the latency histogram so a click on the p99.9 spike opens one of the slow traces.
 4. **Tail sampling at the collector.** Keep every error, every request over 1 s, and a 2% baseline. Route spans by
-   trace ID so each trace lands on one collector. That stays within 5% and keeps every 3 s page.
+   trace ID so each trace lands on one collector. Errors and slow requests normally make up well under 3% of traffic,
+   so the total stays near 5%. An outage can break that assumption, so add a per category rate cap: always keep
+   requests over 3 s, and sample the 1 s to 3 s band when its volume spikes. The cap gives up some moderately slow
+   traces to protect the budget.
 5. **Propagation everywhere.** Every service forwards `traceparent`, starts a span per outbound call, and writes
    structured logs with the trace ID. In the slow trace, compare self times to find the span that owns the 3 s, then
    search the logs for that trace ID.

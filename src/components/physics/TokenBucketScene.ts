@@ -128,6 +128,13 @@ export class TokenBucketScene implements Scene {
     }
   }
 
+  /** Jumps the counters to the model's totals, dropping requests still in flight, for example after a skip. */
+  syncCounts(served: number, rejected: number) {
+    this.flights = [];
+    this.served = served;
+    this.limited = rejected;
+  }
+
   clear() {
     this.removeTokens(this.tokens.length);
     this.pendingTokens = 0;

@@ -610,6 +610,8 @@ export function keeps(sampler: SamplerConfig, trace: Trace): boolean {
 
 export interface SamplingTotals {
   completed: number;
+  /** Finished requests whose tail sampler is still waiting for late spans before it decides. */
+  pending: number;
   kept: number;
   dropped: number;
   errors: number;
@@ -675,6 +677,7 @@ export const samplingScenarios: Record<SamplingDuelId, SamplingScenario> = {
 export function samplingTotals(sampler: SamplerConfig, traces: Trace[], now: number): SamplingTotals {
   const totals: SamplingTotals = {
     completed: 0,
+    pending: 0,
     kept: 0,
     dropped: 0,
     errors: 0,
@@ -691,12 +694,16 @@ export function samplingTotals(sampler: SamplerConfig, traces: Trace[], now: num
     if (sampler.kind === 'tail' && trace.start < now && now < trace.end + wait) {
       totals.buffered += trace.spans.length;
     }
-    if (trace.end + wait > now) continue;
+    if (trace.end > now) continue;
     totals.completed += 1;
     const error = trace.status === 503;
     const slow = !error && trace.duration > SLOW_MS;
     if (error) totals.errors += 1;
     if (slow) totals.slow += 1;
+    if (trace.end + wait > now) {
+      totals.pending += 1;
+      continue;
+    }
     if (!keeps(sampler, trace)) {
       totals.dropped += 1;
       continue;
