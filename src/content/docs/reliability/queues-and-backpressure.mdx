@@ -233,7 +233,7 @@ every layer:
 - Reactive streams let a consumer request a fixed number of items at a time.
 
 A 503 only helps if callers respect it. Clients that retry instantly turn one rejected request into a stream of them.
-The lessons [Retries with backoff and jitter](../retries/), Rate limiting, and Circuit breakers each handle a part of
+The lessons [Retries with backoff and jitter](../retries/), Rate limiting, and [Circuit breakers](../circuit-breakers/) each handle a part of
 that problem.
 
 ## Shed load before the server tips over

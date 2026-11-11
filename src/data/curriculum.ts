@@ -212,7 +212,8 @@ export const curriculum: CourseModule[] = [
         id: 'reliability/circuit-breakers',
         title: 'Circuit breakers',
         summary: 'Fail fast when a dependency is down, then test it gently.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'reliability/observability',

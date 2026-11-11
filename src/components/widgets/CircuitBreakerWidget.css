@@ -1,0 +1,194 @@
+/* The stage stretches every svg to full width; keep badge icons and the switch at their own size. */
+.sdv-cb__lane .sdv-badge {
+  justify-self: start;
+}
+.sdv-cb__lane .sdv-badge svg {
+  display: inline-block;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.sdv-sim__stage svg.sdv-cb__switch {
+  display: inline-block;
+  flex: none;
+  height: 36px;
+  vertical-align: middle;
+  width: 72px;
+}
+.sdv-sim__stage .sdv-qtracks__legend svg.sdv-cb__switch {
+  height: 21px;
+  width: 42px;
+}
+.sdv-cb__wire,
+.sdv-cb__lever {
+  stroke: var(--sl-color-gray-2);
+  stroke-linecap: round;
+  stroke-width: 3;
+}
+.sdv-cb__contact {
+  fill: var(--sl-color-bg);
+  stroke: var(--sl-color-gray-2);
+  stroke-width: 2;
+}
+.sdv-cb__lever {
+  transform-box: view-box;
+  transform-origin: 14px 30px;
+}
+.sdv-cb__switch[data-state="closed"] .sdv-cb__lever {
+  stroke: var(--sdv-ok);
+}
+.sdv-cb__switch[data-state="open"] .sdv-cb__lever {
+  stroke: var(--sdv-bad);
+}
+.sdv-cb__switch[data-state="half-open"] .sdv-cb__lever {
+  stroke: var(--sdv-warn);
+  stroke-dasharray: 6 4;
+  stroke-linecap: butt;
+}
+.sdv-cb__diff {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+.sdv-cb__pool {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+}
+.sdv-cb__pool-name {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+  margin: 0;
+}
+.sdv-cb__breaker {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.sdv-cb__cells {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+.sdv-cb__cell {
+  aspect-ratio: 1.6;
+  background: transparent;
+  border: 1px dashed var(--sl-color-gray-3);
+  border-radius: 0.2rem;
+  display: inline-block;
+  min-height: 0.8rem;
+}
+.sdv-qtracks__legend .sdv-cb__cell {
+  height: 0.9rem;
+  vertical-align: middle;
+  width: 1.4rem;
+}
+.sdv-cb__cell[data-state="busy"] {
+  background: color-mix(in oklab, var(--sdv-server) 75%, var(--sl-color-bg));
+  border: 1px solid var(--sdv-server);
+}
+.sdv-cb__cell[data-state="stuck"] {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-bad) 0 3px,
+    color-mix(in oklab, var(--sdv-bad) 20%, var(--sl-color-bg)) 3px 7px
+  );
+  border: 1px solid var(--sdv-bad);
+}
+.sdv-cb__meter {
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 999rem;
+  display: block;
+  height: 0.8rem;
+  overflow: hidden;
+}
+.sdv-cb__meter--legend {
+  display: inline-block;
+  vertical-align: middle;
+  width: 2.8rem;
+}
+.sdv-cb__meter-fill {
+  background: var(--sdv-queue);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+}
+.sdv-cb__meter[data-full] .sdv-cb__meter-fill {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-bad) 0 6px,
+    color-mix(in oklab, var(--sdv-bad) 60%, transparent) 6px 12px
+  );
+}
+.sdv-cb__strips {
+  display: grid;
+  gap: 0.35rem;
+}
+.sdv-cb__strip-row {
+  align-items: center;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: minmax(7rem, max-content) 1fr;
+}
+.sdv-cb__strip-label {
+  align-items: center;
+  color: var(--sl-color-gray-2);
+  display: inline-flex;
+  font-size: var(--sl-text-xs);
+  gap: 0.35rem;
+}
+.sdv-cb__strip {
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.2rem;
+  display: block;
+  height: 0.9rem;
+  overflow: hidden;
+  position: relative;
+}
+.sdv-cb__run {
+  height: 100%;
+  position: absolute;
+  top: 0;
+}
+.sdv-cb__run[data-state="closed"] {
+  background: color-mix(in oklab, var(--sdv-ok) 70%, var(--sl-color-bg));
+}
+.sdv-cb__run[data-state="open"] {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-bad) 0 4px,
+    color-mix(in oklab, var(--sdv-bad) 25%, var(--sl-color-bg)) 4px 8px
+  );
+}
+.sdv-cb__run[data-state="half-open"] {
+  background:
+    radial-gradient(circle, var(--sdv-warn) 1.5px, transparent 2px) 0 0 / 5px 5px,
+    color-mix(in oklab, var(--sdv-warn) 20%, var(--sl-color-bg));
+}
+.sdv-cb__strip-key {
+  align-items: center;
+  color: var(--sl-color-gray-2);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  gap: 0.35rem 0.6rem;
+  margin: 0;
+}
+.sdv-cb__run--key {
+  border: 1px solid var(--sdv-border);
+  display: inline-block;
+  height: 0.8rem;
+  position: static;
+  width: 1.6rem;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sdv-cb__meter-fill {
+    transition: width 120ms linear;
+  }
+  .sdv-cb__lever {
+    transition: transform 160ms ease-out;
+  }
+}
