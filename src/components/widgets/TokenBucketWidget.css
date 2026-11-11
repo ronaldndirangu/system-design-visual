@@ -1,0 +1,7 @@
+.sdv-bucket__token {
+  background: var(--sdv-lb);
+  display: inline-block;
+  height: 0.65rem;
+  transform: rotate(45deg);
+  width: 0.65rem;
+}
