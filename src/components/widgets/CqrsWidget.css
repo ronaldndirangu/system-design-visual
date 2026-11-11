@@ -264,7 +264,7 @@
   color: var(--sl-color-gray-2);
 }
 
-@media (min-width: 40.01rem) {
+@container (min-width: 26.01rem) {
   .sdv-cqrs .sdv-bars li {
     grid-template-columns: minmax(4rem, 1fr) minmax(5rem, 2fr) auto;
   }
