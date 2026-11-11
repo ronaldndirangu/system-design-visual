@@ -118,16 +118,47 @@ describe('payments duel', () => {
     }
   });
 
-  it('settles every unknown payment when it reconciles', () => {
+  it('settles unknown payments only from evidence when it reconciles', () => {
     for (const seed of seeds) {
       const { a, b } = finished('outage', seed);
       expect(a.unknown).toBeGreaterThan(0);
       expect(a.gapDollars).toBeGreaterThan(0);
-      expect(b.unknown).toBe(0);
-      expect(b.gapDollars).toBe(0);
-      expect(b.recovered + b.failed).toBe(a.unknown);
+      expect(b.recovered + b.failed + b.unknown).toBe(a.unknown);
       expect(b.paid).toBe(a.paid + b.recovered);
+      expect(b.gapDollars).toBeLessThan(a.gapDollars);
     }
+  });
+
+  it('keeps an outcome unknown until the file shows the charge or a status lookup is final', () => {
+    let keptUnknown = 0;
+    for (const seed of seeds) {
+      const duel = new PayDuel(payScenarios.outage, seed);
+      const lane = duel.lanes[1];
+      while (!duel.done) {
+        const tick = duel.ticks;
+        const before = [...lane.state.phase];
+        duel.step();
+        const reconciled = (tick + 1) % Math.round(10 / duel.tickSeconds) === 0;
+        for (let id = 0; id < PAYMENTS; id += 1) {
+          if (before[id] !== 'unknown') continue;
+          const charged = (lane.state.charges[id] ?? 0) > 0;
+          const phase = lane.state.phase[id];
+          if (phase === 'failed') {
+            expect(charged).toBe(false);
+            expect(duel.lookupFinal(lane, id, tick)).toBe(true);
+          }
+          if (phase === 'paid') {
+            expect(charged).toBe(true);
+            expect(duel.inFile(lane, id, tick) || duel.lookupFinal(lane, id, tick)).toBe(true);
+          }
+          if (phase === 'unknown' && reconciled) {
+            expect(duel.inFile(lane, id, tick) || duel.lookupFinal(lane, id, tick)).toBe(false);
+            keptUnknown += 1;
+          }
+        }
+      }
+    }
+    expect(keptUnknown).toBeGreaterThan(0);
   });
 
   it('ties when the bank always answers in time', () => {
@@ -184,7 +215,8 @@ describe('payments duel', () => {
       '8.0 The bank slows down. Most replies now arrive after the 2 s timeout, and some requests never reach it.',
       '15.7 Both lanes: payment 61 gives up after 3 attempts that all timed out. The service cannot tell whether the bank charged the card.',
       '16.0 The bank recovers. Replies arrive in time again.',
-      "20.0 Reconcile every 10 s: the bank's file shows 5 charges the ledger lacks, so those payments complete, and 1 unknown payment with no charge, which is marked failed so the shopper can pay again.",
+      "20.0 Reconcile every 10 s: the bank's file shows 4 charges the ledger lacks, so those payments complete. A status lookup by key confirms 1 payment the bank never charged, which is marked failed. 1 payment stays unknown because the bank is still processing it.",
+      "30.0 Reconcile every 10 s: the bank's file shows 1 charge the ledger lacks, so that payment completes.",
       '30.0 Run ends. Payments with an unknown outcome: trust the ledger 6, reconcile every 10 s 0. Money the bank took that the ledger never recorded: $195 and $0.',
     ]);
   });

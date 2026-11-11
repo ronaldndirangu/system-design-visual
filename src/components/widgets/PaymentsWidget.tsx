@@ -39,7 +39,7 @@ const copy: Record<PayDuelId, { title: string; instructions: string; chart: stri
   reconcile: {
     title: 'Same outage, two ways to settle the books',
     instructions:
-      'Pick a scenario, then press Play. Both lanes retry with an idempotency key and give up after 3 attempts. Only one compares its ledger with the bank every 10 s.',
+      'Pick a scenario, then press Play. Both lanes retry with an idempotency key and give up after 3 attempts. Only one reconciles every 10 s: it reads the bank file, then looks up by key any payment the file does not show.',
     chart: 'Payments with an unknown outcome',
   },
 };
@@ -175,7 +175,7 @@ export default function PaymentsWidget({ duel: duelId, title, instructions }: Pr
         { label: 'Paid, per the ledger', values: [sums[0].paid, sums[1].paid], better: 'higher' },
         { label: 'Unknown outcome now', values: [sums[0].unknown, sums[1].unknown], better: 'lower' },
         { label: 'Completed by reconciliation', values: [sums[0].recovered, sums[1].recovered] },
-        { label: 'Confirmed failed, shopper can pay again', values: [sums[0].failed, sums[1].failed] },
+        { label: 'Confirmed failed by a status lookup', values: [sums[0].failed, sums[1].failed] },
         { label: 'Retries sent', values: [sums[0].retries, sums[1].retries] },
         {
           label: 'Bank took more than the ledger shows',
@@ -279,7 +279,7 @@ export default function PaymentsWidget({ duel: duelId, title, instructions }: Pr
             <span className="sdv-paytile" data-view="failed" aria-hidden="true">
               ✕
             </span>{' '}
-            Failed, no charge at the bank
+            Failed: a status lookup confirms no charge
           </li>
         )}
       </ul>

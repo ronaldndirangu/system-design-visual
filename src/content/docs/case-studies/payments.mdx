@@ -18,7 +18,7 @@ export const nodes = [
   { id: 'pay', kind: 'server', x: 230, y: 150, label: 'Payments' },
   { id: 'bank', kind: 'server', x: 390, y: 60, label: 'Bank', sublabel: 'card network' },
   { id: 'ledger', kind: 'database', x: 390, y: 240, label: 'Ledger', sublabel: 'entries and keys' },
-  { id: 'recon', kind: 'server', x: 550, y: 150, label: 'Reconciler', sublabel: 'nightly job' },
+  { id: 'recon', kind: 'server', x: 550, y: 150, label: 'Reconciler', sublabel: 'file and lookups' },
 ];
 export const edges = [
   { from: 'shopper', to: 'pay' },
@@ -60,7 +60,7 @@ export const steps = [
   },
   {
     title: 'Reconcile with the bank',
-    text: "Each night the reconciler matches the bank's settlement file against the ledger, line by line. A bank charge with no ledger entry completes a stuck payment. A stuck payment with no bank charge is marked failed.",
+    text: "The reconciler settles stuck payments from evidence. A charge in the bank's settlement file completes a stuck payment. The file lags, so a missing line proves nothing: the reconciler looks the payment up by its key and marks it failed only when the bank's answer is final.",
     nodes: ['recon', 'bank', 'ledger'],
     flows: ['bank>recon', 'recon>ledger'],
   },
@@ -162,7 +162,7 @@ export const quiz = [
 - Explain why a timeout leaves a payment's outcome unknown, and why a blind retry can charge a shopper twice.
 - Make retries safe with an idempotency key that both the payment service and the bank honor.
 - Record money in an append-only, double-entry ledger where every payment balances.
-- Reconcile the ledger with the bank to settle payments whose outcome stayed unknown.
+- Keep a payment's outcome unknown until the bank reports a final state, and reconcile the ledger with the bank's files.
 - Contrast how payments and flash-sale ticketing fail.
 
 </Objectives>
@@ -198,7 +198,7 @@ Retries can carry one charge to the bank more than once, and after its last time
 know whether any landed. The fix makes repeats harmless and settles the unknowns later. An **idempotency key** names the purchase, and
 every retry carries the same name. The bank stores the key with its result, so a repeat gets the first answer and moves
 no money. A **double-entry ledger** records every payment as entries that must balance. **Reconciliation** compares that
-ledger with the bank's own records and settles anything the retries could not.
+ledger with the bank's own records and settles anything the retries could not, once the bank's evidence is final.
 
 <StepDiagram client:visible title="A payment, step by step" nodes={nodes} edges={edges} steps={steps} height={290} />
 
@@ -238,13 +238,15 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
    and the response to replay.
 
 5. **High-level design.** The checkout page calls the payment service, which writes to the ledger database and calls the
-   bank. A reconciler runs on a schedule, reads the bank's settlement file, and compares it with the ledger.
+   bank. Bank webhooks and status lookups by key move a pending payment to its final state. A separate reconciler runs on
+   a schedule, reads the bank's settlement file, and compares it with the ledger.
 
 6. **Deep dive: the retry.** This is where the design breaks first, and the simulations below live here. After a timeout
    there are three possible worlds: the request was lost, the bank declined, or the bank charged and the reply was lost.
    Only the bank knows which. A retry with the same key asks the bank to answer from its key store, so all three worlds
    end with one charge at most. The [Idempotency](../../reliability/idempotency/) lesson covers key stores in depth, and [Retries with backoff and jitter](../../reliability/retries/)
-   covers spacing the attempts. When every attempt times out, the payment stays unknown until reconciliation settles it.
+   covers spacing the attempts. When every attempt times out, the payment stays unknown until the bank reports a final
+   state.
 
 7. **Trade-offs.** Timeout length, how long to keep keys, how often to reconcile, and what to show the shopper while a
    payment is pending. The table at the end of this page lays them out.
@@ -293,19 +295,31 @@ store amounts as integer cents so rounding never creates or destroys money.
 
 Keys stop double charges. They cannot help when every attempt times out: after 3 tries the service still does not know
 whether the bank charged the card. Both lanes below retry with a key, so neither one charges twice. Only one of them
-compares its ledger with the bank's records every 10 s. Real systems do this once a night against the bank's settlement
-file, often with an hourly check through the bank's API for payments stuck as pending.
+reconciles every 10 s. It reads the bank's settlement file, then looks up by key each unknown payment the file does not
+show yet. A lookup marks a payment failed only once the bank's answer is final.
 
 <PaymentsWidget client:visible duel="reconcile" />
 
 What to look for:
 
 - **Bank outage.** From 8 s to 16 s the bank answers slowly and drops requests. **6 payments** give up after 3
-  attempts. Trusting the ledger, they stay unknown, and the bank holds **$195** that the ledger never recorded. The
-  reconciling lane finds **5 charges** in the bank's file and completes those payments, marks **1** failed so its
-  shopper can pay again, and closes the gap to **$0**.
+  attempts. Trusting the ledger, they stay unknown, and the bank holds **$195** that the ledger never recorded. At 20 s
+  the reconciling lane finds **4 charges** in the bank's file and completes those payments. A status lookup confirms
+  that the bank never charged **1** payment, so the service marks it failed. The last payment stays unknown, because the
+  bank still reports it as processing and the file has no line for it yet. At 30 s the file shows that charge too, and
+  the gap closes to **$0**.
 - **Calm day.** No outage, no unknown payments, and the lanes match. Reconciliation finds nothing, and that silence has
   value: it proves the books balance.
+
+The toy folds two jobs into one pass every 10 s. Real systems run them apart, on different clocks:
+
+- **Status updates settle each outcome within minutes.** The bank pushes a webhook when a payment reaches a final state.
+  The service checks the webhook's signature, drops repeats by event ID, and applies each update once. For a payment
+  still pending after a few minutes, a status checker asks the bank by idempotency key. A "still processing" answer
+  leaves the payment pending, and only a final answer marks it paid or failed.
+- **Settlement reconciliation checks the money.** Once a day the reconciler matches the bank's settlement file against
+  the ledger, line by line. Files arrive late and sometimes partial, so a missing line opens an investigation and never
+  fails a payment on its own.
 
 A payment that spans several services (reserve stock, charge the card, book shipping) also needs a plan for undoing the
 earlier steps when a later one fails. The [Sagas](../../distributed-data/sagas/) lesson covers that, and [Delivery semantics and the outbox](../../async/delivery-semantics/) covers sending
@@ -337,8 +351,8 @@ attempt learns the first answer.
 | Short timeout                    | Fast feedback for the shopper                          | More retries, and without a key, more double charges       |
 | Idempotency key on every write   | Safe retries from the page, the service, and the bank  | A key store to run, and keys expire (24 h is common)       |
 | Double-entry, append-only ledger | Every cent traceable, and mistakes fixed in the open   | More rows, and balances need sums or snapshots             |
-| Reconcile often                  | Unknown payments settle within minutes                 | More calls to the bank and more matching work              |
-| Reconcile nightly                | A simple batch job against one file                    | A payment can stay unknown for a day                       |
+| Webhooks plus status lookups     | Unknown payments settle within minutes                 | Signatures, deduplication, and lookups to run              |
+| Nightly settlement file          | A simple batch job that checks the money               | A day of lag, and a missing line proves nothing            |
 | Show "pending" to the shopper    | Honest while the outcome is unknown                    | A follow-up email or screen once the payment settles       |
 
 </TradeoffTable>
@@ -362,8 +376,8 @@ gets back more than $100.
   the refund would exceed the payment. The $70 refund changes zero rows, since $40 plus $70 is more than $100. This is
   the same check that stops [ticketing](../ticketing/) from selling a seat twice.
 - **Record it in the ledger:** write a new pair of entries that reverses $40, and leave the original entries alone.
-- **Reconcile refunds too:** a refund whose every attempt timed out stays unknown until the bank's file shows whether it
-  went out.
+- **Reconcile refunds too:** a refund whose every attempt timed out stays unknown until a webhook or a status lookup by
+  its key reports a final state. The settlement file later confirms the money, and a missing line proves nothing.
 
 </div>
 

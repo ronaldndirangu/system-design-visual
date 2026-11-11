@@ -6,7 +6,9 @@ import { createRng, randomInt } from '../rng';
  * behavior on each attempt come from one pre-generated workload, so both lanes
  * send the same requests at the same moments and only the lane rule differs.
  * Times are compressed: reconciliation runs every 10 s here and nightly in
- * real life.
+ * real life, and the settlement file lags by seconds here and by hours or days
+ * in real life. An unknown payment stays unknown until the file shows its
+ * charge or a status lookup by key returns a terminal answer.
  */
 export const TICK_SECONDS = 0.1;
 export const PAYMENTS = 120;
@@ -17,6 +19,13 @@ export const BACKOFF_SECONDS = [0.5, 1] as const;
 const ARRIVAL_SECONDS = 20;
 /** A request reaches the bank, and the bank charges the card, this long after it is sent. */
 const BANK_RECEIVE_TICKS = 1;
+/** A charge reaches the bank's settlement file this long after the bank takes the money, drawn per payment. */
+export const SETTLE_SECONDS = [3, 15] as const;
+/**
+ * The bank answers a status lookup with "still processing" until this long after the last attempt.
+ * After that its answer is final: charged, or no charge.
+ */
+export const BANK_FINAL_SECONDS = 5;
 
 export type PayDuelId = 'retries' | 'reconcile';
 export type PayScenarioId = 'slow-bank' | 'short-timeout' | 'healthy-bank' | 'outage' | 'calm-day';
@@ -154,6 +163,13 @@ export function makePayments(seed: number): Payment[] {
   return payments;
 }
 
+/** Settlement delay per payment, from its own stream so the shoppers above never change. */
+function makeSettleTicks(seed: number): number[] {
+  const rng = createRng(seed ^ 0x5e771e);
+  const [low, high] = SETTLE_SECONDS.map((seconds) => Math.round(seconds / TICK_SECONDS));
+  return Array.from({ length: PAYMENTS }, () => randomInt(rng, low ?? 0, high ?? 0));
+}
+
 export type AttemptKind = 'fast' | 'slow' | 'lost';
 
 export type PayPhase = 'future' | 'sending' | 'backoff' | 'paid' | 'unknown' | 'failed';
@@ -165,6 +181,8 @@ interface LaneState {
   retryAt: number[];
   /** Charges the bank made for each payment. More than one means the shopper paid twice. */
   charges: number[];
+  /** Tick of the bank's first charge for each payment, or -1. */
+  chargedAt: number[];
   recovered: number;
   confirmedFailed: number;
   retries: number;
@@ -202,6 +220,7 @@ function emptyLane(): LaneState {
     sentAt: blank(),
     retryAt: blank(),
     charges: blank(),
+    chargedAt: Array.from({ length: PAYMENTS }, () => -1),
     recovered: 0,
     confirmedFailed: 0,
     retries: 0,
@@ -217,12 +236,19 @@ function money(amount: number): string {
   return `$${amount.toLocaleString('en-US')}`;
 }
 
+function count(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+}
+
 export class PayDuel {
   readonly scenario: PayScenario;
   readonly length: number;
   readonly tickSeconds = TICK_SECONDS;
   readonly timeoutTicks: number;
   readonly payments: Payment[];
+  /** How long each payment's charge takes to reach the bank's settlement file. */
+  readonly settleTicks: number[];
+  readonly finalTicks = Math.round(BANK_FINAL_SECONDS / TICK_SECONDS);
   readonly lanes: [PayLane, PayLane];
   events: PayEvent[] = [];
   private tickCount = 0;
@@ -233,6 +259,7 @@ export class PayDuel {
     this.length = Math.round(scenario.seconds / TICK_SECONDS);
     this.timeoutTicks = Math.round(scenario.timeoutSeconds / TICK_SECONDS);
     this.payments = makePayments(seed);
+    this.settleTicks = makeSettleTicks(seed);
     this.lanes = [
       { config: scenario.lanes[0], state: emptyLane() },
       { config: scenario.lanes[1], state: emptyLane() },
@@ -357,6 +384,7 @@ export class PayDuel {
           }
         } else {
           s.charges[id] = charges + 1;
+          if (charges === 0) s.chargedAt[id] = tick;
           if (narrateCharges && charges + 1 === 2 && !s.firstDouble) {
             s.firstDouble = true;
             this.events.push({
@@ -391,38 +419,68 @@ export class PayDuel {
     return gaveUp;
   }
 
-  /** Compare the bank's file with the ledger and settle every payment whose outcome is unknown. */
+  /** True once a payment's charge has reached the bank's settlement file. */
+  inFile(lane: PayLane, id: number, tick: number): boolean {
+    const chargedAt = lane.state.chargedAt[id] ?? -1;
+    return chargedAt >= 0 && chargedAt + (this.settleTicks[id] ?? 0) <= tick;
+  }
+
+  /** True once the bank's answer to a status lookup for this payment is terminal. */
+  lookupFinal(lane: PayLane, id: number, tick: number): boolean {
+    return (lane.state.sentAt[id] ?? tick) + this.finalTicks <= tick;
+  }
+
+  /**
+   * Settle unknown payments from evidence. A charge in the settlement file completes a payment.
+   * A missing file entry proves nothing, because the file lags, so the job then looks the payment
+   * up by its idempotency key. Only a terminal answer settles it; "still processing" keeps it unknown.
+   */
   private reconcile(lane: PayLane, tick: number): void {
     const s = lane.state;
-    let charged = 0;
+    let fromFile = 0;
+    let lookedUpCharged = 0;
     let failed = 0;
+    let pending = 0;
     for (let id = 0; id < PAYMENTS; id += 1) {
       if (s.phase[id] !== 'unknown') continue;
-      if ((s.charges[id] ?? 0) > 0) {
+      const charged = (s.charges[id] ?? 0) > 0;
+      if (this.inFile(lane, id, tick)) {
         s.phase[id] = 'paid';
         s.recovered += 1;
-        charged += 1;
+        fromFile += 1;
+      } else if (!this.lookupFinal(lane, id, tick)) {
+        pending += 1;
+      } else if (charged) {
+        s.phase[id] = 'paid';
+        s.recovered += 1;
+        lookedUpCharged += 1;
       } else {
         s.phase[id] = 'failed';
         s.confirmedFailed += 1;
         failed += 1;
       }
     }
-    if (charged + failed === 0) return;
-    const parts = [];
-    if (charged > 0)
-      parts.push(
-        `${charged} ${charged === 1 ? 'charge the ledger lacks, so that payment completes' : 'charges the ledger lacks, so those payments complete'}`,
+    if (fromFile + lookedUpCharged + failed + pending === 0) return;
+    const sentences = [];
+    if (fromFile > 0)
+      sentences.push(
+        `the bank's file shows ${count(fromFile, 'charge')} the ledger lacks, so ${fromFile === 1 ? 'that payment completes' : 'those payments complete'}.`,
       );
+    const lookups = [];
+    if (lookedUpCharged > 0) lookups.push(count(lookedUpCharged, 'more charge'));
     if (failed > 0)
-      parts.push(
-        `${failed} unknown ${failed === 1 ? 'payment with no charge, which is' : 'payments with no charge, which are'} marked failed so the shopper can pay again`,
+      lookups.push(
+        `${count(failed, 'payment')} the bank never charged, which ${failed === 1 ? 'is' : 'are'} marked failed`,
       );
-    this.events.push({
-      tick: tick + 1,
-      text: `${lane.config.label}: the bank's file shows ${parts.join(', and ')}.`,
-      marker: true,
-    });
+    if (lookups.length > 0) sentences.push(`a status lookup by key confirms ${lookups.join(' and ')}.`);
+    if (pending > 0)
+      sentences.push(
+        `${count(pending, 'payment')} ${pending === 1 ? 'stays' : 'stay'} unknown because the bank is still processing ${pending === 1 ? 'it' : 'them'}.`,
+      );
+    const text = sentences.map((sentence, i) =>
+      i === 0 ? sentence : sentence.charAt(0).toUpperCase() + sentence.slice(1),
+    );
+    this.events.push({ tick: tick + 1, text: `${lane.config.label}: ${text.join(' ')}`, marker: true });
   }
 
   private wrapUp(): void {
