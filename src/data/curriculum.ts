@@ -229,7 +229,8 @@ export const curriculum: CourseModule[] = [
         id: 'async/logs-and-pubsub',
         title: 'Logs and pub/sub',
         summary: 'Partition a log, run consumer groups, and see why order holds only within a partition.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'async/delivery-semantics',
