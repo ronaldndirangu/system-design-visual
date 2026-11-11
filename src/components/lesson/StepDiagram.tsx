@@ -1,9 +1,11 @@
 import { m } from 'motion/react';
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
+import { autoplayBudget, useAutoplay } from '../../lib/useAutoplay';
 import { MotionRoot } from '../sim/MotionRoot';
 import { usePrefersReducedMotion } from '../sim/usePrefersReducedMotion';
 import { DiagramScroll } from '../viz/DiagramScroll';
 import { link } from '../viz/geometry';
+import { UiIcon } from '../viz/icons';
 import type { ComponentKind } from '../viz/kinds';
 import { ArrowDefs, Edge, SystemNode, safeId } from '../viz/SystemNode';
 
@@ -43,13 +45,18 @@ interface Props {
 
 /** Room around each node center for the node and its sublabel. */
 const FIT_MARGIN = 72;
+const LOOP_SECONDS = 1.4;
+const BUDGET_MS = autoplayBudget(LOOP_SECONDS * 1000);
 
 /** Walk through a diagram one step at a time with Back and Next. */
 export default function StepDiagram({ title, nodes, edges, steps, width, height = 300 }: Props) {
   const [index, setIndex] = useState(0);
   const reduced = usePrefersReducedMotion();
+  const figure = useRef<HTMLElement>(null);
+  const motion = useAutoplay(figure, { reduced, budgetMs: BUDGET_MS });
   const arrow = safeId(useId(), 'step-arrow');
   const step = steps[index];
+  const hasFlows = steps.some((candidate) => (candidate.flows?.length ?? 0) > 0);
   const byId = new Map(nodes.map((node) => [node.id, node]));
   if (!step) return null;
   const xs = nodes.map((node) => node.x);
@@ -63,15 +70,16 @@ export default function StepDiagram({ title, nodes, edges, steps, width, height 
     return link(a, b);
   };
 
+  const goTo = (next: number) => {
+    setIndex(next);
+    motion.restart();
+  };
+
   return (
     <MotionRoot>
-      <figure className="sdv-steps not-content" aria-label={title}>
+      <figure ref={figure} className="sdv-steps not-content" aria-label={title}>
         <DiagramScroll label="Scrollable diagram">
-          <svg
-            viewBox={`${left} 0 ${viewWidth} ${height}`}
-            role="img"
-            aria-label={`${title}. Step ${index + 1}: ${step.text}`}
-          >
+          <svg viewBox={`${left} 0 ${viewWidth} ${height}`} role="img" aria-label={title}>
             <ArrowDefs id={arrow} />
             {edges.map((edge) => {
               const points = segment(edge);
@@ -105,7 +113,7 @@ export default function StepDiagram({ title, nodes, edges, steps, width, height 
               const [from, to] = key.split('>');
               const points = from && to ? segment({ from, to }) : undefined;
               if (!points) return null;
-              if (reduced) {
+              if (!motion.playing) {
                 return (
                   <circle
                     key={`${index}-${key}`}
@@ -127,7 +135,7 @@ export default function StepDiagram({ title, nodes, edges, steps, width, height 
                     cy: [points.from[1], points.to[1]],
                     opacity: [0, 1, 1, 0],
                   }}
-                  transition={{ duration: 1.4, repeat: Number.POSITIVE_INFINITY, ease: 'easeInOut' }}
+                  transition={{ duration: LOOP_SECONDS, repeat: Number.POSITIVE_INFINITY, ease: 'easeInOut' }}
                 />
               );
             })}
@@ -142,11 +150,17 @@ export default function StepDiagram({ title, nodes, edges, steps, width, height 
             <p className="sdv-steps__text">{step.text}</p>
           </div>
           <div className="sdv-steps__nav">
+            {hasFlows && (
+              <button type="button" className="sdv-button" onClick={motion.toggle}>
+                <UiIcon name={motion.wantsMotion ? 'pause' : 'play'} />
+                {motion.wantsMotion ? 'Pause' : 'Play'}
+              </button>
+            )}
             <button
               type="button"
               className="sdv-button"
               disabled={index === 0}
-              onClick={() => setIndex(index - 1)}
+              onClick={() => goTo(index - 1)}
             >
               Back
             </button>
@@ -154,7 +168,7 @@ export default function StepDiagram({ title, nodes, edges, steps, width, height 
               type="button"
               className="sdv-button sdv-button--primary"
               disabled={index === steps.length - 1}
-              onClick={() => setIndex(index + 1)}
+              onClick={() => goTo(index + 1)}
             >
               Next step
             </button>
