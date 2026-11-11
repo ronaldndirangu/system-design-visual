@@ -319,6 +319,16 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* biome-ignore-start lint/complexity/noImportantStyles: the reduced-motion net must win over every component animation */
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+  /* biome-ignore-end lint/complexity/noImportantStyles: end of the reduced-motion net */
   .sdv-node--highlight .sdv-node__shape {
     filter: none;
   }

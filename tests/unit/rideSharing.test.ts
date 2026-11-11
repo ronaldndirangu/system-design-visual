@@ -8,12 +8,17 @@ import {
   cellChangeShare,
   cellHashAt,
   cityCells,
+  DriverPositions,
+  DriverReservations,
   DUEL_SECONDS,
   historyBytesPerDay,
   indexMemoryBytes,
+  lateAcceptTimeline,
   locationWritesPerSecond,
   naiveChecksPerSecond,
+  OFFER_SECONDS,
   PING_SECONDS,
+  pingIsNewer,
   RideMatchDuel,
   type RideScenarioId,
   rideEstimates,
@@ -264,5 +269,100 @@ describe('RideMatchDuel', () => {
     ).toBe(true);
     const sparse = run('sparse').events.map((event) => event.text);
     expect(sparse.some((text) => text.includes('widened ring by ring to 25 cells'))).toBe(true);
+  });
+});
+
+describe('fenced driver reservations', () => {
+  it('lets only one ride reserve a free driver until the lease expires', () => {
+    const table = new DriverReservations(['d1']);
+    const a = table.reserve('d1', 'A', 0);
+    expect(a).toEqual({ driverId: 'd1', rideId: 'A', version: 1, expiresAt: OFFER_SECONDS });
+    expect(table.reserve('d1', 'B', OFFER_SECONDS - 1)).toBeNull();
+    expect(table.statusAt('d1', OFFER_SECONDS)).toBe('free');
+    const b = table.reserve('d1', 'B', OFFER_SECONDS);
+    expect(b?.version).toBe(2);
+  });
+
+  it('rejects an accept after expiry even with the matching version', () => {
+    const table = new DriverReservations(['d1']);
+    const a = table.reserve('d1', 'A', 0);
+    if (!a) throw new Error('reserve failed');
+    expect(table.accept(a, a.expiresAt)).toBe(false);
+    expect(table.statusAt('d1', a.expiresAt)).toBe('free');
+  });
+
+  it('renews only the current reservation', () => {
+    const table = new DriverReservations(['d1']);
+    const a = table.reserve('d1', 'A', 0);
+    if (!a) throw new Error('reserve failed');
+    const renewed = table.renew(a, 10);
+    expect(renewed?.expiresAt).toBe(10 + OFFER_SECONDS);
+    expect(table.reserve('d1', 'B', OFFER_SECONDS + 1)).toBeNull();
+    expect(table.renew({ ...a, version: a.version + 1 }, 11)).toBeNull();
+    expect(table.renew({ ...a, rideId: 'B' }, 11)).toBeNull();
+  });
+
+  it('frees the driver on release and then refuses the old reservation', () => {
+    const table = new DriverReservations(['d1']);
+    const a = table.reserve('d1', 'A', 0);
+    if (!a) throw new Error('reserve failed');
+    expect(table.release(a)).toBe(true);
+    expect(table.statusAt('d1', 1)).toBe('free');
+    expect(table.rideOf('d1')).toBeNull();
+    expect(table.release(a)).toBe(false);
+    expect(table.accept(a, 2)).toBe(false);
+  });
+
+  it('rejects a stale release and a late accept after reassignment', () => {
+    const timeline = lateAcceptTimeline();
+    expect(timeline.freeAtExpiry).toBe(true);
+    expect(
+      timeline.steps.map(({ at, ride, action, named, driverVersion, ok }) => [
+        at,
+        ride,
+        action,
+        named,
+        driverVersion,
+        ok,
+      ]),
+    ).toEqual([
+      [0, 'A', 'reserve', null, 1, true],
+      [16, 'B', 'reserve', null, 2, true],
+      [17, 'A', 'release', 1, 2, false],
+      [18, 'A', 'accept', 1, 2, false],
+      [20, 'B', 'accept', 2, 2, true],
+    ]);
+    expect(timeline.final).toEqual({ status: 'on-trip', ride: 'B', version: 2 });
+  });
+});
+
+describe('ping ordering', () => {
+  it('orders by session, then sequence', () => {
+    expect(pingIsNewer({ session: 1, seq: 5 }, { session: 1, seq: 4 })).toBe(true);
+    expect(pingIsNewer({ session: 1, seq: 4 }, { session: 1, seq: 4 })).toBe(false);
+    expect(pingIsNewer({ session: 2, seq: 1 }, { session: 1, seq: 900 })).toBe(true);
+  });
+
+  it('drops a ping that arrives after a newer one, and repeats', () => {
+    const index = new DriverPositions();
+    expect(index.apply('d1', { session: 1, seq: 2 }, 'c2')).toBe(true);
+    expect(index.apply('d1', { session: 1, seq: 1 }, 'c1')).toBe(false);
+    expect(index.apply('d1', { session: 1, seq: 2 }, 'c2')).toBe(false);
+    expect(index.cellOf('d1')).toBe('c2');
+  });
+
+  it('keeps a removal against a late older add', () => {
+    const index = new DriverPositions();
+    index.apply('d1', { session: 1, seq: 7 }, 'c1');
+    expect(index.apply('d1', { session: 1, seq: 9 }, null)).toBe(true);
+    expect(index.apply('d1', { session: 1, seq: 8 }, 'c3')).toBe(false);
+    expect(index.cellOf('d1')).toBeNull();
+  });
+
+  it('applies the first ping of a new session after a high sequence', () => {
+    const index = new DriverPositions();
+    index.apply('d1', { session: 1, seq: 900 }, 'c1');
+    expect(index.apply('d1', { session: 2, seq: 1 }, 'c4')).toBe(true);
+    expect(index.cellOf('d1')).toBe('c4');
   });
 });

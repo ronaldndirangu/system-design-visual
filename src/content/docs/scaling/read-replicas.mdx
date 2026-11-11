@@ -35,7 +35,7 @@ export const steps = [
   },
   {
     title: 'The primary copies each write',
-    text: 'In the background, the primary streams every change to its replicas. That usually takes milliseconds, and under heavy load it can take seconds.',
+    text: 'In the background, the primary streams every change to its replicas. That usually takes milliseconds, and under heavy load it can take seconds. Each replica trails by its own amount.',
     nodes: ['primary', 'r1', 'r2'],
     flows: ['primary>r1', 'primary>r2'],
   },
@@ -53,7 +53,7 @@ export const steps = [
   },
   {
     title: 'Read your own writes',
-    text: 'For a few seconds after someone writes, send their reads to the primary. Everyone else keeps reading from replicas.',
+    text: "Each write returns its position in the replication log, and the app sends that position with the person's next reads. A replica that has not applied it yet hands the read to the primary. Everyone else keeps reading from replicas.",
     nodes: ['app', 'primary'],
     flows: ['app>primary'],
   },
@@ -140,37 +140,53 @@ a change may still see the old version for a moment.
 
 ## Try it
 
-Press Play. One database cannot keep up. Add replicas until the load bars calm down, then raise the lag and watch the
-stale reads (squares with a cross) appear. Finally, turn on read your own writes.
+Press Play. One database cannot keep up. Add replicas until the load bars calm down, then raise the writes and watch
+every replica's share of the load grow. Raise the lag and watch the stale reads (squares with a cross) appear, along
+with reads that go back in time. Finally, turn on read your own writes.
 
 <ReplicationWidget client:visible />
 
 What to look for:
 
-- **Read capacity grows with each replica,** while the primary still handles every write.
+- **Read capacity depends on where reads go.** With no replicas, the primary serves reads with whatever time writes
+  leave it. With replicas, only the replicas serve reads, and each one spends part of its capacity replaying every
+  write. Raise the writes and the read capacity of every replica falls at once.
 - **Stale reads come from fresh links.** A link created long ago is already on every replica. Only reads inside the lag
   window go wrong.
-- **Read your own writes** moves those few reads to the primary. Stale reads vanish, and the primary takes a little
-  extra load.
+- **Each replica lags by its own amount, so reads can go back in time.** One read finds a new link on a quick replica,
+  and the next lands on a slower one that answers Not found. The person saw the link, then lost it. **Monotonic reads**
+  prevent this: pin each user to one replica, or carry the highest log position they have seen and skip replicas
+  behind it.
+- **Read your own writes** moves those few reads to the primary. The app carries each write's log position, and a
+  replica that has not applied it hands the read on. Stale reads of a person's own links vanish, and the primary takes
+  a little extra load. [Consistency models](../../distributed-data/consistency-models/) covers the full family of
+  guarantees.
 
 ## When the primary dies
 
-If the primary crashes, you **promote** a replica to become the new primary and point writes at it. With
-**asynchronous** replication (the default almost everywhere), writes that had not been copied yet are lost.
-**Synchronous** replication waits for a replica to confirm each write before answering, so nothing gets lost, and every
-write gets slower.
+If the primary crashes, you **promote** a replica to become the new primary, point writes at it, and **fence** the old
+primary so it cannot accept writes if it comes back. With **asynchronous** replication (the default almost everywhere),
+the primary acknowledged writes that never reached the replicas, and those writes are lost. A replica that trails by
+half a second at 40 writes per second loses about 40 × 0.5 = 20 links. Promote the replica with the highest applied log
+position to lose the fewest. The widget shows the loss for each choice once you add replicas.
+
+**Synchronous** replication makes the primary wait until a replica has durably stored each write before it
+acknowledges the write. That protects acknowledged writes only when failover promotes a replica that confirmed them.
+Promote a lagging asynchronous replica instead, and the acknowledged writes vanish anyway. Every write also gets
+slower, and a slow replica stalls the primary.
 
 ## Trade-offs
 
 <TradeoffTable title="Replication choices">
 
-| Choice                    | What it buys                                  | What it costs                                            |
-| ------------------------- | --------------------------------------------- | -------------------------------------------------------- |
-| More replicas             | More read capacity, more copies of the data   | Every replica replays every write, and more lag to watch |
-| Asynchronous replication  | Fast writes                                   | Stale reads, and recent writes can vanish in a failover   |
-| Synchronous replication   | No lost writes on failover                    | Slower writes, and a slow replica stalls the primary      |
-| Read your own writes      | People always see their own changes           | Extra primary load, and routing logic in the app          |
-| Replicas in other regions | Fast reads near users, survives a region loss | Lag of 100 ms or more across oceans                      |
+| Choice                    | What it buys                                                                | What it costs                                                         |
+| ------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| More replicas             | More read capacity, more copies of the data                                 | Every replica replays every write, and more lag to watch              |
+| Asynchronous replication  | Fast writes                                                                 | Stale reads, and acknowledged writes can vanish in a failover         |
+| Synchronous replication   | No lost acknowledged writes, if you promote the replica that confirmed them | Slower writes, and a slow replica stalls the primary                  |
+| Read your own writes      | People see their own changes, even when lag runs long                       | Extra primary load, and the app must carry each write's log position  |
+| Monotonic reads           | Nobody sees data appear and then vanish                                     | Pinned users spread load less evenly, or the app tracks log positions |
+| Replicas in other regions | Fast reads near users, survives a region loss                               | Lag of 100 ms or more across oceans                                   |
 
 </TradeoffTable>
 
@@ -185,8 +201,8 @@ need? And what breaks if a new feature pushes writes to 5,000 per second?
 <div slot="answer">
 
 - Cache misses reach the database: 50,000 × 10% = **5,000 reads per second**.
-- Each replica takes 2,000 × 0.7 = 1,400 per second, so 5,000 ÷ 1,400 ≈ 3.6, which rounds up to **4 replicas**, plus
-  one spare to survive a crash: **5**.
+- Each replica takes 2,000 × 0.7 = 1,400 queries per second, and replaying 100 writes per second leaves 1,300 for
+  reads. 5,000 ÷ 1,300 ≈ 3.8, which rounds up to **4 replicas**, plus one spare to survive a crash: **5**.
 - At 5,000 writes per second, replicas stop helping. The single primary must accept every write, and every replica must
   replay all 5,000 of them on top of its reads. To grow past one machine's write limit, you split the data itself across
   machines. That is [sharding](../../scaling/sharding/), the next lesson.

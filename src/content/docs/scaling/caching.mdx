@@ -188,9 +188,11 @@ crash destroys.
 >
 
 **Write-behind**. A popular link gets clicked many times in each 2 second window, and the cache saves only its latest
-count. With seed 42, 4,015 click writes reach the database as 1,319 under write-behind, while write-through and
-write-around send all 4,015. Write-around also wrecks the cache: each click deletes the copy that the next click needs,
-so the hit ratio falls to about 4%.
+count. With seed 42, 4,015 click writes reach the database as 1,501 under write-behind, while write-through and
+write-around send all 4,015, one database write per click. The count lives under its own key, apart from the redirect it
+counts, so write-around never touches a cached redirect: its hit ratio holds at 84%, the same as with no counting.
+Write-through and write-behind put every counter they update in the cache, the counters push links out, and their hit
+ratio falls to 69%.
 
 </Predict>
 
@@ -199,7 +201,8 @@ so the hit ratio falls to about 4%.
 What to look for:
 
 - **Count every click** rewards write-behind: frequent writes to the same few keys merge before they reach the
-  database.
+  database. Write-around pays one database write per click and keeps the best hit ratio, because the counters never
+  enter the cache.
 - **Bulk import** punishes write-through and write-behind. Both put each imported link in the cache, and those links push
   the popular ones out. Write-around keeps the popular links, and its hit ratio for the run ends near 84% against 62%.
 - **Cache crashes** shows the price of write-behind. With seed 42 it loses 38 writes that callers already saw succeed.

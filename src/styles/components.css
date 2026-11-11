@@ -581,7 +581,7 @@ button[data-tone="bad"] {
   border-radius: var(--sdv-radius);
   padding: 1rem;
 }
-.sdv-steps svg,
+.sdv-steps .sdv-scroll-x > svg,
 .sdv-arc svg,
 .sdv-sim__stage svg {
   display: block;
