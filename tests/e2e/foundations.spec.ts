@@ -200,3 +200,39 @@ test('indexes: the scan falls behind the B-tree, and each index costs a write', 
 
   await expectAxeCleanInBothThemes(page);
 });
+
+test('apis: offset pages repeat and skip, and expand-then-contract breaks no client', async ({ page }) => {
+  const sim = await openSimulation(page, 'foundations/apis/', 'Same list, two ways to ask for the next page');
+
+  await skipByKeyboard(page, sim);
+  expect(await cellsOf(sim, /^Repeated rows/)).toEqual(['10', expect.stringMatching(/^0/)]);
+  expect(await cellsOf(sim, /^Rows the database walked/)).toEqual(['210', expect.stringMatching(/^50/)]);
+
+  await nextScenario(page, sim, /^Busy creator/, /^Deletions/);
+  await skipByKeyboard(page, sim);
+  expect(await cellsOf(sim, /^Links skipped/)).toEqual(['6', expect.stringMatching(/^0/)]);
+
+  const contract = page.getByRole('region', { name: 'Interactive: One change, three clients' });
+  await contract.scrollIntoViewIfNeeded();
+  await expect(contract.getByText('No client breaks', { exact: true })).toBeVisible();
+
+  await contract.getByRole('radio', { name: /^Add an optional field/ }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(contract.getByRole('radio', { name: /^Rename a field/ })).toBeChecked();
+  await expect(contract.getByText('2 clients broken', { exact: true })).toBeVisible();
+
+  await contract.getByRole('radio', { name: 'Change in place' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(contract.getByRole('radio', { name: 'Expand, then contract' })).toBeChecked();
+  await expect(contract.getByText('No client breaks', { exact: true })).toBeVisible();
+
+  await contract.getByRole('radio', { name: 'Expand, then contract' }).focus();
+  await page.keyboard.press('ArrowLeft');
+  await contract.getByRole('radio', { name: /^Rename a field/ }).focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect(contract.getByRole('radio', { name: /^Add an optional field/ })).toBeChecked();
+  await toggleByKeyboard(page, contract, 'Partner uses a strict parser that rejects unknown fields', true);
+  await expect(contract.getByText('1 client broken', { exact: true })).toBeVisible();
+
+  await expectAxeCleanInBothThemes(page);
+});

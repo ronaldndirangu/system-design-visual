@@ -87,7 +87,8 @@ export const curriculum: CourseModule[] = [
         id: 'foundations/apis',
         title: 'APIs and contracts',
         summary: 'Design endpoints that are easy to call correctly and hard to call wrong.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'foundations/data-modeling',
