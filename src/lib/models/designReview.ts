@@ -146,7 +146,7 @@ export const REVIEW_ITEMS: readonly ReviewItem[] = [
     isFlaw: true,
     verdictName: 'Retries without backoff or jitter',
     explanation:
-      'Immediate retries pile onto a provider that is already struggling. Each failing call becomes up to 6 calls, all at once and in step, which keeps the provider overloaded.',
+      'Immediate retries pile onto a provider that is already struggling. Each failing call becomes up to 6 back to back attempts with no pause. Thousands of checkouts fail together and retry together, so the retries arrive in synchronized waves that keep the provider overloaded.',
     fixId: 'backoff',
     fixDetail:
       'Wait longer before each retry with random jitter, cap retries with a budget, and send an idempotency key so a repeated charge is safe.',
@@ -269,7 +269,7 @@ export const EVENTS: readonly ReplayEvent[] = [
     minute: 24,
     item: 4,
     kind: 'incident',
-    text: 'The payment provider slows down. Each failed call becomes up to 6 calls at once, and the retry storm keeps the provider overloaded.',
+    text: 'The payment provider slows down. Each failed call turns into up to 6 attempts with no pause, thousands of checkouts retry in the same waves, and the retry storm keeps the provider overloaded.',
   },
   {
     minute: 30,

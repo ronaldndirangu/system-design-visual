@@ -36,7 +36,28 @@ test('a timed round runs by keyboard and opens the rubric only after it ends', a
   await expect(outline.getByRole('listitem')).toHaveCount(0);
   await outline.getByRole('button', { name: 'Show reference outline' }).click();
   await expect(outline.getByRole('button', { name: 'Show reference outline' })).toHaveCount(0);
+  await expect(round.getByRole('heading', { level: 4, name: /^Reference outline:/ })).toBeFocused();
   await expect(outline.getByText('Requirements', { exact: true })).toBeVisible();
+});
+
+test('the round clock counts only while it runs', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('practice/timed-round/');
+  const round = page.getByRole('region', { name: 'Interactive: Timed design round' });
+  await round.scrollIntoViewIfNeeded();
+  const start = round.getByRole('button', { name: 'Start round' });
+  await expect(start).toBeEnabled();
+  await start.click();
+
+  await page.clock.runFor(30_000);
+  const stepTimer = round.getByRole('timer', { name: 'Time on this step' });
+  await expect(stepTimer).toHaveText(/^0:3\d$/);
+
+  await round.getByRole('button', { name: 'Pause' }).click();
+  await expect(round.getByRole('button', { name: 'Resume' })).toBeVisible();
+  const pausedAt = (await stepTimer.textContent()) ?? '';
+  await page.clock.runFor(60_000);
+  await expect(stepTimer).toHaveText(pausedAt);
 });
 
 test('a saved round stays on this device and can be cleared', async ({ page }) => {
@@ -46,7 +67,17 @@ test('a saved round stays on this device and can be cleared', async ({ page }) =
   await round.getByRole('button', { name: 'Start round' }).click();
   await round.getByRole('button', { name: 'Finish round' }).click();
   await round.getByRole('button', { name: 'Save this round on this device' }).click();
-  await expect(round.getByRole('button', { name: 'Round saved' })).toBeDisabled();
+  const saved = round.getByRole('button', { name: 'Round saved' });
+  await expect(saved).toHaveAttribute('aria-disabled', 'true');
+  await expect(saved).toBeFocused();
+  await expect(page.getByText('1 saved round. Saved on this device only.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Clear saved rounds' }).click();
+  await page.getByRole('button', { name: 'Clear rounds' }).click();
+  await expect(
+    page.getByText('No saved rounds yet. Rounds you save stay on this device only.'),
+  ).toBeVisible();
+  await round.getByRole('button', { name: 'Save this round on this device' }).click();
   await expect(page.getByText('1 saved round. Saved on this device only.')).toBeVisible();
 
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('sdv:practice-rounds') ?? 'null'));

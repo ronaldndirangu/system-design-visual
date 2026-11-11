@@ -79,7 +79,7 @@ export default function TimedRoundWidget() {
   const [promptIndex, setPromptIndex] = useState(0);
   const [drawSeed, setDrawSeed] = useState(1);
   const [notes, setNotes] = useState('');
-  const [savedAs, setSavedAs] = useState<{ finishedAt: string; total: number | null } | null>(null);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
   const [confirmingClear, setConfirmingClear] = useState(false);
   const practice = useSyncExternalStore(subscribePractice, readPractice, () => null);
 
@@ -87,6 +87,7 @@ export default function TimedRoundWidget() {
   const setupRef = useRef<HTMLFieldSetElement>(null);
   const clockRef = useRef<HTMLButtonElement>(null);
   const reportRef = useRef<HTMLHeadingElement>(null);
+  const outlineRef = useRef<HTMLHeadingElement>(null);
   const historyRef = useRef<HTMLHeadingElement>(null);
   const clearRef = useRef<HTMLButtonElement>(null);
   const cancelClearRef = useRef<HTMLButtonElement>(null);
@@ -99,7 +100,10 @@ export default function TimedRoundWidget() {
   const totals = roundTotals(round, config);
   const score = rubricTotal(round.scores);
   const savableTotal = score.scored === STEP_COUNT ? score.total : null;
-  const savedUpToDate = savedAs !== null && savedAs.total === savableTotal;
+  // Reads the stored copy so clearing history, here or in another tab, also clears the saved mark.
+  const savedRecord =
+    savedAt === null ? undefined : practice?.rounds.find((entry) => entry.finishedAt === savedAt);
+  const savedUpToDate = savedRecord !== undefined && savedRecord.rubricTotal === savableTotal;
   const current = reports[round.step];
   const step = checklistSteps[round.step];
   const locked = round.phase !== 'ready';
@@ -149,7 +153,7 @@ export default function TimedRoundWidget() {
   function reset() {
     setRound(initialRound());
     setNotes('');
-    setSavedAs(null);
+    setSavedAt(null);
   }
 
   function drawPrompt() {
@@ -158,7 +162,8 @@ export default function TimedRoundWidget() {
   }
 
   function save() {
-    const finishedAt = savedAs?.finishedAt ?? new Date().toISOString();
+    if (savedUpToDate) return;
+    const finishedAt = savedAt ?? new Date().toISOString();
     saveRound({
       promptId: prompt?.id ?? '',
       pace,
@@ -168,7 +173,13 @@ export default function TimedRoundWidget() {
       rubricTotal: savableTotal,
       rubricMax: score.max,
     });
-    setSavedAs({ finishedAt, total: savableTotal });
+    setSavedAt(finishedAt);
+  }
+
+  function showOutline() {
+    setRound(revealOutline);
+    // The button disappears once the outline shows, so focus moves to the outline itself.
+    window.requestAnimationFrame(() => outlineRef.current?.focus());
   }
 
   const keyHandler = useRef<(event: KeyboardEvent) => void>(() => {});
@@ -298,8 +309,8 @@ export default function TimedRoundWidget() {
   const setup = locked ? (
     <p className="sdv-round__locked">
       <strong>Setup:</strong> {prompt?.title}, {PACES[pace].label},{' '}
-      {hardStop ? 'stops when time runs out' : 'runs into overtime'}. Setup is locked during a round; Reset to
-      change it.
+      {hardStop ? 'stops when time runs out' : 'runs into overtime'}. The round locks the setup. Press Reset
+      to change it.
     </p>
   ) : (
     <fieldset ref={setupRef} className="sdv-round__setup">
@@ -571,7 +582,9 @@ export default function TimedRoundWidget() {
                 </section>
 
                 <section className="sdv-round__outline" aria-labelledby={`${ids}-outline`}>
-                  <h4 id={`${ids}-outline`}>Reference outline: {prompt?.title}</h4>
+                  <h4 id={`${ids}-outline`} ref={outlineRef} tabIndex={-1}>
+                    Reference outline: {prompt?.title}
+                  </h4>
                   {round.outlineShown ? (
                     <ol>
                       {checklistSteps.map((item, index) => (
@@ -591,12 +604,7 @@ export default function TimedRoundWidget() {
                         One sound answer among several. If yours differs, check that you can defend the
                         difference.
                       </p>
-                      <button
-                        type="button"
-                        className="sdv-button"
-                        onClick={() => setRound(revealOutline)}
-                        disabled={!hydrated}
-                      >
+                      <button type="button" className="sdv-button" onClick={showOutline} disabled={!hydrated}>
                         Show reference outline
                       </button>
                     </>
@@ -608,12 +616,13 @@ export default function TimedRoundWidget() {
                     type="button"
                     className="sdv-button"
                     onClick={save}
-                    disabled={!hydrated || savedUpToDate}
+                    disabled={!hydrated}
+                    aria-disabled={savedUpToDate}
                   >
                     <UiIcon name={savedUpToDate ? 'check' : 'ok'} />{' '}
                     {savedUpToDate
                       ? 'Round saved'
-                      : savedAs
+                      : savedRecord
                         ? 'Update saved round'
                         : 'Save this round on this device'}
                   </button>

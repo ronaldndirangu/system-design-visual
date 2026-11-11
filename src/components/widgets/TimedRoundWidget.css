@@ -266,12 +266,14 @@
 .sdv-round__notes textarea:focus-visible,
 .sdv-round__panel h4:focus-visible,
 .sdv-round__rubric h4:focus-visible,
+.sdv-round__outline h4:focus-visible,
 .sdv-round__history h4:focus-visible {
   outline: 3px solid var(--sl-color-text-accent);
   outline-offset: 2px;
 }
 
 .sdv-round__panel h4:focus:not(:focus-visible),
+.sdv-round__outline h4:focus:not(:focus-visible),
 .sdv-round__history h4:focus:not(:focus-visible) {
   outline: none;
 }
