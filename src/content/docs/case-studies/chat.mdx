@@ -16,7 +16,7 @@ import ChatWidget from '../../../components/widgets/ChatWidget';
 export const nodes = [
   { id: 'sender', kind: 'client', x: 70, y: 60, label: 'Sender', sublabel: 'phone' },
   { id: 'gwIn', kind: 'server', x: 230, y: 60, label: 'Gateway', sublabel: "sender's socket" },
-  { id: 'chat', kind: 'server', x: 390, y: 60, label: 'Chat service', sublabel: 'numbers messages' },
+  { id: 'chat', kind: 'server', x: 390, y: 60, label: 'Chat service' },
   { id: 'log', kind: 'database', x: 550, y: 60, label: 'Message log', sublabel: 'per conversation' },
   { id: 'bus', kind: 'queue', x: 390, y: 240, label: 'Pub/sub', sublabel: 'push workers' },
   { id: 'gwOut', kind: 'server', x: 230, y: 240, label: 'Gateway', sublabel: "reader's socket" },
@@ -313,16 +313,16 @@ phones wait a random moment before reconnecting. The Retries with backoff and ji
 
 ## Chat versus notifications
 
-Notifications is the other half of this pair. Both deliver short messages to people's devices, and they guard different
-things.
+[Notifications](../notifications/) is the other half of this pair. Both deliver short messages to people's devices, and
+they guard different things.
 
-| Question             | Chat                                                  | Notifications                                           |
-| -------------------- | ----------------------------------------------------- | ------------------------------------------------------- |
-| Who owns delivery?   | Your gateways, over sockets you hold open             | External providers (push services, SMS, email)          |
-| What must hold?      | Order within a conversation, and nothing missing      | Arrival before a deadline, within the user's choices    |
-| What goes wrong?     | Messages overtake each other or vanish in dead sockets | A provider throttles or fails, and the code expires    |
-| The guard            | Sequence numbers and a cursor into a replayable log   | Retries, failover between providers, and deduplication  |
-| Late is…             | Fine, if the order is right                           | Often worthless: a login code that arrives late is junk |
+| Question           | Chat                                                   | Notifications                                             |
+| ------------------ | ------------------------------------------------------ | --------------------------------------------------------- |
+| Who owns delivery? | Your gateways, over sockets you hold open              | External providers (push services, SMS, email)            |
+| What must hold?    | Order within a conversation, and nothing missing       | Arrival before a deadline, within the user's choices      |
+| What goes wrong?   | Messages overtake each other or vanish in dead sockets | A provider throttles or fails, and the code expires       |
+| The guard          | Sequence numbers and a cursor into a replayable log    | Priority lanes, deadlines, and failover between providers |
+| Late is…           | Fine, if the order is right                            | Often worthless: a login code that arrives late is junk   |
 
 Chat systems use notifications too: when the app is closed, the server asks the phone's push service to wake it, and the
 phone then opens its socket and catches up with its cursor.

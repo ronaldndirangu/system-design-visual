@@ -362,7 +362,8 @@ export const curriculum: CourseModule[] = [
         title: 'Notifications',
         summary:
           'Deliver through external providers with deadlines and preferences, and contrast it with chat.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
         bestAfter: 'async',
       },
       {
