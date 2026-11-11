@@ -1,5 +1,12 @@
 import type MatterNamespace from 'matter-js';
 import {
+  type Assignment,
+  LANDING_TRANSIT_MS,
+  LandingQueue,
+  type LandingStats,
+} from '../../lib/models/landingQueue';
+import { createRng, type Rng } from '../../lib/rng';
+import {
   createStepper,
   drawBall,
   hexagon,
@@ -9,52 +16,63 @@ import {
   type SceneContext,
 } from './runtime';
 
+export type { LandingStats };
+
 type Body = MatterNamespace.Body;
 
-export interface LandingStats {
-  arrivedPerSecond: number;
-  servedPerSecond: number;
-  droppedPerSecond: number;
-  servers: number;
+type BallState = 'waiting' | 'flying' | 'queued' | 'served' | 'dropped';
+
+interface Flight {
+  x0: number;
+  y0: number;
+  start: number;
+  rejected: boolean;
 }
 
-type BallState = 'flying' | 'queued' | 'served' | 'dropped';
-
 interface Ball {
+  id: number;
   body: Body;
   state: BallState;
   target: number;
-  born: number;
+  offset: number;
+  flight: Flight | undefined;
 }
 
 interface Bucket {
   cx: number;
   walls: Body[];
-  nextDrain: number;
 }
 
 const RADIUS = 6;
 const INNER = 58;
 const WALL = 6;
-const BUCKET_HEIGHT = 74;
-const DRAIN_PER_SECOND = 5;
-const WINDOW_MS = 4000;
+/** Tall enough for the 12 requests a server holds, so a full queue looks full. */
+const BUCKET_HEIGHT = 52;
+const ARC = 34;
+const MAX_BALLS = 260;
 const CAT_WALL = 0x1;
 const CAT_BALL = 0x2;
 const CAT_FLY = 0x4;
 const CAT_GHOST = 0x8;
+const SOLID = { group: 0, category: CAT_BALL, mask: CAT_WALL | CAT_BALL };
+const FLYING = { group: 0, category: CAT_FLY, mask: 0 };
+const GHOST = { group: 0, category: CAT_GHOST, mask: 0 };
 
 /**
- * A playful, self-contained physics toy for the landing page: users drop
- * requests into a funnel, a load balancer throws each one at the next server,
- * and every server drains a fixed number per second. When arrivals beat
- * capacity, buckets fill and requests spill over the rim.
+ * A playful physics toy for the landing page. Users drop requests into a
+ * funnel, the load balancer sends each one to the next server, and every
+ * server finishes 5 requests per second. A LandingQueue decides every
+ * outcome: a request turns red only when the server it was sent to already
+ * holds a full queue. The physics animates those decisions and never makes
+ * one, so a ball that bounces out of place goes back where the model says it is.
  */
 export class LandingScene implements Scene {
   private readonly M: Matter;
   private readonly engine: MatterNamespace.Engine;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly canvas: HTMLCanvasElement;
+  private readonly queue: LandingQueue;
+  private readonly rng: Rng = createRng(2024);
   private width: number;
   private height: number;
   private palette: Palette;
@@ -62,10 +80,9 @@ export class LandingScene implements Scene {
   private neck: Body | undefined;
   private buckets: Bucket[] = [];
   private balls: Ball[] = [];
-  private cursor = 0;
-  private clock = 0;
+  private readonly byId = new Map<number, Ball>();
+  private readonly byBody = new Map<Body, Ball>();
   private spawnCarry = 0;
-  private events: { time: number; kind: 'arrived' | 'served' | 'dropped' }[] = [];
   private mouseConstraint: MatterNamespace.MouseConstraint | undefined;
   private readonly step = createStepper();
   rate = 8;
@@ -78,8 +95,9 @@ export class LandingScene implements Scene {
     this.height = context.height;
     this.palette = context.palette;
     this.engine = this.M.Engine.create();
+    this.queue = new LandingQueue(servers);
     this.buildFunnel();
-    this.setServers(servers);
+    this.buildBuckets(this.queue.serverCount, this.layout.bucketTop);
     this.enableDragging();
     this.M.Events.on(this.engine, 'collisionStart', (event) => {
       for (const pair of event.pairs) {
@@ -95,55 +113,33 @@ export class LandingScene implements Scene {
     return { usersY: 26, neckY: 112, bucketTop: top, bucketBottom: top + BUCKET_HEIGHT };
   }
 
+  /** Resize the pool. Requests on a removed server fly to a survivor instead of vanishing. */
   setServers(count: number): void {
-    const { Bodies, Composite } = this.M;
-    for (const bucket of this.buckets) Composite.remove(this.engine.world, bucket.walls);
-    const { bucketTop } = this.layout;
-    const slot = this.width / count;
-    const options = {
-      isStatic: true,
-      friction: 0.02,
-      collisionFilter: { category: CAT_WALL, mask: CAT_BALL | CAT_FLY },
-    };
-    this.buckets = Array.from({ length: count }, (_, index) => {
-      const cx = slot * (index + 0.5);
-      const midY = bucketTop + BUCKET_HEIGHT / 2;
-      const walls = [
-        Bodies.rectangle(cx - INNER / 2 - WALL / 2, midY, WALL, BUCKET_HEIGHT, options),
-        Bodies.rectangle(cx + INNER / 2 + WALL / 2, midY, WALL, BUCKET_HEIGHT, options),
-        Bodies.rectangle(cx, bucketTop + BUCKET_HEIGHT + WALL / 2, INNER + WALL * 2, WALL, options),
-      ];
-      Composite.add(this.engine.world, walls);
-      return { cx, walls, nextDrain: this.clock + 1000 / DRAIN_PER_SECOND };
-    });
-    this.cursor = 0;
-    // Requests that were waiting in removed buckets, or now sit in the wrong place, fall away.
-    for (const ball of this.balls) {
-      if (ball.state === 'queued' || ball.state === 'flying') this.markDropped(ball);
+    const moves = this.queue.setServers(count);
+    this.buildBuckets(this.queue.serverCount, this.layout.bucketTop);
+    for (const move of moves) {
+      const ball = this.byId.get(move.id);
+      if (ball) this.launch(ball, move);
     }
   }
 
   stats(): LandingStats {
-    const cutoff = this.clock - WINDOW_MS;
-    this.events = this.events.filter((event) => event.time > cutoff);
-    const seconds = Math.min(this.clock, WINDOW_MS) / 1000 || 1;
-    const count = (kind: string) => this.events.filter((event) => event.kind === kind).length / seconds;
-    return {
-      arrivedPerSecond: count('arrived'),
-      servedPerSecond: count('served'),
-      droppedPerSecond: count('dropped'),
-      servers: this.buckets.length,
-    };
+    return this.queue.stats();
   }
 
   resize(width: number, height: number): void {
+    const previousTop = this.layout.bucketTop;
+    const shift = width / 2 - this.width / 2;
     this.width = width;
     this.height = height;
-    const { Composite } = this.M;
+    const { Body, Composite } = this.M;
     Composite.remove(this.engine.world, this.funnel);
     if (this.neck) Composite.remove(this.engine.world, this.neck);
     this.buildFunnel();
-    this.setServers(this.buckets.length || 1);
+    for (const ball of this.balls) {
+      if (ball.state === 'waiting') Body.translate(ball.body, { x: shift, y: 0 });
+    }
+    this.buildBuckets(this.buckets.length, previousTop);
   }
 
   setPalette(palette: Palette): void {
@@ -163,16 +159,21 @@ export class LandingScene implements Scene {
         if (listener) this.canvas.removeEventListener(name, listener);
       }
     }
+    this.byId.clear();
+    this.byBody.clear();
     this.M.Composite.clear(this.engine.world, false);
     this.M.Engine.clear(this.engine);
   }
 
   frame(dtMs: number): void {
-    this.clock += dtMs;
     this.spawn(dtMs);
-    this.drain();
     this.step(dtMs, (ms) => this.M.Engine.update(this.engine, ms));
-    this.updateStates();
+    for (const done of this.queue.advance(dtMs)) {
+      const ball = this.byId.get(done.id);
+      if (ball) this.serve(ball);
+    }
+    this.fly();
+    this.recover();
     this.draw();
   }
 
@@ -207,6 +208,38 @@ export class LandingScene implements Scene {
     Composite.add(this.engine.world, [...this.funnel, this.neck]);
   }
 
+  /** Rebuild the server buckets and carry each queued ball along with its bucket. */
+  private buildBuckets(count: number, previousTop: number): void {
+    const { Bodies, Body, Composite } = this.M;
+    const previous = this.buckets;
+    for (const bucket of previous) Composite.remove(this.engine.world, bucket.walls);
+    const { bucketTop } = this.layout;
+    const slot = this.width / count;
+    const options = {
+      isStatic: true,
+      friction: 0.02,
+      collisionFilter: { category: CAT_WALL, mask: CAT_BALL | CAT_FLY },
+    };
+    this.buckets = Array.from({ length: count }, (_, index) => {
+      const cx = slot * (index + 0.5);
+      const midY = bucketTop + BUCKET_HEIGHT / 2;
+      const walls = [
+        Bodies.rectangle(cx - INNER / 2 - WALL / 2, midY, WALL, BUCKET_HEIGHT, options),
+        Bodies.rectangle(cx + INNER / 2 + WALL / 2, midY, WALL, BUCKET_HEIGHT, options),
+        Bodies.rectangle(cx, bucketTop + BUCKET_HEIGHT + WALL / 2, INNER + WALL * 2, WALL, options),
+      ];
+      Composite.add(this.engine.world, walls);
+      return { cx, walls };
+    });
+    for (const ball of this.balls) {
+      const before = previous[ball.target];
+      const after = this.buckets[ball.target];
+      if (ball.state === 'queued' && before && after) {
+        Body.translate(ball.body, { x: after.cx - before.cx, y: bucketTop - previousTop });
+      }
+    }
+  }
+
   private enableDragging(): void {
     const { Mouse, MouseConstraint, Composite } = this.M;
     const mouse = Mouse.create(this.canvas);
@@ -230,112 +263,146 @@ export class LandingScene implements Scene {
     Composite.add(this.engine.world, this.mouseConstraint);
   }
 
+  private entryX(): number {
+    const spread = Math.min(100, this.width * 0.22);
+    return this.width / 2 + (this.rng() - 0.5) * spread * 2;
+  }
+
   private spawn(dtMs: number): void {
     this.spawnCarry += (this.rate * dtMs) / 1000;
-    const cx = this.width / 2;
-    const spread = Math.min(100, this.width * 0.22);
     while (this.spawnCarry >= 1) {
       this.spawnCarry -= 1;
-      if (this.balls.length > 260) continue;
-      const body = this.M.Bodies.circle(
-        cx + (Math.random() - 0.5) * spread * 2,
-        this.layout.usersY + 16,
-        RADIUS,
-        {
-          restitution: 0.2,
-          friction: 0.01,
-          frictionAir: 0.004,
-          collisionFilter: { category: CAT_BALL, mask: CAT_WALL | CAT_BALL },
-        },
-      );
-      this.M.Composite.add(this.engine.world, body);
-      this.balls.push({ body, state: 'queued', target: -1, born: this.clock });
-      this.events.push({ time: this.clock, kind: 'arrived' });
-    }
-  }
-
-  /** The load balancer: throw the ball on an arc that lands in the next bucket. */
-  private route(body: Body): void {
-    const ball = this.balls.find((candidate) => candidate.body === body);
-    if (!ball || ball.target !== -1 || this.buckets.length === 0) return;
-    const index = this.cursor % this.buckets.length;
-    this.cursor += 1;
-    const bucket = this.buckets[index];
-    if (!bucket) return;
-    ball.target = index;
-    ball.state = 'flying';
-    body.collisionFilter = { group: 0, category: CAT_FLY, mask: 0 };
-    body.frictionAir = 0;
-    const g = this.engine.gravity.y * this.engine.gravity.scale * (1000 / 60) ** 2;
-    const vy = -3.2;
-    const dy = this.layout.bucketTop - 8 - body.position.y;
-    const steps = (-vy + Math.sqrt(vy * vy + 2 * g * dy)) / g;
-    const vx = (bucket.cx - body.position.x) / steps;
-    this.M.Body.setPosition(body, { x: this.width / 2, y: body.position.y });
-    this.M.Body.setVelocity(body, { x: vx, y: vy });
-  }
-
-  private drain(): void {
-    for (const [index, bucket] of this.buckets.entries()) {
-      if (this.clock < bucket.nextDrain) continue;
-      bucket.nextDrain = this.clock + 1000 / DRAIN_PER_SECOND;
-      const inside = this.balls.filter(
-        (ball) => ball.state === 'queued' && ball.target === index && this.inBucket(ball, bucket),
-      );
-      if (inside.length === 0) continue;
-      const lowest = inside.reduce((a, b) => (a.body.position.y > b.body.position.y ? a : b));
-      lowest.state = 'served';
-      lowest.body.collisionFilter = { group: 0, category: CAT_GHOST, mask: 0 };
-      this.M.Body.setPosition(lowest.body, {
-        x: lowest.body.position.x,
-        y: this.layout.bucketBottom + WALL + RADIUS + 2,
+      if (this.balls.length >= MAX_BALLS) continue;
+      const body = this.M.Bodies.circle(this.entryX(), this.layout.usersY + 16, RADIUS, {
+        restitution: 0.2,
+        friction: 0.01,
+        frictionAir: 0.004,
+        collisionFilter: { ...SOLID },
       });
-      this.M.Body.setVelocity(lowest.body, { x: 0, y: 2 });
-      this.events.push({ time: this.clock, kind: 'served' });
+      this.M.Composite.add(this.engine.world, body);
+      const ball: Ball = {
+        id: this.queue.arrive(),
+        body,
+        state: 'waiting',
+        target: -1,
+        offset: 0,
+        flight: undefined,
+      };
+      this.balls.push(ball);
+      this.byId.set(ball.id, ball);
+      this.byBody.set(body, ball);
     }
   }
 
-  private inBucket(ball: Ball, bucket: Bucket): boolean {
+  /** The load balancer: the model picks the server and whether its queue has room. */
+  private route(body: Body): void {
+    const ball = this.byBody.get(body);
+    if (ball?.state !== 'waiting') return;
+    const move = this.queue.route(ball.id);
+    if (move) this.launch(ball, move);
+  }
+
+  private launch(ball: Ball, move: Assignment): void {
     const { x, y } = ball.body.position;
-    const { bucketTop, bucketBottom } = this.layout;
-    return Math.abs(x - bucket.cx) < INNER / 2 + 2 && y > bucketTop - RADIUS && y < bucketBottom + 2;
+    ball.target = move.server;
+    ball.state = 'flying';
+    ball.offset = (this.rng() - 0.5) * (INNER - RADIUS * 2 - 6);
+    ball.flight = { x0: x, y0: y, start: this.queue.now, rejected: !move.accepted };
+    ball.body.collisionFilter = { ...FLYING };
   }
 
-  private markDropped(ball: Ball): void {
-    if (ball.state === 'dropped' || ball.state === 'served') return;
+  /**
+   * Move each flying ball along an arc that lands exactly when the model says
+   * the request reaches its server. A rejected request hits the rim and spills.
+   */
+  private fly(): void {
+    const { Body } = this.M;
+    const { bucketTop } = this.layout;
+    for (const ball of this.balls) {
+      const { flight } = ball;
+      if (ball.state !== 'flying' || !flight) continue;
+      const bucket = this.buckets[ball.target];
+      if (!bucket) {
+        if (flight.rejected) this.markDropped(ball, 1);
+        continue;
+      }
+      const u = Math.min(1, (this.queue.now - flight.start) / LANDING_TRANSIT_MS);
+      const side = ball.offset < 0 ? -1 : 1;
+      const x1 = flight.rejected ? bucket.cx + side * (INNER / 2 + WALL / 2) : bucket.cx + ball.offset;
+      const y1 = flight.rejected ? bucketTop - WALL - RADIUS : bucketTop + RADIUS;
+      Body.setPosition(ball.body, {
+        x: flight.x0 + (x1 - flight.x0) * u,
+        y: flight.y0 + (y1 - flight.y0) * u - ARC * 4 * u * (1 - u),
+      });
+      Body.setVelocity(ball.body, { x: 0, y: 0 });
+      if (u < 1) continue;
+      ball.flight = undefined;
+      if (flight.rejected) {
+        this.markDropped(ball, side);
+      } else {
+        ball.state = 'queued';
+        ball.body.collisionFilter = { ...SOLID };
+        Body.setVelocity(ball.body, { x: 0, y: 2 });
+      }
+    }
+  }
+
+  private serve(ball: Ball): void {
+    const bucket = this.buckets[ball.target];
+    const x = ball.state === 'queued' || !bucket ? ball.body.position.x : bucket.cx + ball.offset;
+    ball.state = 'served';
+    ball.flight = undefined;
+    ball.body.collisionFilter = { ...GHOST };
+    this.M.Body.setPosition(ball.body, { x, y: this.layout.bucketBottom + WALL + RADIUS + 2 });
+    this.M.Body.setVelocity(ball.body, { x: 0, y: 2 });
+  }
+
+  private markDropped(ball: Ball, side: number): void {
     ball.state = 'dropped';
-    ball.body.collisionFilter = { group: 0, category: CAT_GHOST, mask: 0 };
-    this.events.push({ time: this.clock, kind: 'dropped' });
+    ball.flight = undefined;
+    ball.body.collisionFilter = { ...GHOST };
+    this.M.Body.setVelocity(ball.body, { x: side * 2.2, y: -2 });
   }
 
-  private updateStates(): void {
-    const { bucketTop, bucketBottom } = this.layout;
+  /** A request the model still holds stays on screen, so only the model can lose one. */
+  private recover(): void {
+    const { neckY } = this.layout;
+    const grabbed = this.mouseConstraint?.body;
     const keep: Ball[] = [];
     for (const ball of this.balls) {
       const { x, y } = ball.body.position;
-      if (ball.state === 'flying') {
-        const bucket = this.buckets[ball.target];
-        if (bucket && y > bucketTop - RADIUS && Math.abs(x - bucket.cx) < INNER / 2) {
-          ball.state = 'queued';
-          ball.body.collisionFilter = { group: 0, category: CAT_BALL, mask: CAT_WALL | CAT_BALL };
-          ball.body.frictionAir = 0.004;
-        } else if (y > bucketTop + 10) {
-          this.markDropped(ball);
-        }
-      } else if (ball.state === 'queued' && ball.target >= 0 && y > bucketTop + 4) {
-        const bucket = this.buckets[ball.target];
-        if (!bucket || !this.inBucket(ball, bucket)) this.markDropped(ball);
-      } else if (ball.state === 'queued' && ball.target === -1 && y > bucketBottom) {
-        this.markDropped(ball);
+      const offscreen = y > this.height + 30 || y < -60 || x < -60 || x > this.width + 60;
+      if (ball.body !== grabbed) {
+        if (ball.state === 'queued') this.keepInBucket(ball);
+        else if (ball.state === 'waiting' && y > neckY + 10) this.route(ball.body);
+        else if (ball.state === 'waiting' && offscreen) this.reenter(ball);
       }
-      if (y > this.height + 30 || x < -60 || x > this.width + 60) {
-        if (ball.state === 'queued' || ball.state === 'flying') this.markDropped(ball);
+      if ((ball.state === 'served' || ball.state === 'dropped') && offscreen) {
         this.M.Composite.remove(this.engine.world, ball.body);
+        this.byId.delete(ball.id);
+        this.byBody.delete(ball.body);
       } else {
         keep.push(ball);
       }
     }
     this.balls = keep;
+  }
+
+  private keepInBucket(ball: Ball): void {
+    const bucket = this.buckets[ball.target];
+    if (!bucket) return;
+    const { x, y } = ball.body.position;
+    const { bucketTop, bucketBottom } = this.layout;
+    const inside =
+      Math.abs(x - bucket.cx) <= INNER / 2 + 1 && y < bucketBottom + RADIUS && y > bucketTop - 80;
+    if (inside) return;
+    this.M.Body.setPosition(ball.body, { x: bucket.cx + ball.offset, y: bucketTop + RADIUS });
+    this.M.Body.setVelocity(ball.body, { x: 0, y: 1 });
+  }
+
+  private reenter(ball: Ball): void {
+    this.M.Body.setPosition(ball.body, { x: this.entryX(), y: this.layout.usersY + 16 });
+    this.M.Body.setVelocity(ball.body, { x: 0, y: 0 });
   }
 
   private draw(): void {
