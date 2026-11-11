@@ -57,6 +57,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'foundations/data-modeling/q1',
     prompt: 'Your team must pick storage for a new feature. What should it write down first?',
     options: [
       { text: 'Every query the feature runs, with its key and how often it runs', correct: true, why: 'The lookups decide the shape. A query by code 20,000 times a second and a query by domain 3 times a day want different access paths.' },
@@ -66,6 +67,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/data-modeling/q2',
     prompt: 'A document store keeps one document per user with links embedded, and only _id is indexed. Which query hurts most?',
     options: [
       { text: 'Loading one user\'s dashboard', why: 'The dashboard knows the user, so it reads one document by _id. A large account makes that document heavy, but it is still one read.' },
@@ -75,6 +77,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/data-modeling/q3',
     prompt: 'A key-value store keyed by code must also serve the dashboard. Which fix holds up as the data grows?',
     options: [
       { text: 'Scan all keys; key-value stores are fast', why: 'Fast per key, yet the scan reads every key in the store. In the toy that is 3,300 keys in 33 round trips, and it grows with every link anyone creates.' },
@@ -84,6 +87,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/data-modeling/q4',
     prompt: 'The team adds click_count to links so the dashboard reads 20 rows instead of 49. What did that cost?',
     options: [
       { text: 'Nothing, since the total can always be recomputed', why: 'Recomputing is how you repair drift. Until then, readers see whichever copy they read.' },
@@ -93,6 +97,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/data-modeling/q5',
     prompt: 'You shard the links table by code across 8 machines. Which query now has to ask every shard?',
     options: [
       { text: 'Redirect by code', why: 'The code is the shard key, so the router knows the one shard that holds it.' },
@@ -102,6 +107,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'foundations/data-modeling/q6',
     prompt: 'The shortener starts keeping every raw click event, about 20,000 a second, and analytics reads one link\'s clicks over a time range. Which NoSQL family fits that access pattern?',
     options: [
       { text: 'Wide column, partitioned by code and day, with rows sorted by time', correct: true, why: 'Wide column stores absorb a steady stream of appends cheaply, and a read for one link and day stays inside one partition, already in time order.' },
@@ -130,6 +136,7 @@ document by its `_id`. Then the first short link goes out in a newsletter, and t
 
 <Predict
   client:visible
+  id="foundations/data-modeling/predict-1"
   question="Each user is one document with an embedded links array, and only _id (the user) is indexed. A request for sho.rt/bATJ4g arrives. What must the database read to find the long URL?"
   options={['One link record, found by its code', 'The owner\'s document, found by _id', 'Every user document', 'Only the documents updated today']}
   answer={2}

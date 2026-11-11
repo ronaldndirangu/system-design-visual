@@ -1,6 +1,6 @@
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { ToneBadge } from '../sim/StatTable';
-import { useHydrated } from '../sim/useHydrated';
+import { ChoiceError, ChoiceList, useChoiceCard } from './ChoiceCard';
 
 export interface QuizOption {
   text: string;
@@ -10,8 +10,12 @@ export interface QuizOption {
 }
 
 export interface QuizQuestion {
+  /** Stable and unique site-wide, for example "scaling/caching/q1". Never change it once published. */
+  id: string;
   prompt: string;
   options: QuizOption[];
+  /** Options form a scale (1, 10, 100). Keep their sequence instead of shuffling. */
+  ordered?: boolean;
 }
 
 export default function Quiz({
@@ -21,9 +25,12 @@ export default function Quiz({
   questions: QuizQuestion[];
   title?: string;
 }) {
-  const [answers, setAnswers] = useState<Record<number, number>>({});
-  const answered = Object.keys(answers).length;
-  const score = Object.entries(answers).filter(([q, o]) => questions[Number(q)]?.options[o]?.correct).length;
+  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const answered = questions.filter((question) => question.id in answers).length;
+  const score = questions.filter((question) => {
+    const answer = answers[question.id];
+    return answer !== undefined && question.options[answer]?.correct;
+  }).length;
 
   return (
     <section className="sdv-quiz not-content" aria-label={title}>
@@ -37,11 +44,18 @@ export default function Quiz({
       </header>
       <ol className="sdv-quiz__list">
         {questions.map((question, index) => (
-          <li key={question.prompt}>
+          <li key={question.id}>
             <QuizItem
               question={question}
               number={index + 1}
-              onAnswer={(option) => setAnswers((current) => ({ ...current, [index]: option }))}
+              onAnswer={(option) => setAnswers((current) => ({ ...current, [question.id]: option }))}
+              onReset={() =>
+                setAnswers((current) => {
+                  const next = { ...current };
+                  delete next[question.id];
+                  return next;
+                })
+              }
             />
           </li>
         ))}
@@ -54,79 +68,82 @@ function QuizItem({
   question,
   number,
   onAnswer,
+  onReset,
 }: {
   question: QuizQuestion;
   number: number;
   onAnswer: (option: number) => void;
+  onReset: () => void;
 }) {
-  const name = useId();
-  const hydrated = useHydrated();
-  const [choice, setChoice] = useState<number | null>(null);
-  const [checked, setChecked] = useState(false);
-  const picked = choice === null ? undefined : question.options[choice];
+  const card = useChoiceCard(question.id, question.options.length, question.ordered);
+  const picked = card.choice === null ? undefined : question.options[card.choice];
+  const describedBy = card.error ? card.errorId : undefined;
 
   return (
     <div className="sdv-quiz__item">
-      <fieldset disabled={checked || !hydrated}>
+      <fieldset disabled={!card.hydrated} aria-describedby={describedBy}>
         <legend className="sdv-quiz__prompt">
           <span className="sdv-visually-hidden">Question {number}: </span>
           {question.prompt}
         </legend>
-        <div className="sdv-choices">
-          {question.options.map((option, index) => (
-            <label
-              key={option.text}
-              className="sdv-choice"
-              data-state={
-                checked ? (option.correct ? 'correct' : index === choice ? 'wrong' : undefined) : undefined
-              }
-            >
-              <input type="radio" name={name} checked={choice === index} onChange={() => setChoice(index)} />
-              <span>{option.text}</span>
-            </label>
-          ))}
-        </div>
+        <ChoiceList
+          card={card}
+          labels={question.options.map((option) => option.text)}
+          answer={question.options.findIndex((option) => option.correct)}
+          pickedLabel="Your answer"
+        />
       </fieldset>
-      {!checked && (
-        <button
-          type="button"
-          className="sdv-button"
-          disabled={choice === null}
-          onClick={() => {
-            if (choice === null) return;
-            setChecked(true);
-            onAnswer(choice);
-          }}
-        >
-          Check answer
-        </button>
-      )}
-      <div aria-live="polite">
-        {checked && picked && (
-          <div className="sdv-quiz__feedback">
-            <p>
-              <ToneBadge tone={picked.correct ? 'ok' : 'bad'}>
-                {picked.correct ? 'Correct' : 'Not quite'}
-              </ToneBadge>{' '}
-              {picked.why}
-            </p>
-            <details>
-              <summary>Why each option is right or wrong</summary>
-              <ul>
-                {question.options.map((option) => (
-                  <li key={option.text}>
+      <ChoiceError card={card} />
+      {card.submitted && picked ? (
+        <div className="sdv-quiz__feedback">
+          <h4 className="sdv-result" tabIndex={-1} ref={card.resultRef}>
+            <ToneBadge tone={picked.correct ? 'ok' : 'bad'}>
+              {picked.correct ? 'Correct' : 'Not quite'}
+            </ToneBadge>
+          </h4>
+          <p>{picked.why}</p>
+          <details>
+            <summary>Why each option is right or wrong</summary>
+            <ul>
+              {card.order.map((index) => {
+                const option = question.options[index];
+                return option ? (
+                  <li key={index}>
                     <strong>
                       {option.correct ? 'Right: ' : 'Wrong: '}
                       {option.text}.
                     </strong>{' '}
                     {option.why}
                   </li>
-                ))}
-              </ul>
-            </details>
-          </div>
-        )}
-      </div>
+                ) : null;
+              })}
+            </ul>
+          </details>
+          <button
+            type="button"
+            className="sdv-button"
+            onClick={() => {
+              card.retry();
+              onReset();
+            }}
+          >
+            Try again
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="sdv-button"
+          disabled={!card.hydrated}
+          aria-describedby={describedBy}
+          onClick={() => {
+            const option = card.submit();
+            if (option !== null) onAnswer(option);
+          }}
+        >
+          Check answer
+        </button>
+      )}
     </div>
   );
 }

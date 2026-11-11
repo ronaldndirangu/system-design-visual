@@ -79,6 +79,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'case-studies/news-feed/q1',
     prompt:
       'A fanout fleet runs 1 million feed writes per second. An account with 50 million followers posts. With fan out on write only, what happens to a post from an ordinary account one second later?',
     options: [
@@ -102,6 +103,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/news-feed/q2',
     prompt: 'Why does fan out on read struggle at the evening peak?',
     options: [
       {
@@ -124,6 +126,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/news-feed/q3',
     prompt:
       "With hybrid fan-out, a reader follows 3 celebrities and 200 ordinary accounts. Using the toy model's accounting, how many lookups does one feed load cost?",
     options: [
@@ -147,6 +150,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/news-feed/q4',
     prompt:
       'Your team proposes doubling the fanout fleet again to stop celebrity delays. What is the strongest argument for hybrid fan-out instead?',
     options: [
@@ -195,6 +199,7 @@ writes, and every post behind it waited its turn.
 
 <Predict
   client:visible
+  id="case-studies/news-feed/predict-1"
   question="In the toy run below, the fanout fleet runs 500 feed writes per second and 60 ordinary posts go up over 24 seconds. At 3 s, a celebrity with 5,000 followers posts. With fan out on write, how many of the 60 ordinary posts miss the 2 s target?"
   options={['None: 500 writes per second easily covers 60 small posts', 'Two or three, the posts right after the celebrity', 'About half of them', 'All 60']}
   answer={2}

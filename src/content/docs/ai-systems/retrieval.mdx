@@ -81,6 +81,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'ai-systems/retrieval/q1',
     prompt: 'A Harbor customer asks about the promo code TRAIL25. Vector search ranks the promo chunk only fourth. Why?',
     options: [
       {
@@ -103,6 +104,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/retrieval/q2',
     prompt: 'Chunk A ranks 1st in the keyword list and is missing from the vector list. Chunk B ranks 2nd in both lists. With RRF and k = 60, which ranks higher?',
     options: [
       {
@@ -125,6 +127,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/retrieval/q3',
     prompt: 'Harbor and Pine share one index. Which design keeps Pine\u2019s chunks away from a Harbor customer and still fills all three slots?',
     options: [
       {
@@ -147,6 +150,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/retrieval/q4',
     prompt: 'The assistant caches answers keyed on the question text alone. What can go wrong?',
     options: [
       {
@@ -169,6 +173,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'ai-systems/retrieval/q5',
     prompt: 'On the fixture eval, what happens when you raise the evidence threshold from 0.80 to 0.85?',
     options: [
       {
@@ -226,6 +231,7 @@ And with one index for both stores, nothing stops Pine Street's return rule from
 
 <Predict
   client:visible
+  id="ai-systems/retrieval/predict-1"
   question="Two Harbor customers ask: 'Can I send back cycling shoes I never wore?' and 'Can I use code TRAIL25?' Which retriever puts the right policy chunk in front of the model for both questions?"
   options={['Keyword search alone', 'Vector search alone', 'Either one alone', 'Both lists, fused by rank']}
   answer={3}
@@ -300,6 +306,8 @@ next one. The first chunk matches the question best, so the model gets the rule 
 
 <Predict
   client:visible
+  id="ai-systems/retrieval/predict-2"
+  ordered
   question="Which setting sends the model a chunk that holds both the 30-day rule and the sale exception?"
   options={['8 words, no overlap', '12 words, no overlap', '16 words, overlap 8']}
   answer={2}

@@ -68,6 +68,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'distributed-data/consistency-models/q1',
     prompt:
       'Ben refreshes the chat, and Ana’s question, which he saw a moment ago, has vanished. Which promise rules this out with the least waiting?',
     options: [
@@ -91,6 +92,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'distributed-data/consistency-models/q2',
     prompt: 'Under read your writes, which of these can still happen?',
     options: [
       {
@@ -113,6 +115,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'distributed-data/consistency-models/q3',
     prompt:
       'In the run, linearizable shows zero anomalies but 14 ticks of waiting, and R1 serves every request. Why?',
     options: [
@@ -136,6 +139,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'distributed-data/consistency-models/q4',
     prompt:
       'A chat must never show a reply without its question, and it must stay fast with replicas on three continents. Which promise fits best?',
     options: [
@@ -182,6 +186,7 @@ His reply lands on R3, which has not received Ana’s question yet. Then Carla o
 
 <Predict
   client:visible
+  id="distributed-data/consistency-models/predict-1"
   question="Ben’s reply reached R3 before Ana’s question did. Carla’s phone reads from R3. What does Carla see?"
   options={[
     'An empty chat, because a replica never shows half a conversation',
@@ -270,6 +275,7 @@ chat existed, and every read sees the latest confirmed write.
 
 <Predict
   client:visible
+  id="distributed-data/consistency-models/predict-2"
   question="Under causal consistency, Carla reads R1 at tick 9. R1 holds Ana’s question, and Ben’s reply has not reached it yet. Carla has never seen the reply. What happens?"
   options={[
     'Her read waits until R1 holds the reply, because causal reads are always up to date',

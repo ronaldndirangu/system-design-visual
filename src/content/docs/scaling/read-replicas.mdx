@@ -61,6 +61,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'scaling/read-replicas/q1',
     prompt: 'Which workload gains the most from adding read replicas?',
     options: [
       { text: 'A read-heavy one, like a URL shortener', correct: true, why: 'Replicas multiply read capacity. With 100 reads per write, almost all the load can move off the primary.' },
@@ -70,6 +71,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'scaling/read-replicas/q2',
     prompt: 'A replica answers "not found" for a link that exists. What is the most likely cause?',
     options: [
       { text: 'The replica lost the data', why: 'Replicas keep everything they receive. This one has not received the write yet.' },
@@ -79,6 +81,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'scaling/read-replicas/q3',
     prompt: 'With asynchronous replication, the primary crashes and you promote a replica. What can go wrong?',
     options: [
       { text: 'Nothing, since replicas hold every write', why: 'Replicas trail the primary. Writes inside the lag window never reached them.' },
@@ -105,6 +108,7 @@ queue behind each other, and the occasional write waits behind them.
 
 <Predict
   client:visible
+  id="scaling/read-replicas/predict-1"
   question="You add two replicas that copy every write about half a second later, and send all reads to them. Someone creates a link and opens it 100 ms later. What do they see?"
   options={[
     'The redirect works as usual',

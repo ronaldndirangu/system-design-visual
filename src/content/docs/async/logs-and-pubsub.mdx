@@ -72,6 +72,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'async/logs-and-pubsub/q1',
     prompt: 'A topic has 4 partitions, and you start 6 consumers in one group. What do the last 2 consumers do?',
     options: [
       { text: 'Split the busiest partitions with the others', why: 'A partition has exactly one reader per group, so its events stay in order. Two readers cannot share one partition.' },
@@ -81,6 +82,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'async/logs-and-pubsub/q2',
     prompt: 'A consumer saves its offset every 5 s. It crashes 3 s after its last save. What happens to the events it read in those 3 s?',
     options: [
       { text: 'They are lost for good', why: 'The log still holds them. Nothing is deleted when a consumer reads or crashes.' },
@@ -90,6 +92,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'async/logs-and-pubsub/q3',
     prompt: 'The dashboard keeps a "last clicked" time per link and must never move it backward. Which partition key fits?',
     options: [
       { text: 'Round robin, for the most even spread', why: 'Round robin scatters one link\'s clicks over every partition, and parallel readers apply them in any order.' },
@@ -120,6 +123,7 @@ At launch, one worker reads everything. In this toy model, clicks arrive at abou
 
 <Predict
   client:visible
+  id="async/logs-and-pubsub/predict-1"
   question="Clicks arrive at about 80 per second. One consumer processes 50 per second. What happens to the unread backlog over 20 seconds?"
   options={[
     'It stays near zero',
@@ -198,6 +202,7 @@ and every click for one link lands in one partition and reaches one reader in or
 
 <Predict
   client:visible
+  id="async/logs-and-pubsub/predict-2"
   question="The same clicks go into two setups: keyed by short code, or spread round robin over the partitions. Consumer 2 then stalls for 1.5 s. Which setup counts clicks for the same link out of order?"
   options={['Keyed by short code', 'Round robin', 'Both, equally', 'Neither, since the log keeps order']}
   answer={1}

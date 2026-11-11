@@ -66,6 +66,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'scaling/cdn/q1',
     prompt: 'The redirect handler takes 2 ms, yet fresh clicks from Sydney take almost half a second. Which change helps those clicks most?',
     options: [
       { text: 'A server with twice the CPU', why: 'The code accounts for 2 ms of 473. Twice the CPU saves about 1 ms.' },
@@ -75,6 +76,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'scaling/cdn/q2',
     prompt: 'You turn on a CDN that caches redirects, and the next day the dashboard shows about a third of the usual clicks. What happened?',
     options: [
       { text: 'People stopped clicking', why: 'Traffic did not change. The counter lost sight of most clicks.' },
@@ -84,6 +86,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'scaling/cdn/q3',
     prompt: 'Edges in five cities each fetch the same viral link from the origin. What does adding an origin shield change?',
     options: [
       { text: 'Each edge misses less often', why: 'Each edge still misses the first time it sees a link. The shield answers those misses so the origin does not have to.' },
@@ -118,6 +121,8 @@ request itself. (DNS usually answers from a resolver nearby, so this lesson leav
 
 <Predict
   client:visible
+  id="scaling/cdn/predict-1"
+  ordered
   question="A person in Sydney opens a sho.rt link on a fresh connection. One round trip to Virginia takes 157 ms, the click needs three of them, and the server works for 2 ms. About how long does the click take?"
   options={['About 80 ms', 'About 160 ms', 'About 470 ms', 'About 2 seconds']}
   answer={2}
@@ -160,6 +165,7 @@ The right pane puts an edge beside each city. Pick a scenario, read the change i
 
 <Predict
   client:visible
+  id="scaling/cdn/predict-2"
   question="In the Short TTL scenario, edges keep each redirect for 1 second instead of 60 (60 times shorter). What happens to the requests that reach the origin?"
   options={['They barely change', 'They roughly double', 'They grow about 60 times', 'They fall']}
   answer={1}

@@ -62,6 +62,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'reliability/queues-and-backpressure/q1',
     prompt: 'During a long traffic spike, all 5 sho.rt workers stay 100% busy, yet almost every visitor sees a timeout. What explains it?',
     options: [
       { text: 'The workers slowed down under load', why: 'Each redirect still takes about 100 ms. The workers finish just as many requests per second as before; the requests simply waited too long first.' },
@@ -71,6 +72,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/queues-and-backpressure/q2',
     prompt: 'A queue admits 200 requests per second, and each request waits 0.5 s in line on average. By Little\'s law, how many requests wait in line on average?',
     options: [
       { text: '100', correct: true, why: 'L = λ × W = 200 per second × 0.5 s = 100 requests.' },
@@ -80,6 +82,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/queues-and-backpressure/q3',
     prompt: 'Clients give up after 2 s. Workers drain 100 requests per second, and each request needs about 0.2 s of work after it leaves the line. Which line limit keeps admitted requests in time?',
     options: [
       { text: 'About 180', correct: true, why: 'A request at the back of a full line waits limit ÷ drain rate, then needs its own work time. 100 per second × (2 s minus 0.2 s) = 180.' },
@@ -89,6 +92,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'reliability/queues-and-backpressure/q4',
     prompt: 'Redirects suddenly take twice as long. Why does a 600 ms wait budget answer more visitors in time than a fixed line limit of 40?',
     options: [
       { text: 'A full line now holds twice as much waiting time, and only the wait budget notices', correct: true, why: 'A line limit counts requests. When each takes twice as long, 40 requests mean 1.6 s of waiting. A wait budget estimates time, so it turns requests away before they would be late.' },
@@ -119,6 +123,7 @@ the line at 40 and turns away anything that arrives while it is full.
 
 <Predict
   client:visible
+  id="reliability/queues-and-backpressure/predict-1"
   question="Which server answers more visitors in time, within 1 s?"
   options={[
     'The unbounded line, because it never turns anyone away',
@@ -196,6 +201,7 @@ answer is ever late.
 
 <Predict
   client:visible
+  id="reliability/queues-and-backpressure/predict-2"
   question="Traffic jumps to 90 req/s for 1 s at 4 s, then returns to 40 req/s. A server with no line rejects requests during the burst. When does it reject more requests in total over the 20 s run?"
   options={[
     'During the burst second, since traffic is far above capacity there',
@@ -252,6 +258,7 @@ on it.
 
 <Predict
   client:visible
+  id="reliability/queues-and-backpressure/predict-3"
   question="Redirects take twice as long for 10 s. One server keeps its line of 40. The other also rejects new requests once the expected wait passes 600 ms. Which is true for the wait budget?"
   options={[
     'It turns away more requests and answers fewer in time',

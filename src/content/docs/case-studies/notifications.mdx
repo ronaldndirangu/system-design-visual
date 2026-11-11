@@ -73,6 +73,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'case-studies/notifications/q1',
     prompt:
       'A campaign of 300 messages lands in the same first-in, first-out queue as login codes, and 28 of 60 codes miss their 5 s deadline. Which change keeps every code on time without buying capacity?',
     options: [
@@ -96,6 +97,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/notifications/q2',
     prompt: 'The primary SMS provider rejects every send from 5 s to 15 s. Retrying with backoff drops 15 codes. Why do the retries fail?',
     options: [
       {
@@ -118,6 +120,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/notifications/q3',
     prompt: 'After a failover, Ana receives her login code twice. What most likely happened?',
     options: [
       {
@@ -140,6 +143,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/notifications/q4',
     prompt: "Where should the notification service check a user's opt-outs and quiet hours?",
     options: [
       {
@@ -184,6 +188,8 @@ design treated a login code and a coupon as equals.
 
 <Predict
   client:visible
+  id="case-studies/notifications/predict-1"
+  ordered
   question="In the toy run below, 60 users ask for a login code over 24 s, and each code is useless 5 s after the request. The SMS provider accepts 20 sends per second. At 2 s, a campaign drops 300 marketing messages into the same first-in, first-out queue. How many codes miss their deadline?"
   options={['None: the provider has room for every code', 'About 5', 'About 28, nearly half', 'All 60']}
   answer={2}

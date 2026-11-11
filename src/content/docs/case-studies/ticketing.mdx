@@ -67,6 +67,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'case-studies/ticketing/q1',
     prompt: 'Two servers both read seat A10 as free, then both write their buyer into it. Which change stops the double sale?',
     options: [
       {
@@ -89,6 +90,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/ticketing/q2',
     prompt: 'Holds never expire, and 30% of buyers leave at checkout. What do the last buyers in line see?',
     options: [
       {
@@ -111,6 +113,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/ticketing/q3',
     prompt: 'In the doors-open rush, why does the conditional write lane send more queries per second to the database than read, then write?',
     options: [
       {
@@ -133,6 +136,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/ticketing/q4',
     prompt: 'A tester buys tickets one at a time and never sees a double sale. What should the team conclude?',
     options: [
       {
@@ -177,6 +181,7 @@ Nothing crashed. Each server did exactly what its code said. The bug lives in th
 
 <Predict
   client:visible
+  id="case-studies/ticketing/predict-1"
   question="In the toy sale below, 600 buyers rush 100 seats in 3 seconds. Each server reads which seats look free, then writes its buyer into one. Nothing checks again at write time. How many tickets go out for the 100 seats?"
   options={['Exactly 100', 'About 110', 'More than 200', 'Fewer than 100, because buyers block each other']}
   answer={2}

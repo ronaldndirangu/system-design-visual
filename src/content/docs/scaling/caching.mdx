@@ -57,6 +57,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'scaling/caching/q1',
     prompt: 'Why can a cache that holds 10% of all links answer most of the reads?',
     options: [
       { text: 'Memory compresses the links', why: 'Compression only changes how much fits. The win comes from which links people click.' },
@@ -66,6 +67,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'scaling/caching/q2',
     prompt: 'The cache restarts and comes back empty during peak traffic. What happens first?',
     options: [
       { text: 'Nothing, since the database still has every link', why: 'The database has the data, but it was sized for cache misses only. Now it gets every request at once.' },
@@ -75,6 +77,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'scaling/caching/q3',
     prompt: 'You delete a scam link, yet it keeps redirecting for 10 minutes. What is the most likely cause?',
     options: [
       { text: 'The database failed to delete it', why: 'The database delete worked. The old answer still sits in the cache.' },
@@ -84,6 +87,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'scaling/caching/q4',
     prompt: 'The shortener counts clicks with write-behind and saves to the database every 2 seconds. The cache server loses power. What happens to the click counts?',
     options: [
       { text: 'Nothing, since the database has every click', why: 'The database has clicks up to the last save. Every click since then lived only in the cache.' },
@@ -110,6 +114,8 @@ viral links, thousands of times a second. The database's disk and CPU max out, a
 
 <Predict
   client:visible
+  id="scaling/caching/predict-1"
+  ordered
   question="People click 1,000 different links, and a few are far more popular than the rest. A cache holds 100 of them (10%). About what share of clicks can it answer?"
   options={['About 10%', 'About 30%', 'About 70%', 'All of them']}
   answer={2}
@@ -182,6 +188,7 @@ crash destroys.
 
 <Predict
   client:visible
+  id="scaling/caching/predict-2"
   question="Every click now adds 1 to a click count: 200 writes per second, mostly to popular links. Which strategy sends the fewest writes to the database?"
   options={['Write-through', 'Write-behind', 'Write-around', 'All three send the same number']}
   answer={1}

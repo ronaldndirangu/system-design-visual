@@ -82,6 +82,7 @@ export const steps = [
 
 export const quiz = [
   {
+    id: 'case-studies/metrics/q1',
     prompt: 'A request counter already has status and host labels. Which extra label belongs on it?',
     options: [
       {
@@ -104,6 +105,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/metrics/q2',
     prompt: 'What mostly decides how much memory an ingester needs?',
     options: [
       {
@@ -126,6 +128,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/metrics/q3',
     prompt: 'A dashboard shows 30 days of checkout errors. With the tiers in this lesson, what answers it?',
     options: [
       {
@@ -148,6 +151,7 @@ export const quiz = [
     ],
   },
   {
+    id: 'case-studies/metrics/q4',
     prompt: 'What does a for duration of 2 minutes on an alert rule buy, and what does it cost?',
     options: [
       {
@@ -193,6 +197,7 @@ morning.
 
 <Predict
   client:visible
+  id="case-studies/metrics/predict-1"
   question="Launch traffic arrives, new users sign up all morning, and checkout starts failing at midday. The ingester has a limit of 1,000 series. What happens?"
   options={[
     'Nothing visible; each label costs a little disk',
@@ -459,6 +464,7 @@ and **firing** after it has stayed true for the rule's `for` duration. Only firi
 
 <Predict
   client:visible
+  id="case-studies/metrics/predict-2"
   question="An error rate rule pages above 5%. The rate spikes to 12% for one evaluation, blips above 5% for three evaluations, then a real incident starts. How many pages does a for duration of 0 send, and how many does 2 minutes send?"
   options={[
     'One page each, both for the incident',
