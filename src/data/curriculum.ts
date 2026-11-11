@@ -280,7 +280,8 @@ export const curriculum: CourseModule[] = [
         id: 'distributed-data/quorums',
         title: 'Quorums on a replicated ring',
         summary: 'Tune N, R, and W, and watch reads and writes survive node loss.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'distributed-data/raft',
