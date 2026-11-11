@@ -1,0 +1,61 @@
+.sdv-hotkey__pattern {
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.6rem;
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.6rem 0.65rem 0.7rem;
+}
+.sdv-hotkey__heading {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-base);
+  margin: 0;
+}
+.sdv-hotkey__facts {
+  display: grid;
+  gap: 0.5rem 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  margin: 0;
+}
+.sdv-hotkey__facts div {
+  margin: 0;
+}
+.sdv-hotkey__facts dt {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-hotkey__facts dd {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-lg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  margin: 0;
+}
+.sdv-hotkey__empty,
+.sdv-hotkey__lane-note {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+.sdv-hotkey__lanes .sdv-bars li {
+  grid-template-columns: 1fr auto;
+}
+.sdv-hotkey__lanes .sdv-bars__track {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+.sdv-hotkey__lanes .sdv-badge {
+  justify-self: start;
+}
+.sdv-hotkey__lanes .sdv-badge svg {
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.sdv-hotkey__sample.sdv-bars__track {
+  display: inline-block;
+  flex: none;
+  width: 2.5rem;
+}
+.sdv-hotkey__sample .sdv-bars__fill {
+  width: 100%;
+}

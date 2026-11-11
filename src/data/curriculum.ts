@@ -58,7 +58,8 @@ export const curriculum: CourseModule[] = [
         id: 'thinking/access-patterns',
         title: 'Access patterns and hot keys',
         summary: 'Learn who reads what, how often, and why a few keys get most of the traffic.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'thinking/slos',
