@@ -182,9 +182,11 @@ function Histogram({ lane, last, variant }: { lane: SloLane; last: LastSecond; v
   );
 }
 
-function budgetBadge(left: number, budget: number) {
-  if (left <= 0) return <ToneBadge tone="bad">Budget spent: SLO missed</ToneBadge>;
-  if (left <= budget / 2) return <ToneBadge tone="warn">Over half the budget spent</ToneBadge>;
+function budgetBadge(slow: number, budget: number) {
+  if (slow > budget) return <ToneBadge tone="bad">Over budget: SLO missed</ToneBadge>;
+  if (slow === budget)
+    return <ToneBadge tone="warn">Budget used up: one more slow redirect misses the SLO</ToneBadge>;
+  if (slow >= budget / 2) return <ToneBadge tone="warn">Over half the budget spent</ToneBadge>;
   return <ToneBadge tone="ok">Budget mostly intact</ToneBadge>;
 }
 
@@ -227,7 +229,7 @@ function LanePane({ run, lane, variant }: { run: SloRun; lane: SloLane; variant:
           </dd>
         </div>
       </dl>
-      {budgetBadge(sum.budgetLeft, run.budget)}
+      {budgetBadge(sum.slow, run.budget)}
     </section>
   );
 }

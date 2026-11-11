@@ -163,6 +163,7 @@ export default function HotKeyWidget({
     { label: 'Clicks in (same clicks)', values: [sums[0].arrived, sums[1].arrived] },
     { label: 'Served', values: [sums[0].served, sums[1].served], better: 'higher' },
     { label: 'Turned away (node full)', values: [sums[0].rejected, sums[1].rejected], better: 'lower' },
+    { label: 'Still queued at the cutoff', values: [sums[0].inFlight, sums[1].inFlight] },
     {
       label: 'Busiest node, peak load',
       values: [sums[0].peakLoad, sums[1].peakLoad],

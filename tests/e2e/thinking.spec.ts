@@ -31,6 +31,7 @@ test.describe('/thinking/access-patterns/', () => {
     const turnedAway = cells(sim, /^Turned away/);
     await expect(turnedAway.nth(0)).toHaveText('2049');
     await expect(turnedAway.nth(1)).toHaveText(/^6\s*Better$/);
+    await expect(cells(sim, /^Still queued at the cutoff/).nth(0)).toHaveText('15');
     const peak = cells(sim, /^Busiest node, peak load/);
     await expect(peak.nth(0)).toHaveText('203%');
     await expect(peak.nth(1)).toHaveText(/^89%\s*Better$/);
@@ -66,6 +67,8 @@ test.describe('/thinking/slos/', () => {
     await expect(budget.nth(0)).toHaveText('0 of 199');
     await expect(budget.nth(1)).toHaveText(/^41 of 199\s*Better$/);
     await expect(cells(sim, /^Mean/).nth(0)).toHaveText(/^27 ms\s*Better$/);
+    await expect(sim.getByText('Over budget: SLO missed', { exact: true })).toBeVisible();
+    await expect(sim.getByText('Over half the budget spent', { exact: true })).toBeVisible();
   });
 
   test('keyboard chip change resets and reruns the healthy baseline', async ({ page }) => {

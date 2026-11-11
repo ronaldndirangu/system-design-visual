@@ -105,7 +105,13 @@ describe('pinned illustrative numbers (seed 42, quoted in the lesson)', () => {
       if (node.id !== run.topHome) expect(nodeRate(node)).toBeLessThan(50);
     }
     for (const node of copiesLane.nodes) expect(nodeRate(node)).toBeLessThan(NODE_CAPACITY * 0.75);
-    expect(summarizeLane(hashLane)).toMatchObject({ arrived: 6952, rejected: 2049, peakLoad: 203 });
+    expect(summarizeLane(hashLane)).toMatchObject({
+      arrived: 6952,
+      served: 4888,
+      rejected: 2049,
+      inFlight: 15,
+    });
+    expect(summarizeLane(hashLane).peakLoad).toBe(203);
     expect(summarizeLane(copiesLane)).toMatchObject({ rejected: 6, peakLoad: 89, extraCopies: 3 });
     const pattern = run.pattern();
     expect(pattern.topShare).toBeGreaterThan(0.55);

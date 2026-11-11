@@ -69,9 +69,9 @@ export const quiz = [
     ],
   },
   {
-    prompt: 'An SLO says 99.9% of requests succeed over 30 days. How much full downtime does its error budget allow?',
+    prompt: 'An SLO says 99.9% of requests succeed over 30 days, and traffic stays steady around the clock. How much full downtime does its error budget allow?',
     options: [
-      { text: 'About 43 minutes', correct: true, why: '30 days hold 43,200 minutes, and 0.1% of that is 43.2 minutes. Spread the failures out and the same budget covers a longer partial outage.' },
+      { text: 'About 43 minutes', correct: true, why: '30 days hold 43,200 minutes, and 0.1% of that is 43.2 minutes. Steady traffic makes each minute carry the same share of requests. With real daily peaks, an outage at the busiest hour spends the budget faster than one at night.' },
       { text: 'About 4 minutes', why: 'That is the budget for 99.99%. Each extra nine divides the budget by ten.' },
       { text: 'About 7 hours', why: 'That is the budget for 99%, ten times looser than 99.9%.' },
       { text: 'None, since the SLO forbids failures', why: 'An SLO under 100% allows failures on purpose. The budget is the room you spend on launches, experiments, and bad luck.' },
@@ -96,10 +96,10 @@ export const quiz = [
     ],
   },
   {
-    prompt: 'A page makes 20 backend calls in parallel and waits for all of them. Each call runs slower than its p99 1% of the time. About how often does a page wait on at least one slow call?',
+    prompt: 'A page makes 20 backend calls in parallel and waits for all of them. Each call runs slower than its p99 1% of the time, independently of the others. About how often does a page wait on at least one slow call?',
     options: [
-      { text: 'About 1 in 100 page loads', why: 'That holds for a single call. With 20 calls the page gets 20 chances to draw a slow one.' },
-      { text: 'About 18 in 100 page loads', correct: true, why: 'All 20 calls are fast with probability 0.99 to the 20th power, about 0.82. So about 18% of pages wait on a slow call.' },
+      { text: 'About 1 in 100 page loads', why: 'That holds for a single call, or for 20 calls that always turn slow together. Independent calls give the page 20 separate chances to draw a slow one.' },
+      { text: 'About 18 in 100 page loads', correct: true, why: 'With independent calls, all 20 are fast with probability 0.99 to the 20th power, about 0.82. So about 18% of pages wait on a slow call.' },
       { text: 'About 50 in 100 page loads', why: 'That would need each call to be slow far more often. 0.99 to the 20th power is about 0.82, so the answer is near 18%.' },
       { text: 'Never, since parallel calls hide a slow one', why: 'The page waits for every call, so the slowest of the 20 sets its time. Parallel calls make the tail matter more.' },
     ],
@@ -139,8 +139,8 @@ ship at the 2 s mark.
 >
 
 **Faster miss path.** Faster app code wins on the average: the whole run's mean falls to 27 ms against 32 ms. It still
-breaks the promise. Its p99 stays at 129 ms, 479 redirects take 100 ms or more, and its error budget of 199 runs out at
-7.7 s. Faster miss path brings the p99 down to 93 ms, keeps 99.2% of redirects under 100 ms, and ends with 41 of 199
+breaks the promise. Its p99 stays at 129 ms, 479 redirects take 100 ms or more, and it goes over its error budget of
+199 at 7.7 s. Faster miss path brings the p99 down to 93 ms, keeps 99.2% of redirects under 100 ms, and ends with 41 of 199
 left. The slow redirects are almost all cache misses, so only the miss path fix reaches them.
 
 </Predict>
@@ -157,7 +157,8 @@ Three terms turn "fast enough" into something you can check:
   redirects.
 - **SLO** (service level objective): a target for the SLI over a window, such as 99% over 30 days.
 - **Error budget**: the bad events the SLO allows. A 99% SLO over 19,921 redirects allows 199 slow ones. A 99.9%
-  availability SLO over 30 days allows 43.2 minutes of full downtime.
+  availability SLO over 30 days allows 0.1% of the window's requests to fail. With steady traffic, that equals 43.2
+  minutes of full downtime. Real traffic peaks, so an outage at the busiest hour burns more of the budget per minute.
 
 **Burn rate** tells you how fast the budget goes: the share of bad events divided by the share allowed. At 1x the
 budget lasts exactly the window. At 10x a 30 day budget is gone in 3 days, which is worth waking someone up for. When the
@@ -165,7 +166,8 @@ budget runs out, the team pauses risky launches and spends its time on reliabili
 ship faster.
 
 The tail matters more than its 1% suggests. One page often makes many requests. If a page makes 20 calls and waits for
-all of them, about 18% of page loads hit at least one call slower than its p99.
+all of them, and each call turns slow independently, about 18% of page loads hit at least one call slower than its
+p99. Calls that share a slow dependency tend to turn slow together, so the real share lands between 1% and 18%.
 
 <StepDiagram client:visible title="From a promise to a fix" nodes={nodes} edges={edges} steps={steps} />
 
@@ -196,8 +198,8 @@ each redirect from the first 2 s into its stages, for the average redirect and f
 >
 
 **Faster app code.** The trace panel now shows the slowest 1% spending about 120 ms in app code and 20 ms in the
-database. Faster app code ends with a p99 of 92 ms and 74 of 199 budget left. Faster miss path spends its whole budget
-by 7.0 s and ends with a p99 of 119 ms. The fix that worked a minute ago fails here, which is why you measure before
+database. Faster app code ends with a p99 of 92 ms and 74 of 199 budget left. Faster miss path goes over its budget
+at 7.0 s and ends with a p99 of 119 ms. The fix that worked a minute ago fails here, which is why you measure before
 you choose.
 
 </Predict>
@@ -208,9 +210,9 @@ What to look for:
 
 - **Slow misses.** In the trace panel the average redirect spends most of its time in app code, and the slowest 1% spend
   most of theirs in the database. The faster miss path lane drops its p99 under 100 ms at 2.8 s. The faster app code
-  lane keeps the lower mean all run and still spends its budget at 7.7 s.
+  lane keeps the lower mean all run and still goes over its budget at 7.7 s.
 - **Slow app code.** The mirror image. The slowest 1% now wait on app code, so the app fix keeps the SLO and the miss
-  path lane runs out of budget at 7.0 s.
+  path lane goes over its budget at 7.0 s.
 - **Healthy.** Both lanes keep the SLO. Faster app code wins the mean, 25 ms against 31 ms. Faster miss path wins the
   p99, 59 ms against 69 ms. With most of the budget left, either result is fine.
 - **The histograms.** Striped bars are slow redirects. Watch the p99 line move while the mean barely changes.

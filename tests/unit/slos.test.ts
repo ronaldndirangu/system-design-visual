@@ -146,6 +146,18 @@ describe('pinned illustrative numbers (seed 42, quoted in the lesson)', () => {
     expect(rounded(app.series[FIX_AT - 1] ?? 0)).toBe(72);
   });
 
+  it('marks the budget gone only once slow redirects pass it', () => {
+    const run = new SloRun(sloScenarios['slow-misses']);
+    const [app] = run.lanes;
+    if (!app) throw new Error('missing lane');
+    while (run.ticks < 76) run.step();
+    expect(app.slow).toBe(run.budget);
+    expect(app.budgetGoneTick).toBeNull();
+    run.step();
+    expect(app.slow).toBeGreaterThan(run.budget);
+    expect(app.budgetGoneTick).toBe(77);
+  });
+
   it('slow misses: the average favours app code, the tail needs the miss path', () => {
     const { run, app, miss, appSum, missSum } = summaries('slow-misses');
     expect(appSum).toMatchObject({ slow: 479, budgetLeft: 0 });
