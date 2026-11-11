@@ -1,0 +1,205 @@
+---
+title: Timed design round
+description: Design a whole system against a clock with the seven step checklist, then score yourself and compare with a reference outline.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import TimedRoundWidget from '../../../components/widgets/TimedRoundWidget';
+
+export const quiz = [
+  {
+    prompt: 'Your Estimates step hits its budget with the storage math half done. What is the best move?',
+    options: [
+      { text: 'Write the rough figure with its assumption, mark it to revisit, and move on', correct: true, why: 'A rough number with a stated assumption is enough to steer the design. The later steps need time more than they need a second decimal place.' },
+      { text: 'Keep going until the number is exact', why: 'Exact storage rarely changes the design, and every extra minute comes out of the deep dive, where your judgment shows most.' },
+      { text: 'Drop estimates for the rest of the round', why: 'Without numbers, the deep dive has nothing to point it at the part that breaks first. Keep the rough figure.' },
+      { text: 'Reset and start the round again', why: 'Real rounds have no restart. Practicing the move on is the whole point of the clock.' },
+    ],
+  },
+  {
+    prompt: 'Why does the widget ask you to score yourself before you open the reference outline?',
+    options: [
+      { text: 'So your score reflects your own page before another answer can anchor it', correct: true, why: 'Once you read a polished outline, your memory of what you wrote drifts toward it. Scoring first keeps the self-assessment honest.' },
+      { text: 'Because the outline is the only correct answer', why: 'The outline is one sound answer among several. A different design that you can defend scores just as well.' },
+      { text: 'Because the rubric is graded automatically', why: 'You grade yourself. The rubric gives each step a clear line between Partial and Solid, and the judgment stays yours.' },
+      { text: 'There is no reason, since the order makes no difference', why: 'Order matters for honest self-assessment. Reading first makes it easy to credit yourself for ideas you only recognized.' },
+    ],
+  },
+  {
+    prompt: 'In the 45 minute pace, the high-level design and the deep dive get 21 of the 45 minutes. Why the largest share?',
+    options: [
+      { text: 'They show the most judgment, and they build on every step before them', correct: true, why: 'The boxes and the riskiest part are where trade-offs appear. They also need the requirements, numbers, API, and data model as inputs, which is why those come first and stay short.' },
+      { text: 'They are the easiest steps, so they fit more content', why: 'They are usually the hardest. The extra time exists because they are hard and they matter.' },
+      { text: 'Requirements matter little', why: 'Requirements decide everything that follows. They stay short because a few minutes of good questions is enough to anchor the rest.' },
+      { text: 'Reviewers only look at the diagram', why: 'Reviewers listen for reasons: why this box, why this number, what it costs. The diagram is where those reasons get tested.' },
+    ],
+  },
+  {
+    prompt: 'The reference outline uses a different database from the one you chose. What should you conclude?',
+    options: [
+      { text: 'Nothing yet. Check that you can name the access pattern and the trade-off behind your choice', correct: true, why: 'Several stores can serve the same workload. A choice backed by the data model and the numbers is a sound answer even when it differs from the outline.' },
+      { text: 'Your design is wrong', why: 'A different choice is only wrong when it fails the requirements or the numbers. Test it against those first.' },
+      { text: 'The outline is wrong', why: 'It may be one of several sound answers. Compare the reasons behind each choice before you decide either one is wrong.' },
+      { text: 'Switch your design to match the outline next time', why: 'Copying the outline teaches you one answer to one prompt. Learning why each choice fits teaches you every prompt.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Run the seven checklist steps end to end on a fresh prompt within a fixed time.
+- Notice when one step is eating the time a later step needs, and move on with a written note.
+- Score your own design against a rubric before you compare it with a reference outline.
+- Track your rounds on this device and pick the step to practice next.
+
+</Objectives>
+
+## The failure: the clock runs out on the data model
+
+You have 45 minutes to design a news feed. Requirements take 10 minutes because every edge case feels important. The
+estimates take another 10 while you chase exact storage figures. The API takes 5. Then you sink 20 minutes into the data
+model, polishing table columns. The time is up, and the board has no read path, no write path, no deep dive, and no
+trade-offs.
+
+<Predict
+  client:visible
+  question="Which habit would have saved this round?"
+  options={[
+    'Work faster on every step',
+    'Give each step a time budget, and when it runs out, write down what is open and move on',
+    'Skip the requirements and start drawing boxes',
+    'Spend the whole round on the high-level design',
+  ]}
+  answer={1}
+>
+
+A budget per step. Working faster helps a little, yet most of the loss came from a few steps taking far more than their
+share. With budgets, the requirements, the estimates, and the data model would each have stopped near 5 minutes, with
+a note such as "follower list: check size later". That leaves 21 minutes for the high-level design and the deep dive,
+and 5 for the trade-offs. Skipping requirements trades one failure for another: boxes with no numbers behind them.
+
+</Predict>
+
+## How a round works
+
+The round uses the seven steps from [the design checklist](../../thinking/design-checklist/). Each step gets a slice
+of the clock, weighted toward the high-level design and the deep dive.
+
+<Steps>
+
+1. **Pick a prompt and a pace.** The prompts come from systems this course covers. The 20 minute drill builds the
+   habit of moving on; the 45 minute interview pace matches a common interview slot.
+
+2. **Get paper, then press Start round.** The step clock runs while you work. The checklist rail shows the time used
+   on every step, and each step lists the questions to ask yourself.
+
+3. **Move on when the budget runs out.** The bar turns hatched and labeled **Over**. Write the open question down and
+   press **Next step**. The budgets are a suggested split, so a few seconds over is fine. Minutes over is the habit to
+   break.
+
+4. **Finish, or let the clock stop you.** With **Stop when time runs out** on, the round ends at the total budget. Turn
+   it off to see how far over you would run.
+
+5. **Score yourself, then read the outline.** Rate each step Missing, Partial, or Solid against its one line rubric.
+   Then open the reference outline and compare.
+
+6. **Save the round if you like.** Saved rounds stay in this browser, so you can see whether your time and scores
+   improve.
+
+</Steps>
+
+<Analogy>
+
+A chess clock leaves the thinking to the player. Its job is to show when one move is eating the time the endgame
+needs. The step budget plays the same role: when it runs out, write the open question down and move on, so the
+endgame (the deep dive and the trade-offs) still gets played.
+
+</Analogy>
+
+## Before you start
+
+<Predict
+  client:visible
+  question="Your Estimates step is at 2:00 of 2:00, and the storage figure is still unfinished. What do you do?"
+  options={[
+    'Keep going until the number is exact',
+    'Write the rough number with its assumption and press Next step',
+    'Go back to the requirements to double check them',
+  ]}
+  answer={1}
+>
+
+Write the rough number and move on. "About 1 TB over five years, assuming 500 bytes a link" is enough to tell you that
+one database holds the data. The exact figure would leave the design unchanged, and the next five steps need the time.
+Practice exactly this move in the round below.
+
+</Predict>
+
+## Your round
+
+The widget times you and keeps the checklist in front of you. The design itself happens on your paper or whiteboard;
+the scratch box holds quick notes and clears on Reset.
+
+<TimedRoundWidget client:visible />
+
+## Reading your round
+
+- **A step marked Not reached** is the clearest signal. Look at the step before it: that is usually where the time
+  went.
+- **Over on the early steps** (requirements, estimates, data model) usually means chasing precision. Rough answers
+  with a stated assumption are enough.
+- **Low scores on the deep dive** usually mean the estimates never pointed at a risk. Ask which number grows fastest,
+  then dig into the part that number breaks.
+- **Low scores on trade-offs** usually mean each choice lacks its alternative. For every box, name what you passed over
+  and what your choice costs.
+
+## Trade-offs
+
+<TradeoffTable title="How to set up a practice round">
+
+| Choice                               | What it buys                                                  | What it costs                                          |
+| ------------------------------------ | ------------------------------------------------------------- | ------------------------------------------------------ |
+| 20 minute drill                      | More rounds per week, and a strong habit of moving on          | A shallow deep dive                                    |
+| 45 minute interview pace             | Room for real depth, close to a common interview slot          | Fewer rounds, and more time to drift on one step       |
+| Stop when time runs out              | Honest practice of a hard limit                               | An unfinished step stays unfinished                    |
+| Allow overtime                       | Shows how far over you ran and lets you finish the thought     | Hides the very habit the clock exists to break         |
+| Score first, then read the outline   | An honest self-assessment                                     | A slower review                                        |
+| Read the outline first               | A faster review                                               | Your score drifts toward the outline                   |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+Run a 20 minute drill on paper for a prompt outside the pool: **a ride-hailing app shows riders the drivers near
+them.** Assume 1 million active drivers, each sending its location every 4 seconds. Use the drill budgets (2, 2, 2, 2,
+5, 5, and 2 minutes) and score yourself with the same rubric before you open the answer.
+
+<div slot="answer">
+
+1. **Requirements:** drivers send locations; riders see drivers within about 2 km, updated every few seconds. A nearby
+   lookup returns in under 200 ms. Trip history, pricing, and matching are out of scope.
+2. **Estimates:** 1 million drivers every 4 seconds is 250,000 writes per second. The latest location per driver is
+   about 50 bytes, so all of them fit in about 50 MB of memory. Keeping every point would add about 1 TB a day.
+3. **API:** `PUT /drivers/{id}/location` with latitude and longitude. `GET /drivers/nearby?lat=&lng=` returns a list of
+   drivers with positions. Errors: unknown driver, and location out of range.
+4. **Data model:** the latest location keyed by driver ID, plus a grid index that maps each map cell to the drivers in
+   it. The hot query is "drivers in these few cells".
+5. **High-level design:** drivers send updates through a load balancer to location servers, which update an in-memory
+   grid index split by city. Riders query the same servers by cell. A stream copies updates to cheap storage for
+   later analysis.
+6. **Deep dive:** the write rate is the risk. Keeping only the latest point in memory avoids 250,000 disk writes per
+   second. Splitting the index by city spreads the load; a dense city center may need its own server.
+7. **Trade-offs:** in memory locations vanish on a crash, which is acceptable because every driver resends within 4
+   seconds. Updating every 4 seconds instead of every 10 costs 2.5 times the writes for fresher positions.
+
+</div>
+
+</Challenge>

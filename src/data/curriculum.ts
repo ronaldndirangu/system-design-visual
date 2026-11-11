@@ -453,7 +453,8 @@ export const curriculum: CourseModule[] = [
         id: 'practice/timed-round',
         title: 'Timed design round',
         summary: 'Design a system end to end with the checklist and a timer.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
       },
       {
         id: 'practice/design-review',
