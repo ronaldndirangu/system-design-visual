@@ -14,9 +14,7 @@ const Heading = headingLevel === 2 ? 'h2' : 'h3';
 
 <div class:list={['sdv-map', 'not-content', { 'sdv-map--compact': compact }]}>
   {
-    curriculum.map((module) => {
-      const ready = module.lessons.filter((lesson) => lesson.status === 'ready').length;
-      return (
+    curriculum.map((module) => (
         <section class="sdv-map__module" id={compact ? undefined : anchorFor(module.id)} aria-labelledby={`map-${module.id}`}>
           <header class="sdv-map__header">
             <span class="sdv-map__number" aria-hidden="true">
@@ -26,43 +24,26 @@ const Heading = headingLevel === 2 ? 'h2' : 'h3';
               <span class="sdv-visually-hidden">Module {module.number}: </span>
               {module.title}
             </Heading>
-            <span class:list={['sdv-badge', ready > 0 ? 'sdv-badge--ok' : 'sdv-badge--neutral']}>
-              {ready > 0 ? `${ready} of ${module.lessons.length} ready` : 'Coming soon'}
-            </span>
+            <span class="sdv-badge sdv-badge--ok">{module.lessons.length} lessons</span>
             <p class="sdv-map__summary">{module.summary}</p>
             <p class="sdv-map__example">Running example: {module.example}</p>
           </header>
           {!compact && (
             <ol class="sdv-map__lessons">
               {module.lessons.map((lesson) => (
-                <li
-                  id={anchorFor(lesson.id)}
-                  class="sdv-map__lesson"
-                  data-status={lesson.status}
-                  data-lesson-id={lesson.id}
-                >
-                  {lesson.status === 'ready' ? (
-                    <a href={lessonHref(lesson.id)} class="sdv-map__link">
-                      {lesson.title}
-                    </a>
-                  ) : (
-                    <span class="sdv-map__link">{lesson.title}</span>
-                  )}
+                <li id={anchorFor(lesson.id)} class="sdv-map__lesson" data-lesson-id={lesson.id}>
+                  <a href={lessonHref(lesson.id)} class="sdv-map__link">
+                    {lesson.title}
+                  </a>
                   <span class="sdv-map__lesson-summary">{lesson.summary}</span>
                   <span class="sdv-map__tags">
-                    {lesson.status === 'ready' ? (
-                      <>
-                        {lesson.minutes && <span class="sdv-badge sdv-badge--neutral">{lesson.minutes} min</span>}
-                        <span class="sdv-badge sdv-badge--ok sdv-map__done" hidden>
-                          <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M5 12l4 4l10-10" fill="none" stroke="currentColor" stroke-width="2.5" />
-                          </svg>
-                          Completed
-                        </span>
-                      </>
-                    ) : (
-                      <span class="sdv-badge sdv-badge--neutral">Coming soon</span>
-                    )}
+                    <span class="sdv-badge sdv-badge--neutral">{lesson.minutes} min</span>
+                    <span class="sdv-badge sdv-badge--ok sdv-map__done" hidden>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M5 12l4 4l10-10" fill="none" stroke="currentColor" stroke-width="2.5" />
+                      </svg>
+                      Completed
+                    </span>
                     {lesson.format === 'card' && <span class="sdv-badge sdv-badge--neutral">Quick card</span>}
                     {lesson.advanced && <span class="sdv-badge sdv-badge--warn">Advanced</span>}
                     {lesson.bestAfter && (
@@ -75,20 +56,17 @@ const Heading = headingLevel === 2 ? 'h2' : 'h3';
               ))}
             </ol>
           )}
-          {compact && ready > 0 && (
+          {compact && (
             <ul class="sdv-map__compact-lessons">
-              {module.lessons
-                .filter((lesson) => lesson.status === 'ready')
-                .map((lesson) => (
-                  <li>
-                    <a href={lessonHref(lesson.id)}>{lesson.title}</a>
-                  </li>
-                ))}
+              {module.lessons.map((lesson) => (
+                <li>
+                  <a href={lessonHref(lesson.id)}>{lesson.title}</a>
+                </li>
+              ))}
             </ul>
           )}
         </section>
-      );
-    })
+    ))
   }
 </div>
 

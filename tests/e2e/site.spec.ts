@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
-import { readyLessons } from '../../src/data/curriculum';
+import { allLessons } from '../../src/data/curriculum';
 
 const pages = [
   { path: './', heading: /watching it break/i },
@@ -8,7 +8,7 @@ const pages = [
   { path: 'curriculum/', heading: /Course map/i },
   { path: 'visual-language/', heading: /Visual language/i },
   { path: 'reference/', heading: /Reference sheet/i },
-  ...readyLessons.map((lesson) => ({
+  ...allLessons.map((lesson) => ({
     path: `${lesson.id}/`,
     heading: new RegExp(escapeRegExp(lesson.title), 'i'),
   })),

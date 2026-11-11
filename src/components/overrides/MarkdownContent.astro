@@ -1,18 +1,18 @@
 ---
 import Default from '@astrojs/starlight/components/MarkdownContent.astro';
-import { findLesson, readyLessons } from '../../data/curriculum';
+import { allLessons, findLesson } from '../../data/curriculum';
 import { lessonHref } from '../../lib/paths';
 import LessonComplete from '../lesson/LessonComplete';
 
 const id = Astro.locals.starlightRoute.id;
 const lesson = findLesson(id);
-const index = readyLessons.findIndex((candidate) => candidate.id === lesson?.id);
-const next = index >= 0 ? readyLessons[index + 1] : undefined;
+const index = allLessons.findIndex((candidate) => candidate.id === lesson?.id);
+const next = index >= 0 ? allLessons[index + 1] : undefined;
 ---
 
 <Default><slot /></Default>
 {
-  lesson?.status === 'ready' && (
+  lesson && (
     <LessonComplete
       client:visible
       lessonId={lesson.id}

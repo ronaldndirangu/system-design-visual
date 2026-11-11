@@ -7,18 +7,13 @@ what happens, then lets you play with an honest simulation until the fix makes s
 
 ## What is inside
 
-- **A full course map** of nine modules: thinking in systems, foundations, scaling, reliability, async and event
-  driven systems, distributed data, ten case studies, AI systems, and interview practice. Each lesson shows whether it
-  is ready or coming soon, and each case study names the module it builds on.
-- **Six complete lessons** that grow one URL shortener from a single server to 100 million users:
-  1. Requirements and estimates
-  2. What happens when you click a link
-  3. The server melts: scaling out and load balancing
-  4. Caching
-  5. Read replicas
-  6. Sharding and consistent hashing
-- **A design checklist card**: a five-minute walk through the seven steps of any design, answered for the URL
-  shortener.
+- **A full course of 52 lessons in nine modules**: thinking in systems, foundations, scaling, reliability, async and
+  event driven systems, distributed data, ten case studies, AI systems, and interview practice. Each case study names
+  the module it builds on.
+- **One running example for the scaling arc**: a URL shortener grows from a single server to 100 million users, gaining
+  one component per lesson (load balancers, caches, read replicas, shards). Later modules switch to examples that fit
+  the workload: chat for ordering, news feed for fan out, payments for idempotency and sagas.
+- **Quick cards**, such as the design checklist: short reference pages of ten minutes or less.
 - **Interactive simulations** on every lesson. Physics-driven requests pile into server queues and spill over when a
   server melts. A cache warms up under Zipf traffic. Replicas serve stale reads. A hash ring reshuffles keys as shards
   join and leave.
@@ -77,9 +72,9 @@ The first `pnpm test:e2e` run needs a browser: `pnpm exec playwright install chr
 src/
   content/docs/          Pages and lessons (MDX). The folder path is the URL.
     index.mdx            Landing page
-    thinking/ foundations/ scaling/   Lesson folders, one per module (more arrive as lessons ship)
+    thinking/ foundations/ scaling/ ...   One lesson folder per module
   data/
-    curriculum.ts        Single source of truth for modules, lessons, and status
+    curriculum.ts        Single source of truth for modules and lessons
     sidebar.ts           Builds the Starlight sidebar from the curriculum
   lib/
     models/              Pure, deterministic simulation models (unit tested)

@@ -1,6 +1,6 @@
 ---
 import { findLesson, type Lesson } from '../../data/curriculum';
-import { plannedMinutes, studyPlans } from '../../data/studyPlans';
+import { studyPlans } from '../../data/studyPlans';
 import { lessonHref } from '../../lib/paths';
 
 function resolve(id: string): Lesson {
@@ -15,16 +15,10 @@ const plans = studyPlans.map((plan) => {
     return {
       label: session.label,
       lessons,
-      minutes: lessons.reduce((sum, lesson) => sum + plannedMinutes(lesson), 0),
+      minutes: lessons.reduce((sum, lesson) => sum + lesson.minutes, 0),
     };
   });
-  const lessons = sessions.flatMap((session) => session.lessons);
-  return {
-    ...plan,
-    sessions,
-    total: lessons.length,
-    ready: lessons.filter((lesson) => lesson.status === 'ready').length,
-  };
+  return { ...plan, sessions, total: sessions.reduce((sum, session) => sum + session.lessons.length, 0) };
 });
 ---
 
@@ -38,9 +32,7 @@ const plans = studyPlans.map((plan) => {
         </summary>
         <div class="sdv-plans__body">
           <p>{plan.audience}</p>
-          <p class="sdv-plans__status">
-            {plan.ready} of {plan.total} lessons are ready now. Lessons marked Coming soon open here as they ship.
-          </p>
+          <p class="sdv-plans__status">{plan.total} lessons.</p>
           <ol class="sdv-plans__sessions">
             {plan.sessions.map((session) => (
               <li class="sdv-plans__session">
@@ -50,17 +42,9 @@ const plans = studyPlans.map((plan) => {
                 </p>
                 <ul class="sdv-plans__lessons">
                   {session.lessons.map((lesson) => (
-                    <li data-status={lesson.status}>
-                      {lesson.status === 'ready' ? (
-                        <a href={lessonHref(lesson.id)}>{lesson.title}</a>
-                      ) : (
-                        <span>{lesson.title}</span>
-                      )}
-                      {lesson.status === 'ready' ? (
-                        lesson.minutes && <span class="sdv-badge sdv-badge--neutral">{lesson.minutes} min</span>
-                      ) : (
-                        <span class="sdv-badge sdv-badge--neutral">Coming soon</span>
-                      )}
+                    <li>
+                      <a href={lessonHref(lesson.id)}>{lesson.title}</a>
+                      <span class="sdv-badge sdv-badge--neutral">{lesson.minutes} min</span>
                     </li>
                   ))}
                 </ul>
@@ -150,8 +134,5 @@ const plans = studyPlans.map((plan) => {
     flex-wrap: wrap;
     gap: 0.25rem 0.5rem;
     align-items: center;
-  }
-  .sdv-plans__lessons li[data-status='soon'] > span:first-child {
-    color: var(--sl-color-gray-2);
   }
 </style>

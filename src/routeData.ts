@@ -12,10 +12,7 @@ function fixHashLinks(entries: SidebarEntry[]): void {
   }
 }
 
-/**
- * Previous and next links follow the learning path (intro pages, then ready
- * lessons) so pagination never lands on a "Coming soon" placeholder.
- */
+/** Previous and next links follow the learning path: intro pages, then every lesson in course order. */
 export const onRequest = defineRouteMiddleware((context) => {
   const route = context.locals.starlightRoute;
   fixHashLinks(route.sidebar);

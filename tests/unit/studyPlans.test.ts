@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { allLessons, findLesson } from '../../src/data/curriculum';
-import { plannedMinutes, studyPlans } from '../../src/data/studyPlans';
+import { studyPlans } from '../../src/data/studyPlans';
 
 const courseIndex = (id: string) => allLessons.findIndex((lesson) => lesson.id === id);
 
@@ -27,8 +27,7 @@ describe('study plans', () => {
       it('fits every session inside its time budget', () => {
         for (const session of plan.sessions) {
           const minutes = session.lessons.reduce((sum, id) => {
-            const lesson = findLesson(id);
-            return lesson ? sum + plannedMinutes(lesson) : sum;
+            return sum + (findLesson(id)?.minutes ?? 0);
           }, 0);
           expect(minutes, session.label).toBeLessThanOrEqual(plan.sessionMinutes);
         }
