@@ -1,0 +1,203 @@
+---
+title: Review a design
+description: Find the anti-patterns seeded in a flash sale design, pick a fix for each, then replay the sale to see which parts break and which hold.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import DesignReviewWidget from '../../../components/widgets/DesignReviewWidget';
+
+export const quiz = [
+  {
+    prompt: 'Checkout writes the order row, then publishes OrderPlaced to the broker in a second call. The process crashes between the two calls. What breaks, and what fixes it?',
+    options: [
+      { text: 'The order exists and no event ever goes out. Write the event to an outbox table in the same transaction, and let a relay publish it', correct: true, why: 'The order row and the outbox row commit together or not at all. A relay reads the outbox and publishes until the broker confirms, so a crash can delay the event and can never lose it.' },
+      { text: 'Retry the publish call a few times', why: 'The process that would retry has crashed. Nothing remembers that the event is still owed, which is exactly what the outbox row records.' },
+      { text: 'Publish the event first, then write the order row', why: 'That moves the gap without closing it. A crash now leaves an event for an order that never saved, and downstream services act on a ghost.' },
+      { text: 'Move the broker to a bigger machine', why: 'Broker capacity has nothing to do with it. The gap sits between two separate writes, and any crash inside that gap splits them.' },
+    ],
+  },
+  {
+    prompt: 'Payment calls retry with exponential backoff, and every client uses the same delays. Why add jitter as well?',
+    options: [
+      { text: 'Clients that failed together retry together. Jitter randomizes each delay so the retries spread out instead of landing in waves', correct: true, why: 'Backoff lowers the average retry rate. Without jitter, every client that failed at the same moment wakes at the same moment, and each wave hits the provider at full strength.' },
+      { text: 'Jitter makes each retry more likely to succeed on its own', why: 'A single retry sees the same provider either way. The gain comes from the whole crowd: spread out retries keep the provider below its limit.' },
+      { text: 'Jitter replaces the need for a retry limit', why: 'It spreads retries in time and still lets them pile up. A retry budget or limit caps the total extra load.' },
+      { text: 'Backoff alone already spreads clients out', why: 'Identical delays keep identical clients in step. The second wave arrives together, just later.' },
+    ],
+  },
+  {
+    prompt: 'The home page joins order rows across all 8 shards on every view to list best sellers. What is the strongest fix?',
+    options: [
+      { text: 'Compute best sellers in a background job every minute or so, and serve the stored result', correct: true, why: 'Best sellers can be a minute old. Moving the join off the request path turns 8 shard reads per page view into one cheap read, and the join runs once per refresh.' },
+      { text: 'Add more shards', why: 'More shards make each view fan out to even more shards. The page waits for the slowest one, so tail latency gets worse.' },
+      { text: 'Add an index on the order date', why: 'An index can speed up each shard query, yet every page view still waits on all 8 shards. The fan out on the hot path remains.' },
+      { text: 'Run the join on a read replica of each shard', why: 'It moves load off the primaries, and every page view still fans out to 8 servers and waits for the slowest. The cost per view barely changes.' },
+    ],
+  },
+  {
+    prompt: 'An in-memory event queue has no length limit, and the consumer falls behind during the sale. What happens?',
+    options: [
+      { text: 'The queue grows until the process runs out of memory, crashes, and loses every event it held', correct: true, why: 'Nothing tells producers to slow down, so the backlog only grows. A bounded queue that rejects or delays producers when full keeps the failure small and visible.' },
+      { text: 'Producers slow down on their own once the queue gets long', why: 'An unbounded queue accepts every message instantly, so producers never feel the backlog. That missing signal is the problem.' },
+      { text: 'The queue drops the oldest events to make room', why: 'Only a bounded queue with a drop policy does that. With no limit, the queue keeps everything until memory runs out.' },
+      { text: 'The consumer speeds up to match', why: 'Consumer speed depends on its own work and resources. A longer queue gives it more to do and no extra capacity.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Read a system design and flag the parts that will fail under load, using the questions from the design checklist.
+- Name six common anti-patterns: a single point of failure, a cache with no expiry, a cross-shard join on the hot path,
+  retries without backoff or jitter, an unbounded queue, and a dual write without an outbox.
+- Tell a real risk from a sound choice that only looks unusual, and count false alarms as a cost.
+- Propose the standard fix for each flaw and name the lesson that teaches it.
+
+</Objectives>
+
+## The failure: every box was there
+
+A team reviews the design for a concert ticket sale. The reviewers walk the diagram from left to right and ask one
+question per box: is it there? Load balancer, web servers, session store, database. Every box is there, so the design
+passes.
+
+At 10:00 the sale opens. At 10:03 the single session store runs out of memory and restarts. Every buyer is logged out
+mid checkout, and the retry storm of fresh logins keeps it down for twenty minutes.
+
+<Predict
+  client:visible
+  question="Which review question would have caught the session store?"
+  options={[
+    'Is there a box for sessions?',
+    'What happens to buyers when this box stops?',
+    'Does the session store use a fast database?',
+    'Is the diagram drawn left to right?',
+  ]}
+  answer={1}
+>
+
+Ask what happens when a box stops. The answer here is "every buyer loses their session", and one machine with no
+standby makes that outcome certain sooner or later. A useful review asks failure questions about each part: what if it
+stops, what if load grows ten times, what if a call to it slows down, what if two writes split. "Is it there" only
+checks the drawing.
+
+</Predict>
+
+## How a review works
+
+The questions come from [the design checklist](../../thinking/design-checklist/). A review runs them against someone
+else's design, one part at a time.
+
+<Steps>
+
+1. **Read each part and its note.** The notes are the design document's own words. They describe what each part does
+   and give nothing away.
+
+2. **Ask the failure questions.** What if this stops? What if load grows ten times? What if a call to it slows down?
+   What if it holds stale data? Turn on **Show review questions** to see the checklist step that would catch each
+   item, with its question.
+
+3. **Flag what looks wrong and pick a fix.** Press a number key (1 to 9, and 0 for item 10) or use the Flag buttons.
+   Each flag opens a list of fixes; pick the one you would ask for.
+
+4. **Replay the first hour of the sale.** Press **Play replay** or step one event at a time with **Next event**. Each
+   item either causes an incident or holds, and the transcript records whether you flagged it.
+
+5. **Reveal the answers.** Every card shows its verdict, the anti-pattern or the sound choice behind it, the
+   reference fix, and the lesson that teaches it.
+
+</Steps>
+
+<Analogy>
+
+A building inspector walks a new building with a code book. They spend no time on whether the lobby looks nice. They
+check specific failure modes: one exit for the whole floor, wiring sized for half the load, a fire door propped open.
+Each finding cites the rule that fixes it. A design review works the same way, with the anti-patterns as the code book.
+
+</Analogy>
+
+## Before you review
+
+<Predict
+  client:visible
+  question="A reviewer flags all 10 items to be safe. Why is that a weak review?"
+  options={[
+    'It is a strong review, since it misses nothing',
+    'Each false alarm sends the team to fix a part that holds, and the real risks get lost among them',
+    'Reviews only count the flaws you miss',
+  ]}
+  answer={1}
+>
+
+False alarms cost real time. The team rewrites parts that were fine, and a list of ten flags reads as noise, so the
+six that matter get the same attention as the four that do not. The score below counts false alarms next to the flaws
+you found for that reason. Some parts in this design look unusual and hold up well; a good review leaves them alone.
+
+</Predict>
+
+## Your review
+
+The design below runs a flash sale for an online shop. Six of its ten numbered items are flaws, and four are sound
+choices. Flag the ones you expect to fail, pick a fix for each, then play the replay. The replay is a toy model: the
+minutes are illustrative, and every run plays the same fixed script.
+
+<DesignReviewWidget client:visible />
+
+## Reading your review
+
+- **A missed flaw** shows up as an incident you did not flag. Read its card first: the explanation names the question
+  that would have caught it.
+- **A false alarm** is a part you flagged that held. Its card explains why the choice is sound, which is worth as much
+  as spotting a flaw.
+- **A fix that does not match** usually treats the symptom. "Add more servers of the same kind" and "Move it to a
+  bigger machine" buy time for most of these flaws without removing them.
+- **Where to go next.** [Load balancing](../../scaling/load-balancing/) teaches the fix for the single point of
+  failure, [caching](../../scaling/caching/) teaches expiry and invalidation, and
+  [sharding](../../scaling/sharding/) teaches how to keep hot queries on one shard. Retries with backoff and jitter,
+  queues with backpressure, and the outbox each get their own lesson in the Reliability and Async modules.
+
+## Trade-offs
+
+<TradeoffTable title="How to run a design review">
+
+| Choice                                   | What it buys                                                  | What it costs                                              |
+| ---------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------- |
+| Walk the request path, part by part      | Covers every part, in the order a request touches them         | Can miss problems that span parts, such as a dual write    |
+| Walk a list of anti-patterns             | Catches the known failure modes fast                          | Misses a flaw that fits no pattern on the list             |
+| Flag broadly                             | Fewer misses                                                  | More false alarms, and the real risks get diluted          |
+| Flag only what you can explain           | A short list the team trusts                                  | You may hold back on a real risk you cannot yet put into words |
+| Propose a fix with every flag            | Turns findings into work the team can start                   | Slower, and a weak fix can anchor the discussion           |
+| List findings first, fix later           | A faster review that stays on risks                           | Findings without fixes tend to sit in the backlog          |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+Review this design on paper before you open the answer. **A photo sharing app:** uploads go to one web server, which
+saves each photo on its own disk; a nightly job copies the day's photos to object storage. The upload request also
+sends a push notification to every follower before it returns. Like counts live in one row per photo, updated by
+reading the count, adding one, and writing it back. Photos reach viewers through a CDN under content-hashed names.
+Find the flaws, propose a fix for each, and name the part that holds.
+
+<div slot="answer">
+
+1. **Photos on one server's disk.** A single point of failure, and a disk failure loses every photo since the last
+   nightly copy. Write uploads straight to replicated object storage before the request returns.
+2. **Notifications inside the upload request.** A user with many followers makes every upload slow, and a slow push
+   service fails uploads. Put a notification job on a bounded queue and return as soon as the photo is stored.
+3. **Read, add one, write back on the like count.** Two likes at the same moment both read 10 and both write 11, so
+   one like vanishes. Use an atomic increment in the database, or split a hot counter across several rows and sum them.
+4. **The CDN with content-hashed names holds.** A new photo gets a new name, so a cached copy never goes stale, and
+   a long cache lifetime is safe.
+
+</div>
+
+</Challenge>
