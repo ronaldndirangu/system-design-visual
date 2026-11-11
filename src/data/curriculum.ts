@@ -100,7 +100,8 @@ export const curriculum: CourseModule[] = [
         title: 'Transactions and constraints',
         summary:
           'Keep one database correct under concurrent writes with isolation, unique keys, and conditional updates.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'foundations/indexes',
