@@ -322,7 +322,8 @@ export const curriculum: CourseModule[] = [
         id: 'case-studies/news-feed',
         title: 'News feed',
         summary: 'Fan out on write or on read, and handle the celebrity whose post reaches millions.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
         bestAfter: 'reliability',
       },
       {
