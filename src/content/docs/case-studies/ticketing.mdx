@@ -1,0 +1,357 @@
+---
+title: Flash-sale ticketing
+description: Sell 10,000 seats to a million people without selling one seat twice. Watch a read, then write race oversell a venue, then fix it with conditional writes, holds that expire, and a waiting room.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import TicketingWidget from '../../../components/widgets/TicketingWidget';
+
+export const nodes = [
+  { id: 'fans', kind: 'client', x: 70, y: 150, label: 'Fans', sublabel: '1M browsers' },
+  { id: 'room', kind: 'queue', x: 230, y: 150, label: 'Waiting room' },
+  { id: 'app', kind: 'server', x: 390, y: 150, label: 'App servers' },
+  { id: 'map', kind: 'cache', x: 550, y: 60, label: 'Seat map', sublabel: 'cached for 1 s' },
+  { id: 'db', kind: 'database', x: 550, y: 240, label: 'Seat database', sublabel: 'one row per seat' },
+];
+export const edges = [
+  { from: 'fans', to: 'room' },
+  { from: 'room', to: 'app' },
+  { from: 'app', to: 'map' },
+  { from: 'app', to: 'db' },
+];
+export const steps = [
+  {
+    title: 'Doors open',
+    text: 'At 10:00 a million fans press Buy. Every request lands in the waiting room first, which hands each fan a place in line.',
+    nodes: ['fans', 'room'],
+    flows: ['fans>room'],
+  },
+  {
+    title: 'Let fans in at a steady rate',
+    text: 'The waiting room admits fans in arrival order, only as fast as the servers behind it can serve them.',
+    nodes: ['room', 'app'],
+    flows: ['room>app'],
+  },
+  {
+    title: 'Show the seat map from the cache',
+    text: 'The seat map can be a second old. It only helps fans choose. The database decides who gets the seat.',
+    nodes: ['app', 'map'],
+    flows: ['app>map', 'map>app'],
+  },
+  {
+    title: 'Claim the seat with a conditional write',
+    text: 'The server sends UPDATE seats SET holder = me WHERE seat = A10 AND holder IS NULL. The database runs the check and the write as one step, so exactly one fan changes the row.',
+    nodes: ['app', 'db'],
+    flows: ['app>db'],
+  },
+  {
+    title: 'Lose the race, pick again',
+    text: 'Every other fan who asked for A10 gets zero rows changed. The server answers 409 Conflict and offers the next best seat.',
+    nodes: ['app', 'db'],
+    flows: ['db>app'],
+  },
+  {
+    title: 'Pay before the hold expires',
+    text: 'The winner has a few minutes to pay. If they leave, the hold expires and the seat goes back on sale. A unique constraint on (event, seat) in the orders table guards the very last step.',
+    nodes: ['app', 'db'],
+    flows: ['app>db', 'db>app'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'Two servers both read seat A10 as free, then both write their buyer into it. Which change stops the double sale?',
+    options: [
+      {
+        text: 'Make the write conditional: claim A10 only if nobody holds it',
+        correct: true,
+        why: 'The database checks and writes in one step, so the second server changes zero rows and learns it lost.',
+      },
+      {
+        text: 'Cache the seat map so reads are faster',
+        why: 'Faster reads still show A10 free to both servers. The race lives between the read and the write.',
+      },
+      {
+        text: 'Add more app servers',
+        why: 'More servers run more reads at the same moment, so more buyers see the same free seat. Collisions go up.',
+      },
+      {
+        text: 'Put a waiting room in front of the site',
+        why: 'A waiting room makes collisions rarer. In the simulation, read, then write still promises 10 seats twice behind a waiting room.',
+      },
+    ],
+  },
+  {
+    prompt: 'Holds never expire, and 30% of buyers leave at checkout. What do the last buyers in line see?',
+    options: [
+      {
+        text: '"Sold out", while some seats sit held for people who already left',
+        correct: true,
+        why: 'Each abandoned hold locks its seat for good. In the simulation 27 seats end the run held for absent buyers.',
+      },
+      {
+        text: 'Seats sold twice',
+        why: 'Both hold lanes claim seats with conditional writes, so every seat has at most one holder. Abandoned seats get stuck. Nobody shares one.',
+      },
+      {
+        text: 'A longer wait, then a seat',
+        why: 'Nothing ever frees an abandoned hold, so waiting longer changes nothing. The seats stay locked after the sale.',
+      },
+      {
+        text: 'A slower seat map',
+        why: 'Abandoned holds add no reads. They cost sales: 73 tickets instead of 97 in the simulation.',
+      },
+    ],
+  },
+  {
+    prompt: 'In the doors-open rush, why does the conditional write lane send more queries per second to the database than read, then write?',
+    options: [
+      {
+        text: 'Every rejected write sends its buyer back to read the map and try another seat',
+        correct: true,
+        why: 'Correctness turns collisions into retries. 715 rejected writes become 715 more reads and writes, which is why a waiting room pairs so well with it.',
+      },
+      {
+        text: 'A conditional write costs more than a plain write',
+        why: 'The toy model charges every query the same, and real databases check one row cheaply too. The extra load comes from retries.',
+      },
+      {
+        text: 'It sells more tickets',
+        why: 'It sells exactly 100, one per seat. Read, then write issues 243 tickets for the same 100 seats.',
+      },
+      {
+        text: 'Its seat map cache is colder',
+        why: 'Both lanes read the same way. Only the write differs between them.',
+      },
+    ],
+  },
+  {
+    prompt: 'A tester buys tickets one at a time and never sees a double sale. What should the team conclude?',
+    options: [
+      {
+        text: 'The race needs concurrent buyers, so the test has to recreate a rush',
+        correct: true,
+        why: 'With one buyer every 0.3 s both lanes in the simulation sell the same 52 tickets. The bug only appears when reads overlap.',
+      },
+      {
+        text: 'Read, then write is safe for this sale',
+        why: 'The quiet test hides the race. The same code issues 243 tickets for 100 seats on launch day.',
+      },
+      {
+        text: 'The waiting room is unnecessary',
+        why: 'The quiet test says nothing about launch day load. The rush peaks at 1,702 database queries per second in the simulation.',
+      },
+      {
+        text: 'Holds should be shorter',
+        why: 'Hold length decides what happens when buyers leave. It cannot stop two buyers from claiming one seat.',
+      },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain why reading a seat as free and then writing a buyer into it sells the same seat twice under a rush.
+- Use a conditional write, a row lock, or a unique constraint so the database rejects the second claim.
+- Size holds that expire, and see why holds that never expire strand seats.
+- Place a waiting room in front of the sale, and say what it fixes and what it leaves to the database.
+
+</Objectives>
+
+## The failure: two buyers, one seat
+
+A band sells 10,000 seats at 10:00 sharp. A million fans have the page open. Ana's request reads the seat map and sees
+A10 free. A millisecond later Ben's request reads the same map, and A10 is still free, because Ana's write has not landed
+yet. Both servers write their buyer into A10, both send a confirmation email, and on the night two people walk up to the
+same seat holding valid tickets.
+
+Nothing crashed. Each server did exactly what its code said. The bug lives in the gap between reading "free" and writing
+"mine", and a million people make that gap crowded.
+
+<Predict
+  client:visible
+  question="In the toy sale below, 600 buyers rush 100 seats in 3 seconds. Each server reads which seats look free, then writes its buyer into one. Nothing checks again at write time. How many tickets go out for the 100 seats?"
+  options={['Exactly 100', 'About 110', 'More than 200', 'Fewer than 100, because buyers block each other']}
+  answer={2}
+>
+
+**243 tickets for 100 seats.** Seventy seats end up promised to two or more buyers. Hundreds of buyers read the map in
+the same instant and see the same short list of good seats as free, so many of them reach for the same seat. The faster
+the seats go, the more buyers act on a stale "free".
+
+</Predict>
+
+## The idea: let the database settle every race
+
+This case study has one dominant constraint: **never sell one seat twice**, while a million people press Buy in the same
+minute. Everything else (the waiting room, holds, the cached seat map) exists to make that one rule cheap to keep.
+
+The fix moves the check into the write. A **conditional write** says "put Ana in A10, but only if A10 has nobody". The
+database checks and writes in one step, so when Ben's claim arrives it changes zero rows, and his server tells him to
+pick again.
+
+<StepDiagram client:visible title="A flash sale, step by step" nodes={nodes} edges={edges} steps={steps} height={290} />
+
+<Analogy>
+
+Two people spot the last free chair in a busy cafe. Read, then write is looking across the room, deciding the chair is
+free, walking over, and sitting down on whoever got there first. A conditional write is putting your bag on the chair only
+if no bag is on it yet, in one motion. A hold that expires is the cafe clearing any bag left alone for ten minutes.
+
+</Analogy>
+
+## Walk the design checklist
+
+The seven steps from the [design checklist](../../thinking/design-checklist/), applied to a flash sale.
+
+<Steps>
+
+1. **Requirements.** Fans browse a seat map, hold a seat, pay within a time limit, and receive a ticket. The hard bar is
+   correctness: no seat is ever sold twice. The site also stays up through the rush and serves fans roughly in arrival
+   order. Resale and dynamic pricing stay out of scope.
+
+2. **Estimates (illustrative).** One million people for 10,000 seats is 100 buyers per seat. If most arrive in the first
+   minute and each makes about 6 requests (the seat map, a hold or two, checkout), the peak is about **100,000 requests
+   per second**, and about **16,667 hold attempts per second** land on just 10,000 rows. At 100 bytes per seat, the
+   whole seat table is about 1,000 KB, small enough to fit in memory many times over. Size is easy. Contention is the
+   problem. (See [requirements and estimates](../../thinking/requirements-and-estimates/) for the method.)
+
+3. **API.** `GET /events/{id}/seats` returns the seat map and can be a second stale. `POST /holds` takes an event and a
+   seat and returns a hold with its expiry time, or `409 Conflict` when someone else got there first.
+   `POST /orders` takes a hold and a payment token, with an `Idempotency-Key` header so a retried checkout cannot buy
+   twice (the Idempotency lesson covers keys in depth).
+
+4. **Data model.** A `seats` table keyed by (event, seat) holds the status, the holder, and the hold expiry time. An
+   `orders` table records each paid ticket, with a unique constraint on (event, seat) as a final guard.
+
+5. **High-level design.** Fans pass through a waiting room, then a load balancer, to stateless app servers. The servers
+   read the seat map from a cache and send every claim to the seat database.
+
+6. **Deep dive: the claim.** This is where the design breaks first, and the simulations below live here. Three tools
+   make the database reject a second claim. A conditional write:
+   `UPDATE seats SET holder = ?, expires = now() + 8 min WHERE seat = ? AND (holder IS NULL OR expires < now())`, then
+   check how many rows changed. A row lock: `SELECT ... FOR UPDATE` inside a transaction, then the write. A unique
+   constraint that refuses a second order row for the same seat. The Transactions and constraints lesson covers all
+   three.
+
+7. **Trade-offs.** Hold length, a waiting room or open doors, and pick your seat or best available. The table at the
+   end of this page lays them out.
+
+</Steps>
+
+## Try it: claim a seat
+
+Both lanes face the same 600 buyers, who arrive at the same moments and reach for the same seats in the same order. Only
+the write differs. Times are compressed: the whole rush takes seconds here and minutes in real life.
+
+<TicketingWidget client:visible duel="oversell" />
+
+What to look for:
+
+- **Doors open.** Read, then write issues **243 tickets for 100 seats**, and **70 seats** go to two or more buyers. The
+  conditional write issues exactly 100 and rejects **715 writes**, each one followed by a fresh read and another try.
+- **Correctness costs load.** Those retries push the conditional lane to a peak of **1,702 database queries per
+  second**, against 411 for read, then write. The race turns from a correctness bug into a capacity problem, and
+  capacity problems have known fixes.
+- **Add a waiting room.** Letting in 20 buyers per second drops the conditional lane's peak to **52 queries per second**
+  and its rejected writes to 14. Read, then write still promises **10 seats** twice. A waiting room makes collisions
+  rarer. Only the conditional write rules them out.
+- **Quiet test day.** With one buyer every 0.3 s nobody's reads overlap, and both lanes sell the same 52 tickets. This is
+  why the bug passes every test and appears on launch day.
+
+## Holds that expire
+
+A buyer who claims a seat gets a **hold**: the seat is theirs while they type a card number. Some buyers never finish.
+They close the tab, their card fails, or they change their mind. If a hold lasts until the buyer pays, an abandoned seat
+stays locked for the rest of the sale while people in line are told it is sold out.
+
+Both lanes below use conditional writes, so neither one sells a seat twice. They face the same 400 buyers, and the same
+30% of them walk away at checkout. Only the hold rule differs.
+
+<TicketingWidget client:visible duel="holds" />
+
+What to look for:
+
+- **Some buyers walk away.** With holds that never expire, **73 tickets** sell and **27 seats** end the run held for
+  buyers who already left, while **300 buyers** hear "sold out". Expiring holds after 8 s releases **40 holds**, sells
+  **97 tickets**, and turns away 260. The 3 seats still stuck at the end belong to buyers who left less than 8 s before
+  the run ended.
+- **Everyone pays.** Both lanes sell all 100 seats and the curves match. Expiry only matters when buyers leave.
+
+Real holds last 5 to 10 minutes. Make them long enough for a slow payment, and make the payment step check the hold
+again (`WHERE holder = me AND expires > now()`), because a hold can expire while the card is still processing.
+
+## The waiting room
+
+The waiting room is a queue in front of the whole site. It admits fans at the rate the servers can handle, in the order
+they arrived, and shows each one their place in line. It does three jobs at once:
+
+- **Protects the database.** Load stays flat at the admission rate, however many people arrive. The Queues and
+  backpressure lesson covers this pattern.
+- **Keeps it fair.** Fans are served in arrival order, so the fastest retry loop no longer wins. Pair it with the
+  techniques from the Rate limiting lesson to slow down bots.
+- **Shrinks the race.** Fewer buyers read the map at the same moment, so fewer claims collide.
+
+It cannot guarantee one buyer per seat. Two admitted fans can still read the same free seat, so the conditional write
+stays.
+
+## Ticketing versus payments
+
+[Payments](../payments/) is the other half of this pair. Both protect something scarce, and they fail in opposite ways.
+
+| Question          | Flash-sale ticketing                           | Payments                                              |
+| ----------------- | ---------------------------------------------- | ----------------------------------------------------- |
+| What is scarce?   | 10,000 seats, the same rows for everyone       | Money in one account, touched by few writers          |
+| What goes wrong?  | Two buyers claim one seat at the same instant  | One payment runs twice after a timeout and retry      |
+| The guard         | A conditional write on the seat row            | An idempotency key and a ledger that must balance     |
+| Undoing a mistake | A hold expires and the seat goes back on sale  | Moved money needs a refund, a new entry in the ledger |
+
+A seat hold can lapse harmlessly because no money has moved yet. Once a payment succeeds, nothing expires: the only way
+back is a second transaction that moves the money home.
+
+## Trade-offs
+
+<TradeoffTable title="Designing a flash sale">
+
+| Choice                             | What it buys                                       | What it costs                                                 |
+| ---------------------------------- | -------------------------------------------------- | ------------------------------------------------------------- |
+| Conditional write per seat         | No double sales, one round trip per claim          | Losers retry, so collisions turn into extra load              |
+| Row lock (`SELECT ... FOR UPDATE`) | Same guarantee, easy to extend to several rows     | Locks stay held for the whole transaction and queue up others |
+| Unique constraint on (event, seat) | The database enforces it even if the code forgets  | Fails late, after the buyer thinks they won                   |
+| Short holds                        | Abandoned seats return quickly                     | Slow payers lose their seat mid-checkout                      |
+| Long holds                         | Payers have time                                   | Abandoned seats sit idle while buyers hear "sold out"         |
+| Waiting room                       | Flat load, arrival order, fewer collisions         | Everyone waits, and it is one more system to run              |
+| Assign the best available seat     | Spreads claims across seats, so fewer collisions   | Buyers lose the choice of exactly where to sit                |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+A festival sells 50,000 standing tickets with no seat numbers to 2 million fans. There is no seat map, just a count of
+tickets left. Where does contention move, and how do you avoid selling ticket 50,001?
+
+<div slot="answer">
+
+**The counter becomes the one hot row.** Every purchase decrements the same `tickets_left` value, so every claim in the
+country waits on one row.
+
+- **Keep the conditional write:** `UPDATE inventory SET left = left - 1 WHERE event = ? AND left > 0`, and treat zero
+  rows changed as sold out. That alone rules out ticket 50,001.
+- **Split the hot row:** store the 50,000 tickets as 50 bucket rows of 1,000 each, pick a bucket at random, and move to
+  another when one empties. Claims now spread across 50 rows, the same idea as [sharding](../../scaling/sharding/) a
+  hot key.
+- **Keep the waiting room and holds:** admit fans at the rate the buckets can serve, and expire holds so abandoned
+  checkouts return tickets to a bucket.
+
+</div>
+
+</Challenge>

@@ -336,7 +336,8 @@ export const curriculum: CourseModule[] = [
         id: 'case-studies/ticketing',
         title: 'Flash-sale ticketing',
         summary: 'Sell 10,000 seats to a million people without selling one seat twice.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
         bestAfter: 'reliability',
       },
       {
