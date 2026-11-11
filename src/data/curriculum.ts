@@ -93,7 +93,8 @@ export const curriculum: CourseModule[] = [
         id: 'foundations/data-modeling',
         title: 'Data modeling and storage choice',
         summary: 'Let the access pattern choose between tables, documents, and key-value stores.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'foundations/transactions',

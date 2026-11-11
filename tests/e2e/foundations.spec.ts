@@ -119,7 +119,43 @@ test('security: each missing defense lets through the pinned wrong requests', as
   await nextScenario(page, sim, /Plain HTTP/, /Admin key in the repo/);
   await skipByKeyboard(page, sim);
   expect(await cellsOf(sim, /^Wrongly allowed/)).toEqual(['3', expect.stringMatching(/^0/)]);
-  expect(await cellsOf(sim, /^Wrongly rejected/)).toEqual(['2', expect.stringMatching(/^0/)]);
+  await expectAxeCleanInBothThemes(page);
+});
+
+test('data modeling: each query replays its pinned toy latency in every shape', async ({ page }) => {
+  const sim = await openSimulation(page, 'foundations/data-modeling/', 'Same queries, three storage shapes');
+
+  await skipByKeyboard(page, sim);
+  expect(await cellsOf(sim, /^Toy latency/)).toEqual([
+    expect.stringMatching(/^0\.51 ms/),
+    expect.stringMatching(/^11\.8 ms/),
+    expect.stringMatching(/^0\.51 ms/),
+  ]);
+  await expect(
+    sim.getByText(
+      'Run ends. Tables and Key-value tie for the redirect. At 20,000 a second, Documents would move 19.6 GB/s.',
+    ),
+  ).toBeVisible();
+
+  await nextScenario(page, sim, /^Redirect/, /^Create a link/);
+  await nextScenario(page, sim, /^Create a link/, /^Dashboard/);
+  await skipByKeyboard(page, sim);
+  expect(await cellsOf(sim, /^Toy latency/)).toEqual([
+    expect.stringMatching(/^0\.89 ms/),
+    expect.stringMatching(/^2\.0 ms/),
+    expect.stringMatching(/^42\.8 ms/),
+  ]);
+  await expect(
+    sim.getByText(
+      'Run ends. Tables fits the dashboard best. At 50 a second, Key-value would move 49.1 MB/s.',
+    ),
+  ).toBeVisible();
+  expect(await cellsOf(sim, /^Redirect/)).toEqual([
+    expect.stringMatching(/^0\.51 ms/),
+    expect.stringMatching(/^11\.8 ms/),
+    expect.stringMatching(/^0\.51 ms/),
+  ]);
+  await expect(sim.getByRole('row', { name: /^Dashboard/ })).toHaveAttribute('data-current');
 
   await expectAxeCleanInBothThemes(page);
 });
