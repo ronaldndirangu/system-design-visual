@@ -64,6 +64,27 @@ test('logs and pub/sub: lag grows with one consumer, a crash rereads, and keys k
   await expect(values(ordering, 'Counted out of order')).toHaveText(['0', '104']);
 });
 
+test('logs and pub/sub: Step while paused and group changes at any time update the live region', async ({
+  page,
+}) => {
+  await page.goto('async/logs-and-pubsub/');
+  const group = await simulation(page, 'A consumer group reads the click log');
+  const live = group.locator('[aria-live]');
+  await expect(live).toHaveCount(1);
+
+  await group.getByRole('button', { name: 'Step', exact: true }).click();
+  await expect(live).toHaveText(/^0\.1 s of 20 s\. Lag /);
+  await group.getByRole('button', { name: 'Step', exact: true }).click();
+  await expect(live).toHaveText(/^0\.2 s of 20 s\. Lag /);
+
+  await group.getByRole('button', { name: 'Crash consumer 1' }).click();
+  await expect(live).toContainText('Consumer 1 crashes');
+
+  await group.getByRole('button', { name: 'Play', exact: true }).click();
+  await group.getByRole('button', { name: 'Add a consumer' }).click();
+  await expect(live).toContainText(/Consumer \d+ joins the group/);
+});
+
 test('delivery semantics: the dual write loses or invents events and the outbox does neither', async ({
   page,
 }) => {
