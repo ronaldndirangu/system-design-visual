@@ -18,13 +18,20 @@ const ROW_NAMES = 'ABCDEFGHIJ';
 export type WriteMode = 'blind' | 'conditional';
 export type TicketMetric = 'doubled' | 'sold';
 export type TicketDuelId = 'oversell' | 'holds';
-export type TicketScenarioId = 'rush' | 'waiting-room' | 'trickle' | 'abandon' | 'all-pay';
+export type TicketScenarioId = 'rush' | 'waiting-room' | 'trickle' | 'abandon' | 'all-pay' | 'slow-pay';
 
 export interface LaneConfig {
   label: string;
   write: WriteMode;
   /** Null means a hold lasts until the buyer pays, even if they never come back. */
   holdSeconds: number | null;
+  /**
+   * Pressing Pay claims the hold for checkout: one conditional write checks
+   * that the hold is still this buyer's and moves its deadline to this many
+   * seconds from now. Null means the hold keeps its original deadline while
+   * the payment runs.
+   */
+  checkoutSeconds: number | null;
 }
 
 export interface WorkloadConfig {
@@ -32,6 +39,8 @@ export interface WorkloadConfig {
   /** Random arrivals spread over this many seconds, or one buyer every gap seconds. */
   arrival: { kind: 'random'; seconds: number } | { kind: 'even'; gapSeconds: number };
   abandonShare: number;
+  /** How long the bank takes to approve a payment after the buyer presses Pay. Absent means at once. */
+  paymentSeconds?: { min: number; max: number };
 }
 
 export interface TicketScenario {
@@ -48,12 +57,16 @@ export interface TicketScenario {
 }
 
 const blindLanes: [LaneConfig, LaneConfig] = [
-  { label: 'Read, then write', write: 'blind', holdSeconds: 8 },
-  { label: 'Conditional write', write: 'conditional', holdSeconds: 8 },
+  { label: 'Read, then write', write: 'blind', holdSeconds: 8, checkoutSeconds: null },
+  { label: 'Conditional write', write: 'conditional', holdSeconds: 8, checkoutSeconds: null },
 ];
 const holdLanes: [LaneConfig, LaneConfig] = [
-  { label: 'Holds never expire', write: 'conditional', holdSeconds: null },
-  { label: 'Holds expire after 8 s', write: 'conditional', holdSeconds: 8 },
+  { label: 'Holds never expire', write: 'conditional', holdSeconds: null, checkoutSeconds: null },
+  { label: 'Holds expire after 8 s', write: 'conditional', holdSeconds: 8, checkoutSeconds: null },
+];
+const checkoutLanes: [LaneConfig, LaneConfig] = [
+  { label: 'Holds expire after 8 s', write: 'conditional', holdSeconds: 8, checkoutSeconds: null },
+  { label: 'Pay claims the hold', write: 'conditional', holdSeconds: 8, checkoutSeconds: 10 },
 ];
 
 const rushWorkload: WorkloadConfig = {
@@ -118,18 +131,31 @@ export const ticketScenarios: Record<TicketScenarioId, TicketScenario> = {
     metric: 'sold',
     lanes: holdLanes,
   },
+  'slow-pay': {
+    id: 'slow-pay',
+    label: 'Slow bank approvals',
+    diff: 'Buyers who leave: 30% to none. Bank approval: instant to 1 to 5 s, so some checkouts outlast an 8 s hold. The second lane extends the hold to 10 s when its buyer presses Pay.',
+    workload: { ...abandonWorkload, abandonShare: 0, paymentSeconds: { min: 1, max: 5 } },
+    admitPerSecond: null,
+    seconds: 30,
+    metric: 'sold',
+    lanes: checkoutLanes,
+  },
 };
 
 export const duelScenarioIds: Record<TicketDuelId, TicketScenarioId[]> = {
   oversell: ['rush', 'waiting-room', 'trickle'],
-  holds: ['abandon', 'all-pay'],
+  holds: ['abandon', 'all-pay', 'slow-pay'],
 };
 
 export interface Buyer {
   id: number;
   arrival: number;
+  /** Ticks from getting a hold to pressing Pay or walking away. */
   payTicks: number;
   abandons: boolean;
+  /** Ticks from pressing Pay to the bank's approval. */
+  paymentTicks: number;
 }
 
 /** The shared crowd, sorted by arrival tick and then id. */
@@ -143,7 +169,14 @@ export function makeWorkload(config: WorkloadConfig, seed: number): Buyer[] {
         : randomInt(rng, 0, Math.round(config.arrival.seconds / TICK_SECONDS) - 1);
     const payTicks = randomInt(rng, 30, 60);
     const abandons = rng() < config.abandonShare;
-    buyers.push({ id, arrival, payTicks, abandons });
+    // A hash keeps the main random stream untouched, so adding bank delay never reshuffles the crowd.
+    const bank = config.paymentSeconds;
+    const paymentTicks = bank
+      ? Math.round(
+          (bank.min + (hashString(`${seed}:bank:${id}`) / 4294967296) * (bank.max - bank.min)) / TICK_SECONDS,
+        )
+      : 0;
+    buyers.push({ id, arrival, payTicks, abandons, paymentTicks });
   }
   return buyers.sort((a, b) => a.arrival - b.arrival || a.id - b.id);
 }
@@ -167,8 +200,12 @@ export type Phase =
   | 'reading'
   | 'writing'
   | 'holding'
+  /** Pressed Pay and waiting for the bank. The seat may already be gone if the hold expired. */
+  | 'paying'
   | 'ticketed'
   | 'abandoned'
+  /** Lost the seat because the hold expired before the payment captured. */
+  | 'expired'
   | 'soldOut';
 
 interface LaneState {
@@ -176,6 +213,9 @@ interface LaneState {
   /** The seat a buyer is about to write, holds, or bought. -1 for none. */
   seat: number[];
   holdStart: number[];
+  /** Tick at which the buyer's hold lapses. -1 means it never does. */
+  expiresAt: number[];
+  payStart: number[];
   reads: number[];
   /** Buyer ids holding or owning each seat. Two or more means the seat was promised twice. */
   holders: number[][];
@@ -190,6 +230,10 @@ interface LaneState {
     abandoned: number;
     released: number;
     doubledSeats: number;
+    /** Approved payments the system voided because the hold had already expired. */
+    voided: number;
+    /** Buyers who lost their seat to an expired hold. */
+    lost: number;
   };
   queriesByTick: number[];
   peakQueries: number;
@@ -223,12 +267,24 @@ function emptyLane(buyers: number): LaneState {
     phase: Array.from({ length: buyers }, () => 'future' as Phase),
     seat: Array.from({ length: buyers }, () => -1),
     holdStart: Array.from({ length: buyers }, () => -1),
+    expiresAt: Array.from({ length: buyers }, () => -1),
+    payStart: Array.from({ length: buyers }, () => -1),
     reads: Array.from({ length: buyers }, () => 0),
     holders: Array.from({ length: SEATS }, () => []),
     doubled: Array.from({ length: SEATS }, () => false),
     queue: [],
     admitBudget: 0,
-    totals: { arrived: 0, ticketed: 0, rejected: 0, soldOut: 0, abandoned: 0, released: 0, doubledSeats: 0 },
+    totals: {
+      arrived: 0,
+      ticketed: 0,
+      rejected: 0,
+      soldOut: 0,
+      abandoned: 0,
+      released: 0,
+      doubledSeats: 0,
+      voided: 0,
+      lost: 0,
+    },
     queriesByTick: [],
     peakQueries: 0,
     series: [],
@@ -303,7 +359,9 @@ export class TicketDuel {
 
   private stepLane(lane: TicketLane, tick: number, arriving: number[]): void {
     const s = lane.state;
-    const { label, write, holdSeconds } = lane.config;
+    const { label, write, holdSeconds, checkoutSeconds } = lane.config;
+    const holdTicks = holdSeconds === null ? null : Math.round(holdSeconds / TICK_SECONDS);
+    const checkoutTicks = checkoutSeconds === null ? null : Math.round(checkoutSeconds / TICK_SECONDS);
     let queries = 0;
 
     for (const id of arriving) {
@@ -329,6 +387,7 @@ export class TicketDuel {
       holders.push(id);
       s.phase[id] = 'holding';
       s.holdStart[id] = tick;
+      s.expiresAt[id] = holdTicks === null ? -1 : tick + holdTicks;
       if (holders.length >= 2 && !s.doubled[seat]) {
         s.doubled[seat] = true;
         s.totals.doubledSeats += 1;
@@ -342,32 +401,62 @@ export class TicketDuel {
       }
     }
 
-    // Checkouts finish: buyers pay or walk away, and expired holds go back on sale.
-    const holdTicks = holdSeconds === null ? null : Math.round(holdSeconds / TICK_SECONDS);
+    // Checkouts move through hold, pay, and capture. Every hold past its deadline goes back on
+    // sale, whatever its buyer is doing, and a payment only captures against a live hold.
+    const expired = (id: number) => (s.expiresAt[id] ?? -1) >= 0 && tick >= (s.expiresAt[id] ?? -1);
     for (let id = 0; id < s.phase.length; id += 1) {
       const phase = s.phase[id];
-      if (phase !== 'holding' && phase !== 'abandoned') continue;
-      const seat = s.seat[id] ?? -1;
-      if (seat < 0) continue;
-      const held = tick - (s.holdStart[id] ?? tick);
+      if (phase !== 'holding' && phase !== 'paying' && phase !== 'abandoned') continue;
       const buyer = this.byId[id];
-      if (phase === 'holding' && buyer && held >= buyer.payTicks) {
+      if (!buyer) continue;
+      const seat = s.seat[id] ?? -1;
+      if (phase === 'holding' && tick - (s.holdStart[id] ?? tick) >= buyer.payTicks) {
         if (buyer.abandons) {
           s.phase[id] = 'abandoned';
           s.totals.abandoned += 1;
-        } else {
-          s.phase[id] = 'ticketed';
-          s.totals.ticketed += 1;
+        } else if (!expired(id)) {
+          // The claim is one conditional write: it succeeds only while this buyer's hold is live.
+          if (checkoutTicks !== null) s.expiresAt[id] = tick + checkoutTicks;
+          s.phase[id] = 'paying';
+          s.payStart[id] = tick;
         }
       }
-      if (s.phase[id] === 'abandoned' && holdTicks !== null && held >= holdTicks) {
+      if (s.phase[id] === 'paying' && tick - (s.payStart[id] ?? tick) >= buyer.paymentTicks) {
+        if (seat >= 0 && !expired(id)) {
+          s.phase[id] = 'ticketed';
+          s.totals.ticketed += 1;
+        } else {
+          s.phase[id] = 'expired';
+          s.totals.voided += 1;
+          s.totals.lost += 1;
+          if (s.totals.voided === 1) {
+            this.events.push({
+              tick: tick + 1,
+              text: `${label}: the bank approves a payment after its hold expired, so the system voids the authorization and that buyer gets no ticket.`,
+              marker: true,
+            });
+          }
+        }
+      }
+      const now = s.phase[id];
+      if (seat >= 0 && now !== 'ticketed' && expired(id)) {
         s.holders[seat] = (s.holders[seat] ?? []).filter((holder) => holder !== id);
         s.seat[id] = -1;
         s.totals.released += 1;
+        if (now === 'holding') {
+          s.phase[id] = 'expired';
+          s.totals.lost += 1;
+        }
         if (s.totals.released === 1) {
+          const why =
+            now === 'abandoned'
+              ? 'so the seat its buyer abandoned goes back on sale'
+              : now === 'paying'
+                ? 'while its buyer still waits on the bank, so the seat goes back on sale'
+                : 'before its buyer presses Pay, so the seat goes back on sale';
           this.events.push({
             tick: tick + 1,
-            text: `${label}: the hold on ${seatName(seat)} expires after ${holdSeconds} s, so the seat its buyer abandoned goes back on sale.`,
+            text: `${label}: the hold on ${seatName(seat)} expires after ${holdSeconds} s, ${why}.`,
             marker: true,
           });
         }
@@ -455,14 +544,15 @@ export class TicketDuel {
     const name = (lane: TicketLane) => lane.config.label.toLowerCase();
     const sa = summarize(a);
     const sb = summarize(b);
-    this.events.push({
-      tick: this.tickCount,
-      text:
-        this.scenario.metric === 'doubled'
-          ? `Run ends. Seats promised to two or more buyers: ${name(a)} ${sa.doubledSeats}, ${name(b)} ${sb.doubledSeats}. Tickets issued for ${SEATS} seats: ${sa.ticketed} and ${sb.ticketed}.`
-          : `Run ends. Tickets sold: ${name(a)} ${sa.ticketed}, ${name(b)} ${sb.ticketed}. Seats stuck with buyers who left: ${sa.stuck} and ${sb.stuck}.`,
-      marker: false,
-    });
+    let text: string;
+    if (this.scenario.metric === 'doubled') {
+      text = `Run ends. Seats promised to two or more buyers: ${name(a)} ${sa.doubledSeats}, ${name(b)} ${sb.doubledSeats}. Tickets issued for ${SEATS} seats: ${sa.ticketed} and ${sb.ticketed}.`;
+    } else if (this.scenario.workload.paymentSeconds) {
+      text = `Run ends. Tickets sold: ${name(a)} ${sa.ticketed}, ${name(b)} ${sb.ticketed}. Approved payments voided because the hold expired first: ${sa.voided} and ${sb.voided}.`;
+    } else {
+      text = `Run ends. Tickets sold: ${name(a)} ${sa.ticketed}, ${name(b)} ${sb.ticketed}. Seats stuck with buyers who left: ${sa.stuck} and ${sb.stuck}.`;
+    }
+    this.events.push({ tick: this.tickCount, text, marker: false });
   }
 }
 
@@ -486,20 +576,32 @@ export function countSeats(lane: TicketLane, view: SeatView): number {
 export interface PhaseCounts {
   queued: number;
   choosing: number;
+  /** Holding a seat or waiting on the bank. */
   checkout: number;
   ticketed: number;
   abandoned: number;
+  /** Lost the seat to an expired hold. */
+  lost: number;
   soldOut: number;
 }
 
 export function phaseCounts(lane: TicketLane): PhaseCounts {
-  const counts: PhaseCounts = { queued: 0, choosing: 0, checkout: 0, ticketed: 0, abandoned: 0, soldOut: 0 };
+  const counts: PhaseCounts = {
+    queued: 0,
+    choosing: 0,
+    checkout: 0,
+    ticketed: 0,
+    abandoned: 0,
+    lost: 0,
+    soldOut: 0,
+  };
   for (const phase of lane.state.phase) {
     if (phase === 'queued') counts.queued += 1;
     else if (phase === 'reading' || phase === 'writing') counts.choosing += 1;
-    else if (phase === 'holding') counts.checkout += 1;
+    else if (phase === 'holding' || phase === 'paying') counts.checkout += 1;
     else if (phase === 'ticketed') counts.ticketed += 1;
     else if (phase === 'abandoned') counts.abandoned += 1;
+    else if (phase === 'expired') counts.lost += 1;
     else if (phase === 'soldOut') counts.soldOut += 1;
   }
   return counts;
@@ -516,6 +618,10 @@ export interface TicketSummary {
   /** Seats held right now by a buyer who already walked away. */
   stuck: number;
   released: number;
+  /** Approved payments voided because the hold expired before capture. */
+  voided: number;
+  /** Buyers who lost their seat to an expired hold, paying or not. */
+  lost: number;
 }
 
 export function summarize(lane: TicketLane): TicketSummary {
@@ -530,6 +636,8 @@ export function summarize(lane: TicketLane): TicketSummary {
     abandoned: t.abandoned,
     stuck: countSeats(lane, 'left'),
     released: t.released,
+    voided: t.voided,
+    lost: t.lost,
   };
 }
 

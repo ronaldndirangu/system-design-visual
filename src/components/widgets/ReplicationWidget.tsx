@@ -26,9 +26,11 @@ const DB_WIDTH = 104;
 const ROW_Y = 186;
 const NODE_BOTTOM = ROW_Y + 32;
 
+const REPLAY_COST = defaultReplicationConfig.replayCost;
+
 type Settings = Pick<
   ReplicationConfig,
-  'replicas' | 'lagTicks' | 'readsPerTick' | 'freshReadShare' | 'readYourWrites'
+  'replicas' | 'lagTicks' | 'writesPerTick' | 'readsPerTick' | 'freshReadShare' | 'readYourWrites'
 >;
 
 function nodeX(index: number, count: number): number {
@@ -70,6 +72,7 @@ export default function ReplicationWidget({
   const start: Settings = {
     replicas: initial.replicas ?? 0,
     lagTicks: initial.lagTicks ?? defaultReplicationConfig.lagTicks,
+    writesPerTick: initial.writesPerTick ?? defaultReplicationConfig.writesPerTick,
     readsPerTick: initial.readsPerTick ?? defaultReplicationConfig.readsPerTick,
     freshReadShare: initial.freshReadShare ?? defaultReplicationConfig.freshReadShare,
     readYourWrites: initial.readYourWrites ?? false,
@@ -124,7 +127,9 @@ export default function ReplicationWidget({
     };
   });
 
-  const lagSeconds = Math.max(0.15, settings.lagTicks / TICKS_PER_SECOND);
+  const replicaLagsMs = sim()
+    .replicaLags()
+    .map((lag) => lag * MS_PER_TICK);
   const flows: Flow[] = trail.flatMap((tick) => {
     const items: Flow[] = [];
     tick.sample.forEach((event, index) => {
@@ -141,7 +146,7 @@ export default function ReplicationWidget({
             items.push({
               id: `${tick.tick}-c${r}`,
               points: replica.points,
-              duration: lagSeconds,
+              duration: Math.max(0.15, (replicaLagsMs[r] ?? 0) / 1000),
               delay: 0.5,
             });
           });
@@ -167,13 +172,27 @@ export default function ReplicationWidget({
     ? { tone: 'neutral', text: 'Ready' }
     : stats.overloadedPerTick > 0
       ? { tone: 'bad', text: 'Overloaded: reads over capacity' }
-      : stats.staleReadRate > 0
-        ? { tone: 'warn', text: 'Some reads are stale' }
-        : { tone: 'ok', text: 'Healthy' };
+      : stats.timeTravelReads > 0
+        ? { tone: 'warn', text: 'Some reads went back in time' }
+        : stats.staleReadRate > 0
+          ? { tone: 'warn', text: 'Some reads are stale' }
+          : { tone: 'ok', text: 'Healthy' };
 
   const lagMs = settings.lagTicks * MS_PER_TICK;
+  const perSecond = (ops: number) => Math.round(ops * TICKS_PER_SECOND).toLocaleString('en-US');
+  const replayed = settings.writesPerTick * REPLAY_COST;
+  const loss = sim().failoverLoss();
+  const fewestLost = Math.min(...loss);
+  const mostLost = Math.max(...loss);
+  const capacityDetail =
+    settings.replicas === 0
+      ? `the primary alone: ${perSecond(CAPACITY)}/s minus ${perSecond(settings.writesPerTick)}/s of writes`
+      : `${settings.replicas} ${settings.replicas === 1 ? 'replica' : 'replicas'} × (${perSecond(CAPACITY)}/s minus ${perSecond(replayed)}/s of replayed writes); the primary only writes`;
+  const lagList = replicaLagsMs
+    .map((ms, i) => `replica ${i + 1} ${ms.toLocaleString('en-US')} ms`)
+    .join(', ');
   const summary = started
-    ? `${status.text}. Busiest database at ${Math.round(busiest * 100)} percent. ${(stats.staleReadRate * 100).toFixed(1)} percent of reads were stale.`
+    ? `${status.text}. Busiest database at ${Math.round(busiest * 100)} percent. ${(stats.staleReadRate * 100).toFixed(1)} percent of reads were stale, and ${stats.timeTravelReads} went back in time.`
     : `Ready. ${settings.replicas} replicas.`;
 
   return (
@@ -189,8 +208,8 @@ export default function ReplicationWidget({
         stats={[
           {
             label: 'Read capacity',
-            value: `${(stats.readCapacityPerTick * TICKS_PER_SECOND).toLocaleString('en-US')}/s`,
-            detail: `${count} ${count === 1 ? 'database' : 'databases'} × ${CAPACITY * TICKS_PER_SECOND} requests/s, minus writes`,
+            value: `${perSecond(stats.readCapacityPerTick)}/s`,
+            detail: capacityDetail,
           },
           {
             label: 'Busiest database',
@@ -208,6 +227,26 @@ export default function ReplicationWidget({
             detail: 'a replica answered before the newest write reached it',
             tone: stats.staleReadRate > 0 ? 'warn' : undefined,
           },
+          {
+            label: 'Went back in time (last 2 seconds)',
+            value: stats.timeTravelReads.toLocaleString('en-US'),
+            detail: 'an earlier read found the link, then a more lagging replica answered Not found',
+            tone: stats.timeTravelReads > 0 ? 'warn' : undefined,
+          },
+          ...(settings.replicas > 0
+            ? [
+                {
+                  label: 'Writes lost if the primary crashed now',
+                  value:
+                    fewestLost === mostLost
+                      ? fewestLost.toLocaleString('en-US')
+                      : `${fewestLost.toLocaleString('en-US')} to ${mostLost.toLocaleString('en-US')}`,
+                  detail:
+                    'acknowledged writes the promoted replica never received; the least lagging replica loses the fewest',
+                  tone: mostLost > 0 ? ('warn' as const) : undefined,
+                },
+              ]
+            : []),
         ]}
         controls={
           <>
@@ -230,11 +269,21 @@ export default function ReplicationWidget({
               onChange={(v) => change({ readsPerTick: v })}
             />
             <Slider
-              label="Replication lag"
+              label="Writes per second"
+              value={settings.writesPerTick}
+              min={1}
+              max={20}
+              format={(v) => (v * TICKS_PER_SECOND).toLocaleString('en-US')}
+              hint="Every replica replays every write, so writes use up replica capacity too."
+              onChange={(v) => change({ writesPerTick: v })}
+            />
+            <Slider
+              label="Average replication lag"
               value={settings.lagTicks}
               min={0}
               max={20}
               format={(v) => `${(v * MS_PER_TICK).toLocaleString('en-US')} ms`}
+              hint="Each replica trails by its own amount, from half to one and a half times this."
               onChange={(v) => change({ lagTicks: v })}
             />
             {showConsistency && (
@@ -250,7 +299,7 @@ export default function ReplicationWidget({
                   onChange={(v) => change({ freshReadShare: Math.round(v * 100) / 100 })}
                 />
                 <Toggle
-                  label="Read your own writes: send reads of new links to the primary"
+                  label="Read your own writes: a replica that lacks your write's log position hands the read to the primary"
                   checked={settings.readYourWrites}
                   onChange={(readYourWrites) => change({ readYourWrites })}
                 />
@@ -264,7 +313,7 @@ export default function ReplicationWidget({
             className="sdv-replication"
             viewBox="0 0 600 330"
             role="img"
-            aria-label={`App server sending writes to the primary database and reads to ${settings.replicas === 0 ? 'the primary' : `${settings.replicas} replicas`}. Replicas copy each write ${lagMs} ms later.`}
+            aria-label={`App server sending writes to the primary database and reads to ${settings.replicas === 0 ? 'the primary' : `${settings.replicas} replicas`}.${settings.replicas > 0 ? ` Replicas copy each write after their own lag: ${lagList}.` : ''}`}
           >
             <ArrowDefs id={arrow} />
             {nodeIds.map((id, i) => {
@@ -294,6 +343,9 @@ export default function ReplicationWidget({
                 y={ROW_Y}
                 width={DB_WIDTH}
                 label={i === 0 ? 'Primary' : `Replica ${i}`}
+                sublabel={
+                  i === 0 ? undefined : `lag ${(replicaLagsMs[i - 1] ?? 0).toLocaleString('en-US')} ms`
+                }
                 highlight={i === 0}
                 status={utilization[i] !== undefined && utilization[i] > 0.85 ? 'warn' : undefined}
               />
@@ -301,7 +353,8 @@ export default function ReplicationWidget({
             <FlowDots flows={flows} />
             {settings.replicas > 0 && (
               <text className="sdv-chart__label" x={APP.x} y={322} textAnchor="middle">
-                Dashed lines copy each write to the replicas {lagMs.toLocaleString('en-US')} ms later.
+                Dashed lines copy each write. Each replica trails by its own lag, spread around{' '}
+                {lagMs.toLocaleString('en-US')} ms.
               </text>
             )}
           </svg>
@@ -312,7 +365,7 @@ export default function ReplicationWidget({
             id: i,
             label: i === 0 ? 'Primary (all writes)' : `Replica ${i}`,
             fill: utilization[i] ?? 0,
-            value: `${(load * TICKS_PER_SECOND).toLocaleString('en-US')} of ${CAPACITY * TICKS_PER_SECOND}/s`,
+            value: `${perSecond(load)} of ${perSecond(CAPACITY)}/s`,
           }))}
         />
         <div className="sdv-strip">
@@ -325,10 +378,11 @@ export default function ReplicationWidget({
                 // biome-ignore lint/suspicious/noArrayIndexKey: position in a rolling window
                 key={index}
                 className={event.stale ? 'sdv-strip__bad' : 'sdv-strip__hit'}
-                title={`Read from the ${nodeName(event.node)}${event.stale ? ': stale' : ''}`}
+                title={`Read from the ${nodeName(event.node)}${event.timeTravel ? ': went back in time' : event.stale ? ': stale' : ''}`}
               >
                 <span className="sdv-visually-hidden">
-                  {event.stale ? 'Stale' : 'Fresh'} read from the {nodeName(event.node)}
+                  {event.timeTravel ? 'Went back in time' : event.stale ? 'Stale' : 'Fresh'} read from the{' '}
+                  {nodeName(event.node)}
                 </span>
               </li>
             ))}

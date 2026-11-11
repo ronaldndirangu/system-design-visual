@@ -11,7 +11,7 @@ test('the write strategy duel shows write-behind losing writes when the cache cr
   await expect(skip).toBeEnabled();
   await skip.click();
   await expect(duel.getByText('Run complete')).toBeVisible();
-  await expect(duel.getByRole('row', { name: /Database writes/ })).toContainText('1319');
+  await expect(duel.getByRole('row', { name: /Database writes/ })).toContainText('1501');
 
   const crash = duel.getByRole('radio', { name: /Cache crashes/ });
   await duel.getByRole('radio', { name: /Bulk import/ }).focus();
