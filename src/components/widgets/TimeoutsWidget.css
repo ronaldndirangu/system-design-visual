@@ -1,0 +1,75 @@
+/* The stage stretches every svg to full width; keep the badge icon at its normal size. */
+.sdv-tw__lane > .sdv-badge {
+  justify-self: start;
+}
+.sdv-tw__lane > .sdv-badge svg {
+  display: inline-block;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.sdv-tw__pool {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+}
+.sdv-tw__pool-name {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+  margin: 0;
+}
+.sdv-tw__cells {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+.sdv-tw__cell {
+  aspect-ratio: 1.6;
+  background: transparent;
+  border: 1px dashed var(--sl-color-gray-3);
+  border-radius: 0.2rem;
+  display: inline-block;
+  min-height: 0.8rem;
+  position: relative;
+}
+.sdv-qtracks__legend .sdv-tw__cell {
+  height: 0.9rem;
+  width: 1.4rem;
+}
+.sdv-tw__cell[data-state="working"] {
+  background: color-mix(in oklab, var(--sdv-server) 75%, var(--sl-color-bg));
+  border: 1px solid var(--sdv-server);
+}
+.sdv-tw__cell[data-kind="connection"][data-state="working"] {
+  background: color-mix(in oklab, var(--sdv-db) 75%, var(--sl-color-bg));
+  border-color: var(--sdv-db);
+}
+.sdv-tw__cell[data-state="waiting"] {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-warn) 0 3px,
+    color-mix(in oklab, var(--sdv-warn) 30%, var(--sl-color-bg)) 3px 6px
+  );
+  border: 1px solid var(--sdv-warn);
+}
+.sdv-tw__cell[data-state="nobody"] {
+  background: color-mix(in oklab, var(--sdv-bad) 25%, var(--sl-color-bg));
+  border: 1px solid var(--sdv-bad);
+  overflow: hidden;
+}
+.sdv-tw__cell[data-state="nobody"]::before,
+.sdv-tw__cell[data-state="nobody"]::after {
+  background: var(--sdv-bad);
+  content: "";
+  height: 2px;
+  inset-inline-start: -10%;
+  position: absolute;
+  top: calc(50% - 1px);
+  width: 120%;
+}
+.sdv-tw__cell[data-state="nobody"]::before {
+  transform: rotate(32deg);
+}
+.sdv-tw__cell[data-state="nobody"]::after {
+  transform: rotate(-32deg);
+}

@@ -178,7 +178,8 @@ export const curriculum: CourseModule[] = [
         id: 'reliability/timeouts',
         title: 'Timeouts and cancellation',
         summary: 'Stop waiting forever on a dependency, and stop doing work nobody is waiting for.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'reliability/queues-and-backpressure',

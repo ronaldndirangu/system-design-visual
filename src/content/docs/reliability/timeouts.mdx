@@ -1,0 +1,320 @@
+---
+title: Timeouts and cancellation
+description: Watch one hung database replica freeze every sho.rt worker, then free them with timeouts, cancellation, and one deadline shared by every hop.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import TimeoutsWidget from '../../../components/widgets/TimeoutsWidget';
+import DeadlineBudgetWidget from '../../../components/widgets/DeadlineBudgetWidget';
+
+export const nodes = [
+  { id: 'client', kind: 'client', x: 70, y: 150, label: 'Visitor' },
+  { id: 'server', kind: 'server', x: 270, y: 150, label: 'sho.rt server', sublabel: '16 workers' },
+  { id: 'a', kind: 'database', x: 500, y: 50, label: 'Replica A' },
+  { id: 'b', kind: 'database', x: 500, y: 150, label: 'Replica B' },
+  { id: 'c', kind: 'database', x: 500, y: 250, label: 'Replica C' },
+];
+export const edges = [
+  { from: 'client', to: 'server' },
+  { from: 'server', to: 'a' },
+  { from: 'server', to: 'b' },
+  { from: 'server', to: 'c', dashed: true },
+];
+export const steps = [
+  {
+    title: 'A click arrives',
+    text: 'A visitor opens sho.rt/abc123. The server hands the request to one of its 16 workers.',
+    nodes: ['client', 'server'],
+    flows: ['client>server'],
+  },
+  {
+    title: 'The worker looks up the link',
+    text: 'The worker borrows a database connection and asks a replica for the long URL. A healthy replica answers in 10 to 30 ms, and the worker is free again.',
+    nodes: ['server', 'a'],
+    flows: ['server>a', 'a>server'],
+  },
+  {
+    title: 'Replica C stops answering',
+    text: 'Replica C hangs: it accepts the query and never replies. The worker that asked it now waits, holding its connection the whole time.',
+    nodes: ['server', 'c'],
+    flows: ['server>c'],
+  },
+  {
+    title: 'With no timeout, workers pile up',
+    text: 'Every third lookup lands on C, and each one traps another worker. Soon all 16 wait on C, and clicks for links on A and B queue behind them with nobody free to serve them.',
+    nodes: ['client', 'server', 'c'],
+    flows: ['client>server', 'server>c'],
+  },
+  {
+    title: 'A timeout frees the worker',
+    text: 'With a 150 ms timeout, the worker stops waiting, answers 504 Gateway Timeout, and takes the next request. Only the clicks that needed C fail.',
+    nodes: ['client', 'server'],
+    flows: ['server>client'],
+  },
+  {
+    title: 'Cancellation frees the database',
+    text: 'The timeout also cancels the query, so its database connection returns to the pool and replica C stops working on an answer nobody will read.',
+    nodes: ['server', 'c'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'One of three database replicas hangs, and the sho.rt server has no timeouts. Why do redirects for links stored on the two healthy replicas fail too?',
+    options: [
+      { text: 'The healthy replicas slow down in sympathy with the broken one', why: 'The healthy replicas keep answering quickly. The damage happens inside the sho.rt server, before a request ever reaches them.' },
+      { text: 'Workers stuck waiting on the hung replica leave no worker free for any request', correct: true, why: 'Each lookup on the hung replica traps a worker. Once every worker is trapped, the queue fills and new requests get 503, whatever replica they needed.' },
+      { text: 'The load balancer stops sending traffic to the server', why: 'Nothing in this story touches the load balancer. The server keeps receiving requests; it just has no free worker to run them.' },
+      { text: 'The network between the server and the healthy replicas fills up', why: 'A hung query sends nothing, so it uses almost no network. Workers and connections run out long before bandwidth does.' },
+    ],
+  },
+  {
+    prompt: 'Healthy link lookups take at most 30 ms. Which timeout fits best?',
+    options: [
+      { text: 'Exactly 30 ms', why: 'A timeout right at the healthy maximum fails ordinary requests on any small hiccup, such as a pause for garbage collection.' },
+      { text: 'A few times the slowest healthy lookup, such as 150 ms', correct: true, why: 'It leaves room for normal variation, and it still frees a stuck worker quickly. Check that call rate times timeout fits the pool.' },
+      { text: '30 seconds, to be safe', why: 'A long timeout rarely cuts off a good request, yet it barely helps: at 17 hung lookups per second, a 30 s timeout would hold about 500 workers at once.' },
+      { text: 'No timeout, since the database is fast', why: 'The database is fast until it hangs. A call without a timeout lets one stuck dependency hold a worker forever.' },
+    ],
+  },
+  {
+    prompt: 'The server times out after 150 ms but does not cancel the database query. Replica C hangs. What runs out first?',
+    options: [
+      { text: 'Server workers', why: 'The timeout frees each worker at 150 ms. The query it started is what stays behind.' },
+      { text: 'Database connections', correct: true, why: 'Each abandoned query keeps its connection until replica C answers. Once all connections are held, every lookup waits and times out, even for links on A and B.' },
+      { text: 'Nothing, because the timeout already freed the request', why: 'The request is gone, yet its query is still running. Without cancellation, those leftover queries pile up.' },
+      { text: 'Disk space on the database', why: 'A read query does not write to disk. Connections are the scarce resource here.' },
+    ],
+  },
+  {
+    prompt: 'The client app waits 1 s, the gateway waits 3 s for the server, and the server waits 5 s for the database. One query takes 4 s. What goes wrong?',
+    options: [
+      { text: 'Nothing, because each layer has a timeout', why: 'Each layer has one, yet the inner timeouts are longer than the outer one. They keep working long after the client stopped listening.' },
+      { text: 'The server and database keep working for about 3 s after the client gave up', correct: true, why: 'Nobody below the client knows it left. Passing the remaining deadline along lets every hop stop at the same moment.' },
+      { text: 'The gateway answers the client at 3 s', why: 'The client gave up at 1 s and is no longer listening. Anything the gateway sends after that is wasted.' },
+      { text: 'The database query gets cancelled at 1 s', why: 'Only a deadline passed down from the client, or an explicit cancel, can stop it at 1 s. Fixed timeouts on each hop know nothing about the client.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain how one hung dependency can take down every request on a server, including requests that never touch it.
+- Choose a timeout that frees workers fast without failing healthy requests.
+- Explain why a timeout without cancellation still leaks database connections and work.
+- Use one deadline, passed from hop to hop, so every layer stops when the caller gives up.
+
+</Objectives>
+
+## The failure: one replica hangs
+
+The sho.rt server answers 50 redirects per second with 16 workers. Each redirect looks up the long URL on one of three
+database replicas, A, B, or C, and a healthy lookup takes 10 to 30 ms. At 3 s, replica C hangs: it accepts each query
+and never replies. A third of all lookups go to C.
+
+<Predict
+  client:visible
+  question="The server has no timeouts. What happens to redirects for links that live on replicas A and B?"
+  options={[
+    'They keep working, since only replica C is broken',
+    'They slow down a little, then recover on their own',
+    'Within about a second, they fail too',
+    'They fail only if they arrive at the same instant as a request for C',
+  ]}
+  answer={2}
+>
+
+**Within about a second, they fail too.** Every lookup sent to C traps a worker. By 3.8 s all 16 workers wait on C,
+and by 4.1 s the queue is full, so every new request gets **503 Service Unavailable**, whatever replica it needed. In
+this toy model with seed 42, the server with no timeout serves 615 of 1,007 redirects. The same server with a 150 ms
+timeout serves 853, and only the 154 clicks that needed C fail.
+
+</Predict>
+
+<TimeoutsWidget
+  client:visible
+  scenarios={['hang', 'healthy']}
+  initial="hang"
+  title="Same traffic, two timeout settings"
+  instructions="Press Play and watch the worker grid in the No timeout lane fill with stuck workers. Then pick All replicas healthy: when every replica answers, the timeout changes nothing."
+/>
+
+## Why one slow dependency takes everything down
+
+A worker that waits on a hung call does nothing else. Workers are a fixed pool, so every hung call removes one from
+service. The healthy replicas sit idle while their requests wait in line behind workers that will never come back.
+
+A **timeout** caps how long a caller waits. When it fires, the caller gives up, reports an error (here **504 Gateway
+Timeout**), and moves on to the next request. The failure stays the size of the broken part: a third of the clicks fail
+instead of all of them.
+
+Many HTTP client libraries wait forever by default. Python's popular requests library, for example, never times out
+unless you pass a timeout. Every call that leaves your process needs an explicit one.
+
+<StepDiagram client:visible title="A hung replica, step by step" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy>
+
+You call a support line and get put on hold. With no limit, you wait all afternoon and get nothing else done. A timeout
+is deciding to hang up after five minutes. Cancellation is the support agent dropping your case when you hang up,
+instead of spending an hour researching an answer for a caller who already left.
+
+</Analogy>
+
+## How long should a timeout be?
+
+A timeout that is too short fails healthy requests on any small hiccup. A timeout that is too long barely helps,
+because a worker stays trapped for the whole wait.
+
+<Predict
+  client:visible
+  question="Replica C hangs again, and the timeout is 2 s instead of 150 ms. Do the 16 workers still fill up?"
+  options={['Yes, all 16 fill up', 'No, a 2 s timeout frees them in time', 'Only about half of them fill up']}
+  answer={0}
+>
+
+**Yes, all 16 fill up.** About 17 requests per second go to C, a third of 50. If each holds a worker for 2 s, about
+17 × 2 ≈ 33 workers are stuck at any moment, twice the pool. With 150 ms, the same math gives 17 × 0.15 ≈ 2.5 workers.
+In this toy model with seed 42, the 2 s lane fills all 16 workers at 3.8 s and fails 255 requests (192 turned away and
+63 timed out), against 154 for the 150 ms lane.
+
+</Predict>
+
+<TimeoutsWidget
+  client:visible
+  scenarios={['long']}
+  title="A timeout that is too long"
+  instructions="Press Play. Both lanes time out and cancel; only the length differs. Watch whether the 2 s lane runs out of workers."
+/>
+
+That multiplication is **Little's law**: the number of things in a system equals their arrival rate times how long each
+one stays. It returns in the next lesson, Queues and backpressure. For timeouts it gives a simple check:
+
+1. Start from healthy latency. Set the timeout a few times above the slowest healthy response you expect, such as the
+   99.9th percentile, so normal variation never trips it.
+2. Multiply the rate of calls that might hang by the timeout. If the result is bigger than your worker or connection
+   pool, the pool can still fill during an outage, so shorten the timeout or give that dependency its own small pool.
+
+## Timing out is half the job: cancel the work
+
+When a timeout fires, the request gives up. The work it started keeps going: the database query holds its connection
+and runs until it finishes or someone cancels it.
+
+<Predict
+  client:visible
+  question="Both lanes time out after 150 ms. One also cancels the database query; the other just walks away. Does skipping the cancel matter?"
+  options={[
+    'No, the timeout already freed the worker',
+    'Yes, abandoned queries hold every database connection, so most requests time out',
+    'Yes, but it only makes requests for C a little slower',
+  ]}
+  answer={1}
+>
+
+**Yes, abandoned queries hold every database connection.** Each abandoned query on C keeps a connection, and by 3.8 s
+all 16 are taken. After that, every lookup waits for a connection and times out, even for links on A and B. In this toy
+model with seed 42, the lane without cancellation times out 449 requests, against 154 with cancellation. After C
+recovers, the database still runs all 449 abandoned queries for nobody, and real requests succeed again only 0.7 s
+later.
+
+</Predict>
+
+<TimeoutsWidget
+  client:visible
+  scenarios={['nocancel']}
+  title="Timing out without cancelling"
+  instructions="Press Play and watch the database connection grid. Cells with an X hold a query for a request that already gave up."
+/>
+
+Cancellation has to travel the whole way down. In Go, a request carries a `context` that every call checks and passes
+along. Java and .NET use interrupts and cancellation tokens for the same job. Many database drivers can cancel a running
+query when the context ends. A query that nobody tells to stop keeps running.
+
+Cancelling a **write** is harder: the write may already have reached the database when the cancel arrives, so the
+caller cannot know whether it happened. The Idempotency lesson shows how to make that uncertainty safe.
+
+## One deadline for the whole trip
+
+A redirect passes through several hops: the client app, an API gateway, the sho.rt server, and the link database. If
+each hop picks its own timeout, the inner ones are often longer than the outer ones, and nobody downstream learns that
+the client gave up.
+
+A **deadline** fixes this. The client sets one moment by which the answer must arrive, and each hop passes the time
+remaining to the next. gRPC does this for you: it sends the remaining time with each call, so clock differences between
+machines do not matter. When the deadline passes, every hop stops together.
+
+<Predict
+  client:visible
+  question="The client gives up at 1 s. The gateway waits up to 3 s for the server, the server waits up to 5 s for the database, and this query takes 2.5 s. When does the last hop stop working?"
+  options={[
+    'At 1 s, together with the client',
+    'At about 2.5 s, when the query finishes',
+    'At about 3 s, when the gateway timer fires',
+    'At about 5 s, when the server timer fires',
+  ]}
+  answer={1}
+>
+
+**At about 2.5 s, when the query finishes.** None of the inner hops knows the client left. The database has no limit
+and finishes at 2,540 ms. The server and gateway are still within their own timeouts, so all three keep working for
+1,540 ms after the client gave up. Switch to **Pass the deadline along** and every hop stops at 1,000 ms.
+
+</Predict>
+
+<DeadlineBudgetWidget client:visible />
+
+The client still gets an error when the deadline passes. What changes is the cost of that error: with a shared deadline
+the system stops spending workers, connections, and database time on answers nobody will read. The lesson Retries with
+backoff and jitter builds on this, because a retry that ignores the deadline doubles the wasted work.
+
+## Try it: break things on purpose
+
+1. In the first simulation, press Play with **Replica C hangs**, then switch to **All replicas healthy** and play again.
+   The two lanes match exactly: a timeout costs nothing while every dependency answers.
+2. In the deadline timeline, drag the query time down to 500 ms. Both timeout styles answer the client at 540 ms.
+3. Set the query time to 2,500 ms with fixed timeouts, then switch to **Pass the deadline along**. The work after the
+   client gave up drops from 1,540 ms to none.
+4. Drag the query time to 4,000 ms with fixed timeouts. The gateway's own 3 s timer fires at 3,010 ms, yet the server
+   and database still run to 4,040 ms, because the gateway never told them to stop.
+
+## Trade-offs
+
+<TradeoffTable title="How long to wait, and what to stop">
+
+| Choice                  | What it buys                                    | What it costs                                                                            |
+| ----------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| No timeout              | Never abandons a slow but valid request         | One hung dependency can hold every worker forever                                        |
+| Short timeout           | Frees workers fast, so the failure stays small  | Fails healthy requests on normal hiccups if set too close to typical latency             |
+| Long timeout            | Rarely cuts off a healthy request               | Workers still pile up: call rate × timeout can exceed the pool                           |
+| Cancel on timeout       | Frees connections and stops work for nobody     | Every layer must check for cancellation, and a cancelled write leaves its outcome unknown |
+| Pass one deadline along | Every hop stops when the caller gives up        | Every service must read, honor, and forward the remaining time                           |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+sho.rt serves 1,000 redirects per second with 200 workers. Each redirect also calls the click analytics service to
+record the click, with a 2 s timeout. One afternoon the analytics service hangs. How many analytics calls are stuck at
+once, and what would you change so that a broken analytics service never breaks redirects?
+
+<div slot="answer">
+
+- By Little's law, 1,000 calls per second × 2 s = **2,000 calls stuck at once**, ten times the 200 workers. Every
+  redirect fails, even though the redirect itself never needed analytics.
+- **Take analytics off the critical path.** The visitor only needs the long URL. Record the click in the background, for
+  example by writing it to a local buffer or queue that ships events later.
+- If the call must stay in the request, give it a **short timeout**, such as 50 ms (1,000 × 0.05 = 50 calls stuck at
+  most), **cancel** it when the timeout fires, and run it in its **own small pool** so it can never take the workers
+  that serve redirects.
+
+</div>
+
+</Challenge>
