@@ -17,7 +17,7 @@ export interface WriteScenario {
   readsPerSecond: number;
   /** Edits to existing links per second, mostly to popular links. */
   editsPerSecond: number;
-  /** Every read also adds 1 to that link's click count. */
+  /** Every read also adds 1 to that link's click count, a separate key from the redirect. */
   countClicks: boolean;
   /** New links per second that nobody reads during the run. */
   importsPerSecond: number;
@@ -43,6 +43,10 @@ export const CACHE_MS = 1;
 export const DB_MS = 10;
 /** Imported links get ids far above the popular ones, so they never collide. */
 const IMPORT_BASE = 10_000;
+/** A click count is its own data item, stored under its own key apart from the redirect it counts. */
+const CLICK_BASE = 100_000;
+
+export const clickKey = (link: number): number => CLICK_BASE + link;
 const READ_SKEW = 1;
 /** The import marker fires the first time a lane's last second hit ratio falls below this. */
 const DROP_PERCENT = 70;
@@ -103,7 +107,7 @@ export const strategyPaths: Record<WriteStrategy, string> = {
   'write-behind':
     'Each write updates only the cache and returns. Every 2 s the cache saves its changes to the database.',
   'write-around':
-    'Each write updates the database and deletes the cached copy. The next read loads it again.',
+    'Each write goes only to the database and never fills the cache. A cached copy of the same key is deleted.',
 };
 
 export interface LaneTotals {
@@ -327,7 +331,7 @@ export class WriteDuel {
         countClicks
           ? [
               { kind: 'read', key },
-              { kind: 'write', key },
+              { kind: 'write', key: clickKey(key) },
             ]
           : [{ kind: 'read', key }],
       );
