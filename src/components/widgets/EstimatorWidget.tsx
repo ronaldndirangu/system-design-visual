@@ -1,5 +1,6 @@
 import { m } from 'motion/react';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
+import { logFraction, logRange, logTicks } from '../../lib/logAxis';
 import {
   type EstimateInputs,
   estimate,
@@ -11,6 +12,8 @@ import {
 } from '../../lib/models/estimates';
 import { Segmented, Slider } from '../sim/controls';
 import { MotionRoot } from '../sim/MotionRoot';
+import { useElementWidth } from '../sim/useElementWidth';
+import { useHydrated } from '../sim/useHydrated';
 import { WidgetFrame } from '../sim/WidgetFrame';
 
 type Choice = PresetId | 'custom';
@@ -20,16 +23,28 @@ const presetOptions = (Object.keys(presets) as PresetId[]).map((id) => ({
   label: presets[id].label,
 }));
 
-const AXIS_MIN = -2;
-const AXIS_MAX = 6;
-const CHART = { width: 520, left: 112, right: 500, top: 34, lane: 38 };
+const FALLBACK_WIDTH = 520;
+// Below this chart width the lane names move above their bars so the bars keep most of the width.
+const STACK_BELOW = 440;
+const BAR_HEIGHT = 20;
+const LIMIT_LABEL_HALF_WIDTH = 90;
 const SERVER_ICONS_SHOWN = 48;
 const SAMPLE_CODE = 'aZ3k9QxP2mT';
 
-function xFor(value: number): number {
-  const exponent = Math.log10(Math.max(value, 10 ** AXIS_MIN));
-  const clamped = Math.min(AXIS_MAX, Math.max(AXIS_MIN, exponent));
-  return CHART.left + ((clamped - AXIS_MIN) / (AXIS_MAX - AXIS_MIN)) * (CHART.right - CHART.left);
+interface ChartLayout {
+  stacked: boolean;
+  left: number;
+  right: number;
+  top: number;
+  lane: number;
+  labelY: number;
+  barY: number;
+}
+
+function chartLayout(width: number): ChartLayout {
+  return width < STACK_BELOW
+    ? { stacked: true, left: 20, right: width - 20, top: 30, lane: 50, labelY: 14, barY: 22 }
+    : { stacked: false, left: 136, right: width - 28, top: 30, lane: 38, labelY: 23, barY: 8 };
 }
 
 function formatRate(value: number): string {
@@ -38,7 +53,38 @@ function formatRate(value: number): string {
   return formatCount(value);
 }
 
-const tickLabels = ['0.01', '0.1', '1', '10', '100', '1K', '10K', '100K', '1M'];
+/** Radio buttons when the row has room, and a native select below 30rem so the options never wrap. */
+function ScaleControl({ value, onChange }: { value: Choice; onChange: (id: Choice) => void }) {
+  const id = useId();
+  const hydrated = useHydrated();
+  return (
+    <div className="sdv-estimator__scale">
+      <Segmented label="Scale" value={value} options={presetOptions} onChange={onChange} />
+      <div className="sdv-control sdv-estimator__scale-select">
+        <div className="sdv-control__row">
+          <label htmlFor={id}>Scale</label>
+        </div>
+        <select
+          id={id}
+          value={value}
+          disabled={!hydrated}
+          onChange={(event) => onChange(event.currentTarget.value as Choice)}
+        >
+          {presetOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+          {value === 'custom' && (
+            <option value="custom" disabled>
+              Custom (set by the sliders)
+            </option>
+          )}
+        </select>
+      </div>
+    </div>
+  );
+}
 
 /** Back-of-envelope calculator for the URL shortener, with every formula shown. */
 export default function EstimatorWidget() {
@@ -56,13 +102,29 @@ export default function EstimatorWidget() {
     setInputs({ ...presets[id].inputs });
   };
 
+  const chartRef = useRef<HTMLDivElement>(null);
+  const chartWidth = useElementWidth(chartRef, FALLBACK_WIDTH);
+  const layout = chartLayout(chartWidth);
+
   const perServer = inputs.requestsPerServer * TARGET_UTILIZATION;
   const lanes = [
     { label: 'Writes per second', value: result.writesPerSecond, tone: 'write' },
     { label: 'Reads per second', value: result.readsPerSecond, tone: 'read' },
     { label: 'Peak requests', value: result.peakRequestsPerSecond, tone: 'peak' },
   ] as const;
-  const chartHeight = CHART.top + lanes.length * CHART.lane + 36;
+  const range = logRange([...lanes.map((lane) => lane.value), perServer]);
+  const plotWidth = layout.right - layout.left;
+  const xFor = (value: number) => layout.left + logFraction(value, range) * plotWidth;
+  const ticks = logTicks(range, plotWidth);
+  const lanesBottom = layout.top + lanes.length * layout.lane;
+  const chartHeight = lanesBottom + 36;
+  const limitX = xFor(perServer);
+  const limitAnchor =
+    limitX - layout.left < LIMIT_LABEL_HALF_WIDTH
+      ? 'start'
+      : layout.right - limitX < LIMIT_LABEL_HALF_WIDTH
+        ? 'end'
+        : 'middle';
   const shown = Math.min(result.serversNeeded, SERVER_ICONS_SHOWN);
   const code = SAMPLE_CODE.slice(0, result.shortCodeLength).padEnd(result.shortCodeLength, 'x');
 
@@ -119,7 +181,7 @@ export default function EstimatorWidget() {
         ]}
         controls={
           <>
-            <Segmented label="Scale" value={choice} options={presetOptions} onChange={pickPreset} />
+            <ScaleControl value={choice} onChange={pickPreset} />
             <Slider
               label="New links per day"
               value={Math.log10(inputs.newLinksPerDay)}
@@ -160,69 +222,74 @@ export default function EstimatorWidget() {
         }
       >
         <div className="sdv-estimator">
-          <svg
-            viewBox={`0 0 ${CHART.width} ${chartHeight}`}
-            role="img"
-            aria-label={`Log scale chart. Writes ${formatRate(result.writesPerSecond)}, reads ${formatRate(result.readsPerSecond)}, peak ${formatRate(result.peakRequestsPerSecond)} requests per second. One server handles about ${formatCount(perServer)} per second at the target load.`}
-          >
-            {tickLabels.map((label, index) => {
-              const x = xFor(10 ** (AXIS_MIN + index));
-              return (
-                <g key={label} className="sdv-axis">
-                  <line x1={x} x2={x} y1={CHART.top - 8} y2={CHART.top + lanes.length * CHART.lane} />
-                  <text x={x} y={CHART.top - 14} textAnchor="middle">
-                    {label}
-                  </text>
-                </g>
-              );
-            })}
-            {lanes.map((lane, index) => {
-              const y = CHART.top + index * CHART.lane + 8;
-              const width = Math.max(2, xFor(lane.value) - CHART.left);
-              const inside = CHART.left + width > CHART.right - 70;
-              return (
-                <g key={lane.label}>
-                  <text className="sdv-estimator__lane" x={CHART.left - 10} y={y + 15} textAnchor="end">
-                    {lane.label}
-                  </text>
-                  <m.rect
-                    className={`sdv-estimator__bar sdv-estimator__bar--${lane.tone}`}
-                    x={CHART.left}
-                    y={y}
-                    height={20}
-                    rx={4}
-                    initial={false}
-                    animate={{ width }}
-                    transition={{ type: 'spring', stiffness: 140, damping: 20 }}
-                  />
-                  <m.g
-                    initial={false}
-                    animate={{ x: CHART.left + width + (inside ? -8 : 8) }}
-                    transition={{ type: 'spring', stiffness: 140, damping: 20 }}
-                  >
+          <div className="sdv-estimator__chart" ref={chartRef}>
+            <svg
+              viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+              role="img"
+              aria-label={`Log scale chart from ${formatRate(10 ** range.min)} to ${formatRate(10 ** range.max)} requests per second. Writes ${formatRate(result.writesPerSecond)}, reads ${formatRate(result.readsPerSecond)}, peak ${formatRate(result.peakRequestsPerSecond)} requests per second. One server handles about ${formatCount(perServer)} per second at the target load.`}
+            >
+              {ticks.map((tick) => {
+                const x = xFor(10 ** tick.exponent);
+                return (
+                  <g key={tick.exponent} className="sdv-axis">
+                    <line x1={x} x2={x} y1={layout.top - 8} y2={lanesBottom} />
+                    {tick.label !== null && (
+                      <text x={x} y={layout.top - 14} textAnchor="middle">
+                        {tick.label}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+              {lanes.map((lane, index) => {
+                const y = layout.top + index * layout.lane;
+                const barY = y + layout.barY;
+                const width = Math.max(2, xFor(lane.value) - layout.left);
+                const inside = layout.left + width > layout.right - 70;
+                return (
+                  <g key={lane.label}>
                     <text
-                      className={`sdv-estimator__value${inside ? ' sdv-estimator__value--inside' : ''}`}
-                      y={y + 15}
-                      textAnchor={inside ? 'end' : 'start'}
+                      className="sdv-estimator__lane"
+                      x={layout.stacked ? layout.left : layout.left - 10}
+                      y={y + layout.labelY}
+                      textAnchor={layout.stacked ? 'start' : 'end'}
                     >
-                      {formatRate(lane.value)}/s
+                      {lane.label}
                     </text>
-                  </m.g>
-                </g>
-              );
-            })}
-            <g className="sdv-estimator__limit">
-              <line
-                x1={xFor(perServer)}
-                x2={xFor(perServer)}
-                y1={CHART.top - 4}
-                y2={CHART.top + lanes.length * CHART.lane + 4}
-              />
-              <text x={xFor(perServer)} y={CHART.top + lanes.length * CHART.lane + 22} textAnchor="middle">
-                One server: about {formatCount(perServer)}/s
-              </text>
-            </g>
-          </svg>
+                    <m.rect
+                      className={`sdv-estimator__bar sdv-estimator__bar--${lane.tone}`}
+                      x={layout.left}
+                      y={barY}
+                      height={BAR_HEIGHT}
+                      rx={4}
+                      initial={false}
+                      animate={{ width }}
+                      transition={{ type: 'spring', stiffness: 140, damping: 20 }}
+                    />
+                    <m.g
+                      initial={false}
+                      animate={{ x: layout.left + width + (inside ? -8 : 8) }}
+                      transition={{ type: 'spring', stiffness: 140, damping: 20 }}
+                    >
+                      <text
+                        className={`sdv-estimator__value${inside ? ' sdv-estimator__value--inside' : ''}`}
+                        y={barY + 15}
+                        textAnchor={inside ? 'end' : 'start'}
+                      >
+                        {formatRate(lane.value)}/s
+                      </text>
+                    </m.g>
+                  </g>
+                );
+              })}
+              <g className="sdv-estimator__limit">
+                <line x1={limitX} x2={limitX} y1={layout.top - 4} y2={lanesBottom + 4} />
+                <text x={limitX} y={lanesBottom + 22} textAnchor={limitAnchor}>
+                  One server: about {formatCount(perServer)}/s
+                </text>
+              </g>
+            </svg>
+          </div>
 
           <div className="sdv-estimator__row">
             <div className="sdv-estimator__servers">

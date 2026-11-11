@@ -7,11 +7,6 @@
 .sdv-cap__lane {
   min-width: 0;
 }
-@media (max-width: 40rem) {
-  .sdv-scroll-x > svg.sdv-cap__svg {
-    min-width: 22rem;
-  }
-}
 
 .sdv-cap__cut path {
   fill: none;

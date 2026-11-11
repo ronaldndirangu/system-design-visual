@@ -4,11 +4,6 @@
   max-width: 34rem;
   width: 100%;
 }
-@media (max-width: 40rem) {
-  .sdv-scroll-x > svg.sdv-quorum__svg {
-    min-width: 22rem;
-  }
-}
 .sdv-quorum__track {
   fill: none;
   stroke: var(--sl-color-gray-5);
