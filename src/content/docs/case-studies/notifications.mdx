@@ -1,0 +1,400 @@
+---
+title: Notifications
+description: Deliver login codes before they expire, through providers you do not control. Watch a marketing campaign bury codes in one queue and an SMS outage eat every retry, then fix both with priority lanes, deadlines, and failover behind a circuit breaker.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import NotificationsWidget from '../../../components/widgets/NotificationsWidget';
+
+export const nodes = [
+  { id: 'app', kind: 'server', x: 70, y: 60, label: 'App service', sublabel: 'asks to notify' },
+  { id: 'notifier', kind: 'server', x: 230, y: 60, label: 'Notifier' },
+  { id: 'lanes', kind: 'queue', x: 390, y: 60, label: 'Lanes' },
+  { id: 'log', kind: 'database', x: 550, y: 60, label: 'Sent log' },
+  { id: 'prefs', kind: 'database', x: 70, y: 240, label: 'Preferences', sublabel: 'and quiet hours' },
+  { id: 'phone', kind: 'client', x: 230, y: 240, label: "User's phone" },
+  { id: 'providers', kind: 'server', x: 390, y: 240, label: 'Providers', sublabel: 'APNs, FCM, SMS' },
+  { id: 'senders', kind: 'server', x: 550, y: 240, label: 'Senders', sublabel: 'rate limited' },
+];
+export const edges = [
+  { from: 'app', to: 'notifier' },
+  { from: 'notifier', to: 'prefs' },
+  { from: 'notifier', to: 'lanes' },
+  { from: 'lanes', to: 'senders' },
+  { from: 'senders', to: 'providers' },
+  { from: 'providers', to: 'phone' },
+  { from: 'senders', to: 'log' },
+];
+export const steps = [
+  {
+    title: 'Ask for a notification',
+    text: 'Ana signs in on a new laptop. The login service asks the notifier to text her a code, with the type "security", a deadline a few minutes out, and an idempotency key. If the login service retries the request, the notifier finds the key and creates nothing new.',
+    nodes: ['app', 'notifier'],
+    flows: ['app>notifier'],
+  },
+  {
+    title: 'Check preferences first',
+    text: "The notifier reads Ana's preferences: the channels she allows for each type, her opt-outs, and her quiet hours in her own time zone. A code she asked for always goes. A campaign she opted out of stops here, before it takes any queue space or provider capacity.",
+    nodes: ['notifier', 'prefs'],
+    flows: ['notifier>prefs'],
+  },
+  {
+    title: 'Enqueue by priority',
+    text: 'Codes and security alerts go to the priority lane, social updates to the normal lane, and campaigns to the bulk lane. Senders drain the higher lanes first, so a campaign of millions never stands in front of a code.',
+    nodes: ['notifier', 'lanes'],
+    flows: ['notifier>lanes'],
+  },
+  {
+    title: "Send under the provider's limit",
+    text: 'Each provider caps how many sends per second it accepts. Senders take tokens from one bucket per provider to stay under that cap. A code still waiting at its deadline leaves the queue unsent, because a late code only wastes a send.',
+    nodes: ['lanes', 'senders', 'providers'],
+    flows: ['lanes>senders', 'senders>providers'],
+  },
+  {
+    title: 'Retry, or fail over',
+    text: 'The SMS provider rejects the send. The sender retries after 0.5 s, then 1 and 2 s. After several failures in a row, a circuit breaker stops calling that provider and routes codes to a backup, while a health check probes the primary until it recovers.',
+    nodes: ['senders', 'providers'],
+    flows: ['senders>providers'],
+  },
+  {
+    title: 'Deliver and record',
+    text: "The provider hands the text to Ana's phone. The sender records the send in the sent log under the notification's ID, and the provider's delivery receipt updates that row later. A sender that restarts checks the log before it sends again.",
+    nodes: ['providers', 'phone', 'senders', 'log'],
+    flows: ['providers>phone', 'senders>log'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt:
+      'A campaign of 300 messages lands in the same first-in, first-out queue as login codes, and 28 of 60 codes miss their 5 s deadline. Which change keeps every code on time without buying capacity?',
+    options: [
+      {
+        text: 'Give codes their own lane, and drain it before any marketing message',
+        correct: true,
+        why: 'At the same 20 sends per second, the priority lane misses 0 of 60. The campaign pays a little: its last message goes out at 19.1 s instead of 17.0 s.',
+      },
+      {
+        text: 'Double the provider rate',
+        why: 'That costs money, and the shared queue still misses 5 codes. The campaign drains faster and still stands in front of every code that arrives behind it.',
+      },
+      {
+        text: 'Keep sending late codes, since a late code beats none',
+        why: 'The shared queue already does that. A code past its lifetime fails at the login screen, and each late send spends capacity a fresh code needed.',
+      },
+      {
+        text: 'Retry every code that misses its deadline',
+        why: 'Nothing failed: the codes sat in the queue. A retry puts one more message behind the same campaign.',
+      },
+    ],
+  },
+  {
+    prompt: 'The primary SMS provider rejects every send from 5 s to 15 s. Retrying with backoff drops 15 codes. Why do the retries fail?',
+    options: [
+      {
+        text: 'Every retry goes back to the same dead provider, and the backoff waits outlast the 5 s deadline',
+        correct: true,
+        why: 'The waits double from 0.5 s, so a code fails its fourth send 3.5 s after its first, and its next try would come after the deadline. The failover lane sends to a backup instead and misses 0.',
+      },
+      {
+        text: 'The retries come too fast and overload the provider',
+        why: 'A provider that is down rejects every send, fast or slow. Slower retries spend more of each code\'s short life waiting.',
+      },
+      {
+        text: 'The backup provider is too slow',
+        why: 'The retry lane never uses a backup. The failover lane uses one at 10 sends per second, half the primary rate, and misses 0 codes.',
+      },
+      {
+        text: 'A longer deadline would fix it',
+        why: 'Retrying a dead provider fails until the outage ends, so a longer deadline helps only when it outlasts the outage. Keep the primary down from 5 to 25 s and the retry lane drops 42 codes after 177 failed sends.',
+      },
+    ],
+  },
+  {
+    prompt: 'After a failover, Ana receives her login code twice. What most likely happened?',
+    options: [
+      {
+        text: 'The primary sent the text but timed out before it answered, so the sender counted a failure and the backup sent it again',
+        correct: true,
+        why: 'A timeout says nothing about whether the provider sent the message. An idempotency key stops a repeat within one provider that honors it. Across two providers, a duplicate stays possible.',
+      },
+      {
+        text: 'The login service asked twice with the same idempotency key',
+        why: 'The notifier stores one notification per key. A repeated request gets the first ID back and sends nothing new.',
+      },
+      {
+        text: 'The open circuit breaker sent every code to both providers',
+        why: 'An open breaker routes each send to one provider, the backup. It never copies a send.',
+      },
+      {
+        text: 'Quiet hours held the first copy back',
+        why: 'Login codes skip quiet hours, and a delay makes one late copy. It never makes two.',
+      },
+    ],
+  },
+  {
+    prompt: "Where should the notification service check a user's opt-outs and quiet hours?",
+    options: [
+      {
+        text: 'Before enqueueing, and again at send time',
+        correct: true,
+        why: "A muted message never takes a lane slot or a send from the rate limit. A bulk message can wait for hours, and meanwhile the user may opt out or enter quiet hours, so the sender reads the current preferences and the clock in the user's time zone before it sends.",
+      },
+      {
+        text: 'Only at send time',
+        why: 'Muted messages would sit in the lanes and compete with codes until a sender throws them away. The send-time check is right, and it needs an earlier check beside it.',
+      },
+      {
+        text: 'Once, when the user signs up',
+        why: "Preferences change. A user who opts out today expects tomorrow's campaign to skip them.",
+      },
+      {
+        text: 'On the phone, after delivery',
+        why: 'The send has already spent money and capacity, and a text message cannot be hidden once it arrives.',
+      },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain why a login code is worthless once late, and how one first-in, first-out queue lets a campaign bury codes.
+- Separate traffic into priority lanes, and drop a code that reaches its deadline unsent.
+- Keep codes flowing through a provider outage with retries, a circuit breaker, and a backup provider.
+- Check preferences and quiet hours before sending, and limit duplicates from retries and failover.
+- Contrast notifications with chat.
+
+</Objectives>
+
+## The failure: the code that came too late
+
+Ana taps **Sign in** on a new laptop, and the site texts her a six-digit code. At the same moment, marketing launches a
+spring sale to five million phones, and the sale enters the same queue as her code. The text arrives 42 minutes later,
+long after the code expired. Ana tried three times, gave up, and called support.
+
+Every part did its job. The queue kept its order, the SMS provider sent at its contracted rate, and nothing crashed. The
+design treated a login code and a coupon as equals.
+
+<Predict
+  client:visible
+  question="In the toy run below, 60 users ask for a login code over 24 s, and each code is useless 5 s after the request. The SMS provider accepts 20 sends per second. At 2 s, a campaign drops 300 marketing messages into the same first-in, first-out queue. How many codes miss their deadline?"
+  options={['None: the provider has room for every code', 'About 5', 'About 28, nearly half', 'All 60']}
+  answer={2}
+>
+
+**28 of 60.** At 20 sends per second, 300 messages take 15 s to drain, so the campaign holds the queue until 17 s. Every
+code requested between 2 s and about 12 s waits longer than 5 s behind it. The queue still sends those codes, late and
+useless. Paying for double the rate still leaves **5** codes late.
+
+</Predict>
+
+## The idea: send what matters first, and stop sending what expired
+
+This case study has one dominant constraint: **each message must reach the user through someone else's provider before
+it stops being useful, and only if the user wants it.** Apple's and Google's push services, SMS carriers, and email
+relays carry the last mile, each with its own rate limit and its own outages. You control only what you hand them, in
+what order, and where you go when one fails.
+
+Login codes and security alerts ride a **priority lane** ahead of social updates and campaigns. A code that reaches its
+**deadline** unsent leaves the queue, since a late code only wastes a send. Senders retry failures with **backoff**, and
+a **circuit breaker** moves traffic to a **backup provider** when the primary keeps failing. **Preferences** and quiet
+hours are checked before anything enters a lane.
+
+<StepDiagram client:visible title="A notification, step by step" nodes={nodes} edges={edges} steps={steps} height={290} />
+
+<Analogy>
+
+A hospital pharmacy. Doses for patients on the ward go in one tray, and next month's stock order in another. The
+pharmacist fills the ward tray first, every time: the stock order can wait an hour, and a patient in pain cannot. A dose
+prepared after the patient went home goes in the bin. When the courier van breaks down, the pharmacy calls a taxi, and
+phones the garage now and then to ask whether the van is fixed.
+
+</Analogy>
+
+## Walk the design checklist
+
+The seven steps from the [design checklist](../../thinking/design-checklist/), applied to a notification service.
+
+<Steps>
+
+1. **Requirements.** Send login codes, security alerts, social updates, and campaigns through push, SMS, and email. A
+   login code reaches the phone within seconds and is worthless after it expires. Respect each user's channels,
+   opt-outs, and quiet hours. Send each notification once per channel, as far as the providers allow. Message templates,
+   copy experiments, and analytics stay out of scope.
+
+2. **Estimates (illustrative).** Twenty million daily users who receive 5 notifications each make **100 million a day**,
+   about **1,157 per second** on average and **3,472 per second** at a 3× peak, spread across push, SMS, and email
+   providers. Login codes are a thin slice: 2 million a day is about **23 per second**. Campaigns cause the bursts. A
+   campaign to **5 million** phones, sent through one first-in, first-out queue and an SMS account that accepts 2,000
+   sends per second, holds that account for about **42 minutes**. Paying for 20,000 sends per second shrinks that to
+   about **4 minutes**, still far longer than anyone waits for a code. At 500 bytes a record, the sent log grows by about
+   **50 GB a day**. (See [requirements and estimates](../../thinking/requirements-and-estimates/) for the method.)
+
+3. **API.** Internal services call `POST /notifications` with `{idempotencyKey, userId, type, data, deadline}` and get
+   back `202 Accepted {id}`. The key makes a retried request harmless. Users manage their choices with
+   `GET /users/{id}/preferences` and `PUT /users/{id}/preferences`. Providers report back through webhooks such as
+   `POST /receipts/{provider}`, with outcomes like delivered, bounced, or invalid token.
+
+4. **Data model.** A `notifications` table keyed by ID, with the user, type, lane, deadline, status, attempt count,
+   provider, and the provider's message ID. It doubles as the sent log, partitioned by day, with old days dropped after
+   30 days. A `preferences` table holds, per user, the allowed channels for each type, opt-outs, quiet hours, and time
+   zone. Every request reads it, so keep it in a cache (see [caching](../../scaling/caching/)). A `devices` table holds
+   each install's push token, deleted when APNs or FCM reports it invalid.
+
+5. **High-level design.** The notifier deduplicates on the idempotency key, checks preferences, writes the row, and
+   enqueues its ID on one of three lanes: priority for codes and security alerts, normal for social updates, and bulk for
+   campaigns. Senders drain the lanes in that order, recheck preferences, take tokens from one bucket per provider to stay
+   under each rate limit, and keep a circuit breaker per provider. The Queues and backpressure lesson covers the lanes, and the Rate limiting lesson
+   covers the token bucket.
+
+6. **Deep dive: deadlines under bursts and outages.** This is where the design breaks first, and both simulations below
+   live here. A campaign buries codes in a shared queue, and a provider outage turns every retry into a wasted send.
+   Priority lanes fix the first. A circuit breaker and a backup provider fix the second.
+
+7. **Trade-offs.** Lanes against fairness, dropping against sending late, and one provider against two. The table at the
+   end of this page lays them out.
+
+</Steps>
+
+## Try it: keep codes ahead of a campaign
+
+Both lanes receive the same 60 code requests over 24 s and the same campaign, and both send through the same SMS
+provider at 20 sends per second. Only the queue differs. Time is compressed: a code lives 5 s here and minutes in real
+life, and the campaign holds 300 messages here and millions in real life. The shape of the failure stays the same.
+
+<NotificationsWidget client:visible duel="deadline" />
+
+What to look for:
+
+- **Campaign at 2 s.** At 2.2 s the priority lane sends code 9 past 298 marketing messages. In the shared queue, code 9
+  waits until 7.2 s, its whole 5 s lifetime, and the queue still sends it later. The shared queue sends **28 of 60**
+  codes late, with an average wait of **5.2 s**. The priority lane sends all 60 on time, each the moment it arrives. The
+  campaign pays for that: its last message goes out at **19.1 s** instead of **17.0 s**.
+- **Pay for double the rate.** At 40 sends per second the campaign drains in half the time, and the shared queue still
+  misses **5** codes. The priority lane misses **0**, and its campaign finishes at **10.0 s** instead of **9.5 s**. More
+  capacity shrinks the window. The lane closes it.
+- **No campaign.** With nothing to jump past, the lanes match exactly. A priority lane costs nothing when the queue is
+  quiet.
+
+Strict priority has a failure of its own: a long burst of codes can starve the bulk lane. Many systems give the lower
+lanes a small guaranteed share of each second, so campaigns slow down without stopping.
+
+## Failover and circuit breakers
+
+Providers fail. A carrier's SMS gateway goes down, a push service throttles you after a burst, or an email relay starts
+bouncing everything. The first response is a retry with backoff: wait 0.5 s, then 1, 2, and 4 s, so a brief blip heals
+without hammering the provider. Retries alone cannot outlast an outage longer than the deadline, since every retry goes
+to the same dead provider.
+
+A **circuit breaker** counts failures in a row for each provider. After a threshold, 3 in the toy, it opens: senders stop
+calling the primary and route codes to a backup. While the breaker is open, a health check probes the primary every 2 s,
+and the first success closes the breaker. The backup is often slower or pricier. Here it accepts 10 sends per second,
+half the primary rate. The Circuit breakers lesson covers the states in full, and the Retries with backoff and jitter
+lesson explains why real retries add randomness, which this toy leaves out so every replay matches.
+
+## Try it: survive a provider outage
+
+Both lanes receive the same 60 code requests, and the primary SMS provider rejects every send from 5 s to 15 s. Both
+retry with backoff and drop a code at its deadline. Only one lane has a circuit breaker and a backup provider.
+
+<NotificationsWidget client:visible duel="outage" />
+
+What to look for:
+
+- **Primary down 5 to 15 s.** The retry lane sends each code to the dead primary again and again. At 10.1 s code 16
+  reaches its deadline after 4 failed sends, and the lane drops it. By the end the retry lane drops **15** codes after
+  **85** failed sends. The failover lane fails **3** sends, opens its breaker at 5.9 s, and the backup carries **27**
+  codes, all on time. At 15.9 s a health check finds the primary healthy, and the breaker closes.
+- **Longer outage.** With the primary down from 5 to 25 s, the retry lane drops **42** codes after **177** failed sends.
+  The failover lane still fails only **3** sends and misses **0**, and the backup carries **45** codes.
+- **No outage.** The breaker never opens, and the lanes match.
+
+## Send once, and only when wanted
+
+Retries and failover create duplicates. A provider can send a text and then time out before it answers. The sender sees
+a failure, retries or fails over, and Ana gets two texts. One ID per notification guards each hop: callers pass an
+idempotency key, so a retried request creates one notification. Senders pass the notification ID to providers that
+accept an idempotency key, and record each send in the sent log. Some providers accept no key, and a sender can crash
+between a send and its log write, so a duplicate stays possible. Retries also stop at the deadline, so a notification can
+arrive twice or not at all. A second login code is harmless, so write every message to read fine twice. The Idempotency lesson and the Delivery
+semantics and the outbox lesson cover these guarantees.
+
+Preferences decide whether a message goes at all. Check opt-outs and quiet hours before enqueueing, so a muted campaign
+never takes a lane slot or a send from the rate limit. A bulk message may wait for hours, and the user may opt out or
+enter quiet hours meanwhile, so the sender reads the current preferences again at send time, with quiet hours in the
+user's own time zone. Security messages skip quiet hours by design: a code the user just asked for is always
+wanted.
+
+Channels differ too. APNs and FCM deliver pushes to installed apps, may hold or merge them to save battery, and report
+tokens that went stale. SMS costs money per message, and carriers filter bulk traffic. Email is cheap and slow, and lands
+in spam when sent carelessly. A fallback chain, such as push and then SMS, needs the same care: send the SMS only when
+push had its chance and failed.
+
+## Notifications versus chat
+
+[Chat](../chat/) is the other half of this pair. Both deliver short messages to people's devices, and they guard
+different things.
+
+| Question           | Notifications                                             | Chat                                                   |
+| ------------------ | --------------------------------------------------------- | ------------------------------------------------------ |
+| Who owns delivery? | External providers (push services, SMS, email)            | Your gateways, over sockets you hold open              |
+| What must hold?    | Arrival before a deadline, within the user's choices      | Order within a conversation, and nothing missing       |
+| What goes wrong?   | A provider throttles or fails, and the code expires       | Messages overtake each other or vanish in dead sockets |
+| The guard          | Priority lanes, deadlines, and failover between providers | Sequence numbers and a cursor into a replayable log    |
+| Late is…           | Often worthless: a login code that arrives late is junk   | Fine, if the order is right                            |
+
+The two meet when a chat app is closed. The chat server asks the push service to wake the phone, and the phone opens its
+socket and catches up with its cursor. The push carries a nudge, and the chat log carries the messages.
+
+## Trade-offs
+
+<TradeoffTable title="Designing a notification service">
+
+| Choice                                | What it buys                                    | What it costs                                                  |
+| ------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
+| Priority lanes by type                | Codes skip any backlog                          | Bulk waits longer, and starves without a guaranteed share      |
+| Drop a code at its deadline           | Sends go to codes that can still help           | The user never gets the dropped code and must ask again        |
+| Buy more provider capacity            | Every lane drains faster                        | Money, and a big enough campaign still buries codes in one queue |
+| Retry with backoff                    | Brief provider blips heal on their own          | Cannot outlast an outage longer than the deadline              |
+| Circuit breaker and a backup provider | Codes keep flowing through an outage            | A second contract, often slower or pricier, and more duplicates |
+| Check preferences before enqueueing and at send | Muted messages cost nothing downstream, and late opt-outs hold | Two preference reads per message, so they need a fast cache |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+A security alert, "New sign-in from Lisbon", must reach the user within 2 minutes. Send it by push first, then SMS if
+push does not land, then email if SMS fails. Design the chain so that quiet hours never hold it back, a user whose push
+arrives normally gets no SMS, and a retried step avoids sending the same channel twice.
+
+<div slot="answer">
+
+**One notification, one deadline, and channels tried in order.**
+
+- **One attempt row per channel, with a state:** the alert gets one ID and a deadline 2 minutes out. Each channel's
+  attempt is a row in `attempts`, keyed by `(notification_id, channel)`. The step writes `pending` before it calls the
+  provider, then `sent` when the provider accepts, or `unknown` when the call times out. A retried step that finds
+  `sent` stops. One that finds `pending` or `unknown` (say, after a crash between the write and the call) sends again
+  with the notification ID as the provider's idempotency key. A provider that honors keys sends once; one without keys
+  may send twice.
+- **Confirm from the phone:** push services accept a message without proving it arrived. The app calls
+  `POST /notifications/{id}/ack` when it shows the alert, and the ack cancels the next step.
+- **A timer per step:** with no ack after 30 s, a scheduled job sends the SMS through the priority lane. If the SMS
+  provider rejects it or no delivery receipt arrives within 60 s, the job sends email. The deadline ends the chain.
+- **Skip quiet hours by type:** security alerts ignore quiet hours, and preferences may move them between channels but
+  can never turn all channels off.
+- **Accept a rare double:** a push that lands after its 30 s timer means the user sees both. Write the SMS to read as a
+  second copy, with the same wording and sign-in time.
+
+</div>
+
+</Challenge>

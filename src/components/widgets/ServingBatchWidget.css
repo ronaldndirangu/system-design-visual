@@ -1,0 +1,43 @@
+.sdv-serve-grid__lane-bg {
+  fill: color-mix(in oklab, var(--sdv-surface-raised) 80%, transparent);
+  stroke: var(--sdv-border);
+  stroke-width: 1;
+}
+.sdv-serve-grid__prefill,
+.sdv-serve-batch__key--prefill {
+  background: var(--sdv-model, var(--sdv-server));
+  fill: var(--sdv-model, var(--sdv-server));
+}
+.sdv-serve-grid__token--a {
+  fill: var(--sdv-series-a);
+}
+.sdv-serve-grid__token--b {
+  fill: var(--sdv-series-b);
+}
+.sdv-serve-grid__held {
+  stroke: var(--sdv-bad);
+  stroke-width: 1;
+}
+.sdv-serve-grid__held-bg {
+  fill: color-mix(in oklab, var(--sdv-bad) 12%, transparent);
+}
+.sdv-serve-grid__hatch {
+  stroke: color-mix(in oklab, var(--sdv-bad) 70%, transparent);
+  stroke-width: 2;
+}
+.sdv-serve-batch__key--held {
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in oklab, var(--sdv-bad) 45%, transparent) 0 2px,
+    transparent 2px 5px
+  );
+  border-color: var(--sdv-bad);
+}
+.sdv-serve-batch__key--token {
+  background: var(--sdv-series-a);
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+  height: 0.6rem;
+  width: 0.6rem;
+}

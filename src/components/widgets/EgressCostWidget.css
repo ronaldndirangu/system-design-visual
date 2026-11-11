@@ -1,0 +1,69 @@
+.sdv-egress {
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.sdv-egress__caption {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+
+.sdv-egress__track {
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.3rem;
+  display: flex;
+  height: 1.1rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sdv-egress__edge {
+  background: var(--sdv-series-b);
+  display: block;
+  flex: none;
+}
+
+.sdv-egress__origin {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-series-a) 0 3px,
+    color-mix(in oklab, var(--sdv-series-a) 35%, transparent) 3px 6px
+  );
+  display: block;
+  flex: none;
+}
+
+.sdv-egress__key {
+  border: 1px solid var(--sdv-border);
+  display: inline-block;
+  height: 0.75rem;
+  width: 1.1rem;
+}
+
+.sdv-egress__rows {
+  display: grid;
+  gap: 0.7rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sdv-egress__row {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.sdv-egress__name {
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+}
+
+.sdv-egress__value {
+  font-size: var(--sl-text-sm);
+  font-variant-numeric: tabular-nums;
+}

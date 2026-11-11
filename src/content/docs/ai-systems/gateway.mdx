@@ -1,0 +1,522 @@
+---
+title: The AI gateway
+description: Put one gateway in front of every model call. Route or cascade requests across model tiers, cache answers safely, give each tenant its own quota, validate structured output, and fall back when a model fails.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import GatewayPipelineWidget from '../../../components/widgets/GatewayPipelineWidget';
+import GatewayCascadeWidget from '../../../components/widgets/GatewayCascadeWidget';
+import GatewayCacheWidget from '../../../components/widgets/GatewayCacheWidget';
+
+export const nodes = [
+  { id: 'app', kind: 'client', x: 60, y: 150, label: 'Support app', sublabel: 'Stores A, B, C' },
+  { id: 'gateway', kind: 'loadBalancer', x: 200, y: 150, label: 'Gateway', sublabel: 'quotas, routing' },
+  { id: 'cache', kind: 'cache', x: 200, y: 50, label: 'Response cache' },
+  { id: 'small', kind: 'model', x: 340, y: 50, label: 'Small', sublabel: 'cheap, fast' },
+  { id: 'medium', kind: 'model', x: 340, y: 150, label: 'Medium', sublabel: 'primary' },
+  { id: 'validator', kind: 'server', x: 480, y: 150, label: 'Validator' },
+  { id: 'fallback', kind: 'server', x: 480, y: 240, label: 'Fallback', sublabel: 'Small or canned reply' },
+];
+export const edges = [
+  { from: 'app', to: 'gateway' },
+  { from: 'gateway', to: 'cache' },
+  { from: 'gateway', to: 'small' },
+  { from: 'gateway', to: 'medium' },
+  { from: 'small', to: 'validator' },
+  { from: 'medium', to: 'validator' },
+  { from: 'medium', to: 'fallback' },
+  { from: 'validator', to: 'fallback' },
+];
+export const steps = [
+  {
+    title: 'One door for every model call',
+    text: 'The chat, the refund form, and the agent tools all send model calls to the gateway instead of straight to a model. The gateway knows which store sent each request, and every other check depends on that.',
+    nodes: ['app', 'gateway'],
+    flows: ['app>gateway'],
+  },
+  {
+    title: 'Check the store\u2019s quota',
+    text: 'Each store has a token bucket that refills at its quota rate and holds a short burst. A request takes one token. When the bucket is empty, the gateway replies 429 with a Retry-After hint, and the model never sees the request.',
+    nodes: ['app', 'gateway'],
+  },
+  {
+    title: 'Look up the response cache',
+    text: 'The gateway builds a key from the store, the user role, the prompt version, the model, the settings, and the exact question. A hit returns the stored answer with no model call. A miss moves on.',
+    nodes: ['gateway', 'cache'],
+    flows: ['gateway>cache'],
+  },
+  {
+    title: 'Route or cascade',
+    text: 'With a router, the gateway picks Small or Medium before the call. With a cascade, it tries Small first and escalates to Medium when a checker rejects the answer.',
+    nodes: ['gateway', 'small', 'medium'],
+    flows: ['gateway>small', 'gateway>medium'],
+  },
+  {
+    title: 'Validate the reply',
+    text: 'The validator checks the reply against a schema and business rules, for example a required amount that does not exceed the order total. A rejected reply gets one retry, and the retry counts against the store\u2019s quota.',
+    nodes: ['small', 'medium', 'validator'],
+    flows: ['small>validator', 'medium>validator'],
+  },
+  {
+    title: 'Fall back, and stop calling a failing model',
+    text: 'After repeated errors, a circuit breaker sends new requests to Small for a while. If a retry also fails validation, the customer gets a canned reply: please try again, or talk to an agent.',
+    nodes: ['medium', 'validator', 'fallback'],
+    flows: ['medium>fallback', 'validator>fallback'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt:
+      'Store A runs a backfill that triples its traffic. Each store has its own token bucket, and the quotas add up to the shared upstream limit. What happens to Store B?',
+    options: [
+      {
+        text: 'Store B slows down a little while Store A bursts.',
+        why: 'The extra load never reaches the shared limit. Store A\u2019s bucket empties, and the gateway sheds the excess at the door.',
+      },
+      {
+        text: 'Nothing changes for Store B. Only Store A gets 429 replies.',
+        correct: true,
+        why: 'Each bucket limits one store. The quotas sum to the upstream limit, so Store A cannot spend Store B\u2019s share.',
+      },
+      {
+        text: 'Store B gets 429 replies too, in proportion to its traffic.',
+        why: 'That is what a shared limit does without quotas. In the widget, 27 of Store B\u2019s 98 requests failed that way.',
+      },
+      {
+        text: 'The gateway queues Store A\u2019s excess and serves it later from Store B\u2019s share.',
+        why: 'A token bucket rejects at once with a Retry-After hint. It never borrows another store\u2019s share.',
+      },
+    ],
+  },
+  {
+    prompt:
+      'On the mostly easy mix, the cascade is the cheapest strategy and passes the most questions. Why does it still miss a budget?',
+    options: [
+      {
+        text: 'The checker is too slow to run on every request.',
+        why: 'The checker adds 0.03 s. The slow requests are the escalated ones, which wait for two model calls.',
+      },
+      {
+        text: 'About 17% of requests escalate, so the p95 lands on a request that waited for Small and Medium.',
+        correct: true,
+        why: 'p95 is the time that 95% of answers beat. Once more than 5% of requests wait for two calls, those requests set the p95: 2.31 s against a 2 s budget.',
+      },
+      {
+        text: 'Small is slower than Medium on easy questions.',
+        why: 'Small is faster. Latency grows only for requests that call both models.',
+      },
+      {
+        text: 'Escalations double the cost and break the cost budget.',
+        why: 'Escalated requests do pay twice, yet the cascade spends about 1,709 units per 1,000 requests, far under 6,000. Latency is the budget it misses.',
+      },
+    ],
+  },
+  {
+    prompt:
+      'A response cache key holds the question, the model, the prompt version, the settings, and the user role. It leaves out the store. What goes wrong?',
+    options: [
+      {
+        text: 'Nothing, because the question text already identifies the store.',
+        why: 'Customers of different stores type the same words. The text alone cannot tell Store A\u2019s policy from Store B\u2019s.',
+      },
+      {
+        text: 'The hit rate drops because the keys are too specific.',
+        why: 'Dropping a field makes keys less specific, so the hit rate rises, and the extra hits are wrong answers.',
+      },
+      {
+        text: 'A Store B customer can get Store A\u2019s cached answer, such as the wrong return window.',
+        correct: true,
+        why: 'The same question from two stores now produces the same key. In the widget, Store B gets Store A\u2019s 30 days instead of its own 14.',
+      },
+      {
+        text: 'The prefix cache stops working for Store B.',
+        why: 'The prefix cache lives in the model server and follows its own rules. The response cache key does not affect it.',
+      },
+    ],
+  },
+  {
+    prompt: 'The model server turns on prefix caching for the shared system prompt and store policy. What improves?',
+    options: [
+      {
+        text: 'A repeated question returns the same stored answer.',
+        why: 'That describes a response cache. A prefix cache still generates a fresh answer every time.',
+      },
+      {
+        text: 'Time to first token, because the server skips prefill for the reused blocks.',
+        correct: true,
+        why: 'Time to first token includes the prefill. Reusing the computed blocks for the shared prefix removes most of that work. In the widget it falls from 0.35 s to 0.13 s.',
+      },
+      {
+        text: 'Time per output token, because decoding reuses the cached answer.',
+        why: 'Decode still runs one token at a time. The prefix cache saves only the prompt work before the first token.',
+      },
+      {
+        text: 'Reuse survives a timestamp at the start of the prompt.',
+        why: 'Each block\u2019s hash chains the block before it, so an early change invalidates every later block. Put changing text last.',
+      },
+    ],
+  },
+  {
+    prompt: 'The refund form receives a reply with no amount field. What should the gateway do?',
+    options: [
+      {
+        text: 'Pass it through and let the form show an error.',
+        why: 'That is the original failure: a broken form in front of a customer. The gateway exists to catch it first.',
+      },
+      {
+        text: 'Retry until a valid reply arrives.',
+        why: 'Unbounded retries turn one bad request into many model calls, often while the model is already struggling. That is a retry storm.',
+      },
+      {
+        text: 'Retry once, counted against the store\u2019s quota, and hand off if the retry fails too.',
+        correct: true,
+        why: 'One bounded retry fixes most misses and caps the extra load. In the widget, 48 retries left 9 handoffs and no broken replies.',
+      },
+      {
+        text: 'Fill in an amount of zero so the form can render.',
+        why: 'A guessed amount can refund the wrong money. For money fields, strict validation beats repair.',
+      },
+    ],
+  },
+  {
+    prompt:
+      'After three errors in a row, the breaker opens and sends new requests to Small. Why does it later let one probe request through to Medium?',
+    options: [
+      {
+        text: 'To retry the requests that failed during the outage.',
+        why: 'Those requests already got a fallback answer. The probe is a new request.',
+      },
+      {
+        text: 'To learn whether Medium has recovered without sending it full traffic.',
+        correct: true,
+        why: 'In the half open state, one probe tests Medium. Success closes the breaker. Failure opens it again for another cool down.',
+      },
+      {
+        text: 'To keep Medium\u2019s cache warm while it is down.',
+        why: 'The probe checks health. Caches play no part in it.',
+      },
+      {
+        text: 'Because Small cannot answer more than a few requests in a row.',
+        why: 'Small can carry the load. The breaker returns traffic to Medium because Medium answers hard questions far better.',
+      },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain how a quota per tenant stops one store's burst from failing every other store's requests.
+- Compare routing and a cascade on pass rate, p95 latency, and cost, and say when each one fits.
+- Tell a response cache from a prefix (KV) cache, and list every field a response cache key needs.
+- Design output validation with one bounded retry, and a fallback guarded by a circuit breaker.
+
+</Objectives>
+
+## The failure: every feature calls the model directly
+
+In [Evaluation and budgets](../evaluation-and-budgets/), Medium was the only candidate that met every budget on the eval
+set. So the team wired it in the simplest way: the chat, the refund form, and the agent tools each call Medium directly.
+Three stores share the assistant, one API key, and one upstream rate limit of 15 requests per second (req/s).
+
+Three bad days follow:
+
+- **A noisy tenant.** Store A runs a bulk backfill that replays old tickets through the assistant. Its traffic jumps to
+  25 req/s, and the shared limit starts rejecting requests from every store.
+- **A malformed reply.** The refund form expects JSON with an order id, an amount, and a reason. One reply leaves out the
+  amount, and the form breaks in front of a customer.
+- **An outage.** Medium returns errors for eight seconds. Every feature fails at once, because nothing else can answer.
+
+Each problem has a known fix, and every fix lives in the same place: a gateway that each model call passes through.
+
+<Predict
+  client:visible
+  question="Stores A, B, and C share a 15 req/s limit. Store B sends a steady 3 req/s. Store A bursts from 4 to 25 req/s for 15 seconds. What happens to the customers of Store B?"
+  options={['Nothing, since Store B stays well under its fair share', 'Store B slows down, but every request succeeds', 'Some Store B requests fail with rate limit errors', 'Every Store B request fails until Store A stops']}
+  answer={2}
+>
+
+**Some of them fail.** A shared limit cannot tell stores apart, so it rejects whichever requests arrive after it fills.
+In the toy run below, 217 of 617 requests fail on the shared limit, and 27 of Store B's 98 requests are among them,
+although Store B never changed its traffic. With a quota per store, the gateway sheds 261 of Store A's requests with a
+"slow down" reply, and Store B loses none.
+
+</Predict>
+
+## Try it: one gateway, three stores
+
+Three stores send requests through one gateway to Medium. Start with the gateway policies off, so the gateway only
+forwards requests. Press **Play** (or **Step** through it), watch the outcome counts per store, then switch the policies
+on. The switch restarts the run with the same seeded arrivals, so the two runs compare fairly. Each scenario chip lists
+the change it makes.
+
+<GatewayPipelineWidget client:visible />
+
+What to look for:
+
+- **Noisy tenant.** With the policies off, 217 of 617 requests fail on the shared limit, spread across all three stores.
+  With the policies on, Store A's bucket sheds 261 of its own requests with a 429 and a retry-after hint, the shared
+  limit rejects nothing, and Stores B and C lose nothing.
+- **Model outage.** Medium fails from 8 s to 16 s. With the policies off, 82 requests fail. With the policies on,
+  nothing fails: the circuit breaker opens after three errors in a row and sends new requests to Small, which answers
+  108 of them, and the cache answers 57 repeated questions with no model call at all.
+- **Malformed output.** One in five Medium replies leaves out the amount field. With the policies off, 61 broken replies
+  reach the refund form. With the policies on, the validator rejects them and retries once (48 retries in the run). The
+  9 retries that fail again become a polite handoff, and no broken reply gets through.
+- **Accounted for.** Every request ends in exactly one outcome or is still in flight. The last column checks that the
+  outcomes add up to the arrivals.
+
+This is a **toy model**. Arrival rates, timings, limits, and failure odds are toy numbers on a seeded clock, so every
+run with the same settings gives the same counts. Real outages rarely start and stop on a timer, and real gateways
+usually meter tokens as well as requests.
+
+## The idea: one door in front of every model call
+
+An **AI gateway** is a service between your features and your models. Every model call passes through it, so it is the
+one place to enforce the rules that keep a shared model healthy: who may call how often, which answers can be reused,
+which model handles a request, whether the reply is usable, and what happens when a model fails. It plays the role a
+[load balancer](../../scaling/load-balancing/) plays for web servers, with checks that only AI traffic needs.
+
+<StepDiagram client:visible title="One request through the gateway" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy>
+
+An emergency department has one front desk. When a clinic sends a busload of routine checkups, the desk books most of
+them for later, so the walk-in with chest pain still gets seen. Directions to radiology come from a printed sheet, with
+no need to page anyone. The triage nurse sends minor cases to a nurse practitioner and serious ones to a doctor, and some
+hospitals let the nurse practitioner try first and call the doctor when stuck. Discharge papers get checked before the
+patient leaves. When cardiology is in surgery, the desk sends patients to the on-call doctor and checks back later.
+
+</Analogy>
+
+### Per-store quotas
+
+The fix for the noisy tenant is a **quota per tenant**, enforced with a **token bucket**. Each store gets a bucket that
+refills at its quota rate and holds a couple of seconds of burst. Each request takes one token (a permit, unrelated to
+model tokens). When the bucket is empty, the gateway replies at once with HTTP status 429 and a Retry-After header, which
+tells the client when to try again.
+
+In the widget, Store A's quota is 6 req/s and Stores B and C get 4.5 req/s each. The quotas add up to the 15 req/s
+upstream limit, so the shared limit holds even when every store spends its full quota at once. Sell more quota than the
+upstream limit and the noisy tenant problem returns at the next busy hour.
+
+- **Shed early.** A rejected request costs the gateway almost nothing. A forwarded one costs a model call that the shared
+  limit may reject anyway, or worse, one that succeeds and starves another store.
+- **Count what is scarce.** A long prompt costs far more model work than a short one, so production gateways often meter
+  tokens per minute as well as requests per second.
+- **Split batch from live.** Give backfills and other batch work their own lower quota, so they cannot crowd out a
+  customer waiting in the chat.
+- **Retries count.** A validator retry spends the store's quota, so a store whose requests keep failing cannot hide
+  extra load.
+
+### Fallbacks and the circuit breaker
+
+A **fallback** is the next best answer when the main path fails: a smaller model, a cached answer, or a canned handoff
+to a person. A **circuit breaker** decides when to use it. It is a small state machine in the gateway:
+
+| State | What the gateway does | It moves on when |
+| --- | --- | --- |
+| Closed | Sends requests to Medium | Three errors in a row open it |
+| Open | Sends new requests to Small without trying Medium | The cool down (3 s in the widget) ends |
+| Half open | Lets one probe request try Medium | The probe succeeds (closed) or fails (open again) |
+
+Without a breaker, every request during an outage waits for Medium to fail before it falls back. With one, the gateway
+stops calling a model it knows is failing, and the probe finds out when the model recovers. In the outage scenario the
+breaker opens three times: two probes land inside the outage and fail, and the third one closes it. This is the
+[health check](../../scaling/load-balancing/) idea from load balancing, applied to a model.
+
+A fallback is degraded service. In the cascade toy below, Small passes hard questions only 35% of the time, against 85%
+for Medium. Falling back to Small keeps the chat alive, but a refund form that needs correct numbers should hand off to
+a person instead.
+
+### Structured output validation
+
+When a feature needs structured data, such as the refund form's order id, amount, and reason, the gateway checks every
+reply before the feature sees it:
+
+1. **Parse and check the schema.** The reply must be valid JSON with every required field, each of the right type.
+2. **Check business rules.** The amount must be positive and at most the order total, and the order must belong to this
+   customer. A schema cannot express these.
+3. **Retry once, then fall back.** A rejected reply gets one more attempt, often with the validation error added to the
+   prompt. If that attempt fails too, the customer gets the handoff.
+
+Keep the retry bounded. If the client, the gateway, and the feature each retry three times, one bad request can become
+27 model calls, just when the model is struggling. That is a **retry storm**. One retry, counted against the store's
+quota, caps the extra work.
+
+## Routing versus a cascade
+
+Now the question the last lesson left open: can two models together beat Medium alone on cost and still meet the
+budgets? Two strategies split the work between Small and Medium.
+
+- **Routing** decides before the call. A cheap classifier guesses whether a question is easy or hard, then sends it to
+  Small or Medium. Each request pays for one model call plus the classifier. A wrong guess is a **misroute**: a hard
+  question lands on Small and probably fails, or an easy one pays for Medium.
+- **A cascade** decides after the call. Every request tries Small first. A checker reads the answer and either accepts
+  it or **escalates** the question to Medium. An escalated request pays for both calls and waits for both.
+
+Both strategies answer the same 60 seeded questions side by side, with Medium alone on the same questions as a baseline.
+The budgets come from the last lesson: at least 85% pass, a p95 latency of 2 s or less, and at most 6,000 units per
+1,000 requests. Press **Play**, **Step** one question at a time, or **Skip to the end**.
+
+<GatewayCascadeWidget client:visible />
+
+What to look for on the mostly easy mix:
+
+- **The cascade wins on quality and cost.** It passes 59 of 60 (98.3%) and spends about 1,709 units per 1,000 requests,
+  about 57% less than Medium alone at 3,949.
+- **The cascade misses the latency budget.** Ten of 60 requests escalate, about 17%. Since p95 is the time that 95% of
+  answers beat, once more than 5% of requests wait for two calls, one of them sets the p95: 2.31 s against a 2 s budget.
+- **Routing fits every budget.** It passes 53 of 60 (88.3%) with a p95 of 1.6 s and about 1,870 units. Its 8 misroutes
+  cost some quality, and the easy mix leaves enough room to absorb them.
+
+<Predict
+  client:visible
+  question="Before you switch: on the mostly hard mix, 42 of the 60 questions are hard. Which strategy fits every budget?"
+  options={['Routing', 'The cascade', 'Medium alone', 'None of them']}
+  answer={2}
+>
+
+**Medium alone.** Routing drops to 81.7%, below the 85% floor. Hard questions are where Small fails, so each hard
+question the classifier misroutes is probably a failed answer. The cascade reaches exactly 85%, yet it escalates 24 of
+60 requests, so its p95 stays at 2.34 s. Its savings shrink too: about 33% below Medium alone, against about 57% on the
+easy mix. Medium alone passes 88.3% with a p95 of 1.55 s and about 4,123 units.
+
+</Predict>
+
+Pick the strategy from the traffic you actually get:
+
+- **Routing** suits a tight latency budget and questions whose difficulty shows in the text.
+- **A cascade** suits a mostly easy mix, some slack in the latency budget, and a checker you can trust.
+- **One model** suits a hard mix, or budgets with no slack. It is also the simplest to run and to debug.
+
+This is a **toy model**. Pass chances, the classifier, and the checker are toy numbers, and latency and cost are
+illustrative units. It checks quality, p95, and cost, and leaves out the last lesson's must decline budget. A real
+cascade needs a checker that catches every leaked address from Small, since one miss is a privacy incident. That
+argues for routing sensitive question types straight to the stronger model.
+
+Research agrees that the savings are real and depend on the mix. FrugalGPT (arXiv 2305.05176) chains models from cheap to
+expensive and learns when to stop. It reports up to 98% lower cost while matching the best single model on one dataset,
+and savings of 59% to 73% on others. It also needs labeled data and a trained scorer to decide when to accept an
+answer. Routing has the same need: the classifier is a model too, and it learns from labeled examples of easy and hard
+questions.
+
+## Two caches
+
+The word cache covers two different things in an AI gateway. One reuses the answer. The other reuses the work of reading
+the prompt.
+
+### Response cache: reuse the answer
+
+A **response cache** stores the final answer and returns it for a matching request without calling a model. It works
+like any [cache](../../scaling/caching/), and a hit is the cheapest answer there is. The danger is the key. Two requests
+may share a cached answer only when everything that shapes the answer matches:
+
+| Key field | Why it must be there |
+| --- | --- |
+| Store (tenant) | Store A allows returns for 30 days, and Store B allows 14 |
+| User role (permissions) | An agent's answer can include internal notes that a customer must never see |
+| Prompt version | A new prompt or policy changes the right answer |
+| Model | The fallback's short answer should never stand in for Medium's |
+| Settings | Temperature and output format change the reply, for example prose versus JSON |
+| The question | The exact text the customer asked |
+
+A **semantic cache** goes further and matches questions by meaning. "How long do I have to return shoes?" and "How long
+do I have to return a sale item?" look alike, and they can have different answers. A fixed similarity threshold gives no
+guarantee that a hit is correct. Use a semantic cache only where a near miss is harmless, and keep every other key field
+exact.
+
+### Prefix (KV) cache: reuse the prompt work
+
+A **prefix cache** works inside the model server. Before a model writes its first token, it reads the whole prompt and
+computes attention state, the keys and values (KV), for every prompt token. This step is the **prefill**. Every prompt
+in the support assistant starts with the same system prompt and store policy, so the server repeats that work on every
+request. A prefix cache keeps the computed state in fixed-size blocks and reuses them when a new request starts with
+exactly the same tokens.
+
+Its rules differ from a response cache:
+
+- **It still generates a fresh answer.** It skips repeated prompt work and never returns a stored reply, so it cannot
+  serve a stale or wrong answer.
+- **It helps time to first token.** Time to first token is the queue wait plus the prefill, so skipping prefill cuts it.
+  The time per output token comes mostly from decode, which does not change.
+- **It needs an exact prefix.** Each block's hash includes the block before it, so a change near the start invalidates
+  every later block. Put stable text first (system prompt, policy) and changing text last (timestamps, the question).
+  Only full blocks are cached.
+- **Reuse across stores is a choice.** A cache salt, such as one per store, keeps each store's blocks separate.
+
+The widget shows both caches. In response mode, nine requests pass through the cache in order. Drop a field from the
+key and watch which request gets someone else's answer. In prefix mode, one prompt is split into blocks of 16 tokens.
+Move the timestamp, change the store, or add a salt, and watch reuse and time to first token change.
+
+<GatewayCacheWidget client:visible />
+
+What to look for:
+
+- **Every field in the key gives one safe hit.** Only the exact repeat at step 2 hits the cache.
+- **Drop the store.** At step 3, a Store B customer asks about returns and gets Store A's 30 days. Store B allows 14
+  days. The widget flags it as a leak.
+- **Drop any other field.** Each one causes exactly one wrong hit: an agent only note shown to a customer, an answer
+  from an old prompt, the fallback's short answer, or prose where the form needs JSON.
+- **Prefix reuse.** A second request from the same store reuses 22 of 25 blocks and computes only 48 tokens, so time to
+  first token falls from 0.35 s to 0.13 s. Put the timestamp at the start of the prompt and reuse drops to zero.
+- **Salting.** Without a salt, a request from Store B reuses only the system prompt (10 blocks), since its policy
+  differs. With a salt per store it reuses nothing, which trades speed for isolation.
+
+The nine requests are **fixtures**, and the token counts and timings are toy numbers. Real block sizes and speedups
+depend on the model server. [Serving models](../llm-serving/) covers prefill, decode, and KV cache memory in depth.
+[Retrieval](../retrieval/), the next lesson, adds the store's own documents to the prompt, which makes the cache key and
+the tenant scoping matter even more.
+
+## Trade-offs
+
+<TradeoffTable title="Choosing gateway policies">
+
+| Choice | What it buys | What it costs |
+| --- | --- | --- |
+| Routing | One model call per request, with steady latency | A classifier that needs labeled data, and misroutes that cost quality |
+| Cascade | Large savings when most questions are easy | Escalations pay twice and stretch the p95, and it needs a reliable checker |
+| One model for everything | Simple, with predictable quality and latency | The bigger model's price on every easy question |
+| Response cache | No model call at all on a hit | Wrong answers when the key misses a field, and stale answers after changes |
+| Prefix (KV) cache | Faster time to first token on shared prompts | Needs exact, stable prefixes, and saves prefill only |
+| Quota per tenant | One store cannot starve the others | The bursting store gets 429s, and quotas need tuning |
+| Strict validation | Broken output never reaches the form | More retries and more handoffs |
+| Lenient validation (repair near misses) | Fewer retries | Can accept a reply that parses but is wrong |
+| Fallback to a smaller tier | Keeps answering during an outage | Lower quality while it runs |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+A large chain, Store E, joins the assistant. It sends up to 10 req/s at peak, and most of its questions are hard
+(warranty claims across thousands of products). Its contract requires a p95 of 2 s or less, it uses the JSON refund
+form, and its legal team forbids sharing any cached data with other stores. Design the gateway policy for Store E:
+quota, model choice, caching, validation, and fallback.
+
+<div slot="answer">
+
+- **Quota:** a bucket of its own at about 10 req/s with a short burst. The quotas now add up to 25 req/s, more than the
+  15 req/s upstream limit, so raise the upstream capacity before Store E goes live. Otherwise one busy hour brings the
+  noisy tenant problem back. Give Store E's batch jobs a separate, lower quota.
+- **Model choice:** Medium alone, or routing that sends only clearly easy questions to Small. On a hard mix the cascade
+  escalates often enough to break a 2 s p95, and broad routing misses the quality floor.
+- **Caching:** keep the response cache with every key field, including the store, so Store E's entries can never serve
+  another store. Salt the prefix cache per store, so Store E shares no blocks with anyone and still reuses its own
+  system prompt and policy.
+- **Validation:** strict schema and business rules on the refund JSON. Retry once only if enough time remains before
+  the 2 s deadline, and hand off at once if it does not.
+- **Fallback:** a circuit breaker on Medium. The chat falls back to Small, and the refund form hands off to a person,
+  since Small passes hard questions only 35% of the time in the toy.
+- **Measure first:** add Store E's question types to the eval set and check every budget on its own mix before launch.
+
+</div>
+
+</Challenge>

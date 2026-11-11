@@ -6,7 +6,9 @@ export type ComponentKind =
   | 'cache'
   | 'database'
   | 'queue'
-  | 'cdn';
+  | 'cdn'
+  | 'model'
+  | 'vectorIndex';
 
 export interface KindInfo {
   name: string;
@@ -64,6 +66,18 @@ export const kinds: Record<ComponentKind, KindInfo> = {
     shape: 'Cloud',
     color: 'Sky blue',
     role: 'Serves content from locations close to people.',
+  },
+  model: {
+    name: 'Model',
+    shape: 'Chip with pins on both sides and a sparkle icon',
+    color: 'Fuchsia',
+    role: 'A machine learning model, such as a language model, that turns an input into a prediction or text.',
+  },
+  vectorIndex: {
+    name: 'Vector index',
+    shape: 'Slanted card with a scatter plot icon',
+    color: 'Lime',
+    role: 'Finds the stored items whose embeddings sit closest to a query.',
   },
 };
 

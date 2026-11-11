@@ -1,0 +1,96 @@
+.sdv-rag-query {
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+  margin: 0;
+}
+
+.sdv-rag-lanes {
+  margin-bottom: 0.75rem;
+}
+
+.sdv-rag-list {
+  display: grid;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sdv-rag-row {
+  align-items: baseline;
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  gap: 0.25rem 0.5rem;
+  margin: 0;
+  padding: 0.3rem 0.5rem;
+}
+
+.sdv-rag-row[data-top="true"] {
+  border-color: var(--sl-color-text-accent);
+  border-width: 2px;
+}
+
+.sdv-rag-row__wide {
+  flex-basis: 100%;
+}
+
+.sdv-rag-rank {
+  font-weight: 700;
+  min-width: 1.2rem;
+}
+
+.sdv-rag-rank::before {
+  content: "#";
+}
+
+.sdv-rag-id {
+  font-family: var(--sl-font-mono);
+  overflow-wrap: anywhere;
+}
+
+.sdv-rag-score {
+  font-family: var(--sl-font-mono);
+  margin-left: auto;
+}
+
+.sdv-rag-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.sdv-rag-none {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+
+.sdv-rag-cites {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sdv-rag-cite__flag {
+  font-family: inherit;
+  font-weight: 700;
+}
+
+.sdv-rag-handoff {
+  align-items: center;
+  display: inline-flex;
+  font-size: var(--sl-text-xs);
+  gap: 0.3rem;
+  margin: 0;
+}
+
+.sdv-rag-key {
+  font-size: var(--sl-text-xs);
+  overflow-wrap: anywhere;
+}

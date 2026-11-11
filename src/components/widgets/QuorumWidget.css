@@ -1,0 +1,165 @@
+.sdv-quorum__svg {
+  display: block;
+  margin: 0 auto;
+  max-width: 34rem;
+  width: 100%;
+}
+@media (max-width: 40rem) {
+  .sdv-scroll-x > svg.sdv-quorum__svg {
+    min-width: 22rem;
+  }
+}
+.sdv-quorum__track {
+  fill: none;
+  stroke: var(--sl-color-gray-5);
+  stroke-width: 10;
+}
+.sdv-quorum__arc {
+  fill: none;
+  stroke: color-mix(in srgb, var(--sdv-db) 55%, transparent);
+  stroke-linecap: round;
+  stroke-width: 10;
+}
+.sdv-quorum__key path {
+  fill: var(--sl-color-text-accent);
+  stroke: var(--sl-color-black);
+  stroke-width: 1.5;
+}
+.sdv-quorum__key-label {
+  fill: var(--sl-color-white);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+/* The ring and links pass behind labels; a halo in the stage color keeps the text legible. */
+.sdv-quorum__svg .sdv-node__sublabel,
+.sdv-quorum__key-label {
+  paint-order: stroke;
+  stroke: var(--sl-color-bg);
+  stroke-linejoin: round;
+  stroke-width: 5px;
+}
+
+.sdv-quorum__latest {
+  display: grid;
+  font-size: var(--sl-text-xs);
+  gap: 0.35rem;
+  margin: 0;
+}
+.sdv-quorum__latest > div {
+  display: grid;
+  gap: 0 0.5rem;
+  grid-template-columns: minmax(7.5rem, auto) 1fr;
+}
+.sdv-quorum__latest dt {
+  color: var(--sl-color-gray-2);
+  font-weight: 600;
+}
+.sdv-quorum__latest dd {
+  color: var(--sl-color-white);
+  margin: 0;
+}
+
+.sdv-quorum__pill {
+  align-items: flex-start;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  color: var(--sl-color-white);
+  display: inline-flex;
+  gap: 0.25rem;
+  line-height: 1.35;
+  padding: 0.1rem 0.35rem;
+  width: fit-content;
+}
+.sdv-sim__stage .sdv-quorum__pill svg {
+  flex: none;
+  height: 1em;
+  margin-top: 0.15em;
+  width: 1em;
+}
+.sdv-quorum__pill[data-status="none"] {
+  color: var(--sl-color-gray-2);
+  font-style: italic;
+}
+.sdv-quorum__pill[data-status="ok"] {
+  background: color-mix(in srgb, var(--sdv-ok) 18%, transparent);
+  border-color: var(--sdv-ok);
+}
+.sdv-quorum__pill[data-status="warn"] {
+  background: color-mix(in srgb, var(--sdv-warn) 22%, transparent);
+  border: 2px solid var(--sdv-warn);
+}
+.sdv-quorum__pill[data-status="bad"] {
+  background: color-mix(in srgb, var(--sdv-bad) 15%, transparent);
+  border: 1px dashed var(--sdv-bad);
+}
+
+.sdv-quorum__legend {
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  gap: 0.4rem 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-quorum__legend li {
+  align-items: center;
+  color: var(--sl-color-gray-2);
+  display: flex;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+.sdv-quorum__compare {
+  min-width: 34rem;
+}
+.sdv-quorum__compare tbody th {
+  width: 32%;
+}
+.sdv-quorum__compare [data-current] {
+  background: color-mix(in srgb, var(--sl-color-text-accent) 10%, transparent);
+}
+
+.sdv-quorum__transcript {
+  font-size: var(--sl-text-sm);
+}
+.sdv-quorum__transcript summary {
+  color: var(--sl-color-white);
+  cursor: pointer;
+  font-weight: 600;
+}
+.sdv-quorum__transcript summary:focus-visible {
+  outline: 2px solid var(--sl-color-text-accent);
+  outline-offset: 2px;
+}
+.sdv-quorum__table {
+  border-collapse: collapse;
+  font-size: var(--sl-text-xs);
+  margin: 0.5rem 0 0;
+  min-width: 34rem;
+  width: 100%;
+}
+.sdv-quorum__caption {
+  color: var(--sl-color-gray-2);
+  font-weight: 600;
+  text-align: start;
+}
+.sdv-quorum__table th,
+.sdv-quorum__table td {
+  border: 0;
+  border-top: 1px solid var(--sdv-border);
+  color: var(--sl-color-gray-2);
+  padding: 0.3rem 0.25rem;
+  text-align: start;
+  vertical-align: top;
+}
+.sdv-quorum__table thead th,
+.sdv-quorum__table tbody th {
+  color: var(--sl-color-white);
+  font-weight: 600;
+}
+.sdv-quorum__table time {
+  color: var(--sl-color-white);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

@@ -33,10 +33,35 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  playwright-version:
+    name: Resolve Playwright version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.lockfile.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: lockfile
+        run: |
+          versions="$(grep -oP "^  '@playwright/test@\K[0-9]+\.[0-9]+\.[0-9]+(?=':)" pnpm-lock.yaml | sort -u)"
+          if [ "$(printf '%s\n' "$versions" | grep -c .)" -ne 1 ]; then
+            echo "::error file=pnpm-lock.yaml::Expected one @playwright/test version, found: ${versions:-none}"
+            exit 1
+          fi
+          echo "version=$versions" >> "$GITHUB_OUTPUT"
+
+  # The official image ships Chromium and its system libraries, so this job never calls apt.
+  # Its tag follows the lockfile, which keeps the browser build matched to @playwright/test.
   e2e:
     name: Browser smoke and accessibility tests
+    needs: playwright-version
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.playwright-version.outputs.version }}-noble
+      options: --user 1001 --ipc=host
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,7 +72,6 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm build
       - run: pnpm test:e2e
       - if: ${{ failure() }}

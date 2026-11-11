@@ -1,0 +1,196 @@
+.sdv-tx__statement {
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.4rem;
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  overflow-wrap: anywhere;
+  padding: 0.25rem 0.45rem;
+  justify-self: start;
+}
+
+.sdv-tx__row {
+  align-items: start;
+  background: color-mix(in oklab, var(--sdv-db) 8%, var(--sl-color-bg));
+  border: 1px solid color-mix(in oklab, var(--sdv-db) 45%, var(--sdv-border));
+  border-radius: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+}
+.sdv-tx__row > .sdv-tx__row-icon {
+  flex: none;
+  height: 22px;
+  margin-top: 0.1rem;
+  width: 22px;
+}
+.sdv-tx__row-body {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.sdv-tx__row-key,
+.sdv-tx__label {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-tx__value {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+.sdv-tx__value strong {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+}
+
+.sdv-tx__aliases {
+  display: grid;
+  gap: 0.2rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-tx__aliases li {
+  align-items: center;
+  color: var(--sl-color-gray-2);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  gap: 0.35rem;
+  margin: 0;
+}
+.sdv-tx__aliases code {
+  color: var(--sl-color-white);
+}
+
+.sdv-tx__timeline {
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.4rem;
+  min-width: 0;
+  overflow: hidden;
+}
+.sdv-tx__timeline svg {
+  display: block;
+}
+
+.sdv-tx__bar,
+.sdv-tx__key {
+  --tx-color: var(--sl-color-gray-3);
+}
+.sdv-tx__bar[data-state="ok"],
+.sdv-tx__key[data-state="ok"] {
+  --tx-color: var(--sdv-ok);
+}
+.sdv-tx__bar[data-state="harm"],
+.sdv-tx__key[data-state="harm"] {
+  --tx-color: var(--sdv-bad);
+}
+.sdv-tx__bar[data-state="rejected"],
+.sdv-tx__key[data-state="rejected"] {
+  --tx-color: var(--sdv-warn);
+}
+
+.sdv-tx__bar {
+  fill: color-mix(in oklab, var(--tx-color) 18%, transparent);
+  stroke: var(--tx-color);
+  stroke-width: 1.5;
+}
+.sdv-tx__bar[data-state="flight"] {
+  stroke-dasharray: 3 2;
+}
+.sdv-tx__bar[data-state="ok"] {
+  fill: var(--tx-color);
+}
+.sdv-tx__bar[data-state="rejected"] {
+  stroke-width: 2.5;
+}
+.sdv-tx__hatch-bg {
+  fill: color-mix(in oklab, var(--sdv-bad) 22%, var(--sl-color-bg));
+}
+.sdv-tx__hatch-line {
+  stroke: var(--sdv-bad);
+  stroke-width: 3;
+}
+.sdv-tx__now {
+  stroke: var(--sl-color-white);
+  stroke-dasharray: 2 2;
+  stroke-width: 1;
+}
+
+.sdv-tx__latest,
+.sdv-tx__flight {
+  display: grid;
+  gap: 0.2rem;
+}
+.sdv-tx__latest-text,
+.sdv-tx__muted {
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-tx__latest-text {
+  color: var(--sl-color-white);
+}
+/* The stage rule stretches every svg to full width; keep badge icons at badge size. */
+.sdv-tx__lane .sdv-badge svg {
+  display: inline-block;
+  flex: none;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.sdv-tx__muted {
+  color: var(--sl-color-gray-2);
+}
+.sdv-tx__flight ul {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+  padding-inline-start: 1.1rem;
+}
+.sdv-tx__flight li {
+  margin: 0;
+}
+
+.sdv-tx__legend {
+  color: var(--sl-color-gray-2);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  gap: 0.35rem 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-tx__legend li {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.4rem;
+  margin: 0;
+}
+.sdv-tx__key {
+  background: color-mix(in oklab, var(--tx-color) 18%, transparent);
+  border: 1.5px solid var(--tx-color);
+  border-radius: 3px;
+  display: inline-block;
+  flex: none;
+  height: 12px;
+  width: 26px;
+}
+.sdv-tx__key[data-state="flight"] {
+  border-style: dashed;
+}
+.sdv-tx__key[data-state="ok"] {
+  background: var(--tx-color);
+}
+.sdv-tx__key[data-state="rejected"] {
+  border-width: 2.5px;
+}
+.sdv-tx__key[data-state="harm"] {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--sdv-bad) 0 2px,
+    color-mix(in oklab, var(--sdv-bad) 22%, var(--sl-color-bg)) 2px 5px
+  );
+}

@@ -20,6 +20,7 @@ export function buildSidebar(): SidebarItem[] {
       { slug: 'start-here', label: 'How this course works' },
       { slug: 'curriculum', label: 'Course map' },
       { slug: 'visual-language', label: 'Visual language' },
+      { slug: 'reference', label: 'Reference sheet' },
     ],
   };
 

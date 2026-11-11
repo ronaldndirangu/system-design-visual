@@ -184,11 +184,15 @@ diagrams still read in grayscale. The source of truth is `src/components/viz/kin
 | Database      | Cylinder                                               | Green    | Stores data durably on disk                           |
 | Queue         | Pill with slots                                        | Cyan     | Holds work until a consumer is ready                  |
 | CDN           | Cloud                                                  | Sky blue | Serves content close to people                        |
+| Model         | Chip with pins on both sides and a sparkle icon        | Fuchsia  | A machine learning model that turns input into output |
+| Vector index  | Slanted card with a scatter plot icon                  | Lime     | Finds stored items whose embeddings are closest       |
 
 Status always pairs a color with an icon and a word: **Healthy** (check), **Strained** (exclamation mark), and **Down**
 (cross). In physics scenes, requests are balls: a solid ball is waiting, a ring was served, and a cross was dropped.
 
-When you add a new kind of component, add it to `kinds.ts` and `SystemNode.tsx`, then update this table.
+When you add a new kind of component, add it to `kinds.ts`, `SystemNode.tsx`, and `icons.tsx`, give it a color for both
+themes (the AI kinds keep theirs in `src/components/viz/aiKinds.css`), then update this table. The AI systems module
+draws an AI gateway with the load balancer shape and a tool with the server shape, since both are ordinary services.
 
 ## Pull requests
 

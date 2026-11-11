@@ -11,6 +11,8 @@ const iconPaths: Record<ComponentKind, string> = {
     'M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3s-3.6 3-8 3s-8-1.3-8-3z M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6 M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',
   queue: 'M3 7h18v10H3z M8 7v10 M13 7v10 M18 7v10',
   cdn: 'M7 18h10a4 4 0 0 0 .6-8A6 6 0 0 0 6.2 9.6A4.2 4.2 0 0 0 7 18z',
+  model: 'M12 3l2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2z',
+  vectorIndex: 'M4 4v16h16 M9 15h.01 M12 10h.01 M15 14h.01 M18 7h.01',
 };
 
 export function KindIcon({

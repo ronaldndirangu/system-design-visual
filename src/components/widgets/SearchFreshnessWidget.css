@@ -1,0 +1,97 @@
+.sdv-search__index,
+.sdv-search__live {
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.5rem 0.6rem;
+}
+
+.sdv-search__index-name {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+  margin: 0;
+}
+
+.sdv-search__line {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.sdv-search__build {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.sdv-search__bar {
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: 999px;
+  display: block;
+  height: 0.5rem;
+  overflow: hidden;
+}
+
+.sdv-search__bar > span {
+  background: var(--sl-color-gray-3);
+  display: block;
+  height: 100%;
+}
+
+.sdv-search__segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sdv-search__seg {
+  border: 1px solid var(--sdv-series-b);
+  border-radius: 0.3rem;
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+  padding: 0.05rem 0.35rem;
+}
+
+.sdv-search__seg[data-level="1"] {
+  border-width: 2px;
+}
+
+.sdv-search__seg[data-level="2"] {
+  border-width: 3px;
+}
+
+.sdv-search__seg[data-level="3"] {
+  border-width: 3px;
+  font-weight: 700;
+}
+
+.sdv-search__seg--more {
+  border-style: dashed;
+  color: var(--sl-color-gray-2);
+}
+
+/* Lane grids size their column to the widest child; let long badges wrap inside the lane instead. */
+.sdv-search__lane {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sdv-search__line .sdv-badge {
+  line-height: 1.3;
+  white-space: normal;
+}
+
+/* The stage stretches every svg to full width; keep the status badge icon at its own size. */
+.sdv-search__line .sdv-badge svg {
+  flex: none;
+  height: 0.85rem;
+  width: 0.85rem;
+}

@@ -1,0 +1,104 @@
+.sdv-cdn__map {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Stacked panes keep map labels legible and line up both km rulers. */
+.sdv-duel__lanes.sdv-cdn__lanes {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sdv-cdn__site {
+  fill: none;
+  stroke: var(--sl-color-gray-4);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.sdv-cdn__site-label {
+  font-size: 12.5px;
+}
+
+.sdv-cdn__city {
+  fill: var(--sdv-client);
+  stroke: var(--sl-color-bg);
+  stroke-width: 1.5;
+}
+
+.sdv-cdn__mean--latest {
+  fill: var(--sl-color-white);
+  font-weight: 600;
+}
+
+.sdv-cdn__ruler line {
+  stroke: var(--sl-color-gray-3);
+  stroke-width: 1;
+}
+
+.sdv-cdn__note {
+  margin: 0.5rem 0 0;
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+}
+
+.sdv-cdn__key {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  flex: none;
+}
+
+.sdv-cdn__key--hit {
+  background: var(--sdv-ok);
+}
+
+.sdv-cdn__key--miss {
+  background: var(--sdv-warn);
+}
+
+.sdv-cdn__key--origin {
+  background: var(--sl-color-text-accent);
+}
+
+.sdv-cdn__legend .sdv-cdn__key-icon {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  display: inline-block;
+}
+
+.sdv-cdn__cities {
+  width: 100%;
+  margin-top: 0.75rem;
+  border-collapse: collapse;
+  font-size: var(--sl-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.sdv-cdn__cities caption {
+  text-align: start;
+  font-weight: 600;
+  padding-bottom: 0.35rem;
+}
+
+.sdv-cdn__cities th,
+.sdv-cdn__cities td {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--sl-color-hairline);
+  text-align: end;
+}
+
+.sdv-cdn__cities th:first-child {
+  text-align: start;
+}
+
+.sdv-cdn__cities tbody td {
+  white-space: nowrap;
+}
+
+.sdv-cdn__cities thead th {
+  color: var(--sl-color-gray-2);
+  font-weight: 600;
+}
