@@ -9,6 +9,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: ci,
   retries: ci ? 1 : 0,
+  workers: ci ? 4 : undefined,
   reporter: ci ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL,

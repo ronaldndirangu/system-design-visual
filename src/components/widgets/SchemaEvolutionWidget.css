@@ -1,0 +1,146 @@
+/* Schema evolution widget: the click topic and the dead-letter queue are queues (cyan), the consumer is a server (violet). Outcome cells use a pattern per outcome, and payload diffs mark added and removed fields with a sign and a word. */
+
+.sdv-schema__payloads {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+.sdv-schema__payload {
+  border: 1px solid var(--sdv-border);
+  border-inline-start: 4px solid var(--sdv-queue);
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+}
+.sdv-schema__payload-title {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+}
+.sdv-schema__code {
+  background: var(--sdv-surface-raised);
+  border: 0;
+  border-radius: 0.35rem;
+  font-size: var(--sl-text-xs);
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 0.35rem 0.5rem;
+  white-space: pre-wrap;
+}
+.sdv-schema__line {
+  display: block;
+}
+.sdv-schema__line[data-diff="added"] {
+  background: color-mix(in oklab, var(--sdv-ok) 18%, transparent);
+}
+.sdv-schema__line[data-diff="removed"] {
+  background: color-mix(in oklab, var(--sdv-bad) 18%, transparent);
+  text-decoration: line-through;
+}
+.sdv-schema__mark {
+  display: inline-block;
+  font-style: italic;
+  font-weight: 600;
+  text-decoration: none;
+}
+.sdv-schema__payload-text,
+.sdv-schema__pending,
+.sdv-schema__path,
+.sdv-schema__strip-text {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-schema__pending {
+  align-self: center;
+}
+.sdv-schema__nodes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-schema__node {
+  align-items: center;
+  border: 1px solid var(--sdv-border);
+  border-inline-start: 4px solid var(--node);
+  border-radius: 0.5rem;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  max-width: 100%;
+  padding: 0.25rem 0.45rem;
+}
+.sdv-schema__node .sdv-badge {
+  flex: none;
+  max-width: 100%;
+  white-space: normal;
+}
+.sdv-schema__node[data-status="stuck"] {
+  background-image: repeating-linear-gradient(
+    45deg,
+    color-mix(in oklab, var(--sdv-bad) 18%, transparent) 0 2px,
+    transparent 2px 9px
+  );
+  border-inline-start-color: var(--sdv-bad);
+  border-style: dashed;
+}
+/* Two classes outrank the shared stage rule that stretches every svg to full width. */
+.sdv-schema__node .sdv-schema__icon {
+  flex: none;
+  height: 1.1rem;
+  width: 1.1rem;
+}
+.sdv-schema__node-name {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+}
+.sdv-schema__node .sdv-badge svg,
+.sdv-schema__verdict .sdv-badge svg {
+  display: inline-block;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.sdv-schema__strip {
+  display: grid;
+  gap: 2px;
+  grid-template-columns: repeat(20, minmax(0, 1fr));
+  min-height: 3.1rem;
+}
+.sdv-schema__cell {
+  border: 1px solid transparent;
+  border-radius: 2px;
+  box-sizing: border-box;
+  display: block;
+  height: 0.9rem;
+}
+.sdv-schema__key {
+  display: inline-block;
+  flex: none;
+  width: 1.1rem;
+}
+.sdv-schema__cell[data-outcome="counted"] {
+  background: var(--sdv-ok);
+}
+.sdv-schema__cell[data-outcome="parked"] {
+  background:
+    radial-gradient(circle, var(--sdv-warn) 1.2px, transparent 1.7px) 0 0 / 4px 4px,
+    color-mix(in oklab, var(--sdv-warn) 15%, var(--sl-color-bg));
+  border: 1px dashed var(--sdv-warn);
+}
+.sdv-schema__verdict {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.sdv-schema__verdict .sdv-badge {
+  white-space: normal;
+}

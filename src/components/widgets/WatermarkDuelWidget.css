@@ -1,0 +1,12 @@
+/* Watermark duel widget: component chips come from NodeChip.css, window bars and the watermark line from WindowBars.css. This file only spaces the lane text. */
+
+.sdv-wduel__path,
+.sdv-wduel__mark {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin: 0;
+}
+.sdv-wduel__mark {
+  color: var(--sl-color-white);
+  font-variant-numeric: tabular-nums;
+}
