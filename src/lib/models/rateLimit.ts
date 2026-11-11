@@ -215,6 +215,11 @@ export class RateLimitModel implements ModelAdapter<RateLimitCommand, RateLimitT
     return this.rates[client] ?? 0;
   }
 
+  /** Requests a client may send right now: tokens left, or room left in the window. */
+  allowanceOf(client: number): number {
+    return this.allowance(client);
+  }
+
   /** Whole-run counts per client. */
   clientTotals(): readonly ClientTotals[] {
     return this.totals;
@@ -787,9 +792,10 @@ export class LimiterRun {
     return this.tickCount >= this.length;
   }
 
-  /** Applies a live change, such as a slider, to every lane. */
-  apply(command: RateLimitCommand) {
+  /** Applies a live change, such as a slider, to every lane, and logs it when given a note. */
+  apply(command: RateLimitCommand, note?: string) {
     for (const lane of this.lanes) lane.apply(command);
+    if (note && !this.done) this.events.push({ tick: this.tickCount, text: note, marker: true });
   }
 
   step(): RateLimitTick[] {
