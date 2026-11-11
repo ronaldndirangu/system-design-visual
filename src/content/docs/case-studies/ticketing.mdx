@@ -236,8 +236,9 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
 
 6. **Deep dive: the claim.** This is where the design breaks first, and the simulations below live here. Three tools
    make the database reject a second claim. A conditional write:
-   `UPDATE seats SET holder = ?, expires = now() + 8 min WHERE seat = ? AND (holder IS NULL OR expires < now())`, then
-   check how many rows changed. A row lock: `SELECT ... FOR UPDATE` inside a transaction, then the write. A unique
+   `UPDATE seats SET status = 'held', holder = ?, expires = now() + 8 min WHERE event = ? AND seat = ? AND (status =
+   'available' OR (status = 'held' AND expires < now()))`, then check how many rows changed. A sold seat matches neither
+   branch, so no claim can take it back. A row lock: `SELECT ... FOR UPDATE` inside a transaction, then the write. A unique
    constraint that refuses a second order row for the same seat. The Transactions and constraints lesson covers all
    three.
 

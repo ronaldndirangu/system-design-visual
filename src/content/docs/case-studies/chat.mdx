@@ -296,9 +296,10 @@ knows is offline, and pushes them when it reconnects. Only the catch-up lane als
 What to look for:
 
 - **Tunnel.** The phone loses signal at 6 s. The server notices at 9.1 s, after **12 messages** went into the dead
-  socket, and queues the rest. At 14.1 s the push lane receives **25 queued messages** and never sees the 12. It shows
-  **84 of 96**, and the phone itself has no way to notice; the dashed note above its screen is the simulation pointing
-  at the gap. The catch-up phone says the last message it showed is **29**, and the server replays the **37 messages**
+  socket, and queues the rest. The phone reconnects at 14.1 s, and at 14.4 s the push lane receives the **25 queued
+  messages** and never the 12. It shows **84 of 96**. Sequence numbers would expose the jump, yet this lane never checks
+  for gaps, so nothing asks the server to replay them; the dashed note above its screen marks what is missing. The
+  catch-up phone says the last message it showed is **29**, and the server replays the **37 messages**
   after it, including the 12. It shows all **96**.
 - **The average delay.** The push lane averages **1.1 s** and the catch-up lane **1.7 s**. The push lane looks faster
   only because the 12 slowest messages never reach it.

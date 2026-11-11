@@ -108,7 +108,7 @@ function MessageGrid({ lane }: { lane: ChatLane }) {
 
 function gapText({ first, last }: { first: number; last: number }): string {
   const missing = first === last ? `Message ${first + 1}` : `Messages ${first + 1} to ${last + 1}`;
-  return `Simulation note: ${missing} never arrived. The phone cannot see the gap.`;
+  return `Simulation note: ${missing} never arrived. This lane never checks for gaps.`;
 }
 
 function PhoneScreen({ lane }: { lane: ChatLane }) {

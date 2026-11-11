@@ -430,7 +430,7 @@ export class ChatDuel {
     }
     const text = lane.config.catchUp
       ? `${lane.config.label}: the phone reconnects and says the last message it showed is ${s.nextExpected}. The server replays the ${replay.length} messages after it from the log, including the ${lost.length} lost in the dead socket.`
-      : `${lane.config.label}: the phone reconnects and the server sends its ${queued.length} queued messages. The ${lost.length} messages lost in the dead socket never arrive, and the phone cannot tell.`;
+      : `${lane.config.label}: the phone reconnects and the server sends its ${queued.length} queued messages. The ${lost.length} messages lost in the dead socket never arrive, and this lane never checks for the gap.`;
     this.events.push({ tick: tick + 1, text, marker: true });
   }
 

@@ -194,7 +194,8 @@ request that never reached the bank is harmless to retry, and the service cannot
 This case study has one dominant constraint: **move money exactly once**, even when the network loses requests and
 replies. Load is modest. Correctness is the whole job.
 
-Retries turn a lossy network into at-least-once delivery, so the fix makes repeats harmless. An **idempotency key** names the purchase, and
+Retries can carry one charge to the bank more than once, and after its last timed-out attempt the service may still not
+know whether any landed. The fix makes repeats harmless and settles the unknowns later. An **idempotency key** names the purchase, and
 every retry carries the same name. The bank stores the key with its result, so a repeat gets the first answer and moves
 no money. A **double-entry ledger** records every payment as entries that must balance. **Reconciliation** compares that
 ledger with the bank's own records and settles anything the retries could not.

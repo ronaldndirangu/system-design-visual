@@ -187,7 +187,7 @@ describe('chat duel', () => {
     expect(eventLines(finished('tunnel').duel)).toEqual([
       '6.0 The phone loses signal. Its socket dies without a goodbye, so the server still treats it as connected.',
       '9.1 The server hears no heartbeat for 3 s and marks the phone offline. By then it pushed 12 messages into the dead socket. It queues new ones from here.',
-      '14.1 Push, and queue while offline: the phone reconnects and the server sends its 25 queued messages. The 12 messages lost in the dead socket never arrive, and the phone cannot tell.',
+      '14.1 Push, and queue while offline: the phone reconnects and the server sends its 25 queued messages. The 12 messages lost in the dead socket never arrive, and this lane never checks for the gap.',
       '14.1 Cursor catch-up on reconnect: the phone reconnects and says the last message it showed is 29. The server replays the 37 messages after it from the log, including the 12 lost in the dead socket.',
       '30.0 Run ends. Messages missing from the phone: push, and queue while offline 12, cursor catch-up on reconnect 0.',
     ]);

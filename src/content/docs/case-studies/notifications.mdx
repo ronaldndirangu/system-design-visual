@@ -143,13 +143,13 @@ export const quiz = [
     prompt: "Where should the notification service check a user's opt-outs and quiet hours?",
     options: [
       {
-        text: 'Before enqueueing, and quiet hours once more at send time',
+        text: 'Before enqueueing, and again at send time',
         correct: true,
-        why: "A muted message never takes a lane slot or a send from the rate limit. A bulk message can wait for hours, so the sender checks the clock in the user's time zone again before it sends.",
+        why: "A muted message never takes a lane slot or a send from the rate limit. A bulk message can wait for hours, and meanwhile the user may opt out or enter quiet hours, so the sender reads the current preferences and the clock in the user's time zone before it sends.",
       },
       {
         text: 'Only at send time',
-        why: 'Muted messages would sit in the lanes and compete with codes until a sender throws them away.',
+        why: 'Muted messages would sit in the lanes and compete with codes until a sender throws them away. The send-time check is right, and it needs an earlier check beside it.',
       },
       {
         text: 'Once, when the user signs up',
@@ -250,8 +250,8 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
 
 5. **High-level design.** The notifier deduplicates on the idempotency key, checks preferences, writes the row, and
    enqueues its ID on one of three lanes: priority for codes and security alerts, normal for social updates, and bulk for
-   campaigns. Senders drain the lanes in that order, take tokens from one bucket per provider to stay under each rate limit,
-   and keep a circuit breaker per provider. The Queues and backpressure lesson covers the lanes, and the Rate limiting lesson
+   campaigns. Senders drain the lanes in that order, recheck preferences, take tokens from one bucket per provider to stay
+   under each rate limit, and keep a circuit breaker per provider. The Queues and backpressure lesson covers the lanes, and the Rate limiting lesson
    covers the token bucket.
 
 6. **Deep dive: deadlines under bursts and outages.** This is where the design breaks first, and both simulations below
@@ -322,13 +322,14 @@ Retries and failover create duplicates. A provider can send a text and then time
 a failure, retries or fails over, and Ana gets two texts. One ID per notification guards each hop: callers pass an
 idempotency key, so a retried request creates one notification. Senders pass the notification ID to providers that
 accept an idempotency key, and record each send in the sent log. Some providers accept no key, and a sender can crash
-between a send and its log write, so a duplicate stays possible. In practice, notifications are delivered at least once.
-A second login code is harmless, so write every message to read fine twice. The Idempotency lesson and the Delivery
+between a send and its log write, so a duplicate stays possible. Retries also stop at the deadline, so a notification can
+arrive twice or not at all. A second login code is harmless, so write every message to read fine twice. The Idempotency lesson and the Delivery
 semantics and the outbox lesson cover these guarantees.
 
-Preferences decide whether a message goes at all. Check opt-outs before enqueueing, so a muted campaign never takes a
-lane slot or a send from the rate limit. Check quiet hours in the user's own time zone, and again at send time, since a
-bulk message may wait for hours. Security messages skip quiet hours by design: a code the user just asked for is always
+Preferences decide whether a message goes at all. Check opt-outs and quiet hours before enqueueing, so a muted campaign
+never takes a lane slot or a send from the rate limit. A bulk message may wait for hours, and the user may opt out or
+enter quiet hours meanwhile, so the sender reads the current preferences again at send time, with quiet hours in the
+user's own time zone. Security messages skip quiet hours by design: a code the user just asked for is always
 wanted.
 
 Channels differ too. APNs and FCM deliver pushes to installed apps, may hold or merge them to save battery, and report
@@ -363,7 +364,7 @@ socket and catches up with its cursor. The push carries a nudge, and the chat lo
 | Buy more provider capacity            | Every lane drains faster                        | Money, and a big enough campaign still buries codes in one queue |
 | Retry with backoff                    | Brief provider blips heal on their own          | Cannot outlast an outage longer than the deadline              |
 | Circuit breaker and a backup provider | Codes keep flowing through an outage            | A second contract, often slower or pricier, and more duplicates |
-| Check preferences before enqueueing   | Muted messages cost nothing downstream          | Every request reads preferences, so they need a fast cache     |
+| Check preferences before enqueueing and at send | Muted messages cost nothing downstream, and late opt-outs hold | Two preference reads per message, so they need a fast cache |
 
 </TradeoffTable>
 
@@ -373,14 +374,18 @@ socket and catches up with its cursor. The push carries a nudge, and the chat lo
 
 A security alert, "New sign-in from Lisbon", must reach the user within 2 minutes. Send it by push first, then SMS if
 push does not land, then email if SMS fails. Design the chain so that quiet hours never hold it back, a user whose push
-arrives normally gets no SMS, and a retried step never sends the same channel twice.
+arrives normally gets no SMS, and a retried step avoids sending the same channel twice.
 
 <div slot="answer">
 
 **One notification, one deadline, and channels tried in order.**
 
-- **One row, one attempt per channel:** the alert gets one ID and a deadline 2 minutes out. Each attempt is a row in
-  `attempts`, keyed by `(notification_id, channel)`, so a retried step finds its row and sends nothing.
+- **One attempt row per channel, with a state:** the alert gets one ID and a deadline 2 minutes out. Each channel's
+  attempt is a row in `attempts`, keyed by `(notification_id, channel)`. The step writes `pending` before it calls the
+  provider, then `sent` when the provider accepts, or `unknown` when the call times out. A retried step that finds
+  `sent` stops. One that finds `pending` or `unknown` (say, after a crash between the write and the call) sends again
+  with the notification ID as the provider's idempotency key. A provider that honors keys sends once; one without keys
+  may send twice.
 - **Confirm from the phone:** push services accept a message without proving it arrived. The app calls
   `POST /notifications/{id}/ack` when it shows the alert, and the ack cancels the next step.
 - **A timer per step:** with no ack after 30 s, a scheduled job sends the SMS through the priority lane. If the SMS
