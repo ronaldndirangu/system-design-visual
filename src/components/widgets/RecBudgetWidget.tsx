@@ -44,6 +44,8 @@ const recallY = (recall: number) => RECALL_BOTTOM - recall * (RECALL_BOTTOM - RE
 const latY = (ms: number) => LAT_BOTTOM - (Math.min(ms, LAT_MAX) / LAT_MAX) * (LAT_BOTTOM - LAT_TOP);
 const pct = (fraction: number) => `${Math.round(fraction * 100)}%`;
 const knownGood = (point: CurvePoint) => Math.round(point.recall * RELEVANT_TOTAL);
+const recallAt = (candidates: number) =>
+  pct(curve.find((point) => point.candidates === candidates)?.recall ?? 0);
 const pathFor = (y: (point: CurvePoint) => number) =>
   curve.map((point, index) => `${index === 0 ? 'M' : 'L'}${xFor(point.candidates)} ${y(point)}`).join(' ');
 
@@ -99,7 +101,7 @@ export default function RecBudgetWidget({
     {
       label: 'Known good reaching the ranker',
       value: `${good} of ${RELEVANT_TOTAL}`,
-      tone: point.recall >= 0.9 ? 'ok' : 'warn',
+      tone: good >= RELEVANT_TOTAL - 1 ? 'ok' : 'warn',
       detail: `candidate recall ${pct(point.recall)}`,
     },
     {
@@ -164,7 +166,7 @@ export default function RecBudgetWidget({
             className="sdv-rec-budget__chart"
             viewBox={`0 0 ${W} ${H}`}
             role="img"
-            aria-label={`Two charts that share a log scale of candidates from 10 to 20,000. Top: candidate recall climbs from ${pct(curve[0]?.recall ?? 0)} at 10 candidates to 90% at 500 and 100% at 2,000. Bottom: total time stays under the ${REC_BUDGET_MS} ms budget until about ${crossingLabel ?? 'the end'} candidates. ${summary}`}
+            aria-label={`Two charts that share a log scale of candidates from 10 to 20,000. Top: candidate recall climbs from ${pct(curve[0]?.recall ?? 0)} at 10 candidates to ${recallAt(500)} at 500 and ${recallAt(2000)} at 2,000. Bottom: total time stays under the ${REC_BUDGET_MS} ms budget until about ${crossingLabel ?? 'the end'} candidates. ${summary}`}
           >
             <g className="sdv-axis">
               <line x1={LEFT} x2={RIGHT} y1={RECALL_BOTTOM} y2={RECALL_BOTTOM} />
@@ -342,9 +344,9 @@ export default function RecBudgetWidget({
         <li>Ringed points and the vertical line: your selection</li>
       </ul>
       <p className="sdv-rec-budget__caveat">
-        Toy request: the top {SHOWN} stops improving at 50 candidates here, while recall keeps climbing to 90%
-        at 500 and 100% at 2,000. Real requests vary, so teams keep a few hundred candidates as headroom. They
-        cost only a few milliseconds.
+        Toy request: the top {SHOWN} stops improving at 50 candidates here, while recall keeps climbing to{' '}
+        {recallAt(500)} at 500 and {recallAt(2000)} at 2,000. Real requests vary, so teams keep a few hundred
+        candidates as headroom. They cost only a few milliseconds.
       </p>
       <details className="sdv-rec-budget__details">
         <summary>Every point as a table</summary>

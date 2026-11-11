@@ -2,10 +2,14 @@ import { m } from 'motion/react';
 import { useId, useState } from 'react';
 import {
   batchPoint,
-  PER_PROMPT_TOKEN_MS,
+  computeMs,
+  memoryMs,
   PER_SEQUENCE_MS,
+  RIDGE_TOKENS,
+  STEP_OVERHEAD_MS,
   SWEEP_BATCHES,
   stepMs,
+  TOKENS_PER_MS,
   WEIGHT_READ_MS,
 } from '../../lib/models/llmServing';
 import { Segmented } from '../sim/controls';
@@ -23,7 +27,7 @@ interface Props {
   instructions?: string;
 }
 
-const PROMPTS = [0, 512, 2048] as const;
+const PROMPTS = [0, RIDGE_TOKENS, 2048] as const;
 type Prompt = (typeof PROMPTS)[number];
 type BatchValue = `${(typeof SWEEP_BATCHES)[number]}`;
 type PromptValue = `${Prompt}`;
@@ -38,15 +42,16 @@ const promptOptions = PROMPTS.map((prompt) => ({
 }));
 
 const MAX_BATCH = SWEEP_BATCHES[SWEEP_BATCHES.length - 1] ?? 256;
-const MAX_PROMPT = 2048;
-const MAX_STEP_MS = stepMs(MAX_BATCH, MAX_PROMPT);
+const MAX_PROMPT = PROMPTS[PROMPTS.length - 1] ?? 2048;
+const MAX_ROW_MS = Math.max(memoryMs(MAX_BATCH), computeMs(MAX_BATCH, MAX_PROMPT));
 const CEILING = 1000 / PER_SEQUENCE_MS;
 
 const BAR_W = 320;
 const BAR_X0 = 8;
 const BAR_X1 = 312;
-const BAR_Y = 20;
-const BAR_H = 26;
+const BAR_H = 22;
+const MEMORY_Y = 34;
+const COMPUTE_Y = 80;
 
 const CHART_W = 320;
 const CHART_H = 170;
@@ -58,7 +63,7 @@ const Y_MAX = 7000;
 const curveBatches = Array.from({ length: 65 }, (_, index) => Math.max(1, index * 4));
 
 const whole = (value: number) => Math.round(value).toLocaleString('en-US');
-const ms = (value: number) => `${value.toLocaleString('en-US', { maximumFractionDigits: 1 })} ms`;
+const ms = (value: number) => `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })} ms`;
 const cx = (batch: number) => PLOT_X0 + ((PLOT_X1 - PLOT_X0) * batch) / MAX_BATCH;
 const cy = (tokensPerSecond: number) => PLOT_BOTTOM - ((PLOT_BOTTOM - PLOT_TOP) * tokensPerSecond) / Y_MAX;
 const curvePath = curveBatches
@@ -70,43 +75,65 @@ const curvePath = curveBatches
 
 export default function ServingCostWidget({
   title = 'What one step costs (toy model)',
-  instructions = 'Every step reads all the model weights once, then does a little work per decoding request and a lot of work per prompt token. Pick how many requests decode together and how big a prompt shares the step.',
+  instructions = `Every step reads all the model weights once and does math for every token in it. The two overlap, so the slower one sets the step. Pick how many requests decode together and how big a prompt shares the step: up to about ${RIDGE_TOKENS} tokens of math hide under the weight read.`,
 }: Props) {
   const reduced = usePrefersReducedMotion();
   const hatchId = `${safeId(useId(), 'serve-cost')}-hatch`;
   const [batch, setBatch] = useState<number>(32);
   const [prompt, setPrompt] = useState<Prompt>(0);
 
-  const weightMs = WEIGHT_READ_MS;
-  const decodeMs = PER_SEQUENCE_MS * batch;
-  const prefillMs = PER_PROMPT_TOKEN_MS * prompt;
+  const memory = memoryMs(batch);
+  const compute = computeMs(batch, prompt);
+  const kvMs = memory - WEIGHT_READ_MS;
+  const decodeMathMs = batch / TOKENS_PER_MS;
+  const promptMathMs = prompt / TOKENS_PER_MS;
   const total = stepMs(batch, prompt);
+  const computeBound = compute > memory;
+  const bound = computeBound ? 'compute bound' : 'memory bound';
   const decodeRate = (batch * 1000) / total;
   const single = batchPoint(1);
   const point = batchPoint(batch);
   const move = reduced ? { duration: 0 } : { type: 'spring' as const, stiffness: 160, damping: 22 };
 
-  const scale = (value: number) => ((BAR_X1 - BAR_X0) * value) / MAX_STEP_MS;
-  const segments = [
-    { key: 'weights', label: 'weights', value: weightMs, className: 'sdv-serve-cost__seg--weights' },
-    { key: 'decode', label: 'decode', value: decodeMs, className: 'sdv-serve-cost__seg--decode' },
-    { key: 'prefill', label: 'prompt', value: prefillMs, className: 'sdv-serve-cost__seg--prefill' },
+  const scale = (value: number) => ((BAR_X1 - BAR_X0) * value) / MAX_ROW_MS;
+  const place = (y: number, segments: { key: string; value: number; className: string }[]) => {
+    let cursor = BAR_X0;
+    return segments.map((segment) => {
+      const x = cursor;
+      const width = scale(segment.value);
+      cursor += width;
+      return { ...segment, x, y, width };
+    });
+  };
+  const placed = [
+    ...place(MEMORY_Y, [
+      { key: 'weights', value: WEIGHT_READ_MS, className: 'sdv-serve-cost__seg--weights' },
+      { key: 'kv', value: kvMs, className: 'sdv-serve-cost__seg--decode' },
+    ]),
+    ...place(COMPUTE_Y, [
+      { key: 'decode-math', value: decodeMathMs, className: 'sdv-serve-cost__seg--decode' },
+      { key: 'prompt-math', value: promptMathMs, className: 'sdv-serve-cost__seg--prefill' },
+    ]),
   ];
-  let cursor = BAR_X0;
-  const placed = segments.map((segment) => {
-    const x = cursor;
-    const width = scale(segment.value);
-    cursor += width;
-    return { ...segment, x, width };
-  });
+  const memoryEnd = BAR_X0 + scale(memory);
 
-  const summary = `Toy model. ${batch} requests decoding${prompt > 0 ? ` and a ${prompt.toLocaleString('en-US')} token prompt` : ''}: one step takes ${ms(total)} (weights ${ms(weightMs)}, decode ${ms(decodeMs)}, prompt ${ms(prefillMs)}). Each request gets a token every ${ms(total)}, and the server makes ${whole(decodeRate)} decode tokens per second.`;
+  const promptWords = prompt > 0 ? ` and a ${prompt.toLocaleString('en-US')} token prompt` : '';
+  const summary = `Toy model. ${batch} requests decoding${promptWords}: memory takes ${ms(memory)} and compute takes ${ms(compute)}, so the step is ${bound} and takes ${ms(STEP_OVERHEAD_MS)} of overhead plus ${ms(Math.max(memory, compute))}, ${ms(total)} in all. Each request gets a token every ${ms(total)}, and the server makes ${whole(decodeRate)} decode tokens per second.`;
+
+  let note: string | undefined;
+  if (computeBound) note = 'the prompt stalls every decoder';
+  else if (prompt > 0) note = 'the prompt hides under the weight read';
 
   const stats: StatRow[] = [
     {
       label: 'Step time',
       value: ms(total),
-      detail: `${WEIGHT_READ_MS} + ${PER_SEQUENCE_MS} × ${batch} + ${PER_PROMPT_TOKEN_MS} × ${prompt.toLocaleString('en-US')}`,
+      detail: `${STEP_OVERHEAD_MS} + max(memory ${ms(memory)}, compute ${ms(compute)})`,
+    },
+    {
+      label: 'Slower resource',
+      value: computeBound ? 'Compute: the math' : 'Memory: the reads',
+      detail: `${(batch + prompt).toLocaleString('en-US')} tokens of math at ${TOKENS_PER_MS} per ms`,
     },
     {
       label: 'Decode tokens per second, whole server',
@@ -121,8 +148,8 @@ export default function ServingCostWidget({
     {
       label: 'Against batch 1 with no prompt',
       value: `${(total / single.stepMs).toFixed(1)}× step time, ${(decodeRate / single.tokensPerSecond).toFixed(1)}× throughput`,
-      tone: prompt > 0 ? 'warn' : 'neutral',
-      note: prompt > 0 ? 'the prompt stalls every decoder' : undefined,
+      tone: computeBound ? 'warn' : 'neutral',
+      note,
     },
   ];
 
@@ -132,7 +159,7 @@ export default function ServingCostWidget({
       instructions={instructions}
       summary={summary}
       stats={stats}
-      statsCaption="Toy model. Step time = fixed weight read + per decoding request + per prompt token. Every number is illustrative."
+      statsCaption={`Toy model. Step time = ${STEP_OVERHEAD_MS} ms overhead + the slower of memory (${WEIGHT_READ_MS} ms weight read + ${PER_SEQUENCE_MS} ms per decoding request) and compute (every token at ${TOKENS_PER_MS} per ms). Every number is illustrative.`}
       controls={
         <>
           <Segmented
@@ -151,13 +178,13 @@ export default function ServingCostWidget({
       }
     >
       <MotionRoot>
-        <DiagramScroll label="Step time bar and throughput curve, scrollable">
+        <DiagramScroll label="Step time bars and throughput curve, scrollable">
           <div className="sdv-serve-cost__stage">
             <svg
               className="sdv-serve-svg sdv-serve-cost__bar"
-              viewBox={`0 0 ${BAR_W} 78`}
+              viewBox={`0 0 ${BAR_W} 128`}
               role="img"
-              aria-label={`One step takes ${ms(total)}: weights ${ms(weightMs)}, decode ${ms(decodeMs)}, prompt ${ms(prefillMs)}. The bar spans 0 to ${ms(MAX_STEP_MS)}.`}
+              aria-label={`One step takes ${ms(total)} and is ${bound}. Memory row: weights ${ms(WEIGHT_READ_MS)} plus KV reads ${ms(kvMs)}. Compute row: decode tokens ${ms(decodeMathMs)} plus prompt tokens ${ms(promptMathMs)}. Both rows span 0 to ${ms(MAX_ROW_MS)}.`}
             >
               <defs>
                 <pattern
@@ -172,33 +199,56 @@ export default function ServingCostWidget({
                 </pattern>
               </defs>
               <text x={BAR_X0} y={12} className="sdv-serve-svg__label">
-                One step: {ms(total)}
+                One step: {ms(total)}, {bound}
               </text>
-              <text x={BAR_X1} y={12} textAnchor="end" className="sdv-serve-svg__muted">
-                bar spans 0 to {ms(MAX_STEP_MS)}
+              <text x={BAR_X0} y={MEMORY_Y - 5}>
+                Memory: {ms(memory)}
               </text>
-              <rect
-                x={BAR_X0}
-                y={BAR_Y}
-                width={BAR_X1 - BAR_X0}
-                height={BAR_H}
-                rx={4}
-                className="sdv-serve-cost__track"
-              />
+              <text x={BAR_X0} y={COMPUTE_Y - 5}>
+                Compute: {ms(compute)}
+              </text>
+              <text x={BAR_X1} y={MEMORY_Y - 5} textAnchor="end" className="sdv-serve-svg__muted">
+                rows span 0 to {ms(MAX_ROW_MS)}
+              </text>
+              {[MEMORY_Y, COMPUTE_Y].map((y) => (
+                <rect
+                  key={y}
+                  x={BAR_X0}
+                  y={y}
+                  width={BAR_X1 - BAR_X0}
+                  height={BAR_H}
+                  rx={4}
+                  className="sdv-serve-cost__track"
+                />
+              ))}
               {placed.map((segment) => (
                 <m.rect
                   key={segment.key}
-                  y={BAR_Y}
+                  y={segment.y}
                   height={BAR_H}
                   initial={false}
                   animate={{ x: segment.x, width: segment.width }}
                   transition={move}
-                  fill={segment.key === 'prefill' ? `url(#${hatchId})` : undefined}
+                  fill={segment.key === 'prompt-math' ? `url(#${hatchId})` : undefined}
                   className={`sdv-serve-cost__seg ${segment.className}`}
                 />
               ))}
-              <text x={BAR_X0} y={64} className="sdv-serve-svg__muted">
-                weights {ms(weightMs)}, decode {ms(decodeMs)}, prompt {ms(prefillMs)}
+              {[
+                [MEMORY_Y - 2, COMPUTE_Y - 18],
+                [COMPUTE_Y - 2, COMPUTE_Y + BAR_H + 2],
+              ].map(([y1, y2]) => (
+                <m.line
+                  key={y1}
+                  y1={y1}
+                  y2={y2}
+                  initial={false}
+                  animate={{ x1: memoryEnd, x2: memoryEnd }}
+                  transition={move}
+                  className="sdv-serve-cost__ceiling"
+                />
+              ))}
+              <text x={BAR_X0} y={COMPUTE_Y + BAR_H + 18} className="sdv-serve-svg__muted">
+                step = {STEP_OVERHEAD_MS} ms overhead + the longer row
               </text>
             </svg>
             <svg
@@ -260,19 +310,20 @@ export default function ServingCostWidget({
           </div>
         </DiagramScroll>
       </MotionRoot>
-      <ul className="sdv-legend" aria-label="How to read the step bar">
+      <ul className="sdv-legend" aria-label="How to read the step bars">
         <li>
           <span className="sdv-serve-swatch sdv-serve-cost__key--weights" aria-hidden="true" /> Weights: read
           once per step
         </li>
         <li>
-          <span className="sdv-serve-swatch sdv-serve-cost__key--decode" aria-hidden="true" /> Decode: one
-          token per request
+          <span className="sdv-serve-swatch sdv-serve-cost__key--decode" aria-hidden="true" /> Decode: a KV
+          read and one token of math per request
         </li>
         <li>
           <span className="sdv-serve-swatch sdv-serve-cost__key--prefill" aria-hidden="true" /> Hatched:
-          prompt tokens
+          prompt tokens, math only
         </li>
+        <li>dashed line: where the reads end; math left of it is free</li>
         <li>toy model, illustrative ms</li>
       </ul>
     </WidgetFrame>
