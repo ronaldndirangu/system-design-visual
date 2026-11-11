@@ -97,9 +97,11 @@ tests/
 
 ## Deployment
 
-Every push to `main` runs `.github/workflows/deploy.yml`. It lints, type checks, runs the unit tests, builds the site,
-and publishes `dist/` with the official GitHub Pages actions. `ci.yml` runs the same checks plus the browser tests on
-every pull request. The browser tests run inside the official Playwright container image, whose tag CI reads from the
+`.github/workflows/ci.yml` checks every pull request and every push to `main`. It lints, type checks, runs the unit
+tests, builds the site, and runs the browser tests against that build. On `main`, its deploy job then publishes the
+same `dist/` with the official GitHub Pages actions, so the live site only changes after every check passes. To
+redeploy by hand, run the CI workflow on `main` from the Actions tab. The browser tests run inside the official
+Playwright container image, whose tag CI reads from the
 `@playwright/test` version in `pnpm-lock.yaml`, so a dependency bump updates the browser image too. They reuse the
 `dist/` that the verify job built. On a pull request they check only the pages the PR changes plus a fixed sample, in
 dark mode (`scripts/e2e-scope.ts` picks them from the diff). Pushes to `main`, a nightly schedule, and any pull request
