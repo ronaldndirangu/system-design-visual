@@ -27,9 +27,9 @@
     "verify": "pnpm lint && pnpm check && pnpm test && pnpm build"
   },
   "dependencies": {
-    "@astrojs/react": "^7.1.2",
-    "@astrojs/starlight": "^0.42.8",
-    "astro": "^7.4.5",
+    "@astrojs/react": "^7.1.4",
+    "@astrojs/starlight": "^0.42.10",
+    "astro": "^7.4.7",
     "matter-js": "^0.20.0",
     "motion": "^14.9.0",
     "react": "^19.3.1",
