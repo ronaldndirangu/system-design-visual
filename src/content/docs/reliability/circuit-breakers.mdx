@@ -1,0 +1,334 @@
+---
+title: Circuit breakers
+description: Watch a hung analytics service take sho.rt's redirects down with it, then add a circuit breaker that fails fast, buffers the click, and probes gently until the service recovers.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import CircuitBreakerWidget from '../../../components/widgets/CircuitBreakerWidget';
+
+export const nodes = [
+  { id: 'users', kind: 'client', x: 70, y: 150, label: 'Visitors', sublabel: '150 redirects/s' },
+  { id: 'redirect', kind: 'server', x: 270, y: 150, label: 'Redirect server', sublabel: '16 workers' },
+  { id: 'ingest', kind: 'server', x: 500, y: 70, label: 'Analytics ingest', sublabel: 'records clicks' },
+  { id: 'buffer', kind: 'queue', x: 500, y: 240, label: 'Click buffer', sublabel: 'uploads later' },
+];
+export const edges = [
+  { from: 'users', to: 'redirect' },
+  { from: 'redirect', to: 'ingest' },
+  { from: 'redirect', to: 'buffer' },
+  { from: 'buffer', to: 'ingest' },
+];
+export const steps = [
+  {
+    title: 'Closed: calls go through',
+    text: 'Each redirect looks up the long URL, then calls ingest to record the click, which takes 30 to 50 ms. The breaker counts how those calls end. About 2% fail at random, far below its threshold, so it stays closed.',
+    nodes: ['users', 'redirect', 'ingest'],
+    flows: ['users>redirect', 'redirect>ingest'],
+  },
+  {
+    title: 'Ingest hangs, workers get stuck',
+    text: 'At 3 s ingest stops answering. Each call now holds a worker for the full 500 ms timeout, so 16 workers finish about 31 redirects a second while 150 arrive. The queue fills at 3.6 s and new redirects get a 503.',
+    nodes: ['users', 'redirect', 'ingest'],
+    flows: ['users>redirect', 'redirect>ingest'],
+  },
+  {
+    title: 'The breaker opens',
+    text: 'Timeouts pile up in the breaker\'s window. At 4.1 s, 18 of the last 20 calls have failed, past its 50% threshold, so it opens. Redirects stop calling ingest, write the click to a local buffer in 10 ms, and answer.',
+    nodes: ['users', 'redirect', 'buffer'],
+    flows: ['users>redirect', 'redirect>buffer'],
+  },
+  {
+    title: 'Half-open: three probes',
+    text: 'After a 2 s cooldown the breaker turns half-open and lets 3 redirects call ingest as probes. Every other redirect keeps skipping ingest and buffers its click.',
+    nodes: ['redirect', 'ingest', 'buffer'],
+    flows: ['redirect>ingest', 'redirect>buffer'],
+  },
+  {
+    title: 'A probe fails, the breaker reopens',
+    text: 'Ingest still hangs, so a probe times out at 6.6 s and the breaker opens for another 2 s. Only 3 workers waited on ingest; the other 13 kept answering redirects.',
+    nodes: ['redirect', 'buffer'],
+    flows: ['redirect>buffer'],
+  },
+  {
+    title: 'The probes succeed, the breaker closes',
+    text: 'Ingest heals at 12 s. The next half-open round sends 3 probes, all 3 succeed, and at 13.7 s the breaker closes. Redirects call ingest again, and the buffer uploads the clicks it held.',
+    nodes: ['redirect', 'ingest', 'buffer'],
+    flows: ['redirect>ingest', 'buffer>ingest'],
+  },
+];
+
+export const quiz = [
+  {
+    prompt: 'The lane without a breaker gives every ingest call a 500 ms timeout, yet it turns away 1,016 redirects with a 503 while ingest hangs. Why?',
+    options: [
+      { text: 'Each hung call still holds a worker for 500 ms, so 16 workers finish about 31 redirects a second against 150 arriving', correct: true, why: 'A timeout bounds each wait, and every redirect still waits. With every worker stuck, the queue of 64 fills in well under a second, and the rest get a 503.' },
+      { text: 'The hung calls crashed the redirect workers', why: 'Nothing crashed. The workers sat idle, each waiting on a call that would never answer, until its timeout fired.' },
+      { text: 'The redirect server retried each failed call several times', why: 'Neither lane retries. Each redirect makes exactly one call; the waiting alone was enough to use up every worker.' },
+      { text: 'Ingest sent back errors that the redirect server could not handle', why: 'A hung service sends nothing back. A fast error would have been easy: in the refused scenario, both lanes answer every redirect.' },
+    ],
+  },
+  {
+    prompt: 'On a normal day, 2% of ingest calls fail at random. The breaker opens when at least half of 20 or more calls in the last second failed. What does it do?',
+    options: [
+      { text: 'It opens for a moment whenever two errors land close together', why: 'Two errors among the roughly 150 calls a second is about 1%, far below a 50% threshold.' },
+      { text: 'It opens on the very first error, because one failed call out of one is 100%', why: 'The minimum of 20 calls stops exactly that: the breaker never judges ingest on a handful of calls.' },
+      { text: 'It never opens, and the lane behaves exactly like the lane without a breaker', correct: true, why: 'About 3 failures in 150 calls never come near 50%. In the toy model the breaker stayed closed for every seed tried, and both lanes answer the same 3,013 redirects.' },
+      { text: 'It opens every few seconds to give ingest a rest', why: 'A breaker reacts to failures; it has no timer that opens it on a healthy day. Opening without cause would only skip calls that would have worked.' },
+    ],
+  },
+  {
+    prompt: 'A half-open breaker with no probe limit lets every redirect through until the round is decided. While ingest still hangs, what goes wrong?',
+    options: [
+      { text: 'The breaker can never close again', why: 'It closes once ingest heals, at about the same time as the gentle breaker. The damage happens during each half-open round.' },
+      { text: 'Every redirect in the round becomes a probe and a stuck worker, so redirects queue behind them again', correct: true, why: 'In the toy model it sends 60 probes against 12, 80 calls time out against 41, and the p95 time to answer a redirect rises from 60 ms to 460 ms.' },
+      { text: 'It reconnects to ingest much sooner once ingest heals', why: 'Only 0.1 s sooner in the toy model: 1.7 s against 1.8 s. The cooldown decides when the breaker tries again; the probe count only decides how hard.' },
+      { text: 'Nothing: probes are cheap because they are only health checks', why: 'Here a probe is a real click call. Against a hung service, each one holds a worker for the full 500 ms timeout.' },
+    ],
+  },
+  {
+    prompt: 'Ingest crashes and refuses every connection within 10 ms. What does the breaker buy sho.rt in this case?',
+    options: [
+      { text: 'Far fewer redirects turned away with a 503', why: 'Neither lane turns any away. A refusal frees the worker at once, so workers never get stuck.' },
+      { text: 'Faster redirects', why: 'Both lanes answer 95% of redirects within 60 ms. A refused call costs 10 ms, about the same as writing to the buffer.' },
+      { text: 'A faster return to recording clicks once ingest comes back', why: 'The opposite: the breaker lane takes 1.8 s against 0.1 s, because it waits out a cooldown before it tries ingest again.' },
+      { text: 'About half as many calls to a service that is trying to start', correct: true, why: 'The breaker lane sends 1,515 calls against 3,018. When the dependency fails fast, a breaker mainly protects the dependency.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain how a slow or hung dependency can take down a service that does not even need its answer, even with timeouts.
+- Describe the closed, open, and half-open states of a circuit breaker, and what moves it between them.
+- Pick a failure threshold, a minimum call count, a cooldown, and a probe limit, and say what each one trades away.
+- Design a fallback that keeps the main job working while the breaker is open.
+
+</Objectives>
+
+## The failure: analytics hangs, redirects go down
+
+Every time someone opens a sho.rt link, a redirect server looks up the long URL and then calls the analytics ingest
+service to record the click before it answers. Each redirect server has 16 workers and a queue that holds 64 waiting
+redirects. Following [Timeouts and cancellation](../timeouts/), every ingest call gets a 500 ms timeout, and a click
+whose call fails is written to a local buffer and uploaded later. Analytics is a side job: the visitor only wants the
+long URL.
+
+One afternoon at 3 s, the ingest service hangs. It accepts calls and never answers. It stays that way until 12 s.
+
+<Predict
+  client:visible
+  question="Both lanes get the exact same 3,018 redirects over 20 s, and ingest hangs from 3 s to 12 s. One lane has no breaker. The other opens a circuit breaker when half of its recent ingest calls fail, and then buffers clicks without calling ingest. How many redirects does the lane without a breaker turn away with a 503?"
+  options={[
+    'None: the 500 ms timeout protects it',
+    'About 70',
+    'About 300',
+    'About 1,000',
+  ]}
+  answer={3}
+>
+
+**About 1,000.** In this toy model with seed 42, the lane without a breaker turns away 1,016 redirects and answers
+only 1,997, and its p95 time to answer a redirect reaches 2.5 s. The lane with a breaker turns away 70, all of them before
+it opens at 4.1 s, and answers 2,943.
+
+</Predict>
+
+<CircuitBreakerWidget
+  client:visible
+  scenarios={['hang', 'normal']}
+  initial="hang"
+  instructions="Press Play. Watch the 16 worker cells in each lane after ingest hangs at 3 s, and the redirects each lane answers per second. Then pick Normal day: with 2% random errors, the breaker never opens."
+/>
+
+## Why a timeout was not enough
+
+A timeout bounds how long one call waits. It does nothing about how many calls wait. On a normal day a redirect takes
+40 to 60 ms (10 ms to look up the URL plus a 30 to 50 ms call), so 16 workers can finish about 320 redirects a second,
+more than twice the 150 that arrive. Once ingest hangs, every redirect spends 510 ms on the lookup and the call that
+times out, and 16 workers finish only about 31 a second.
+
+The other 119 a second wait in the queue. The queue of 64 is full by 3.6 s, and from then on new redirects get a 503
+until ingest heals. The ones that get in wait about 2 s in the queue plus 500 ms for their own call, so the p95 time to
+answer a redirect climbs to 2,530 ms. A service the redirect never needed took the redirect down with it. This is a
+**cascading failure**: trouble in one service spreads to every service that waits on it.
+
+What the redirect server needs is a way to stop calling ingest at all while it is broken. That is a **circuit
+breaker**: a small state machine wrapped around calls to one dependency. The name comes from the switch in a fuse box,
+which cuts a circuit that draws too much current before the wiring overheats.
+
+<StepDiagram client:visible title="How a circuit breaker opens, probes, and closes" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy>
+
+A shop clerk phones the supplier to log every sale. One day the supplier's phone just rings and rings. A clerk who
+keeps calling leaves every customer waiting at the till while the phone rings out. A sensible clerk notices that the
+last several calls went unanswered, writes sales in a notebook instead, and tries one call every few minutes. When a
+few calls in a row get through, the clerk phones in the notebook and goes back to calling.
+
+</Analogy>
+
+## The three states
+
+The breaker in the simulation follows three rules:
+
+- **Closed.** Calls go through, and the breaker records how each one ends. A timeout, a refused connection, and an
+  error all count as failures. If at least half of the calls that finished in the last second failed, and at least 20
+  calls finished, the breaker **opens**.
+- **Open.** Calls fail fast without touching ingest. The redirect server writes the click to its buffer in 10 ms and
+  answers. After a 2 s **cooldown**, the breaker turns **half-open**.
+- **Half-open.** The breaker lets 3 calls through as **probes** and keeps skipping ingest for everyone else. If all 3
+  probes succeed, it **closes**. If any probe fails, it opens again for another 2 s.
+
+In the hang, the breaker opened at 4.1 s, more than a second after ingest stopped answering. Two things set that
+delay. A hung call only counts as a failure when its 500 ms timeout fires, so the first failures land at about 3.5 s.
+At that moment the 1 s window still holds the healthy calls that finished just before 3 s: about 16 failures out of
+70 calls, well short of half. While every worker waits, no new call finishes, so the healthy calls slowly age out of
+the window. The next timeouts land at about 4 s, and the breaker trips when 18 of the last 20 calls have failed. Until
+then the queue filled, and those 70 redirects got the only 503s the breaker lane sent. A shorter call timeout would
+surface failures sooner, which is one more reason to keep timeouts tight.
+
+The **minimum call count** keeps the breaker calm on a normal day. With 2% random errors, about 3 of the 150 calls in a
+second fail, nowhere near half. Pick **Normal day** above: in the toy model the breaker never opens, and both lanes
+produce identical numbers, 3,013 redirects answered. Without a minimum, a breaker that judges one call would open on
+the first random error.
+
+## The fallback: answer without the dependency
+
+A breaker helps only when the server has something useful to do while it is open. For sho.rt, the click can wait:
+the redirect server writes it to a local buffer and uploads it once ingest is back. Look at the table after the hang.
+The breaker lane records 1,382 clicks directly and buffers 1,561, so it keeps all 2,943 clicks behind the redirects it
+answered. The lane without a breaker also buffers a click when its call fails, but each of its 1,016 turned away
+redirects loses both the redirect and the click. The toy model counts a buffered click as kept; it does not simulate
+the upload.
+
+Some dependencies have no good fallback. If the links database itself fails, the redirect server cannot invent the
+long URL. A breaker still helps there: failing fast with a 503 and a Retry-After header frees the workers at once and
+tells callers when to come back, as in [Queues and backpressure](../queues-and-backpressure/). A caller that retries,
+as in [Retries with backoff and jitter](../retries/), should treat an open breaker as a reason to stop retrying for
+now.
+
+## When the dependency fails fast
+
+A hang is the worst case, because every call waits for its timeout. Pick a crash instead: ingest goes down at 3 s and
+refuses every connection within 10 ms.
+
+<CircuitBreakerWidget
+  client:visible
+  scenarios={['refused']}
+  title="Ingest refuses connections"
+  instructions="Press Play. Compare Calls sent to ingest in the table, and the redirects each lane answers per second while ingest is down."
+/>
+
+Here the breaker changes nothing for visitors. A refused call frees its worker in 10 ms, so no worker gets stuck: both
+lanes answer 3,013 redirects, turn none away, and answer 95% of them within 60 ms. The breaker opens about half a
+second after the crash and sends ingest 1,515 calls against 3,018, about half. For a service that is trying to restart, half the
+connection attempts can be the difference between coming up and falling over again. The cost shows up at the end:
+when ingest returns at 12 s, the breaker lane takes 1.8 s to record clicks again against 0.1 s, because it waits out a
+cooldown before it tries. Against a slow dependency a breaker protects the caller; against a fast failure it mainly
+protects the dependency.
+
+## Probe gently
+
+Half-open is the risky moment. The dependency may still be broken, or it may have just restarted with cold caches and
+empty connection pools. A breaker with no probe limit lets every redirect through until the round is decided.
+
+<Predict
+  client:visible
+  question="Both lanes have a breaker with the same threshold and cooldown. One sends 3 probes when half-open; the other lets every redirect through as a probe until the round is decided. Ingest hangs from 3 s to 12 s. What happens to the p95 time to answer a redirect in the lane with no probe limit?"
+  options={['It stays at about 60 ms', 'It roughly doubles', 'It rises about sevenfold', 'It matches the lane with no breaker at all']}
+  answer={2}
+>
+
+**It rises about sevenfold.** In the toy model, the lane with no probe limit sends 60 probes against 12. Each one
+holds a worker for the full 500 ms timeout, so every half-open round fills up to all 16 workers again, and redirects
+queue behind them. Its p95 rises from 60 ms to 460 ms. It still stays far below the 2,530 ms of the lane without a
+breaker, because the breaker is open most of the time.
+
+</Predict>
+
+<CircuitBreakerWidget
+  client:visible
+  scenarios={['probe']}
+  title="Three probes or everyone"
+  instructions="Press Play and watch each lane's worker cells at 6.1 s, when the first cooldown ends. Compare Probe calls while half-open and the p95 time to answer a redirect."
+/>
+
+The gentle breaker caps the damage of a wrong guess at 3 stuck workers for 500 ms. The flood lane also times out 80
+calls against 41 and turns away 72 redirects against 70, and it reconnects only 0.1 s sooner once ingest heals: the
+cooldown decides when a breaker tries again, and the probe count only decides how hard. This toy ingest heals at 12 s
+whatever its load, so the simulation cannot show the bigger danger. A real service that just restarted can fall over
+again under a flood of probes, which sends the breaker back to open and starts the cycle over. A few probes answer the
+question "is it healthy?" without asking it to survive everyone at once. Many systems also ramp traffic back up
+gradually after the breaker closes.
+
+Two related tools pair well with a breaker. A **bulkhead** caps how many workers may wait on one dependency, say 4 of
+16, so even before a breaker opens, a hang can never take every worker. The lesson [Rate limiting](../rate-limiting/) covers how a server
+caps what each client may send, and the lesson [Observability](../observability/) covers how to alert on a breaker that opens, since an open
+breaker hides a broken dependency from visitors and so from anyone watching only the redirect error rate.
+
+## Try it: break things on purpose
+
+1. In the first simulation, play **Ingest hangs at 3 s** and pause at 4 s. Count the stuck worker cells in each lane,
+   then step past 4.1 s and watch the breaker lane's workers free up while the other lane stays stuck.
+2. Read the transcript for 6.1 s and 6.6 s: the breaker probes, a probe times out, and it opens again. Find the round
+   where all 3 probes succeed.
+3. Compare **Time to record clicks again once ingest heals**. The breaker costs 1.8 s against 0.4 s, because it
+   waits out a cooldown.
+4. Play **Normal day** and check **Times the breaker opened**: zero, with 2% random errors.
+5. In the refused simulation, compare **Calls sent to ingest** with **Redirects answered**. The breaker halves the
+   load on ingest and changes nothing for visitors.
+6. In the probe simulation, compare **Probe calls while half-open** and the p95. Then find the moment each half-open
+   round starts in the worker cells.
+
+## Trade-offs
+
+<TradeoffTable title="Protecting a caller from a failing dependency">
+
+| Choice                               | What it buys                                                              | What it costs                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Timeouts only                        | Each call has a bounded wait; no extra state                              | A hung dependency still holds every worker: 1,016 redirects turned away in the toy model           |
+| Breaker with a fallback              | The main job keeps working, and the dependency gets far fewer calls       | Needs somewhere to put the work, such as a buffer, plus code to replay it later                    |
+| Breaker that fails fast with a 503   | Frees workers at once and gives callers a clear signal                    | Requests that need the dependency still fail, just quickly                                         |
+| Low threshold or short window        | Opens sooner when the dependency breaks                                   | Opens on noise unless a minimum call count holds it back                                           |
+| Long cooldown                        | Fewer probes and less load on a struggling dependency                     | Slower to notice recovery: up to one full cooldown after the dependency heals                      |
+| No probe limit when half-open        | Nothing, apart from reconnecting a little sooner                          | Every caller becomes a probe: 60 against 12, and a p95 of 460 ms against 60 ms in the toy model     |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+Before redirecting, sho.rt's redirect servers ask a URL safety service whether the long URL is known malware. It
+usually answers in 20 ms, but twice this month it hung for ten minutes, and redirects failed across the whole site.
+Product says a known bad link must never be redirected without a warning. Design the protection: timeout, breaker
+settings, and what a redirect does while the breaker is open.
+
+<div slot="answer">
+
+- **Give the safety check a tight timeout**, about 100 ms, so each hung call holds a worker briefly and the breaker
+  sees failures quickly.
+- **Wrap it in a circuit breaker per redirect server**: open when at least half of 20 or more calls in a few seconds
+  fail, cool down for a few seconds, then send a handful of probes and close only if they all succeed.
+- **Cap the workers that may wait on it** with a bulkhead, so a hang that the breaker has not yet caught still leaves
+  most workers free.
+- **Fall back on cached verdicts with a short expiry.** Most clicks go to popular links, so cache each link's last
+  verdict for a few minutes. While the breaker is open, redirect links with an unexpired clean verdict, and show a
+  warning page for links with no verdict, an expired one, or a bad one.
+- **Bound the staleness.** A cached clean verdict can be out of date: a link flagged during the outage still redirects
+  until its entry expires. Have the safety service push newly flagged links to every redirect server, so a fresh bad
+  verdict overrides the cache. If that feed stalls too, the expiry caps how long a newly flagged link can slip through.
+  Product must accept that window, or pick the strict fallback: a warning page on every redirect while the breaker is
+  open.
+- **Do not retry while the breaker is open**, and alert when it opens: visitors will barely notice, so the team must
+  hear about it some other way.
+
+</div>
+
+</Challenge>

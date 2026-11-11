@@ -1,0 +1,75 @@
+/* The stage stretches every svg to full width; keep the badge icon at its normal size. */
+.sdv-rh__lane > .sdv-badge {
+  justify-self: start;
+}
+.sdv-rh__lane > .sdv-badge svg {
+  display: inline-block;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.sdv-rh__pool {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+}
+.sdv-rh__pool-name {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+  margin: 0;
+}
+.sdv-rh__senders {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+}
+.sdv-rh__sender {
+  aspect-ratio: 1;
+  background: transparent;
+  border: 1px dashed var(--sl-color-gray-3);
+  border-radius: 50%;
+  display: inline-block;
+  min-height: 0.8rem;
+  overflow: hidden;
+  position: relative;
+}
+.sdv-qtracks__legend .sdv-rh__sender {
+  height: 1rem;
+  width: 1rem;
+}
+.sdv-rh__sender[data-state="turned"] {
+  background: color-mix(in oklab, var(--sdv-bad) 25%, var(--sl-color-bg));
+  border: 1px solid var(--sdv-bad);
+}
+.sdv-rh__sender[data-state="turned"]::before,
+.sdv-rh__sender[data-state="turned"]::after {
+  background: var(--sdv-bad);
+  content: "";
+  height: 2px;
+  inset-inline-start: 15%;
+  position: absolute;
+  top: calc(50% - 1px);
+  width: 70%;
+}
+.sdv-rh__sender[data-state="turned"]::before {
+  transform: rotate(45deg);
+}
+.sdv-rh__sender[data-state="turned"]::after {
+  transform: rotate(-45deg);
+}
+.sdv-rh__sender[data-state="served"] {
+  background: color-mix(in oklab, var(--sdv-client) 70%, var(--sl-color-bg));
+  border: 1px solid var(--sdv-client);
+}
+/* A check mark drawn from two borders, so connected senders read without color. */
+.sdv-rh__sender[data-state="served"]::after {
+  border-block-end: 2px solid var(--sl-color-bg);
+  border-inline-end: 2px solid var(--sl-color-bg);
+  content: "";
+  height: 45%;
+  inset-inline-start: 36%;
+  position: absolute;
+  top: 18%;
+  transform: rotate(45deg);
+  width: 25%;
+}

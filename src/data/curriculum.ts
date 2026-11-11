@@ -169,21 +169,25 @@ export const curriculum: CourseModule[] = [
         id: 'reliability/timeouts',
         title: 'Timeouts and cancellation',
         summary: 'Stop waiting forever on a dependency, and stop doing work nobody is waiting for.',
+        minutes: 20,
       },
       {
         id: 'reliability/queues-and-backpressure',
         title: 'Queues and backpressure',
         summary: 'Absorb bursts, push back when the queue fills, and shed load before the system tips over.',
+        minutes: 22,
       },
       {
         id: 'reliability/idempotency',
         title: 'Idempotency',
         summary: 'Make "do it again" safe so a repeated request never double charges anyone.',
+        minutes: 20,
       },
       {
         id: 'reliability/retries',
         title: 'Retries with backoff and jitter',
         summary: 'Retry without stampeding a service that is already struggling.',
+        minutes: 20,
       },
       {
         id: 'reliability/rate-limiting',
@@ -195,6 +199,7 @@ export const curriculum: CourseModule[] = [
         id: 'reliability/circuit-breakers',
         title: 'Circuit breakers',
         summary: 'Fail fast when a dependency is down, then test it gently.',
+        minutes: 20,
       },
       {
         id: 'reliability/observability',
