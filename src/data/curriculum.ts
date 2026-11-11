@@ -238,28 +238,32 @@ export const curriculum: CourseModule[] = [
         id: 'async/logs-and-pubsub',
         title: 'Logs and pub/sub',
         summary: 'Partition a log, run consumer groups, and see why order holds only within a partition.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'async/delivery-semantics',
         title: 'Delivery semantics and the outbox',
         summary:
           'At most once, at least once, and effectively once through idempotent consumers, plus the outbox that keeps events and data in step.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'async/event-driven-design',
         title: 'Event-driven design',
         summary:
           'Choose between thin and fat events, choreography and orchestration, evolve event schemas safely, and park poison messages in a dead-letter queue.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
       },
       {
         id: 'async/stream-processing',
         title: 'Stream processing',
         summary:
           'Count events in windows, handle late data with watermarks, and choose between batch and stream.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 25,
       },
     ],
   },
