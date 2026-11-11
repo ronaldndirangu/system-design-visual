@@ -1,0 +1,5 @@
+/* Six stages read as two even rows at every width, so no card sits alone on a stretched row. */
+.sdv-arc .sdv-arc__stages {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}

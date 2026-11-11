@@ -100,7 +100,7 @@ export const quiz = [
 
 ## The failure: one database, too many reads
 
-The cache answers most clicks, but at 10 million users the misses alone keep one database pinned at 100% busy. Reads now
+The cache answers most clicks, and the [CDN](../cdn/) answers many before they reach a server, but at 10 million users the misses alone keep one database pinned at 100% busy. Reads now
 queue behind each other, and the occasional write waits behind them.
 
 <Predict

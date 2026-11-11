@@ -151,7 +151,8 @@ export const curriculum: CourseModule[] = [
         id: 'scaling/cdn',
         title: 'CDNs',
         summary: 'Move bytes closer to people so distance stops dominating latency.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'scaling/read-replicas',
