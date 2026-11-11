@@ -203,10 +203,10 @@ function KindChip({ kind }: { kind: ReplayEvent['kind'] }) {
 }
 
 function LessonName({ lesson }: { lesson: LessonRef }) {
-  if (findLesson(lesson.id)?.status === 'ready') {
+  if (findLesson(lesson.id)) {
     return <a href={lessonHref(lesson.id)}>{lesson.title}</a>;
   }
-  return <>{lesson.title} (lesson coming soon)</>;
+  return <>{lesson.title}</>;
 }
 
 function ItemMarker({

@@ -302,7 +302,7 @@ POST /rides/{rideId}/offer/decline    from the driver app
 The location call is fire and forget. A lost ping needs no retry, because the next one arrives 4 s later with fresher
 data. The `sentAt` field lets the index drop a ping that shows up after a newer one. `POST /rides` returns before any
 driver is found. The rider app learns the outcome by polling `GET /rides/{rideId}` or over a push channel, which the
-Real-time transport lesson compares.
+[Real-time transport](../../foundations/real-time/) lesson compares.
 
 ## Data model
 
@@ -464,18 +464,18 @@ WHERE driver_id = :driver AND status = 'free';
 ```
 
 Exactly one update finds the driver free and changes a row. The other changes zero rows and moves to its next
-candidate. The Transactions and constraints lesson covers this pattern. A lock on the driver also works, and it makes
+candidate. The [Transactions and constraints](../../foundations/transactions/) lesson covers this pattern. A lock on the driver also works, and it makes
 every other matcher wait while held. A **lease**, a reservation that expires on its own, frees the driver even if the
 matcher that took it crashes.
 
 Next, the matcher offers the ride to the driver app and starts a timer, 15 s in this illustration. If the driver
 accepts, their status changes from reserved to on trip. If the driver declines or the timer fires, the matcher sets the
-driver back to free and offers the ride to the next candidate on its list. The Timeouts and cancellation lesson covers
+driver back to free and offers the ride to the next candidate on its list. The [Timeouts and cancellation](../../reliability/timeouts/) lesson covers
 why every wait needs a deadline. The rider sees one status, matching, the whole time.
 
 ### Feeding the index
 
-The location stream runs through a log, the structure the Logs and pub/sub lesson builds, and the index consumer is a
+The location stream runs through a log, the structure the [Logs and pub/sub](../../async/logs-and-pubsub/) lesson builds, and the index consumer is a
 small stream processor. Partition the log by driver id, so one consumer reads every ping from a driver in order and
 holds that driver's last cell. Shard the geo index itself by cell prefix, for example the first 4 characters, so one
 index node holds every cell in an area and answers most 9-cell searches by itself. This is
@@ -503,7 +503,7 @@ index it, and a shared prefix names a whole area, which makes partitioning easy.
 shape with latitude, and finding neighbors takes a little arithmetic. **H3**, the hexagonal grid Uber published, gives
 every cell 6 neighbors at the same distance from its center, so rings and distances come out more even. A **quadtree**
 splits only crowded areas, so cells adapt to density, at the cost of a tree to rebalance as drivers move. A database
-spatial index, covered in the Indexes lesson, answers radius queries directly and pays for it on every write.
+spatial index, covered in the [Indexes](../../foundations/indexes/) lesson, answers radius queries directly and pays for it on every write.
 
 <TradeoffTable title="Ways to find nearby drivers">
 

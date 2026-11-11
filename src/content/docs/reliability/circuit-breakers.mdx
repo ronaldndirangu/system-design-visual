@@ -268,8 +268,8 @@ question "is it healthy?" without asking it to survive everyone at once. Many sy
 gradually after the breaker closes.
 
 Two related tools pair well with a breaker. A **bulkhead** caps how many workers may wait on one dependency, say 4 of
-16, so even before a breaker opens, a hang can never take every worker. The lesson Rate limiting covers how a server
-caps what each client may send, and the lesson Observability covers how to alert on a breaker that opens, since an open
+16, so even before a breaker opens, a hang can never take every worker. The lesson [Rate limiting](../rate-limiting/) covers how a server
+caps what each client may send, and the lesson [Observability](../observability/) covers how to alert on a breaker that opens, since an open
 breaker hides a broken dependency from visitors and so from anyone watching only the redirect error rate.
 
 ## Try it: break things on purpose

@@ -1,5 +1,3 @@
-import type { Lesson } from './curriculum';
-
 export interface StudySession {
   label: string;
   /** Lesson ids from curriculum.ts, in course order. */
@@ -14,11 +12,6 @@ export interface StudyPlan {
   /** Time available in one session. A unit test keeps every session inside it. */
   sessionMinutes: number;
   sessions: StudySession[];
-}
-
-/** Lessons still in progress have no length yet, so plans assume a typical 20 minute lesson. */
-export function plannedMinutes(lesson: Lesson): number {
-  return lesson.minutes ?? 20;
 }
 
 export const studyPlans: StudyPlan[] = [

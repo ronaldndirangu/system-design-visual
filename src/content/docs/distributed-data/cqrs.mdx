@@ -171,7 +171,7 @@ is **event sourcing**. A cart's state is a fold of its events: start empty and a
 
 The two ideas often travel together, and each works alone. CQRS works with ordinary tables: the write side updates
 rows, and an outbox table or change data capture feeds the read models. Event sourcing works without separate read
-models: a small system can fold a cart's few events on every read. The Event-driven design lesson covers events that
+models: a small system can fold a cart's few events on every read. The [Event-driven design](../../async/event-driven-design/) lesson covers events that
 travel between services; here the events live inside one service's storage.
 
 <StepDiagram client:visible title="How CQRS with event sourcing works" nodes={nodes} edges={edges} steps={steps} height={300} />
@@ -281,7 +281,7 @@ copy.
 Some readers act on the world. The email sender mails a receipt for every CheckedOut event, and a rebuild must leave it
 alone: it keeps its own position, and the replay rebuilds one table. In the widget, receipts stay at 14 through the
 replay. Make every side effect safe to repeat anyway, with an idempotency key such as the event's position, so a retry
-after a crash cannot mail twice. The Idempotency lesson covers those keys.
+after a crash cannot mail twice. The [Idempotency](../../reliability/idempotency/) lesson covers those keys.
 
 ## Events live forever
 

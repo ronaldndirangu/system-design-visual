@@ -1,11 +1,11 @@
 ---
 import Default from '@astrojs/starlight/components/PageTitle.astro';
-import { findLesson, findModuleForLesson, readyLessonPosition, readyLessons } from '../../data/curriculum';
+import { allLessons, findLesson, findModuleForLesson, lessonPosition } from '../../data/curriculum';
 
 const id = Astro.locals.starlightRoute.id;
 const lesson = findLesson(id);
 const module = findModuleForLesson(id);
-const position = readyLessonPosition(id);
+const position = lessonPosition(id);
 ---
 
 {
@@ -17,9 +17,9 @@ const position = readyLessonPosition(id);
       <Default />
       <p class="sdv-lesson-meta__facts">
         <span>
-          Lesson {position} of {readyLessons.length}
+          Lesson {position} of {allLessons.length}
         </span>
-        {lesson.minutes && <span>About {lesson.minutes} minutes</span>}
+        <span>About {lesson.minutes} minutes</span>
         <span>Example: {module.example}</span>
       </p>
     </div>

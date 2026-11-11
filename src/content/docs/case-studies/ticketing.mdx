@@ -226,7 +226,7 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
 3. **API.** `GET /events/{id}/seats` returns the seat map and can be a second stale. `POST /holds` takes an event and a
    seat and returns a hold with its expiry time, or `409 Conflict` when someone else got there first.
    `POST /orders` takes a hold and a payment token, with an `Idempotency-Key` header so a retried checkout cannot buy
-   twice (the Idempotency lesson covers keys in depth).
+   twice (the [Idempotency](../../reliability/idempotency/) lesson covers keys in depth).
 
 4. **Data model.** A `seats` table keyed by (event, seat) holds the status, the holder, and the hold expiry time. An
    `orders` table records each paid ticket, with a unique constraint on (event, seat) as a final guard.
@@ -239,7 +239,7 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
    `UPDATE seats SET status = 'held', holder = ?, expires = now() + 8 min WHERE event = ? AND seat = ? AND (status =
    'available' OR (status = 'held' AND expires < now()))`, then check how many rows changed. A sold seat matches neither
    branch, so no claim can take it back. A row lock: `SELECT ... FOR UPDATE` inside a transaction, then the write. A unique
-   constraint that refuses a second order row for the same seat. The Transactions and constraints lesson covers all
+   constraint that refuses a second order row for the same seat. The [Transactions and constraints](../../foundations/transactions/) lesson covers all
    three.
 
 7. **Trade-offs.** Hold length, a waiting room or open doors, and pick your seat or best available. The table at the
@@ -294,10 +294,10 @@ again (`WHERE holder = me AND expires > now()`), because a hold can expire while
 The waiting room is a queue in front of the whole site. It admits fans at the rate the servers can handle, in the order
 they arrived, and shows each one their place in line. It does three jobs at once:
 
-- **Protects the database.** Load stays flat at the admission rate, however many people arrive. The Queues and
-  backpressure lesson covers this pattern.
+- **Protects the database.** Load stays flat at the admission rate, however many people arrive. The [Queues and
+  backpressure](../../reliability/queues-and-backpressure/) lesson covers this pattern.
 - **Keeps it fair.** Fans are served in arrival order, so the fastest retry loop no longer wins. Pair it with the
-  techniques from the Rate limiting lesson to slow down bots.
+  techniques from the [Rate limiting](../../reliability/rate-limiting/) lesson to slow down bots.
 - **Shrinks the race.** Fewer buyers read the map at the same moment, so fewer claims collide.
 
 It cannot guarantee one buyer per seat. Two admitted fans can still read the same free seat, so the conditional write

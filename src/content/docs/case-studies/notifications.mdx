@@ -251,7 +251,7 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
 5. **High-level design.** The notifier deduplicates on the idempotency key, checks preferences, writes the row, and
    enqueues its ID on one of three lanes: priority for codes and security alerts, normal for social updates, and bulk for
    campaigns. Senders drain the lanes in that order, recheck preferences, take tokens from one bucket per provider to stay
-   under each rate limit, and keep a circuit breaker per provider. The Queues and backpressure lesson covers the lanes, and the Rate limiting lesson
+   under each rate limit, and keep a circuit breaker per provider. The [Queues and backpressure](../../reliability/queues-and-backpressure/) lesson covers the lanes, and the [Rate limiting](../../reliability/rate-limiting/) lesson
    covers the token bucket.
 
 6. **Deep dive: deadlines under bursts and outages.** This is where the design breaks first, and both simulations below
@@ -296,7 +296,7 @@ to the same dead provider.
 A **circuit breaker** counts failures in a row for each provider. After a threshold, 3 in the toy, it opens: senders stop
 calling the primary and route codes to a backup. While the breaker is open, a health check probes the primary every 2 s,
 and the first success closes the breaker. The backup is often slower or pricier. Here it accepts 10 sends per second,
-half the primary rate. The Circuit breakers lesson covers the states in full, and the Retries with backoff and jitter
+half the primary rate. The [Circuit breakers](../../reliability/circuit-breakers/) lesson covers the states in full, and the [Retries with backoff and jitter](../../reliability/retries/)
 lesson explains why real retries add randomness, which this toy leaves out so every replay matches.
 
 ## Try it: survive a provider outage
@@ -323,8 +323,8 @@ a failure, retries or fails over, and Ana gets two texts. One ID per notificatio
 idempotency key, so a retried request creates one notification. Senders pass the notification ID to providers that
 accept an idempotency key, and record each send in the sent log. Some providers accept no key, and a sender can crash
 between a send and its log write, so a duplicate stays possible. Retries also stop at the deadline, so a notification can
-arrive twice or not at all. A second login code is harmless, so write every message to read fine twice. The Idempotency lesson and the Delivery
-semantics and the outbox lesson cover these guarantees.
+arrive twice or not at all. A second login code is harmless, so write every message to read fine twice. The [Idempotency](../../reliability/idempotency/) lesson and the [Delivery
+semantics and the outbox](../../async/delivery-semantics/) lesson cover these guarantees.
 
 Preferences decide whether a message goes at all. Check opt-outs and quiet hours before enqueueing, so a muted campaign
 never takes a lane slot or a send from the rate limit. A bulk message may wait for hours, and the user may opt out or

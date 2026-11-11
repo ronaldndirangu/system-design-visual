@@ -29,11 +29,11 @@ End to end tests serve the build on port 4321. Set `E2E_PORT` to use another por
 
 ### 1. Register it in the curriculum
 
-Open `src/data/curriculum.ts`, find the module, and set the lesson's `status` to `'ready'` with an estimate in
-`minutes`. The lesson `id` is also its URL and file path, for example `reliability/timeouts`.
+Open `src/data/curriculum.ts`, find the module, and add the lesson with an estimate in `minutes`. The lesson `id` is
+also its URL and file path, for example `reliability/timeouts`.
 
-The sidebar, the course map, pagination, and progress tracking all read from this file. A unit test fails if a ready
-lesson has no page, or if a coming soon lesson already has one.
+The sidebar, the course map, pagination, and progress tracking all read from this file. Unit tests fail if a lesson has
+no page, if a page in a module folder is missing from the curriculum, or if any source file says "coming soon".
 
 Two optional fields shape how the course map presents a lesson:
 

@@ -267,7 +267,7 @@ WS   /docs/{docId}/live?after={seq}
 
 The server hands each editor a site letter when it joins. An insert names its own id and its origin, the character to
 its left (an origin of `null` means the start of the document). A delete names its target. Neither op mentions an
-index. The live channel is a WebSocket; the Real-time transport lesson compares it with polling and server-sent events.
+index. The live channel is a WebSocket; the [Real-time transport](../../foundations/real-time/) lesson compares it with polling and server-sent events.
 
 ## Data model
 
@@ -279,7 +279,7 @@ index. The live channel is a WebSocket; the Real-time transport lesson compares 
 | sites     | `(doc_id, site)`     | Which session owns each site letter, and the last counter it used                  |
 
 Every id is unique by construction, so a client that reconnects can resend anything the relay never acked: the unique
-key turns a duplicate into a no-op. The Idempotency lesson covers this pattern in depth.
+key turns a duplicate into a no-op. The [Idempotency](../../reliability/idempotency/) lesson covers this pattern in depth.
 
 ## High-level design
 

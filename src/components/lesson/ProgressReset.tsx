@@ -1,19 +1,19 @@
 import { useState } from 'react';
-import { readyLessons } from '../../data/curriculum';
+import { allLessons } from '../../data/curriculum';
 import { resetProgress } from '../../lib/progress';
 import { useProgress } from './useProgress';
 
 export default function ProgressReset() {
   const progress = useProgress();
   const [confirming, setConfirming] = useState(false);
-  const count = progress ? readyLessons.filter((lesson) => progress.completed[lesson.id]).length : 0;
+  const count = progress ? allLessons.filter((lesson) => progress.completed[lesson.id]).length : 0;
 
   return (
     <div className="sdv-reset not-content">
       <p aria-live="polite">
         {progress === null
           ? 'Loading your progress.'
-          : `${count} of ${readyLessons.length} available lessons complete. Saved on this device only.`}
+          : `${count} of ${allLessons.length} lessons complete. Saved on this device only.`}
       </p>
       {confirming ? (
         // biome-ignore lint/a11y/useSemanticElements: a labelled group of buttons, not a form section

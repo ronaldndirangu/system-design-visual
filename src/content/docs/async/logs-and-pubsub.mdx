@@ -193,7 +193,7 @@ no order at all: two consumers run at their own speeds, and a slow one falls beh
 Plain counts do not care. Five clicks counted in any order still add up to five. Per-link state does care: a
 "last clicked" time, a "first click" alert, or a running streak breaks when an older click arrives after a newer one.
 
-The fix is a **partition key**. Hash the short code to pick the partition, as the sharding lesson does with shard keys,
+The fix is a **partition key**. Hash the short code to pick the partition, as the [sharding lesson](../../scaling/sharding/) does with shard keys,
 and every click for one link lands in one partition and reaches one reader in order.
 
 <Predict

@@ -1,10 +1,21 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { allLessons, anchorFor, curriculum, findModule, readyLessons } from '../../src/data/curriculum';
+import { allLessons, anchorFor, curriculum, findModule } from '../../src/data/curriculum';
 
+const srcDir = fileURLToPath(new URL('../../src/', import.meta.url));
 const docsDir = fileURLToPath(new URL('../../src/content/docs/', import.meta.url));
 const lessonFile = (id: string) => `${docsDir}${id}.mdx`;
+const filesUnder = (dir: string) =>
+  readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath, entry.name).replaceAll('\\', '/'));
+const docsRoot = join(docsDir, '/').replaceAll('\\', '/');
+const routeOf = (file: string) => {
+  const slug = file.slice(docsRoot.length).replace(/\.mdx$/, '');
+  return slug === 'index' ? '/' : `/${slug}/`;
+};
 
 describe('curriculum', () => {
   it('has unique lesson ids and module numbers in order', () => {
@@ -19,15 +30,38 @@ describe('curriculum', () => {
     }
   });
 
-  it('has an MDX file for every ready lesson', () => {
-    expect(readyLessons.length).toBeGreaterThanOrEqual(6);
-    for (const lesson of readyLessons) expect(existsSync(lessonFile(lesson.id)), lesson.id).toBe(true);
+  it('has an MDX page for every lesson', () => {
+    for (const lesson of allLessons) expect(existsSync(lessonFile(lesson.id)), lesson.id).toBe(true);
   });
 
-  it('has no page yet for lessons marked coming soon', () => {
-    for (const lesson of allLessons.filter((item) => item.status === 'soon')) {
-      expect(existsSync(lessonFile(lesson.id)), lesson.id).toBe(false);
+  it('lists every page in a module folder in the curriculum', () => {
+    const ids = new Set(allLessons.map((lesson) => lesson.id));
+    for (const module of curriculum) {
+      const folder = `${docsDir}${module.id}`;
+      if (!existsSync(folder)) continue;
+      for (const file of readdirSync(folder).filter((name) => name.endsWith('.mdx'))) {
+        const id = `${module.id}/${file.replace(/\.mdx$/, '')}`;
+        expect(ids.has(id), id).toBe(true);
+      }
     }
+  });
+
+  it('never promises content that is coming soon', () => {
+    const offenders = filesUnder(srcDir).filter((file) => /coming soon/i.test(readFileSync(file, 'utf8')));
+    expect(offenders).toEqual([]);
+  });
+
+  it('points every relative link in a page at another page', () => {
+    const pages = filesUnder(docsDir).filter((file) => file.endsWith('.mdx'));
+    const routes = new Set(pages.map(routeOf));
+    const broken = pages.flatMap((file) =>
+      [...readFileSync(file, 'utf8').matchAll(/\]\((\.{1,2}\/[^)\s#]*)/g)]
+        .map((match) => new URL(match[1] as string, `https://site${routeOf(file)}`).pathname)
+        .filter((target) => !routes.has(target))
+        .map((target) => `${routeOf(file)} links to missing ${target}`),
+    );
+    expect(pages.length).toBeGreaterThan(50);
+    expect(broken).toEqual([]);
   });
 
   it('builds URL-safe anchors', () => {
@@ -44,8 +78,8 @@ describe('curriculum', () => {
     }
   });
 
-  it('keeps ready cards short', () => {
-    for (const lesson of readyLessons.filter((item) => item.format === 'card')) {
+  it('keeps cards short', () => {
+    for (const lesson of allLessons.filter((item) => item.format === 'card')) {
       expect(lesson.minutes, lesson.id).toBeLessThanOrEqual(10);
     }
   });

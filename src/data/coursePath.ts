@@ -1,11 +1,11 @@
-import { readyLessons } from './curriculum';
+import { allLessons } from './curriculum';
 
 export interface CoursePage {
   id: string;
   title: string;
 }
 
-/** Orientation pages first, then every lesson a learner can open today. */
+/** Orientation pages first, then every lesson in course order. */
 export const introPages: CoursePage[] = [
   { id: 'start-here', title: 'How this course works' },
   { id: 'curriculum', title: 'Course map' },
@@ -14,7 +14,7 @@ export const introPages: CoursePage[] = [
 
 export const coursePath: CoursePage[] = [
   ...introPages,
-  ...readyLessons.map((lesson) => ({ id: lesson.id, title: lesson.title })),
+  ...allLessons.map((lesson) => ({ id: lesson.id, title: lesson.title })),
 ];
 
-export const firstLesson = readyLessons[0];
+export const firstLesson = allLessons[0];
