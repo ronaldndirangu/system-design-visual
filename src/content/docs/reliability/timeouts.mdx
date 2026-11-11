@@ -270,8 +270,9 @@ and finishes at 2,540 ms. The server and gateway are still within their own time
 <DeadlineBudgetWidget client:visible />
 
 The client still gets an error when the deadline passes. What changes is the cost of that error: with a shared deadline
-the system stops spending workers, connections, and database time on answers nobody will read. The lesson Retries with
-backoff and jitter builds on this, because a retry that ignores the deadline doubles the wasted work.
+the system stops spending workers, connections, and database time on answers nobody will read. The lesson
+[Retries with backoff and jitter](../retries/) builds on this, because a retry that ignores the deadline doubles the
+wasted work.
 
 ## Try it: break things on purpose
 

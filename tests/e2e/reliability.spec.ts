@@ -205,3 +205,44 @@ test.describe('Idempotency', () => {
     await expect(duel.getByRole('row', { name: /Attempts sent/ })).toContainText('91');
   });
 });
+
+test.describe('Retries', () => {
+  test('retries keep the slowdown going, and the herd shows why jitter matters', async ({ page }) => {
+    const errors = collectErrors(page);
+    await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+    await page.goto('reliability/retries/');
+    const duel = page.getByRole('region', { name: 'Simulation: Same clicks, retries or none' });
+    await duel.scrollIntoViewIfNeeded();
+    const skip = duel.getByRole('button', { name: 'Skip to the end' });
+
+    await expect(skip).toBeEnabled();
+    await skip.focus();
+    await page.keyboard.press('Enter');
+    const confirmed = duel.getByRole('row', { name: /Clicks confirmed/ });
+    await expect(confirmed).toContainText('2475');
+    await expect(confirmed).toContainText('567');
+    await expect(duel.getByRole('row', { name: /Attempts sent/ })).toContainText('10006');
+    await expect(duel.getByText('Run complete')).toBeVisible();
+    expect(await axeViolations(page)).toEqual([]);
+    await page.emulateMedia({ colorScheme: 'light' });
+    expect(await axeViolations(page)).toEqual([]);
+
+    const calm = duel.getByRole('radio', { name: /Normal day/ });
+    await duel.getByRole('radio', { name: /Slowdown at 3 s/ }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(calm).toBeChecked();
+    await expect(calm).toBeFocused();
+    await expect(duel.getByText('Ready', { exact: true })).toBeVisible();
+
+    const herd = page.getByRole('region', { name: 'Simulation: Forty senders reconnect after a restart' });
+    await herd.scrollIntoViewIfNeeded();
+    const herdSkip = herd.getByRole('button', { name: 'Skip to the end' });
+    await expect(herdSkip).toBeEnabled();
+    await herdSkip.click();
+    await expect(herd.getByRole('row', { name: /Still waiting/ })).toContainText('28');
+    const attempts = herd.getByRole('row', { name: /Attempts sent/ });
+    await expect(attempts).toContainText('222');
+    await expect(attempts).toContainText('163');
+    expect(errors).toEqual([]);
+  });
+});

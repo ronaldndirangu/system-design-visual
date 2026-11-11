@@ -199,7 +199,8 @@ export const curriculum: CourseModule[] = [
         id: 'reliability/retries',
         title: 'Retries with backoff and jitter',
         summary: 'Retry without stampeding a service that is already struggling.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'reliability/rate-limiting',

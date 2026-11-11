@@ -1,0 +1,99 @@
+/* The stage stretches every svg to full width; keep the badge icon at its normal size. */
+.sdv-rw__lane > .sdv-badge {
+  justify-self: start;
+}
+.sdv-rw__lane > .sdv-badge svg {
+  display: inline-block;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+.sdv-rw__diff {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  margin: 0;
+}
+.sdv-rw__pool {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+}
+.sdv-rw__pool-name {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+  margin: 0;
+}
+.sdv-rw__cells {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+.sdv-rw__cell {
+  aspect-ratio: 1.6;
+  background: transparent;
+  border: 1px dashed var(--sl-color-gray-3);
+  border-radius: 0.2rem;
+  display: inline-block;
+  min-height: 0.8rem;
+  position: relative;
+}
+.sdv-qtracks__legend .sdv-rw__cell {
+  height: 0.9rem;
+  width: 1.4rem;
+}
+.sdv-rw__cell[data-state="working"] {
+  background: color-mix(in oklab, var(--sdv-server) 75%, var(--sl-color-bg));
+  border: 1px solid var(--sdv-server);
+}
+.sdv-rw__cell[data-state="nobody"] {
+  background: color-mix(in oklab, var(--sdv-bad) 25%, var(--sl-color-bg));
+  border: 1px solid var(--sdv-bad);
+  overflow: hidden;
+}
+.sdv-rw__cell[data-state="nobody"]::before,
+.sdv-rw__cell[data-state="nobody"]::after {
+  background: var(--sdv-bad);
+  content: "";
+  height: 2px;
+  inset-inline-start: -10%;
+  position: absolute;
+  top: calc(50% - 1px);
+  width: 120%;
+}
+.sdv-rw__cell[data-state="nobody"]::before {
+  transform: rotate(32deg);
+}
+.sdv-rw__cell[data-state="nobody"]::after {
+  transform: rotate(-32deg);
+}
+.sdv-rw__meter {
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: 999rem;
+  display: block;
+  height: 0.8rem;
+  overflow: hidden;
+}
+.sdv-rw__meter--legend {
+  display: inline-block;
+  vertical-align: middle;
+  width: 2.8rem;
+}
+.sdv-rw__meter-fill {
+  background: var(--sdv-queue);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+}
+.sdv-rw__meter[data-full] .sdv-rw__meter-fill {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--sdv-bad) 0 6px,
+    color-mix(in oklab, var(--sdv-bad) 60%, transparent) 6px 12px
+  );
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sdv-rw__meter-fill {
+    transition: width 120ms linear;
+  }
+}
