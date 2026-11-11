@@ -176,7 +176,7 @@ Every letter carries a reference number, so the recipient bins any letter whose 
 Both lanes get the same clicks and the same faults. The broker fails at 2 s, the database at 5.5 s, and the outbox
 relay crashes at 8 s. Each strip shows the latest clicks, one cell per click: solid means saved and sent, hatched
 means waiting in the outbox, a cross hatch means the event was lost, a dashed outline means phantom, and dots mean the
-request failed and nothing was written.
+request failed and nothing was written. This is a toy model, and the numbers are illustrative.
 
 <OutboxDuelWidget client:visible />
 
@@ -228,6 +228,8 @@ at most once, the same crashes **lose 24** clicks (8 and 16): the part of each b
 reads the same 16 clicks again and **skips** every one.
 
 </Predict>
+
+The simulation below is a toy model of one partition and one consumer, and its numbers are illustrative.
 
 <AckModeWidget client:visible />
 
