@@ -179,9 +179,15 @@ export default function SearchFreshnessWidget({
       better: started ? 'lower' : undefined,
     },
     {
-      label: 'Average wait before a new document is searchable',
-      values: [sums[0].delaySeconds, sums[1].delaySeconds],
+      label: 'Average time a new document has spent unsearchable so far',
+      values: [sums[0].unsearchableSeconds, sums[1].unsearchableSeconds],
       format: delay,
+      better: anyAdded ? 'lower' : undefined,
+    },
+    {
+      label: 'New documents still unsearchable',
+      values: [sums[0].pendingAdded, sums[1].pendingAdded],
+      format: (value) => (anyAdded ? count(value) : 'none yet'),
       better: anyAdded ? 'lower' : undefined,
     },
     {

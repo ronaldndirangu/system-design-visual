@@ -197,11 +197,12 @@ is searchable within 1 s. Recall@10 compares each lane's top 10 with an ideal ra
   answer={2}
 >
 
-**About half.** In this seeded run, 47% of queries miss the ideal top result, and recall@10 averages 38%. A new document
-waits 9.5 h on average before the nightly rebuild can find it, and by the end of the day 168 of the day's 191 new
-documents are still unsearchable. Some queries still do well: about 30% look for older documents, which the nightly
-index ranks with full signals, and the 02:00 build covers the first story's first 90 minutes. The real-time tier never
-misses the ideal top result, reaches 75% recall, and makes every new document searchable within 1 s.
+**About half.** In this seeded run, 47% of queries miss the ideal top result, and recall@10 averages 38%. By midnight,
+168 of the day's 191 new documents are still unsearchable, and a new document has spent 9.5 h unsearchable on average.
+That average stops counting at midnight, so the true wait is longer: each of those 168 documents waits for the next
+night's build. Some queries still do well: about 30% look for older documents, which the nightly index ranks with full
+signals, and the 02:00 build covers the first story's first 90 minutes. The real-time tier never misses the ideal top
+result, reaches 75% recall, and makes every new document searchable within 1 s.
 
 </Predict>
 
@@ -221,15 +222,17 @@ What to look for:
   documents against 1,823, counting its flushes and merges. At 19:45 it merges 4 level 2 segments into one level 3
   segment and rewrites 128 documents in one go.
 
-The real-time tier still stops at 75%. Its live documents rank on text match alone, so a keyword-stuffed page about the
-storm can outrank the story everyone reads until the next full build scores both.
+The real-time tier still stops at 75%. In this toy its live documents rank on text match alone, so a keyword-stuffed page
+about the storm can outrank the story everyone reads until the next full build scores both.
 
 ## The constraint: the best ranking needs the whole corpus
 
 Text match alone ranks badly. A page that repeats "storm" three times beats the story everyone reads. Good ranking adds
 signals that come from outside the document: how often readers click it, how trusted its source is, whether a spam
-model flags it. Those signals need data about the whole corpus and the whole click log, so a batch job computes them,
-and the full build that bakes them into the index takes hours.
+model flags it. The strongest of these, such as click popularity, come from the whole click log or the whole corpus, so
+a batch job computes them, and the full build that bakes them into the index takes hours. A source's trust score or a
+trained spam model could score a new story as it arrives; this lesson's toy bakes every signal in at build time to keep
+the duel simple. Clicks stay slow either way: a brand-new story has none until readers find it, however fresh the index.
 
 New documents arrive every second, and a reader searching for breaking news wants them now. So the design trades
 **retrieval quality** against **index freshness**: rebuild rarely and rank well, or index at once and rank on less.
@@ -361,11 +364,12 @@ term adds more than a common one, because it says more about the document. A ter
 diminishing returns: the third "storm" in d3 counts for less than the first. Real engines also adjust for document
 length, which the toy skips.
 
-Text relevance cannot tell a trusted story from a page that repeats the right words. So the score adds signals computed
-offline: click popularity, source quality, spam scores, often combined by a learned ranking model. Each one needs data
-about the whole corpus or the whole click log, which is why the full build runs as a batch job and takes hours. A
-brand-new story has no clicks yet anyway. In the duel, a live document gets a neutral quality score until the next build
-measures the real one.
+Text relevance cannot tell a trusted story from a page that repeats the right words. So the score adds signals: click
+popularity, source quality, spam scores, often combined by a learned ranking model. Click popularity needs the whole
+click log, which is why the full build runs as a batch job and takes hours. Source quality and a trained spam model can
+score a document the moment it arrives, and real systems apply them at ingest; the duel skips that and computes every
+signal at build time. A brand-new story has no clicks yet anyway. In the duel, a live document gets a neutral quality
+score until the next build measures the real one.
 
 ### Why one new document is expensive: immutable segments
 
@@ -413,7 +417,7 @@ Now pick **Rebuild every 4 hours**. The breaking news day returns, and the first
 instead of nightly. Each build still takes 3 h, so new indexes go live at 05:00, 09:00, 13:00, 17:00, and 21:00.
 
 - **Fresher.** Recall rises to 49% from 38%, the share of queries missing the ideal top result falls to 42% from 47%,
-  and the average wait for a new document drops to 4.5 h.
+  and a new document spends 4.5 h unsearchable on average before midnight.
 - **Sharp swings.** Recall reaches 100% after the 09:00 build goes live, then crashes when the 10:30 story breaks. Later
   in the day it edges past the real-time tier at a few ticks, because every document it serves carries full signals.
 - **Expensive.** It starts 6 builds and writes 11,355 documents, 6.2× the nightly rebuild's 1,823, and still averages
@@ -453,7 +457,7 @@ almost completely, and every query pays for the extra segments.
 
 | Design                       | What it buys                                                               | What it costs                                                                                    |
 | ---------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Nightly rebuild only         | One index, full signals on every document, 1 segment per query             | New documents stay invisible for hours: 38% recall and a 9.5 h wait on the toy breaking day      |
+| Nightly rebuild only         | One index, full signals on every document, 1 segment per query             | New documents hidden for hours: 38% recall, 9.5 h unsearchable on average in the toy breaking day |
 | Rebuild every few hours      | Fresher results with the same simple serving path                         | Rewrites the whole corpus each time: 6 builds and 11,355 writes in the toy, still hours behind   |
 | Batch index + real-time tier | New documents searchable within 1 s, full signals for everything older     | 5.5 segments per query in the toy, merge work, text-only ranking for new documents, two paths    |
 | Sharding by term             | A query touches only the shards that hold its terms                        | Hot shards for popular terms, intersections across machines, many shards per indexed document    |
@@ -505,8 +509,8 @@ This lesson's model is a toy. Here is what it leaves out:
   with high text scores and low quality.
 - **A fixed merge policy.** The duel merges any 4 segments on one level. Real policies weigh segment sizes and the share
   of deleted documents.
-- **15-minute ticks.** The real-time tier flushes once per tick, and the lesson reports its wait as the 1 s refresh
-  interval.
+- **15-minute ticks.** The real-time tier flushes once per tick, and the lesson reports its time unsearchable as the 1 s
+  refresh interval.
 - **Builds snapshot at their start.** A build covers everything that arrived before it started and nothing from its 3 h
   run.
 - **Simplified BM25.** The inverted index widget skips length normalization and uses one popularity signal with a fixed

@@ -34,7 +34,7 @@ function shown(summary: SearchSummary) {
   return {
     recall: Math.round(summary.recall),
     missedBest: Math.round(summary.missedBestShare),
-    delayHours: Number((summary.delaySeconds / 3_600).toFixed(1)),
+    unsearchableHours: Number((summary.unsearchableSeconds / 3_600).toFixed(1)),
     segmentsPerQuery: Number(summary.segmentsPerQuery.toFixed(1)),
     builds: summary.builds,
     writes: summary.writes,
@@ -138,7 +138,7 @@ describe('SearchDuel', () => {
     expect(a).toEqual({
       recall: 38,
       missedBest: 47,
-      delayHours: 9.5,
+      unsearchableHours: 9.5,
       segmentsPerQuery: 1,
       builds: 1,
       writes: 1_823,
@@ -146,12 +146,12 @@ describe('SearchDuel', () => {
     expect(b).toEqual({
       recall: 75,
       missedBest: 0,
-      delayHours: 0,
+      unsearchableHours: 0,
       segmentsPerQuery: 5.5,
       builds: 1,
       writes: 2_524,
     });
-    expect(duel.summary(1).delaySeconds).toBe(1);
+    expect(duel.summary(1).unsearchableSeconds).toBe(1);
     expect(duel.summary(1).missedBestShare).toBe(0);
     expect(duel.summary(0).pendingAdded).toBe(168);
     expect(Math.round(meanFrom(duel.lanes[0].recall, 42))).toBe(33);
@@ -189,7 +189,7 @@ describe('SearchDuel', () => {
     expect(a).toEqual({
       recall: 49,
       missedBest: 42,
-      delayHours: 4.5,
+      unsearchableHours: 4.5,
       segmentsPerQuery: 1,
       builds: 6,
       writes: 11_355,

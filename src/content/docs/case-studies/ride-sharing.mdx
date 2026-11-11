@@ -17,7 +17,7 @@ export const nodes = [
   { id: 'driver', kind: 'client', x: 70, y: 60, label: 'Driver app' },
   { id: 'rider', kind: 'client', x: 70, y: 240, label: 'Rider app' },
   { id: 'gateway', kind: 'server', x: 300, y: 50, label: 'Location gateway' },
-  { id: 'log', kind: 'queue', x: 300, y: 150, label: 'Location log', sublabel: 'by cell prefix' },
+  { id: 'log', kind: 'queue', x: 300, y: 150, label: 'Location log', sublabel: 'by driver id' },
   { id: 'matcher', kind: 'server', x: 300, y: 250, label: 'Matcher' },
   { id: 'history', kind: 'database', x: 530, y: 50, label: 'History store' },
   { id: 'index', kind: 'database', x: 530, y: 150, label: 'Geo index', sublabel: 'in memory' },
@@ -42,7 +42,7 @@ export const steps = [
   },
   {
     title: 'The gateway appends the ping to a log',
-    text: 'The gateway computes the geohash of the position and appends the ping to a log partitioned by cell prefix, so one partition holds every ping from one area. A burst of pings waits in the log instead of swamping the index.',
+    text: 'The gateway computes the geohash of the position and appends the ping to a log partitioned by driver id, so every ping from one driver lands on one partition in the order it was sent. A burst of pings waits in the log instead of swamping the index.',
     nodes: ['gateway', 'log'],
     flows: ['gateway>log'],
   },
@@ -102,7 +102,7 @@ export const quiz = [
       },
       {
         text: 'Searching 9 cells spreads the work across 9 servers',
-        why: 'Nearby cells usually share a prefix and live on the same partition. The neighbors are there so the search never misses a closer driver.',
+        why: 'Nearby cells usually share a prefix and live on the same index node. The neighbors are there so the search never misses a closer driver.',
       },
     ],
   },
@@ -476,17 +476,22 @@ why every wait needs a deadline. The rider sees one status, matching, the whole 
 ### Feeding the index
 
 The location stream runs through a log, the structure the Logs and pub/sub lesson builds, and the index consumer is a
-small stream processor. Partition the log by cell prefix, for example the first 4 characters, so all pings from one area
-land on one partition and one index node. That node then answers every 9-cell search in its area by itself. This is
-[sharding](../../scaling/sharding/) with a geographic key, and it brings two problems. Downtown at rush hour becomes a
-**hot partition**, so busy areas split further on a longer prefix. A search near a partition boundary reads cells from
-two nodes.
+small stream processor. Partition the log by driver id, so one consumer reads every ping from a driver in order and
+holds that driver's last cell. Shard the geo index itself by cell prefix, for example the first 4 characters, so one
+index node holds every cell in an area and answers most 9-cell searches by itself. This is
+[sharding](../../scaling/sharding/) with a geographic key, and it brings three problems. Downtown at rush hour becomes a
+**hot shard**, so busy areas split further on a longer prefix. A search near a shard boundary reads cells from two
+nodes. A driver who crosses a boundary moves from one node to another, so the consumer sends a removal to the old node
+and an addition to the new one. Keying the log by cell would break this step: the new area's partition never learns
+which node still lists the driver.
 
 Pings also arrive late or twice: mobile networks deliver them out of order, and a consumer that restarts reads some
-again, the at-least-once delivery that Delivery semantics and the outbox describes. The index keeps the newest `sentAt`
-per driver and drops anything older, so a stale ping never drags a driver back to where they were. When the consumers
-fall behind during a burst, Queues and backpressure lists the options. Here one answer stands out: skip to the newest
-ping for each driver, since an old position has no value for matching.
+again, the at-least-once delivery that Delivery semantics and the outbox describes. Every addition and removal carries
+the ping's `sentAt`, and each index node remembers the newest `sentAt` it has seen per driver, removals included. A node
+drops anything older, so a stale ping never drags a driver back to where they were. As a backstop, a cell entry expires
+about 30 s after its last ping (illustrative), so a driver whose removal got lost, or whose app went offline, leaves the
+search on its own. When the consumers fall behind during a burst, Queues and backpressure lists the options. Here one
+answer stands out: skip to the newest ping for each driver, since an old position has no value for matching.
 
 A second consumer writes every ping to the location history, about 173 GB a day in this estimate, on cheap bulk
 storage. Fares, receipts, and disputes read a trip's route from it later.

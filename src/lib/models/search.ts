@@ -236,7 +236,8 @@ export interface SearchLane {
 export interface SearchSummary {
   recall: number;
   missedBestShare: number;
-  delaySeconds: number;
+  /** Mean time each new document has spent unsearchable so far; a pending document counts up to the current tick. */
+  unsearchableSeconds: number;
   segmentsPerQuery: number;
   builds: number;
   writes: number;
@@ -602,7 +603,7 @@ export class SearchDuel {
     return {
       recall: lane.queries === 0 ? 100 : (100 * lane.recallSum) / lane.queries,
       missedBestShare: (100 * lane.missedBest) / queries,
-      delaySeconds: added === 0 ? 0 : delayTotal / added,
+      unsearchableSeconds: added === 0 ? 0 : delayTotal / added,
       segmentsPerQuery: lane.queries === 0 ? 1 : lane.segmentsSearched / lane.queries,
       builds: lane.builds,
       writes: lane.buildWrites + lane.flushWrites + lane.mergeWrites,

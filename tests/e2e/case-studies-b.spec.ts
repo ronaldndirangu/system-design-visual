@@ -176,7 +176,8 @@ test('/case-studies/search/ widgets pin recall, rebuild cost, ranking, and typea
   const recall = day.getByRole('row', { name: /Recall@10/ });
   await expect(recall).toContainText('38%');
   await expect(recall).toContainText('75%');
-  await expect(day.getByRole('row', { name: /Average wait/ })).toContainText('9.5 h');
+  await expect(day.getByRole('row', { name: /spent unsearchable/ })).toContainText('9.5 h');
+  await expect(day.getByRole('row', { name: /still unsearchable/ })).toContainText('168');
 
   const rerun = page.getByRole('region', {
     name: 'Simulation: Same duel, different day: evergreen queries and faster rebuilds',

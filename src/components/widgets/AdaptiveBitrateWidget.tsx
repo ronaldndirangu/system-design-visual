@@ -356,7 +356,7 @@ export default function AdaptiveBitrateWidget({
   scenarios = ['steady', 'tunnels', 'crowded'],
   initial,
   title = 'Fixed 1080p versus adaptive ladder',
-  instructions = 'Toy model of 90 s of video. Pick a network, then press Play; 1× speed runs three times faster than real time. Both players stream the same video over the same bandwidth trace, and only the bitrate choice differs.',
+  instructions = 'Toy model of the first 90 s of a long video. Pick a network, then press Play; 1× speed runs three times faster than real time. Both players stream the same video over the same bandwidth trace, and only the bitrate choice differs.',
 }: Props) {
   const hydrated = useHydrated();
   const [scenarioId, setScenarioId] = useState<StreamScenarioId>(initial ?? scenarios[0] ?? 'tunnels');

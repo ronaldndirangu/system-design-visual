@@ -183,9 +183,9 @@ each player pick the size its network can carry right now.
 
 ## The failure: a train, three tunnels, one fixed file
 
-A commuter opens a 90 s clip on the train. The app serves it as one fixed 1080p encode at 5 Mbps. In the open, the phone
+A commuter starts a long video on the train. The app serves it as one fixed 1080p encode at 5 Mbps. In the open, the phone
 gets about 5 to 8 Mbps, enough to stay ahead. Then the train enters a tunnel and the connection falls to about 1 Mbps.
-Three tunnels lie along the route, at 20 to 30 s, 46 to 58 s, and 72 to 82 s.
+Three tunnels lie along the first 90 s of the ride, at 20 to 30 s, 46 to 58 s, and 72 to 82 s.
 
 The player keeps a **buffer**: video it has downloaded but not yet shown. While the network outruns the bitrate, the
 buffer grows. When the network falls behind, playback drains the buffer, and when the buffer hits zero the picture
@@ -194,7 +194,7 @@ than a blurry picture.
 
 <Predict
   client:visible
-  question="The fixed 1080p player streams this 90 s clip through all three tunnels. How many times does it stall?"
+  question="The fixed 1080p player streams through all three tunnels in those first 90 s. How many times does it stall?"
   options={[
     'Never: the buffer covers each tunnel',
     'Once, then it catches up',
@@ -423,8 +423,8 @@ often, because a picture that keeps changing sharpness annoys viewers. The toy r
 
 ### Try it
 
-Both lanes stream the same 90 s of video over the same bandwidth trace. Lane A always fetches 1080p. Lane B follows the
-rule above. Start with the train, press Play, and watch each buffer bar as a tunnel hits.
+Both lanes watch the first 90 s of the same long video over the same bandwidth trace. Lane A always fetches 1080p.
+Lane B follows the rule above. Start with the train, press Play, and watch each buffer bar as a tunnel hits.
 
 <AdaptiveBitrateWidget
   client:visible
@@ -609,6 +609,8 @@ This lesson's model is a toy. Here is what it leaves out:
   static shot, so segments on the same rung differ in size.
 - **A basic adaptive rule.** Real players use buffer-based or hybrid algorithms, smooth their estimates, and limit how
   often they switch.
+- **A 90 s window.** The duel follows the first 90 s of a longer video, so a player may end the run with segments still
+  in its buffer. Near the real end of a video, players stop fetching once the last segment lands.
 - **Instant startup once a segment lands.** Real startup also waits on DNS, TLS, the manifest fetch, and the decoder.
 - **No codecs, audio, captions, or DRM.** Real platforms encode several codecs, carry separate audio and caption
   tracks, and protect paid content with DRM.

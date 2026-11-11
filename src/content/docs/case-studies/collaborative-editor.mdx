@@ -436,8 +436,10 @@ one order plus a transform for every pair of op types, which is notoriously hard
 
 This lesson's model is a toy. Here is what it leaves out:
 
-- **Tombstones never go away.** Real systems collect a tombstone once every copy has seen the delete, which requires
-  knowing every copy and what each has seen. The toy keeps every tombstone.
+- **Tombstones never go away.** Real systems collect a tombstone only once it is causally stable: every copy has seen
+  the delete, and every op that could still name the character has reached every copy. That requires knowing every copy
+  and what each has seen, plus a rule for a copy that stays offline past the cut, such as reloading from a fresh
+  snapshot instead of replaying its old ops. The toy keeps every tombstone.
 - **Plain characters only.** No bold, links, or comments. Rich text needs ids for formatting ranges too.
 - **One op per character.** Real editors send a run of typed characters as one op and store it as one item, which cuts
   the 18 bytes per character sharply.
@@ -468,9 +470,11 @@ compared with the plain text? What would you change first?
   ops per second**.
 - CRDT state: (20,000 + 60,000) characters × 18 bytes = **1,440,000 bytes, about 1.44 MB**, against **20 KB** of
   visible text. That is **72×** the text.
-- First changes: store each run of typed characters as one item, collect tombstones once every copy has acknowledged
-  the deletes (or compact them when writing a snapshot), and batch outgoing ops into one message per short window. If
-  many classes edit at once, shard relays by doc id.
+- First changes: store each run of typed characters as one item, and batch outgoing ops into one message per short
+  window. Collect a tombstone once it is causally stable: every student has seen the delete, and every op that could
+  still name the character has reached everyone. The relay already numbers every op, so it can track the last number
+  each student has acknowledged. A student who stays offline past the cut reloads from a snapshot before sending again.
+  If many classes edit at once, shard relays by doc id.
 
 </div>
 

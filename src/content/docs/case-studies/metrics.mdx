@@ -420,11 +420,19 @@ series to draw it wastes almost all of the work. The compactor writes rollups al
 stores **min, max, sum, and count**. An average alone cannot be merged correctly (the average of averages is wrong when
 counts differ) and hides spikes, while sum and count give an exact average at any coarser level and max keeps the spike.
 
+Those four fields suit gauges, such as queue depth or memory in use. Other metric types need their own rollups:
+
+- **Counters** only grow and drop back to zero when a process restarts. Their rollup stores the increase over each
+  window, adding back any reset, and a rate follows by dividing by the window length.
+- **Latency percentiles** need a different shape. The p99 of each of two windows cannot tell you the p99 of both
+  windows together. Store a mergeable histogram or sketch per window instead, add the buckets when merging, and compute
+  the percentile at read time.
+
 The illustrative tiers:
 
 - **Raw**: one value every 10 s, kept 7 days.
-- **1 minute rollups**: min, max, sum, and count, kept 30 days.
-- **1 hour rollups**: min, max, sum, and count, kept 1 year.
+- **1 minute rollups**: min, max, sum, and count for gauges, kept 30 days.
+- **1 hour rollups**: min, max, sum, and count for gauges, kept 1 year.
 
 Pick a dashboard range and see which tier answers it. The planner picks the finest tier that still covers the range.
 
@@ -522,6 +530,8 @@ This lesson's model is a toy. Here is what it leaves out:
 - **A simple alert input.** The alert widget evaluates each 30 s window's own error rate over a fixed 13 minute trace.
 - **Overlapping tiers.** Each tier keeps its own full window, so the newest week is stored in all three, and the
   estimate applies 1.37 bytes to every rollup value, which flatters sums and counts.
+- **Gauge rollups only.** The storage estimate prices four values per rollup point. A latency histogram stores one count
+  per bucket in every rollup point, so it costs several times more per series.
 
 ## Check yourself
 
