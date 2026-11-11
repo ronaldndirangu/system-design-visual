@@ -102,3 +102,82 @@ test.describe('/reliability/rate-limiting/', () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 });
+
+test.describe('/reliability/observability/', () => {
+  const path = 'reliability/observability/';
+
+  test('incident dashboard plays, switches between RED and USE, and finishes', async ({ page }) => {
+    const { sim, skip } = await openSim(page, path, "The shop's dashboard during deploy v42");
+    await expect(sim.getByText('Ready', { exact: true })).toBeVisible();
+    await expect(sim).toContainText('Duration: browse p99');
+
+    await sim.getByRole('button', { name: 'Play', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await expect(sim.getByText(/s of 60 s$/).first()).toBeVisible();
+
+    await skip.click();
+    await expect(sim.getByText('Run complete', { exact: true })).toBeVisible();
+    await expect(sim).toContainText('50 requests failed so far');
+
+    await sim.getByRole('radio', { name: 'USE: database pool' }).check();
+    await expect(sim).toContainText('Saturation: requests waiting for one');
+    await expect(sim).not.toContainText('Duration: browse p99');
+
+    await sim.getByRole('radio', { name: /No deploy/ }).click();
+    await expect(sim.getByText('Ready', { exact: true })).toBeVisible();
+    await skip.click();
+    await expect(sim).toContainText(/ 0 failed so far/);
+  });
+
+  test('trace hunt rewards the span with the most own time and filters logs by correlation ID', async ({
+    page,
+  }) => {
+    await page.goto(path);
+    const hunt = page.getByRole('region', { name: 'Interactive: Find the slow span' });
+    await hunt.scrollIntoViewIfNeeded();
+    const parent = hunt.getByRole('button', { name: /^api\.browse/ });
+    await expect(parent).toBeEnabled();
+
+    await parent.click();
+    await expect(hunt.getByText('Keep looking', { exact: true })).toBeVisible();
+
+    const pool = hunt.getByRole('button', { name: /^db\.pool\.acquire/ });
+    await pool.focus();
+    await page.keyboard.press('Enter');
+    await expect(pool).toHaveAttribute('aria-pressed', 'true');
+    await expect(hunt.getByText('Found', { exact: true })).toBeVisible();
+    await expect(hunt).toContainText('db.pool.acquire spent 727 ms');
+
+    await expect(hunt).toContainText(/from this request and \d+ others/);
+    const filter = hunt.getByRole('switch', { name: 'Show only this correlation ID' });
+    await filter.focus();
+    await page.keyboard.press('Space');
+    await expect(filter).toBeChecked();
+    await expect(hunt).not.toContainText(/from this request and \d+ others/);
+  });
+
+  test('sampling duel keeps every failure with tail sampling and ties on a quiet day', async ({ page }) => {
+    const { sim, skip } = await openSim(page, path, 'Head sampling against tail sampling');
+    await skip.click();
+    await expect(sim.getByText('Run complete', { exact: true })).toBeVisible();
+    const table = sim.getByRole('table').first();
+    await expect(
+      table.getByRole('row', { name: /Failed requests you can open/ }).getByRole('cell'),
+    ).toContainText(['3', '50']);
+    await expect(table.getByRole('row', { name: /Traces stored/ }).getByRole('cell')).toContainText([
+      '262',
+      '489',
+    ]);
+
+    await sim.getByRole('radio', { name: /Quiet day/ }).click();
+    await expect(sim.getByText('Ready', { exact: true })).toBeVisible();
+    await skip.click();
+    await expect(
+      sim
+        .getByRole('table')
+        .first()
+        .getByRole('row', { name: /Traces stored/ })
+        .getByRole('cell'),
+    ).toContainText(['262', '262']);
+  });
+});
