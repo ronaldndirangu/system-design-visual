@@ -237,7 +237,8 @@ export const curriculum: CourseModule[] = [
         title: 'Delivery semantics and the outbox',
         summary:
           'At most once, at least once, and effectively once through idempotent consumers, plus the outbox that keeps events and data in step.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'async/event-driven-design',
