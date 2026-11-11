@@ -345,7 +345,8 @@ export const curriculum: CourseModule[] = [
         title: 'Payments',
         summary:
           'Move money exactly once, reconcile with banks, and compare the failure modes with ticketing.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
         bestAfter: 'async',
       },
       {
