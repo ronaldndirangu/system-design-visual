@@ -265,7 +265,8 @@ export const curriculum: CourseModule[] = [
         id: 'distributed-data/consistency-models',
         title: 'Consistency models',
         summary: 'From strong to eventual: what each promise lets a reader see.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 20,
       },
       {
         id: 'distributed-data/cap-and-pacelc',
@@ -284,7 +285,8 @@ export const curriculum: CourseModule[] = [
         id: 'distributed-data/raft',
         title: 'Consensus with Raft',
         summary: 'Watch nodes elect a leader and agree on a log.',
-        status: 'soon',
+        status: 'ready',
+        minutes: 22,
         advanced: true,
       },
       {

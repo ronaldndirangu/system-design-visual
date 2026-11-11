@@ -1,0 +1,343 @@
+---
+title: Consistency models
+description: Three friends chat through three replicas. See what eventual, monotonic reads, read your writes, causal, and linearizable consistency each let a reader see, and what each one costs in waiting.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import ConsistencyWidget from '../../../components/widgets/ConsistencyWidget';
+
+export const nodes = [
+  { id: 'ana', kind: 'client', x: 70, y: 50, label: 'Ana' },
+  { id: 'carla', kind: 'client', x: 70, y: 150, label: 'Carla' },
+  { id: 'ben', kind: 'client', x: 70, y: 250, label: 'Ben' },
+  { id: 'lb', kind: 'loadBalancer', x: 250, y: 150, label: 'Router', sublabel: 'picks a replica' },
+  { id: 'r1', kind: 'database', x: 430, y: 50, label: 'R1' },
+  { id: 'r2', kind: 'database', x: 530, y: 150, label: 'R2' },
+  { id: 'r3', kind: 'database', x: 430, y: 250, label: 'R3' },
+];
+
+export const edges = [
+  { from: 'ana', to: 'lb' },
+  { from: 'carla', to: 'lb' },
+  { from: 'ben', to: 'lb' },
+  { from: 'lb', to: 'r1' },
+  { from: 'lb', to: 'r2' },
+  { from: 'lb', to: 'r3' },
+  { from: 'r2', to: 'r1', dashed: true },
+  { from: 'r2', to: 'r3', dashed: true },
+];
+
+export const steps = [
+  {
+    title: 'Ana writes to R2',
+    text: 'Ana sends “Lunch at noon?”. The router picks R2, which stores the message and confirms it at once. R1 and R3 do not have it yet.',
+    nodes: ['ana', 'lb', 'r2'],
+    flows: ['ana>lb', 'lb>r2'],
+  },
+  {
+    title: 'Copies travel in the background',
+    text: 'R2 copies the message to R1 and R3. Each copy takes a few ticks, and the delays differ: in the run below, R1 gets it at tick 4 and R3 only at tick 7.',
+    nodes: ['r2', 'r1', 'r3'],
+    flows: ['r2>r1', 'r2>r3'],
+  },
+  {
+    title: 'Ben replies through R3',
+    text: 'Ben read the question from R2 at tick 2. At tick 3 his reply “Yes, see you there” lands on R3, which still lacks the question it answers.',
+    nodes: ['ben', 'lb', 'r3'],
+    flows: ['ben>lb', 'lb>r3'],
+  },
+  {
+    title: 'Carla reads R3',
+    text: 'Carla opens the chat and the router picks R3. R3 answers with what it holds right now: a reply with no question above it.',
+    nodes: ['carla', 'lb', 'r3'],
+    flows: ['carla>lb', 'lb>r3'],
+  },
+  {
+    title: 'The fix is a promise',
+    text: 'A consistency model tells the router and the replicas what they may answer. Under causal consistency, Ben’s reply waits at R3 until the question lands there. Under linearizable consistency, every request goes to R1 and waits for a majority.',
+    nodes: ['lb', 'r1', 'r2', 'r3'],
+    flows: [],
+  },
+];
+
+export const quiz = [
+  {
+    prompt:
+      'Ben refreshes the chat, and Ana’s question, which he saw a moment ago, has vanished. Which promise rules this out with the least waiting?',
+    options: [
+      {
+        text: 'Monotonic reads',
+        correct: true,
+        why: 'Right. Monotonic reads promises that a later read never shows less than an earlier one. A replica that is behind Ben’s last read makes him wait, or the router sends him to one that has caught up.',
+      },
+      {
+        text: 'Read your writes',
+        why: 'Read your writes protects only messages Ben wrote himself. Ana wrote the question, so a lagging replica can still hide it from him. In the run, Ben still goes backwards at tick 5 under read your writes.',
+      },
+      {
+        text: 'Linearizable',
+        why: 'Linearizable rules it out too, but it sends every request to the leader and makes every write wait for a majority. In the run it waits 14 ticks, more than any other promise. You pay for far more than this feature needs.',
+      },
+      {
+        text: 'Eventual',
+        why: 'Eventual consistency only promises that replicas converge once writes stop. Any single read can return an older replica, so a message can vanish and come back.',
+      },
+    ],
+  },
+  {
+    prompt: 'Under read your writes, which of these can still happen?',
+    options: [
+      {
+        text: 'Ana sends a message, and her next read does not show it.',
+        why: 'This is exactly the anomaly read your writes rules out. In the run, Ana’s read at tick 3 waits until tick 7 instead of showing an empty chat.',
+      },
+      {
+        text: 'Carla sees Ben’s reply before Ana’s question.',
+        correct: true,
+        why: 'Right. Read your writes protects only the reader’s own messages. Carla wrote nothing, so R3 shows her the reply alone at tick 3, the same as under eventual.',
+      },
+      {
+        text: 'Ana’s reads fail with an error until every replica holds her message.',
+        why: 'Read your writes needs only the replica that answers to hold her message, and it waits instead of failing. A replica that already holds the message answers at once.',
+      },
+      {
+        text: 'Ben’s reply is rejected because R3 lags behind R2.',
+        why: 'Read your writes never rejects a write. It constrains reads: a read waits, or goes to a replica that holds the reader’s own writes.',
+      },
+    ],
+  },
+  {
+    prompt:
+      'In the run, linearizable shows zero anomalies but 14 ticks of waiting, and R1 serves every request. Why?',
+    options: [
+      {
+        text: 'Every request goes to leader R1, and a write waits until a majority of replicas store it.',
+        correct: true,
+        why: 'Right. One leader orders every request, so every read sees the latest confirmed write. The price is a round trip to the leader for everyone and a wait for a majority on every write.',
+      },
+      {
+        text: 'Its replicas copy messages faster than the other promises do.',
+        why: 'All five promises share the same messages, routes, and network delays. Only the rule changes, so speed cannot explain the difference.',
+      },
+      {
+        text: 'It drops any read that would have shown an anomaly.',
+        why: 'Every read completes. Linearizable finishes fewer reads (31 of 38) because people spend time waiting for their writes to commit, so they send fewer requests.',
+      },
+      {
+        text: 'It locks the whole chat while any message is being written.',
+        why: 'Nothing locks the chat. A read that arrives while a write is still unconfirmed returns the last confirmed messages; Ben reads an empty chat at tick 2 while Ana’s first message waits for a majority.',
+      },
+    ],
+  },
+  {
+    prompt:
+      'A chat must never show a reply without its question, and it must stay fast with replicas on three continents. Which promise fits best?',
+    options: [
+      {
+        text: 'Causal',
+        correct: true,
+        why: 'Right. Causal consistency rules out a reply before its question and both session anomalies, while each phone still reads its nearest replica. A request waits only when a message it depends on has not arrived.',
+      },
+      {
+        text: 'Linearizable',
+        why: 'Linearizable also fixes the ordering, but every phone would talk to one leader on one continent, and every message would wait for a majority across oceans.',
+      },
+      {
+        text: 'Monotonic reads',
+        why: 'Monotonic reads stops a reader from going backwards, but it says nothing about the order of messages from different people. Carla can still see the reply first.',
+      },
+      {
+        text: 'Eventual',
+        why: 'Eventual consistency allows every anomaly in this lesson, including the reply with no question that opened it.',
+      },
+    ],
+  },
+];
+
+<Objectives>
+
+- Name five consistency promises, from eventual up to linearizable, and the anomalies each one rules out.
+- Read a replica timeline and spot a stale read, a missing own message, a read that goes backwards, and a reply shown
+  before its question.
+- Explain why a stronger promise costs waiting time and pulls traffic toward fewer replicas.
+- Pick the weakest promise that keeps a feature correct.
+
+</Objectives>
+
+## The failure: a reply with no question
+
+Ana, Ben, and Carla share a group chat. The chat service keeps three copies of every conversation on three replicas,
+R1, R2, and R3, so it can answer each phone from a nearby server and survive the loss of one. A router sends each request
+to one of the replicas, and the replicas copy new messages to each other in the background. A copy takes a few ticks to
+travel.
+
+Ana sends “Lunch at noon?” and it lands on R2. Ben reads from R2, sees the question, and replies “Yes, see you there”.
+His reply lands on R3, which has not received Ana’s question yet. Then Carla opens the chat.
+
+<Predict
+  client:visible
+  question="Ben’s reply reached R3 before Ana’s question did. Carla’s phone reads from R3. What does Carla see?"
+  options={[
+    'An empty chat, because a replica never shows half a conversation',
+    'Ben’s reply alone, with no question above it',
+    'Both messages, because the reply carries the question with it',
+  ]}
+  answer={1}
+>
+
+**Ben’s reply alone.** R3 answers with whatever it holds right now, and it holds the reply. Nothing forces copies to
+arrive in the order people wrote them. Ana’s own phone fares no better: at the same tick it reads R3 and shows an empty
+chat, as if her message never left.
+
+</Predict>
+
+No server crashed and no message was lost. Within a few ticks every replica holds all three messages of the
+conversation. Each replica answers honestly with what it has. The confusion comes from what the system promised its
+readers, and a stronger promise can rule it out.
+
+## The idea: a consistency model is a promise to readers
+
+A consistency model says which answers a read may return, given what has been written and what this reader has already
+seen or written. A weak promise lets any nearby replica answer at once. A strong promise makes some reads wait, or sends
+them to a particular replica, so certain anomalies can never reach a screen. This lesson tracks four anomalies:
+
+- **Stale read:** the read misses a message the system already accepted.
+- **Own message missing:** you sent a message, and your next read does not show it.
+- **Went backwards:** you saw a message, and a later read no longer shows it.
+- **Reply before question:** you see an answer without the message it answers.
+
+<StepDiagram client:visible title="How a reply gets ahead of its question" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy>
+
+Picture an office with a notice board on each of three floors, and a clerk who walks new notices from board to board.
+Under **eventual** consistency, you read the board on your floor, whatever it shows. Under **monotonic reads**, you
+remember the newest notice you have read, and you wait if your board is behind it. Under **read your writes**, you wait
+until your own notice is pinned up. Under **causal** consistency, the clerk refuses to pin a reply until the notice it
+answers is up. Under **linearizable** consistency, everyone walks to one main board, and a notice counts only once a
+second floor has a copy.
+
+</Analogy>
+
+## Try it
+
+Press **Play** with **Eventual** selected and watch tick 3: Carla’s phone shows the reply with no question, and Ana’s
+phone shows an empty chat. Then pick another promise and play again. All five promises run on the same messages, the
+same routes, and the same network delays, so every difference you see comes from the promise. The table under the
+timeline compares all five at the current tick. One tick stands for about 100 ms in this toy model.
+
+<ConsistencyWidget client:visible />
+
+What to look for on the first workload:
+
+- **Eventual** never waits and shows all four anomalies: 7 of 38 reads are wrong in some way.
+- **Monotonic reads** makes Ben’s read at tick 5 wait until tick 7 instead of going backwards. Ana still misses her own
+  message at ticks 3 and 5, and Carla still sees the reply first.
+- **Read your writes** makes Ana’s read at tick 3 wait until tick 7, when R3 holds her question. Ben still goes backwards
+  at tick 5, and Carla still sees the reply first.
+- **Causal** makes Ben’s reply wait at R3 from tick 3 to tick 7, until Ana’s question arrives there, and R1 holds back
+  Ana’s “Booked a table for two” for a tick until the reply it answers lands. No phone ever shows a reply before its
+  question.
+- **Linearizable** sends every request to R1 and shows no anomalies at all, at the price of 14 ticks of waiting and one
+  replica serving 100% of the traffic.
+
+Press **Next workload** to try different routes and delays. The counts change from workload to workload, but a promise
+never shows an anomaly it rules out.
+
+## The promises form a ladder with two rails
+
+The five promises do not sit in one straight line. Monotonic reads and read your writes protect different things, so
+neither includes the other. The run shows both gaps: under monotonic reads Ana still loses her own message, and under
+read your writes Ben still goes backwards. Causal consistency includes both session promises and adds one more rule: a
+reply never shows before the message it answers. Linearizable sits at the top: the system behaves as if one copy of the
+chat existed, and every read sees the latest confirmed write.
+
+| Promise          | Stale read | Own message missing | Went backwards | Reply before question |
+| ---------------- | ---------- | ------------------- | -------------- | --------------------- |
+| Eventual         | allowed    | allowed             | allowed        | allowed               |
+| Monotonic reads  | allowed    | allowed             | ruled out      | allowed               |
+| Read your writes | allowed    | ruled out           | allowed        | allowed               |
+| Causal           | allowed    | ruled out           | ruled out      | ruled out             |
+| Linearizable     | ruled out  | ruled out           | ruled out      | ruled out             |
+
+## Causal still allows stale reads
+
+<Predict
+  client:visible
+  question="Under causal consistency, Carla reads R1 at tick 9. R1 holds Ana’s question, and Ben’s reply has not reached it yet. Carla has never seen the reply. What happens?"
+  options={[
+    'Her read waits until R1 holds the reply, because causal reads are always up to date',
+    'She sees Ana’s question alone: a stale read, with no causal anomaly',
+    'Her read fails, because R1 is behind R3',
+  ]}
+  answer={1}
+>
+
+**She sees Ana’s question alone.** Causal consistency orders only what a request depends on: what you saw, what you
+wrote, and the message a reply answers. Carla never saw Ben’s reply, so nothing makes R1 wait for it. Her view is stale
+but makes sense: no reply without its question, and nothing she saw has vanished. Causal still shows 3 stale reads on
+the first workload. Only linearizable rules stale reads out.
+
+</Predict>
+
+## What real systems do
+
+The widget is a toy, and real systems pay for these promises with a few standard tools:
+
+- **Session promises** (monotonic reads and read your writes) usually come from sticky sessions, which pin a person to
+  one replica, or from version tokens: the client remembers the newest version it has seen or written, and a replica
+  that is behind waits or forwards the request. The [read replicas](../../scaling/read-replicas/) lesson routes fresh
+  reads to the primary for the same reason.
+- **Causal consistency** needs dependency tracking. Each write carries the versions it depends on, and a replica holds
+  the write back from readers until those dependencies arrive, just as R1 holds Ana’s third message in the causal run.
+- **Linearizable consistency** needs one agreed order of writes, usually from a leader that replicates to a majority.
+  The [Raft](../raft/) lesson shows how replicas elect that leader. A real leader must also confirm it still leads before
+  it answers a read, an extra round trip this toy skips, so real linearizable reads cost more than the widget shows.
+- When a network partition splits the replicas, a linearizable system must refuse requests on the minority side. The
+  [CAP and PACELC](../cap-and-pacelc/) lesson covers that choice.
+
+Many databases let you pick the promise per request. Use that: pay for a strong read only where a feature needs it.
+
+## Trade-offs
+
+<TradeoffTable title="Consistency promises">
+
+| Choice           | What it buys                                                                 | What it costs                                                                                                        |
+| ---------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Eventual         | Any replica answers at once; reads stay local and survive a replica loss.     | Readers can see stale data, lose their own writes, go backwards, or see a reply before its question.                 |
+| Monotonic reads  | Nobody loses a message they already saw.                                      | Reads wait for a lagging replica or stick to one; own writes and message order stay unprotected.                     |
+| Read your writes | People always see what they just sent.                                        | Reads wait after a write or go to the replica that took it; other readers still see anomalies.                      |
+| Causal           | Replies never appear before questions, plus both session promises.            | Every write carries dependency metadata, replicas hold messages back, and stale reads remain.                        |
+| Linearizable     | The system acts like a single copy; every read sees the latest confirmed write. | Every request travels to the leader and waits on a majority; one replica carries the load, and a cut-off minority cannot answer. |
+
+</TradeoffTable>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+You run the shopping cart and the chat for an online store. Pick the weakest promise that keeps each feature correct:
+the cart badge that counts items right after a shopper adds one, a review feed where shoppers reply to reviews, the
+checkout step that sells the last unit in stock, and the “seen by” receipts under each chat message.
+
+<div slot="answer">
+
+- **Cart badge: read your writes.** The shopper must see their own add at once. Nobody else reads this cart, so a
+  stronger promise buys nothing.
+- **Review feed with replies: causal.** A reply must never appear without its review, but a feed that lags a few
+  seconds behind is fine, and every shopper can still read a nearby replica.
+- **Last unit at checkout: linearizable.** Two shoppers must not both see one unit left and both buy it. Send only this
+  step to the leader, and accept the extra round trip on the one path where it matters.
+- **Seen-by receipts: eventual, plus monotonic reads.** A receipt that shows up a second late harms nobody. Add
+  monotonic reads so a receipt never disappears after it has appeared.
+- **The pattern:** choose a promise per feature, and keep the expensive ones on the few paths that need them.
+
+</div>
+
+</Challenge>
