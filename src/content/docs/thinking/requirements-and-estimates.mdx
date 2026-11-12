@@ -341,7 +341,7 @@ Estimates go faster with a few anchors:
 </TradeoffTable>
 
 **When to skip the math.** An internal tool for 50 people runs on one small server, so spend the time on features. Once
-a service is live, measure real traffic and keep estimates for what has not happened yet, such as a launch, a new
+a service is live, measure real traffic and estimate only what has not happened yet: a launch, a new
 region, or click analytics.
 
 ## Common mistakes
@@ -351,14 +351,14 @@ region, or click analytics.
 - **Planning for the average.** Servers fail in the busiest minute, so size for the peak and keep 30% headroom.
 - **Chasing precision.** Rounding 86,400 seconds to 100,000 moves the answer by 14%. A wrong guess of clicks per link
   moves it 100 times.
-- **Skipping the not yet list.** Click analytics added later turns every read into a write as well.
+- **Skipping the not yet list.** Click analytics added later turns every read into a write too.
 
 <KeyTakeaways>
 
 - Write the functional and non-functional requirements first, plus what you will not build yet.
 - Traffic: divide daily totals by 86,400, multiply by clicks per link and the peak factor, then keep servers under 70%
-  busy. Check N-1 too: when one server dies, the survivors must still have headroom.
-- Disk is raw data × 3 copies × 1.3 for indexes, near 4 times the raw number.
+  busy. Check N-1: survivors need headroom when one server dies.
+- Disk is raw data × 3 copies × 1.3 for indexes, about 4 times raw.
 - Size the cache by distinct hot links, and check bandwidth: tiny for short links, dominant for images and video.
 - Get the order of magnitude right. The ratios matter more than the decimals.
 
