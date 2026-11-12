@@ -66,6 +66,7 @@ export default function ArcDiagram({ stage, caption }: Props) {
   const busX = 414;
   const index = stage === 'dns' ? 0 : order.indexOf(stage);
   const info = stage === 'dns' ? undefined : arcStages[stage];
+  const viewWidth = stage === 'dns' ? 610 : 680;
   const description =
     stage === 'dns'
       ? 'A browser asks DNS for the address of sho.rt, then calls the server, which reads the database.'
@@ -75,7 +76,9 @@ export default function ArcDiagram({ stage, caption }: Props) {
     <figure className="sdv-figure sdv-arc not-content">
       <DiagramScroll label="Scrollable diagram">
         <svg
-          viewBox={stage === 'dns' ? '0 16 610 192' : '0 0 680 336'}
+          viewBox={stage === 'dns' ? `0 16 ${viewWidth} 192` : `0 0 ${viewWidth} 336`}
+          // Renders without hydration, so a static floor keeps 13px sublabels at 12px or larger on phones.
+          style={{ minWidth: `${Math.ceil((viewWidth * 12) / 13)}px` }}
           role="img"
           aria-label={`Diagram: ${description}`}
         >
