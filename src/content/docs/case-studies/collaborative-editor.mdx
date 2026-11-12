@@ -345,14 +345,14 @@ Ben's copy receives ! (a3, after a2)
   right of a2 sits y b3. b3 is larger than a3 (same counter, and b beats a), so step over it.
   next sits a b4. b4 is larger, so step over it.
   end of the text, so ! goes here.
-                              H a1   i a2   y b3   a b4   ! a3
+  now: H a1   i a2   y b3   a b4   ! a3
 
 Ada's copy receives y (b3, after a2)
   right of a2 sits ! a3. a3 is smaller than b3, so y goes here.
-                              H a1   i a2   y b3   ! a3
+  now: H a1   i a2   y b3   ! a3
 Ada's copy receives a (b4, after b3)
   right of b3 sits ! a3. a3 is smaller than b4, so a goes here.
-                              H a1   i a2   y b3   a b4   ! a3
+  now: H a1   i a2   y b3   a b4   ! a3
 ```
 
 Both copies read "Hiya!". The index design ends with "Hiya!" on Ada's copy and "Hi!ya" on Ben's, because Ben's copy put

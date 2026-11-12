@@ -291,8 +291,9 @@ GET /api/v1/query_range?start=...&end=...&step=60s
 
 Alert rule (stored, evaluated every 30 s):
   alert: CheckoutErrors
-  expr:  sum(rate(requests_total{route="/checkout", status="500"}[5m]))
-           / sum(rate(requests_total{route="/checkout"}[5m])) > 0.05
+  expr: |
+    sum(rate(requests_total{route="/checkout", status="500"}[5m]))
+      / sum(rate(requests_total{route="/checkout"}[5m])) > 0.05
   for:   2m
   labels: { severity: page, team: payments }
 ```
