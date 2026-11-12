@@ -158,6 +158,15 @@ export function rubricTotal(scores: readonly (RubricScore | null)[]) {
   return { total, scored, max: scores.length * 2 };
 }
 
+/** Indexes of the lowest scored steps, or none when every scored step is solid. */
+export function weakestSteps(scores: readonly (RubricScore | null)[]): number[] {
+  const scored = scores.filter((score): score is RubricScore => score !== null);
+  if (scored.length === 0) return [];
+  const lowest = Math.min(...scored);
+  if (lowest === 2) return [];
+  return scores.flatMap((score, index) => (score === lowest ? [index] : []));
+}
+
 /** Picks a different prompt than the current one. The same seed always picks the same prompt. */
 export function drawPromptIndex(seed: number, count: number, current: number): number {
   if (count < 2) return 0;

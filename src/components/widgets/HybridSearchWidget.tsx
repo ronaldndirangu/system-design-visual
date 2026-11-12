@@ -209,6 +209,8 @@ export default function HybridSearchWidget({
     model: 'Medium',
     promptVersion: 'v3',
     sampling: 't0',
+    corpusVersion: 'idx7',
+    conversation: [],
     query: query.text,
   });
 
@@ -474,8 +476,9 @@ export default function HybridSearchWidget({
                 )}
                 <ToneBadge tone={verdict.tone}>{verdict.text}</ToneBadge>
                 <p className="sdv-rag-meta">
-                  Answer cache key: <code className="sdv-rag-key">{key}</code>. The store and permission scope
-                  are part of the key, so another store never reads this entry.
+                  Answer cache key: <code className="sdv-rag-key">{key}</code>. The store, permission scope,
+                  index version, and earlier turns are part of the key, so another store, a reindex, or a
+                  follow-up question never reads this entry.
                 </p>
               </m.div>
             )}

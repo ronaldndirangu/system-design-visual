@@ -201,8 +201,14 @@ test('indexes: the scan falls behind the B-tree, and each index costs a write', 
   await expectAxeCleanInBothThemes(page);
 });
 
-test('apis: offset pages repeat and skip, and expand-then-contract breaks no client', async ({ page }) => {
-  const sim = await openSimulation(page, 'foundations/apis/', 'Same list, two ways to ask for the next page');
+test('api-design: offset pages repeat and skip, and expand-then-contract breaks no client', async ({
+  page,
+}) => {
+  const sim = await openSimulation(
+    page,
+    'foundations/api-design/',
+    'Same list, two ways to ask for the next page',
+  );
 
   await skipByKeyboard(page, sim);
   expect(await cellsOf(sim, /^Repeated rows/)).toEqual(['10', expect.stringMatching(/^0/)]);

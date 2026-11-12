@@ -16,7 +16,7 @@ export function ToneBadge({ tone, children }: { tone: Tone; children: string }) 
   return (
     <span className={`sdv-badge sdv-badge--${tone}`}>
       {tone !== 'neutral' && <UiIcon name={tone} />}
-      {children}
+      <span className="sdv-badge__text">{children}</span>
     </span>
   );
 }

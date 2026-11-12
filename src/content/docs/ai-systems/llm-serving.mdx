@@ -1,11 +1,26 @@
 ---
 title: Serving models
 description: See why prefill and decode behave differently, and how batching and KV cache memory set throughput. Then keep one GPU busy with continuous batching, paged KV blocks, admission control, preemption, and chunked prefill.
+furtherReading:
+  - title: "Efficient Memory Management for Large Language Model Serving with PagedAttention"
+    url: https://arxiv.org/abs/2309.06180
+    note: The vLLM paper that introduced paged KV blocks and measured how much KV memory reserve-the-maximum servers leave empty.
+  - title: "Orca: A Distributed Serving System for Transformer-Based Generative Models"
+    url: https://www.usenix.org/conference/osdi22/presentation/yu
+    note: The paper behind iteration-level scheduling, the idea this lesson calls continuous batching.
+  - title: "Taming Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve"
+    url: https://arxiv.org/abs/2403.02310
+    note: Introduces stall-free batching with chunked prefill and shows how the chunk size trades first-token time against pauses mid-answer.
+  - title: "DistServe: Disaggregating Prefill and Decoding for Goodput-optimized Large Language Model Serving"
+    url: https://arxiv.org/abs/2401.09670
+    note: Runs prefill and decode on separate GPU pools so each phase can meet its own latency target.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
@@ -33,183 +48,166 @@ export const edges = [
 export const steps = [
   {
     title: 'Requests arrive and wait',
-    text: 'Each chat turn arrives as a prompt: the assistant\u2019s instructions, the conversation so far, and the new question. It joins a first come, first served queue.',
+    text: 'Each chat turn arrives as a prompt and joins a first come, first served queue.',
     nodes: ['requests', 'queue'],
     flows: ['requests>queue'],
   },
   {
     title: 'Admit when the prompt fits',
-    text: 'Before every step the scheduler checks the head of the queue. It admits that request only if a batch slot is open and the KV block pool has free blocks for the whole prompt. Otherwise the request keeps waiting.',
+    text: 'The next request starts only if a batch slot is open and free KV blocks can hold its whole prompt.',
     nodes: ['queue', 'scheduler', 'kv'],
     flows: ['queue>scheduler', 'scheduler>kv'],
   },
   {
     title: 'Prefill: read the whole prompt in one pass',
-    text: 'The model processes every prompt token at once. A long prompt is a lot of math per weight read, so its prefill keeps the GPU\u2019s math units busy. It writes each token\u2019s keys and values into KV blocks and produces the first output token.',
+    text: 'The model runs all prompt tokens at once, caches their keys and values, and emits the first token.',
     nodes: ['scheduler', 'model', 'kv'],
     flows: ['scheduler>model', 'model>kv'],
   },
   {
     title: 'Decode: one token per request per step',
-    text: 'Every later step adds one token to each running request. Each step reads all the model weights and every request\u2019s cached keys and values, so at small batches the GPU waits on memory more than on math. Each new token goes into its request\u2019s last block.',
+    text: 'Each step adds one token per running request and rereads every weight, so small batches wait on memory.',
     nodes: ['model', 'kv'],
     flows: ['model>kv'],
   },
   {
     title: 'Refill a slot the moment it frees',
-    text: 'When a request finishes, its blocks return to the pool and the scheduler admits the next waiting request at the very next step. Nobody waits for the rest of a batch. This is continuous batching.',
+    text: 'A finished request returns its blocks, and the next waiting request joins at the next step.',
     nodes: ['queue', 'scheduler', 'model'],
     flows: ['queue>scheduler', 'scheduler>model'],
   },
   {
     title: 'Preempt when the pool runs dry',
-    text: 'A running request needs a new block and none is free. The scheduler preempts the most recent arrival, frees all of its blocks at once, and returns it to the queue. When it is admitted again, it recomputes its keys and values with one more prefill.',
+    text: 'With no free block, the latest arrival is evicted, its blocks freed, and later recomputed in one prefill.',
     nodes: ['scheduler', 'kv', 'queue'],
     flows: ['kv>queue'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'ai-systems/llm-serving/recall-1',
+    prompt: 'The AI gateway gives each store its own token bucket, and Store A\u2019s bucket is empty. What happens to Store A\u2019s next request?',
+    options: [
+      { text: 'It gets 429 with Retry-After at once', correct: true, why: 'An empty bucket rejects at the gateway.' },
+      { text: 'It waits until a token refills', why: 'The bucket rejects at once.' },
+      { text: 'It goes to the Small model', why: 'That is the circuit breaker.' },
+      { text: 'It borrows from Store B\u2019s bucket', why: 'Quotas are per store.' },
+    ],
+  },
+  {
+    id: 'ai-systems/llm-serving/recall-2',
+    prompt: 'LLM request durations vary widely. Which load balancing policy keeps model servers evenly loaded?',
+    options: [
+      { text: 'Round robin', why: 'Equal counts can still pile long answers on one server.' },
+      { text: 'Least connections', correct: true, why: 'It picks the server with the fewest requests in flight.' },
+      { text: 'Hash on client IP', why: 'It pins each client to a server and ignores load.' },
+      { text: 'Random choice', why: 'It ignores load too.' },
+    ],
   },
 ];
 
 export const quiz = [
   {
     id: 'ai-systems/llm-serving/q1',
-    prompt: 'A server answers one request at a time, and the GPU\u2019s math units sit mostly idle while an answer streams. What explains this?',
+    prompt: 'A server answers one request at a time, and the GPU\u2019s math units sit mostly idle. Why?',
     options: [
+      { text: 'The model is too small for the GPU', why: 'Any model reads all its weights per decode step.' },
       {
-        text: 'The model is too small for the GPU',
-        why: 'Size is not the cause. A model of any size reads all its weights for each decode step, and one token of math per read cannot keep the math units busy.',
-      },
-      {
-        text: 'Each decode step reads all the weights and the KV cache to make one token, so memory bandwidth sets the pace',
+        text: 'Each decode step reads every weight to make one token per request, so memory bandwidth sets the pace',
         correct: true,
-        why: 'At small batches decode is memory-bandwidth bound. Batching shares each weight read across many requests, which is why throughput rises so fast at first.',
+        why: 'Batching shares each weight read across many requests.',
       },
-      {
-        text: 'Prefill keeps running in the background',
-        why: 'Prefill runs once per prompt and is the math-heavy phase. Decode takes over for the rest of the answer.',
-      },
-      {
-        text: 'The KV cache is full',
-        why: 'A full cache stops new requests from starting. One request decoding alone uses only a sliver of it.',
-      },
+      { text: 'Prefill keeps running in the background', why: 'Prefill runs once per prompt.' },
+      { text: 'The KV cache is full', why: 'One request uses only a sliver of it.' },
     ],
   },
   {
     id: 'ai-systems/llm-serving/q2',
     prompt: 'On Uniform lengths, static and continuous batching finish at the same time. Why?',
     options: [
+      { text: 'Continuous batching only helps during a burst', why: 'Mixed lengths has no burst and shows the biggest gap.' },
       {
-        text: 'Continuous batching only helps during a burst',
-        why: 'Mixed lengths, which is not a burst, shows the biggest gap. The tie comes from equal answer lengths.',
-      },
-      {
-        text: 'Every answer has the same length and requests arrive in groups of four, so no slot ever sits idle waiting for a longer answer',
+        text: 'Answers share one length and arrive in fours, so no slot sits idle',
         correct: true,
-        why: 'Continuous batching wins by refilling slots that free up early. When every answer ends on the same step, there is nothing to refill.',
+        why: 'Continuous batching wins by refilling slots that free early.',
       },
-      {
-        text: 'The toy model turns batching off for that scenario',
-        why: 'Both servers still batch four requests per step. The workload simply leaves continuous batching nothing to improve.',
-      },
-      {
-        text: 'Static batching switches to continuous when lengths match',
-        why: 'Neither policy ever changes. Their schedules happen to coincide on this workload.',
-      },
+      { text: 'The toy model turns batching off there', why: 'Both servers still run four requests per step.' },
+      { text: 'Static batching adapts when lengths match', why: 'Neither policy changes.' },
     ],
   },
   {
     id: 'ai-systems/llm-serving/q3',
     ordered: true,
-    prompt: 'Llama 3 8B stores 128 KiB of KV cache per token. About how many 8,192-token conversations fit in 20 GiB of KV memory?',
+    prompt: 'Llama 3 8B stores 128 KiB of KV cache per token. About how many 8,192-token conversations fit in 20 GiB?',
     options: [
-      {
-        text: '5',
-        why: 'That is the answer without grouped-query attention, at 512 KiB per token. With 8 KV heads each token takes 128 KiB.',
-      },
-      {
-        text: '20',
-        correct: true,
-        why: '128 KiB times 8,192 tokens is 1 GiB per conversation, so 20 GiB holds 20 of them, or 163,840 tokens in any mix.',
-      },
-      {
-        text: '80',
-        why: '80 fit only if each conversation holds 2,048 tokens. At 8,192 tokens each one needs four times as much.',
-      },
-      {
-        text: '160',
-        why: 'That would mean 16 KiB per token. Keys and values for 32 layers, 8 KV heads, and 128 values per head at 2 bytes each come to 128 KiB.',
-      },
+      { text: '5', why: 'That assumes 512 KiB per token, without grouped-query attention.' },
+      { text: '20', correct: true, why: '128 KiB times 8,192 tokens is 1 GiB per conversation.' },
+      { text: '80', why: 'That fits 2,048-token conversations.' },
+      { text: '160', why: 'That needs 16 KiB per token, an eighth of 128 KiB.' },
     ],
   },
   {
     id: 'ai-systems/llm-serving/q4',
-    prompt: 'A paged server has no free blocks, and a running request needs one more to store its next token. What does the scheduler do?',
+    prompt: 'A paged server has no free blocks, and a running request needs one for its next token. What happens?',
     options: [
+      { text: 'The request that asked fails', why: 'Nothing fails. Preempted requests finish later.' },
       {
-        text: 'Fails the request that asked for the block',
-        why: 'Nothing fails. A preempted request goes back to the queue and finishes later.',
-      },
-      {
-        text: 'Preempts the most recent arrival, frees all of its blocks, and recomputes it when it is admitted again',
+        text: 'The latest arrival is preempted and recomputed later',
         correct: true,
-        why: 'Freeing all of one request\u2019s blocks lets the others keep going. The preempted request runs its prompt and its tokens so far through prefill again when it returns.',
+        why: 'Its freed blocks let the others continue.',
       },
-      {
-        text: 'Pauses every request until a block frees up',
-        why: 'If every request pauses, none finishes, and no block ever frees. Preempting one request is what frees blocks.',
-      },
-      {
-        text: 'Preempts the oldest running request',
-        why: 'The scheduler keeps first come, first served order, so it evicts the latest arrival and lets earlier arrivals finish.',
-      },
+      { text: 'Every request pauses until a block frees', why: 'Then none finishes and no block frees.' },
+      { text: 'The oldest running request is preempted', why: 'Evicting the latest arrival lets earlier ones finish first.' },
     ],
   },
   {
     id: 'ai-systems/llm-serving/q5',
-    prompt: 'Chunked prefill at 64 tokens per step cuts the longest wait between tokens from 34.2 ms to 11.2 ms in the toy model. What does it cost?',
+    prompt: 'Chunked prefill at 64 tokens per step cuts the longest wait between tokens from 34.2 ms to 11.2 ms. What does it cost?',
     options: [
       {
-        text: 'Nothing, since the whole run ends no later',
-        why: 'The run even ends a little sooner, at 981 ms instead of 1,004 ms, but the waiting moves. The long prompt\u2019s first token comes 162 ms later.',
+        text: 'Nothing, since the run ends no later',
+        why: 'R7\u2019s first token comes 162 ms later.',
       },
       {
-        text: 'The long prompt and the requests queued behind it wait longer for a first token',
+        text: 'The long prompt and requests behind it wait longer for a first token',
         correct: true,
-        why: 'R7\u2019s first token moves from 35 ms to 197 ms and R8\u2019s from 13 ms to 98 ms, because the prompt now spreads over many steps. The p95 wait between tokens stays at 11.2 ms: a 64-token chunk hides under the weight read.',
+        why: 'R7 moves from 35 ms to 197 ms and R8 from 13 ms to 98 ms.',
       },
-      {
-        text: 'Running requests get preempted to make room for the chunks',
-        why: 'Chunks share each step\u2019s token budget, and decode tokens go first. Nothing is preempted in this scenario.',
-      },
-      {
-        text: 'Prompts longer than 64 tokens get cut short',
-        why: 'The whole prompt still runs. It runs in pieces of at most 64 tokens spread over many steps.',
-      },
+      { text: 'Running requests get preempted', why: 'Chunks share the step budget. Nothing is preempted.' },
+      { text: 'Long prompts get cut to 64 tokens', why: 'The whole prompt runs, in pieces.' },
+    ],
+  },
+  {
+    id: 'ai-systems/llm-serving/q6',
+    prompt: 'A code completion service sends 2,000-token prompts that share their first 1,800 tokens, and gets 20-token answers. What cuts time to first token most?',
+    options: [
+      { text: 'Prefix caching', correct: true, why: 'Reused KV blocks skip prefill for the shared 1,800 tokens.' },
+      { text: 'A bigger decode batch', why: 'Decode is a small share here.' },
+      { text: 'Smaller prefill chunks', why: 'They delay each prompt\u2019s first token.' },
+      { text: 'More KV memory per GPU', why: 'Each prompt still pays its full prefill.' },
     ],
   },
 ];
 
+<Recall questions={recall} />
+
 <Objectives>
 
-- Explain why prefill keeps the GPU's math units busy while decode waits on memory, and why batching raises throughput until the gain flattens.
-- Compare static and continuous batching using time to first token, time per output token, and tokens per step.
-- Size KV cache memory per token, and use paged blocks, admission control, preemption, and chunked prefill to keep a GPU busy without stalling users.
+- Explain why prefill keeps the math units busy while decode waits on memory.
+- Compare static and continuous batching by time to first token, time per output token, and tokens per step.
+- Size KV memory per token, and use paged blocks, preemption, and chunked prefill to keep a GPU busy.
 
 </Objectives>
 
 ## The failure: one GPU, one request at a time
 
-The support assistant from [evaluation and budgets](../evaluation-and-budgets/) passed its budgets with Medium, and the
-team now hosts Medium on one GPU of its own. The first server is simple: it takes the next chat turn, writes the whole
-answer token by token, then takes the next one. At night it feels fine.
+The support assistant from [evaluation and budgets](../evaluation-and-budgets/) now runs Medium on its own GPU, one
+chat turn at a time. On Monday morning the queue grows faster than it drains, yet the GPU's math units sit mostly idle:
+each token needs a full read of the weights, and the math finishes first.
 
-On Monday morning chats pile up. Every customer waits for every answer ahead of them to finish streaming, and the
-queue grows faster than it drains. A profile shows the odd part: while the server writes an answer, the GPU's math
-units are mostly idle. Each new token needs a full read of the model's weights from memory, and the math for one token
-finishes long before the next read does.
-
-Someone switches to **static batching**: take four waiting chats, run them together until all four finish, then take
-the next four. Throughput rises, but now a customer asking "where is my parcel?" waits for the neighbor whose refund
-question needs a long answer, and anyone who arrives mid-batch waits for the whole batch to end.
+**Static batching** runs four chats together until all four finish. Now a short parcel question waits for a long refund
+answer, and late arrivals wait for the whole batch.
 
 <Predict
   client:visible
@@ -224,35 +222,68 @@ question needs a long answer, and anyone who arrives mid-batch waits for the who
   answer={1}
 >
 
-**It finishes sooner and cuts the tail.** In this run static batching takes 920 ms and continuous batching takes
-521 ms for the same 159 output tokens. The p95 time to first token falls from 523 ms to 96 ms, because a waiting
-request takes a free slot at the next step instead of waiting for a whole batch to end. These numbers come from a toy
-model and are illustrative.
+<div slot="figure">
+
+| Static batch | Answer | At step 5 |
+| --- | --- | --- |
+| Slot 1 | 3 tokens | done, slot held |
+| Slot 2 | 28 tokens | decoding |
+| Queue | 12 chats | waiting |
+
+</div>
+
+**It finishes sooner and cuts the tail.** Static batching takes 920 ms and continuous batching 521 ms for the same 159
+output tokens. The p95 time to first token falls from 523 ms to 96 ms, because a waiting request takes a free slot at
+the next step. These toy model numbers are illustrative.
 
 </Predict>
 
+## The idea: fill every step, and budget memory per token
+
+A model answers in two phases. **Prefill** reads the whole prompt in one pass and produces the first token. **Decode**
+then adds one token per step, using the keys and values of all earlier tokens, which the server keeps in the
+**KV cache**. A **scheduler** picks which requests run in each step, and **continuous batching** (iteration-level
+scheduling) lets it add or drop a request at every step.
+
+<StepDiagram client:visible title="One scheduler step at a time" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy>
+
+Picture a shuttle with four seats. Static batching runs it as a tour bus that returns only when the longest tour ends,
+so riders who leave early leave empty seats. Continuous batching runs it as a tram: each freed seat goes to the next
+person on the platform. Each rider's luggage (the KV cache) grows at every stop, and when the rack is
+full, the last rider to board steps off and boards again later.
+
+Where it breaks: a rider knows their stop on boarding. A request learns its length only at its last token, so the
+scheduler cannot plan ahead.
+
+</Analogy>
+
 ## Try it: static batching against continuous batching
 
-Start with **Mixed lengths** and press Play. Both servers get the same seeded requests and four batch slots, and they
-advance one scheduler step at a time, side by side. Then try **Uniform lengths** and **Burst of arrivals**.
+Start with **Mixed lengths** and press Play. Both servers get the same seeded requests and four batch slots. Then try
+**Uniform lengths** and **Burst of arrivals**.
 
 <ServingBatchWidget client:visible />
 
 What to look for:
 
-- **Held slots.** Under static batching, a request that finishes early keeps its slot (hatched) until the longest
-  request in its batch is done. On Mixed lengths the static server spends 179 slot steps idle while other requests
-  wait. The continuous server spends none.
-- **Tokens per step.** Four slots allow up to 4 tokens per step. Static batching averages 1.79 and continuous batching
-  averages 3.18, so throughput rises from 173 to 305 tokens per second.
-- **Uniform lengths ties.** Every answer is 12 tokens and requests arrive in groups of four, so nothing finishes early.
-  Both servers run 48 steps in 607 ms. Continuous batching pays off because real answers vary in length.
+- **Held slots.** Under static batching, a finished request holds its slot (hatched) until the batch ends: 179 idle
+  slot steps on Mixed lengths. The continuous server has none.
+- **Tokens per step.** Static batching averages 1.79 of 4 and continuous batching 3.18, so throughput rises from 173 to
+  305 tokens per second.
+- **Uniform lengths ties.** Every answer is 12 tokens, so both finish in 607 ms.
+
+<details>
+<summary>Go deeper: bursts, prompt cost, and the toy model</summary>
+
 - **A burst narrows the gap.** When all 16 requests arrive at once, both servers start full. Continuous batching still
   finishes sooner (686 ms against 941 ms) and cuts the p95 time to first token from 665 ms to 411 ms.
 - **Short prompts ride along almost free.** On Mixed lengths, continuous batching averages 10.49 ms per output token
   against 10.45 ms for static batching. A step that admits a new request also runs that request's prefill, but a short
   prompt's math fits inside the time the step already spends reading the weights. Only a long prompt stretches the step
   for everyone decoding, and chunked prefill, later in this lesson, works on that cost.
+- **The win needs varied lengths.** Uniform lengths ties because nothing ends early, so no slot needs refilling.
 
 This is a **toy model**. Each scheduler step costs 2 ms of overhead plus the larger of two times: memory time (8 ms to
 read the weights, plus 0.15 ms for each request decoding) and math time (every token in the step, at 32 tokens per
@@ -261,38 +292,27 @@ token. The static server starts its next batch with whoever is waiting when the 
 fill it. Requests come from a seeded generator (seed 42). No model runs in your browser, and every number is
 illustrative.
 
-## The idea: fill every step, and budget memory per token
+</details>
 
-A language model answers in two phases. **Prefill** reads the whole prompt in one pass and produces the first token.
-**Decode** then produces one token per step, and every step needs the keys and values of all earlier tokens, which the
-server keeps in the **KV cache**. A **scheduler** decides which requests run in each step. **Continuous batching**
-(the research name is iteration-level scheduling) lets it add or remove a request at every step, so a slot that frees up
-is filled at the next step.
+## Prefill, decode, and memory per token
 
-<StepDiagram client:visible title="One scheduler step at a time" nodes={nodes} edges={edges} steps={steps} height={300} />
+Each step moves bytes (all the weights, plus every cached key and value) and does math (a pass through the weights for
+each token in the step). The GPU overlaps the two, so the slower one sets the step. This is the **roofline** view:
+step time = max(memory time, compute time).
 
-<Analogy>
+Decode adds one token per request yet reads every weight, so at small batches it is **memory-bandwidth bound**, and
+batching shares that read. Prefill pushes a whole prompt through each weight. Up to the **ridge** (256 tokens in the
+toy model) the step stays at 10 ms. Past it the step turns **compute bound**: 512 prompt tokens take 18 ms and 1,024
+take 34 ms.
 
-Picture a vehicle with four seats. Static batching runs it as a tour bus: it leaves with a full group, comes back only
-when the passenger with the longest tour is done, and people who got off early leave empty seats behind them.
-Continuous batching runs it as a hop-on hop-off tram that stops after every block: when one rider gets off, the next
-person on the platform takes the seat. Every rider also carries luggage that grows at each stop (the KV cache). When the luggage rack
-is full, the last rider to board steps off with their bags and boards again later.
+Users feel two latencies: **time to first token (TTFT)**, which is queue wait plus prefill, and **time per output token
+(TPOT)**, mostly the decode step. A bigger batch raises throughput and lengthens every step.
 
-</Analogy>
+Memory sets the other limit. Llama 3 8B stores **128 KiB of KV cache per token**, so an 8,192-token conversation takes
+1 GiB. KV memory usually runs out before math does, which caps how many requests run at once.
 
-### Prefill and decode cost different things
-
-Every step does two jobs at once: it moves bytes (all the weights, plus each request's cached keys and values) and it
-does math (one pass through the weights for every token in the step). The GPU overlaps the two, so the slower job sets
-the step time. This is the **roofline** view of a step: step time = max(memory time, compute time).
-
-During decode each request adds just one token per step, yet the step still reads every weight. At small batches that
-read dominates, so decode is **memory-bandwidth bound**. Adding requests to the same step shares the weight read, which
-is why batching raises throughput. During prefill the GPU pushes a whole prompt's worth of tokens through each weight it
-reads. A short prompt's math hides under the weight read and costs almost nothing extra. Past the **ridge**, where the
-math takes as long as the read (256 tokens in this toy model), the step turns **compute bound** and its time grows with
-the prompt length: 512 prompt tokens take 18 ms and 1,024 take 34 ms, against 10 ms for anything up to 256.
+<details>
+<summary>Go deeper: the roofline and batch size</summary>
 
 <ServingCostWidget client:visible />
 
@@ -313,13 +333,10 @@ a bigger batch only adds latency.
 This toy model gives each decoding request a fixed cost. In a real server that cost grows with context length, because
 every step reads every cached token of every request, so long conversations make big batches slower than shown here.
 
-Two latencies matter to a chat user:
+</details>
 
-- **Time to first token (TTFT)** is queue wait plus prefill. A long queue or a long prompt shows up here.
-- **Time per output token (TPOT)** is the gap between later tokens, which is mostly decode step time. A bigger batch
-  raises throughput and shortens the queue, but it lengthens every step.
-
-### How much memory one token needs
+<details>
+<summary>Go deeper: KV cache arithmetic</summary>
 
 Each token stores a key and a value for every layer and every KV head. For Llama 3 8B (32 layers, 8 KV heads, 128
 values per head, 2 bytes per value):
@@ -335,37 +352,42 @@ values per head, 2 bytes per value):
 | Same model without grouped-query attention (32 KV heads) | 512 KiB per token, so 40,960 tokens in 20 GiB |
 
 Grouped-query attention lets several query heads share one key and value head, which cuts the KV cache to a quarter
-here. Even so, KV memory usually runs out before math does, so it caps how many requests can run at once.
+here.
 
-### Reserve the maximum, or hand out blocks
+</details>
 
-Older serving systems reserved KV memory for a request's maximum length up front. Most answers end well short of the
-maximum, so most of that memory sat empty: the vLLM paper measured that earlier systems used only 20.4% to 38.2% of
-their KV memory for actual token states. **Paged** allocation (PagedAttention in vLLM) splits the cache into small
-fixed-size blocks, like pages in an operating system, and gives a request a new block only when its last one fills.
-vLLM reached 96.3%. Less empty memory means more requests fit, so the batch grows.
+## Paged blocks, admission, and preemption
 
-**Admission control** decides when a waiting request may start. A paged server admits a request once free blocks can
-hold its whole prompt, then grows it one block at a time as it decodes. That leaves a risk: running requests keep
-growing, and the pool can run dry mid-answer. The safety net is **preemption**. vLLM evicts the most recent arrival
-first and frees all of its blocks at once. By default its current engine then **recomputes** the evicted request: when
-the request is admitted again, its prompt and the tokens it already wrote run through one prefill. The alternative,
-swapping blocks out to CPU memory and back, keeps the work but costs copy time over the link between CPU and GPU.
+Older servers reserved KV memory for each request's maximum length. Most answers end far short of it, and the vLLM
+paper found such systems used only 20.4% to 38.2% of KV memory for actual tokens. **Paged** allocation
+(PagedAttention) splits the cache into small fixed-size blocks, like operating system pages, and adds a block only when
+the last one fills. vLLM reached 96.3%.
+
+**Admission control** starts a request once free blocks can hold its whole prompt. If the pool runs dry mid-answer, the
+server **preempts** the most recent arrival, frees all its blocks, and later recomputes them in one prefill.
 
 <ServingKvWidget client:visible />
 
 What to look for:
 
-- **Reserved but empty.** Hatched blocks belong to a request but hold no tokens yet. On Chat traffic, averaged over
-  the run, only 34.3% of the token slots the reserve server has allocated hold tokens. Paged blocks reach 88.9%.
-- **Admission waits.** The reserve server needs room for the prompt plus 128 answer tokens before it admits anyone,
-  so it never runs more than 4 of its 8 seats at once. Its transcript shows lines such as "R5 waits: it needs 10 blocks
-  and 3 are free." The paged server fills all 8 seats, and the median time to first token falls from 269 ms to 19 ms
-  (p95 from 1,016 ms to 277 ms).
-- **Memory squeeze preempts.** Ten long answers arrive within 0.1 s. The paged server admits eight, then runs out of blocks
-  as the answers grow. At step 66 it preempts R8, the latest arrival still running, and at step 80 it preempts R7.
-  Together they recompute 183 tokens. Even with that repeated work, the paged server finishes in 2,214 ms against
-  3,134 ms for the reserve server.
+- **Reserved but empty.** On Chat traffic, 34.3% of the reserve server's token slots hold tokens. Paged blocks reach
+  88.9%.
+- **Admission waits.** Reserving 128 answer tokens per request caps the reserve server at 4 of its 8 seats. The
+  paged server fills all 8, and the median TTFT falls from 269 ms to 19 ms.
+- **Memory squeeze preempts.** Ten long answers arrive within 0.1 s. The paged server preempts R8 at step 66 and R7 at
+  step 80, recomputes 183 tokens, and still finishes in 2,214 ms against 3,134 ms.
+
+<details>
+<summary>Go deeper: recompute or swap, and the toy model</summary>
+
+vLLM evicts the most recent arrival first and frees all of its blocks at once. By default its current engine then
+**recomputes** the evicted request: when it is admitted again, its prompt and the tokens it already wrote run through
+one prefill. The alternative, swapping blocks out to CPU memory and back, keeps the work but costs copy time over the
+link between CPU and GPU, plus CPU memory to hold the blocks.
+
+- **The tail.** On Chat traffic the p95 time to first token falls from 1,016 ms to 277 ms with paged blocks.
+- **The squeeze in detail.** The paged server admits eight of the ten long answers, then runs out of blocks as they
+  grow. R8 and R7 are the latest arrivals still running when the pool runs dry.
 - **The last block is partly empty.** Each request's newest block fills one token at a time, so paged blocks stay
   below 100%. The toy model's requests are short, so that partial block weighs more here than in the paper.
 
@@ -373,13 +395,13 @@ This is a **toy model**: 48 blocks of 16 tokens, eight seats per server, a 128-t
 step cost as before. Recompute is modeled as one prefill of the prompt plus the tokens generated so far. Every number is
 illustrative.
 
-### Chunked prefill: long prompts without stalls
+</details>
 
-Continuous batching has a cost that the first widget hinted at. When a request joins, its whole prompt runs in the same
-step as everyone else's decode. A long prompt makes that one step long, and every customer who is mid-answer sees the
-stream pause. **Chunked prefill** splits a long prompt into pieces and runs one piece per step alongside the decodes,
-within a fixed token budget per step. vLLM's current engine turns it on by default when it can and schedules decode
-tokens first. The Sarathi-Serve paper calls this stall-free batching.
+## Long prompts and shared prefixes
+
+A joining request's whole prompt runs in the same step as everyone else's decode, so a long prompt pauses every stream
+mid-answer. **Chunked prefill** runs a long prompt in pieces, one per step, within a token budget that serves decode
+tokens first. vLLM enables it by default where it can. Sarathi-Serve calls it stall-free batching.
 
 <Predict
   client:visible
@@ -394,12 +416,14 @@ tokens first. The Sarathi-Serve paper calls this stall-free batching.
   answer={1}
 >
 
-**The longest wait shrinks, and R7 waits longer.** Without chunking, all 1,024 prompt tokens run in one step that takes
-34.2 ms, so every decoding chat stalls that long. With 64-token chunks the longest wait drops to 11.2 ms, the same as a
-plain decode step, but R7's prompt now spreads over many steps and its time to first token rises from 35 ms to 197 ms. These are toy model
-numbers and are illustrative.
+**The longest wait shrinks, and R7 waits longer.** Unchunked, the 1,024-token prompt runs in one 34.2 ms step that
+stalls every chat. With 64-token chunks the longest wait is 11.2 ms, the same as a plain decode step, while R7's time
+to first token rises from 35 ms to 197 ms. These toy model numbers are illustrative.
 
 </Predict>
+
+<details>
+<summary>Go deeper: chunked prefill in the simulator</summary>
 
 <ServingChunkWidget client:visible />
 
@@ -419,21 +443,65 @@ What to look for:
   per step, and 98 ms at 64 tokens per step.
 
 This is a **toy model**. The chunked server fills each step with decode tokens first, then adds prompt tokens up to the
-budget. Every lane has spare blocks, so nothing is preempted. The chunked lanes finish the run at 981 ms and the whole prompt
-lane at 1,004 ms: a chunk under the ridge costs almost nothing, while the whole prompt step pays for every token past
-it. Every number is illustrative.
+budget. Every lane has spare blocks, so nothing is preempted. The chunked lanes finish the run at 981 ms and the whole
+prompt lane at 1,004 ms: a chunk under the ridge costs almost nothing, while the whole prompt step pays for every token
+past it. Every number is illustrative.
 
-### Reuse a shared prefix
+</details>
 
-Every support chat starts with the same assistant instructions. **Prefix caching** keeps the KV blocks for a shared
-start and reuses them when a new request begins with the same tokens, so that part of prefill is skipped. vLLM caches
-full blocks only, and each block's hash includes the block before it, so a change early in the prompt means no later
-block matches. A cache salt keeps one tenant's cached blocks out of reach of another. It is the
-[caching](../../scaling/caching/) idea applied inside one server. The widgets in this lesson do not model it.
+Every support chat also starts with the same instructions. **Prefix caching** reuses the KV blocks of a shared start,
+so that part of prefill is skipped: the [caching](../../scaling/caching/) idea inside one server. In front of these
+servers, an [AI gateway](../gateway/) picks the model and server for each request. [Agents and tools](../agents/) comes
+next.
 
-In the full system, an [AI gateway](../gateway/) sits in front of model servers like this one. It decides which model
-and which server each request goes to, and how many requests each caller may send. The next lesson,
-[Agents and tools](../agents/), lets the model call tools with authorization, budgets, and cancellation.
+<details>
+<summary>Go deeper: how prefix caching matches blocks</summary>
+
+vLLM caches full blocks only, and each block's hash includes the block before it, so a change early in the prompt means
+no later block matches. Put stable text, such as instructions and tool definitions, first. A cache salt keeps one
+tenant's cached blocks out of reach of another. The simulations in this lesson do not model prefix caching.
+
+</details>
+
+Production servers also use speculative decoding, lower precision, multi-GPU splits, mixture of experts models, and
+separate GPU pools for prefill and decode.
+
+<details>
+<summary>Go deeper: more ways to serve faster</summary>
+
+**Speculative decoding.** A small draft model proposes several tokens, and the large model checks them all in one pass,
+which costs about one decode step while the step stays under the ridge. The large model keeps the proposed tokens up to
+the first one it disagrees with, so the output follows the same distribution as the large model alone.
+[Leviathan et al. (2023)](https://arxiv.org/abs/2211.17192) report 2 to 3 times faster decoding on T5-XXL. The gain
+depends on how often the draft guesses right, and it shrinks at large batches, where steps are already compute bound.
+
+**FP8 and other low precision formats.** Storing weights in 8 bits instead of 16 halves the bytes each decode step
+reads, so memory-bound steps get faster and more memory is left for the KV cache. An FP8 KV cache doubles the tokens
+that fit: 64 KiB per token for Llama 3 8B instead of 128 KiB. [FP8 formats](https://arxiv.org/abs/2209.05433) match
+16-bit quality on many models, and 4-bit weight formats save more at more risk to quality. Rerun your eval set from
+[evaluation and budgets](../evaluation-and-budgets/) before you switch.
+
+**Tensor or pipeline parallelism.** When a model does not fit on one GPU, split it. Tensor parallelism
+([Megatron-LM](https://arxiv.org/abs/1909.08053)) splits every layer across GPUs, which shortens each step but exchanges
+data at every layer, so it needs fast links inside one machine. Pipeline parallelism
+([GPipe](https://arxiv.org/abs/1811.06965)) gives each GPU a run of whole layers and passes activations from stage to
+stage. It tolerates slower links between machines, but stages sit idle (pipeline bubbles) unless enough requests keep
+every stage busy. A common starting point: tensor parallelism within a machine, pipeline parallelism across machines.
+
+**Mixture of experts.** A mixture of experts model replaces some layers with many expert blocks and a router that picks
+a few per token. [Mixtral 8x7B](https://arxiv.org/abs/2401.04088) has 8 experts per layer and uses 2 per token: about
+47B parameters in memory and about 13B active per token. Compute per token drops to that of a much smaller model, yet
+every expert must stay in GPU memory, and tokens in one batch hit different experts, so large deployments spread the
+experts across GPUs.
+
+**Prefill and decode disaggregation.** Prefill is compute bound and decode is memory bound, and on one GPU they get in
+each other's way: a long prefill stalls decodes, which is the problem chunked prefill works around.
+[DistServe (2024)](https://arxiv.org/abs/2401.09670) runs them on separate GPU pools and moves each request's KV cache
+from the prefill pool to the decode pool, so each pool can meet its own TTFT or TPOT target. It reports up to 7.4 times
+more requests served within both targets. The cost is the KV transfer and two pools to size, so it pays off at large
+scale with strict budgets for both latencies.
+
+</details>
 
 ## Trade-offs
 
@@ -441,48 +509,57 @@ and which server each request goes to, and how many requests each caller may sen
 
 | Choice | What it buys | What it costs |
 | --- | --- | --- |
-| Static batching | A simple scheduler and a fixed batch until every request ends | Finished requests hold their slots, and new arrivals wait for the whole batch |
-| Continuous batching | Freed slots refill every step, so throughput rises and queues shrink | A scheduling decision every step, and long new prompts lengthen the steps they join |
-| Bigger batch | More tokens per second from each weight read | Longer steps for everyone, more KV memory, and gains that flatten |
-| Smaller batch | Shorter steps, so each request streams faster | Fewer requests share each weight read, so throughput drops and queues grow |
-| Reserve maximum length | No growth mid-answer, so no preemption | Most reserved memory sits empty, which caps the batch and the answer length |
-| Paged blocks on demand | Far less empty memory, so more requests fit | The pool can run dry mid-answer, so you need preemption |
-| Small prefill chunk | Short, even gaps between tokens for chats mid-answer | Long prompts, and the requests behind them, wait longer for a first token |
-| Large prefill chunk | Faster first token for long prompts | Past the ridge, longer pauses for chats mid-answer |
-| Preempt by recompute | No CPU memory or copy traffic needed | The preempted request's prefill runs again |
-| Preempt by swap to CPU memory | Keeps the work already done | Copy time between CPU and GPU, and CPU memory to hold the blocks |
+| Static batching | A simple scheduler | Finished requests hold slots, and arrivals wait for the whole batch |
+| Continuous batching | Slots refill every step, so throughput rises and queues shrink | A decision every step, and long prompts stretch the steps they join |
+| Bigger batch | More tokens from each weight read | Longer steps, more KV memory, and gains that flatten |
+| Paged blocks | Little empty memory, so more requests fit | The pool can run dry, so you need preemption |
+| Small prefill chunk | Even gaps between tokens mid-answer | Long prompts, and requests behind them, wait longer for a first token |
+| Preempt by recompute | No CPU memory or copy traffic | The prefill runs again |
 
 </TradeoffTable>
+
+Skip running your own serving stack when you call a hosted model API: the provider already batches and pages. An
+offline job whose answers share one length gains little from continuous batching.
+
+## Common mistakes
+
+- **Sizing KV memory for the average answer.** Requests grow while they run, so size for the long tail and let paged
+  blocks reclaim the rest.
+- **Setting the prefill chunk far past the ridge.** Every token past the ridge stretches the step for every chat
+  mid-answer.
+- **Ignoring the preemption count.** Each preemption repeats a prefill. A steady stream means the server admits more
+  than its memory holds.
+
+<KeyTakeaways>
+
+- Decode waits on memory at small batches, so batching pays until steps turn compute bound.
+- Continuous batching refills a slot at the next step, raising tokens per step and cutting TTFT when answer lengths
+  vary.
+- KV memory per token caps how many requests run at once. Paged blocks waste little, and recompute covers a dry pool.
+- Chunked prefill near the ridge keeps streams smooth at a small cost in first-token time.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-Size the support assistant for its Monday peak. At peak, 120 chat turns are in flight at once. Each carries up to
-1,536 prompt tokens (instructions plus conversation) and gets an answer of up to 512 tokens. After the weights, each
-GPU has 20 GiB left for KV cache, and the model stores 128 KiB per token. The product's budgets are a p95 time to
-first token of 1 s and a steady stream of tokens once an answer starts. How many GPUs do you start with, and which
+Size the support assistant for its Monday peak: 120 chat turns in flight, each with up to 1,536 prompt tokens and an
+answer of up to 512 tokens. Each GPU has 20 GiB for KV cache after the weights, at 128 KiB per token. The budgets are a
+p95 time to first token of 1 s and a steady stream once an answer starts. How many GPUs do you start with, and which
 serving settings do you pick?
 
 <div slot="answer">
 
-- **Memory per request:** 1,536 + 512 = 2,048 tokens at most. 2,048 × 128 KiB = 256 MiB, so 20 GiB holds 80 requests
-  at full length.
-- **GPUs:** 120 requests at full length need one and a half GPUs' worth of KV memory. Start with two replicas behind a
-  [load balancer](../../scaling/load-balancing/), about 60 requests each, which leaves headroom for bursts. If one
-  replica fails, the other holds only 80 at full length and the rest queue, so decide whether that is acceptable or
-  add a third.
-- **Paged blocks and continuous batching:** if most answers end well short of 512 tokens, paged blocks fit more
-  requests than the worst case. Keep preemption by recompute as the safety net and watch the preemption count. A
-  steady stream of preemptions means each replica admits more than its memory holds.
-- **Time to first token:** TTFT is queue wait plus prefill, and a 1,536-token prompt is a long prefill. Turn on
-  chunked prefill and size the budget near the ridge, the largest chunk whose math still hides under the weight read.
-  A smaller budget delays the first token, and a larger one pauses chats mid-answer. Cap the queue per replica so waits
-  stay inside 1 s.
-- **Shared instructions:** prefix caching reuses the KV blocks for the instructions every request shares, which cuts
-  prefill time and memory per request.
-- **Check it:** these are [estimates](../../thinking/requirements-and-estimates/). Load test at peak arrivals and
-  measure p95 time to first token, time per output token, and preemptions before launch.
+- **Memory per request:** 1,536 + 512 = 2,048 tokens × 128 KiB = 256 MiB, so a GPU holds 80 full-length requests.
+- **GPUs:** 120 requests need 1.5 GPUs of KV memory. Start with two replicas behind a
+  [load balancer](../../scaling/load-balancing/), about 60 each. One survivor holds only 80 at full length, so decide
+  whether the rest queue or add a third.
+- **Settings:** continuous batching with paged blocks fits more than the worst case, since most answers end early.
+  Watch the preemption count. Chunked prefill near the ridge and a queue cap per replica protect TTFT, and prefix
+  caching skips the shared instructions.
+- **Check it:** these are [estimates](../../thinking/requirements-and-estimates/). Load test at peak and measure p95
+  TTFT, TPOT, and preemptions before launch.
 
 </div>
 

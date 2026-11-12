@@ -4,7 +4,9 @@ import {
   duelScenarioIds,
   makeWorkload,
   phaseCounts,
+  reacquireTimeline,
   SEATS,
+  SeatLedger,
   summarize,
   TicketDuel,
   type TicketScenarioId,
@@ -287,5 +289,75 @@ describe('ticketing duel', () => {
     const copy = structuredClone(saved);
     run(duel);
     expect(saved).toEqual(copy);
+  });
+});
+
+describe('seat claims fenced by hold id', () => {
+  it('gives every claim a fresh hold id and refuses a live or sold seat', () => {
+    const ledger = new SeatLedger('E1', 'A10');
+    const first = ledger.claim('Ana', 0, 8);
+    expect(first?.holdId).toBe(1);
+    expect(ledger.claim('Ben', 7, 8)).toBeNull();
+    const second = ledger.claim('Ana', 8, 8);
+    expect(second?.holdId).toBe(2);
+    if (!second) throw new Error('claim failed');
+    expect(ledger.pay(second, 9, 10)).toBe(true);
+    expect(ledger.sell(second, 10)).toBe(true);
+    expect(ledger.claim('Ben', 100, 8)).toBeNull();
+  });
+
+  it('voids a stale approval from the same buyer and sells once on the live claim', () => {
+    const timeline = reacquireTimeline('claim');
+    expect(timeline.lapsesAt).toBe(11);
+    expect(
+      timeline.steps.map(({ at, checkout, action, named, seatHoldId, ok }) => [
+        at,
+        checkout,
+        action,
+        named,
+        seatHoldId,
+        ok,
+      ]),
+    ).toEqual([
+      [0, 'A', 'claim', null, 1, true],
+      [1, 'A', 'pay', 1, 1, true],
+      [12, 'B', 'claim', null, 2, true],
+      [13, 'B', 'pay', 2, 2, true],
+      [14, 'A', 'approve', 1, 2, false],
+      [15, 'B', 'approve', 2, 2, true],
+    ]);
+    expect(timeline.captured).toEqual([2]);
+    expect(timeline.voided).toEqual([1]);
+    expect(timeline.final).toEqual({ status: 'sold', holdId: 2, orderHoldId: 2 });
+  });
+
+  it('lets a holder-only guard sell the new claim on the stale approval', () => {
+    const timeline = reacquireTimeline('holder');
+    expect(timeline.steps.filter((step) => step.action === 'approve').map((step) => step.ok)).toEqual([
+      true,
+      false,
+    ]);
+    expect(timeline.captured).toEqual([1]);
+    expect(timeline.voided).toEqual([2]);
+    expect(timeline.final.orderHoldId).not.toBe(timeline.final.holdId);
+  });
+
+  it('ignores a stale pay or release and voids an approval past the deadline', () => {
+    const ledger = new SeatLedger('E1', 'A10');
+    const old = ledger.claim('Ana', 0, 8);
+    if (!old) throw new Error('claim failed');
+    const live = ledger.claim('Ana', 8, 8);
+    if (!live) throw new Error('reclaim failed');
+    expect(ledger.release(old, 9)).toBe(false);
+    expect(ledger.pay(old, 9, 10)).toBe(false);
+    expect(ledger.row).toMatchObject({ status: 'held', holder: 'Ana', holdId: 2 });
+    expect(ledger.pay(live, 9, 10)).toBe(true);
+    expect(ledger.sell(live, 19)).toBe(false);
+    expect(ledger.order).toBeNull();
+    const next = ledger.claim('Ben', 19, 8);
+    expect(next?.holdId).toBe(3);
+    if (!next) throw new Error('claim failed');
+    expect(ledger.release(next, 20)).toBe(true);
+    expect(ledger.onSale(20)).toBe(true);
   });
 });

@@ -338,6 +338,8 @@ describe('cacheKey', () => {
     model: 'Medium',
     promptVersion: 'v3',
     sampling: 't0',
+    corpusVersion: 'idx7',
+    conversation: [],
     query: 'Can I return a sale item?',
   } as const;
 
@@ -347,7 +349,22 @@ describe('cacheKey', () => {
   });
 
   it('starts with the store and scope and ignores case and spacing in the query', () => {
-    expect(cacheKey(base).startsWith('harbor|customer|Medium|v3|t0|q:')).toBe(true);
+    expect(cacheKey(base).startsWith('harbor|customer|Medium|v3|t0|idx7|h:new|q:')).toBe(true);
     expect(cacheKey({ ...base, query: '  can I return a   SALE item? ' })).toBe(cacheKey(base));
+  });
+
+  it('misses after a reindex and on a follow-up turn', () => {
+    expect(cacheKey(base)).not.toBe(cacheKey({ ...base, corpusVersion: 'idx8' }));
+    const followUp = { ...base, conversation: ['Is my order 1042 a sale item?'] };
+    expect(cacheKey(base)).not.toBe(cacheKey(followUp));
+    expect(cacheKey(followUp)).not.toBe(
+      cacheKey({ ...base, conversation: ['Is my order 1077 a sale item?'] }),
+    );
+  });
+
+  it('separates models, prompt versions, and sampling settings', () => {
+    expect(cacheKey(base)).not.toBe(cacheKey({ ...base, model: 'Large' }));
+    expect(cacheKey(base)).not.toBe(cacheKey({ ...base, promptVersion: 'v4' }));
+    expect(cacheKey(base)).not.toBe(cacheKey({ ...base, sampling: 't0.7' }));
   });
 });

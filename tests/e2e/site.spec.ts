@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { allLessons } from '../../src/data/curriculum';
-import { island } from './helpers';
+import { documentOverflow, hydrateAll, island } from './helpers';
 
 const pages = [
   { path: './', heading: /watching it break/i },
@@ -40,37 +40,6 @@ function collectErrors(page: Page): string[] {
   return errors;
 }
 
-/** Bring every visible client:visible island into view and wait until Astro marks it hydrated. */
-async function hydrateAll(page: Page) {
-  // A closed disclosure hides its content: islands inside never intersect, and the checks would skip what it reveals.
-  await page.evaluate(() => {
-    for (const details of document.querySelectorAll<HTMLDetailsElement>('.sl-markdown-content details')) {
-      details.open = true;
-    }
-  });
-  await expect
-    .poll(
-      () =>
-        page.evaluate(async () => {
-          const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
-          // Astro removes the ssr attribute once an island hydrates. Islands with nothing rendered never enter view.
-          const pending = () =>
-            [...document.querySelectorAll('astro-island[ssr]')].filter((island) =>
-              [...island.children].some((child) => child.getClientRects().length > 0),
-            );
-          for (const island of pending()) {
-            island.firstElementChild?.scrollIntoView({ block: 'center' });
-            await nextFrame();
-            await nextFrame();
-          }
-          return pending().length;
-        }),
-      { message: 'islands still waiting to hydrate', timeout: 15_000 },
-    )
-    .toBe(0);
-  await page.evaluate(() => window.scrollTo(0, 0));
-}
-
 async function axeViolations(page: Page): Promise<string[]> {
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
@@ -99,10 +68,7 @@ for (const { path, heading } of selectedPages) {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(path);
     await hydrateAll(page);
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    );
-    expect(overflow).toBeLessThanOrEqual(0);
+    expect(await documentOverflow(page)).toBeLessThanOrEqual(0);
   });
 }
 

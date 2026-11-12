@@ -63,8 +63,10 @@ export const toolOrder: ToolId[] = [
 
 /** Orders that belong to the signed-in fixture customer. Order 1042 belongs to someone else. */
 export const CUSTOMER_ORDERS: readonly string[] = ['1077'];
-/** Cost units for each model turn: a plan, a tool call proposal, or an answer. */
+/** Cost units for a model turn (a plan, a tool call proposal, or an answer) with an empty context. */
 export const TURN_COST = 2;
+/** Every turn re-reads the whole trace so far, so each 8 cards of context add a unit to the next turn. */
+export const CONTEXT_CARDS_PER_UNIT = 8;
 export const STEP_CAP = 8;
 export const COST_CAP = 40;
 
@@ -390,6 +392,11 @@ function unauthorizedReason(lane: AgentLane, card: AgentCard): string | undefine
   return undefined;
 }
 
+/** Cost of one model turn after `contextCards` cards of plans, calls, results, and answers. */
+export function turnCost(contextCards: number): number {
+  return TURN_COST + Math.floor(contextCards / CONTEXT_CARDS_PER_UNIT);
+}
+
 function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
@@ -457,7 +464,7 @@ export class AgentDuel {
     if (lane.stopped) return [];
     switch (step.kind) {
       case 'plan':
-        lane.cost += TURN_COST;
+        lane.cost += turnCost(lane.cards.length);
         return [this.push(lane, { tick, kind: 'plan', text: step.text, origin: step.origin })];
       case 'call':
         return this.call(lane, step, tick);
@@ -466,7 +473,7 @@ export class AgentDuel {
       case 'cancel':
         return this.cancel(lane, step.text, tick);
       case 'answer': {
-        lane.cost += TURN_COST;
+        lane.cost += turnCost(lane.cards.length);
         const pending = lane.cards.some((card) => card.status === 'pending');
         return [
           this.push(lane, {
@@ -481,7 +488,7 @@ export class AgentDuel {
   }
 
   private call(lane: AgentLane, step: CallStep, tick: number): AgentCard[] {
-    lane.cost += TURN_COST;
+    lane.cost += turnCost(lane.cards.length);
     const base = {
       tick,
       kind: 'call' as const,

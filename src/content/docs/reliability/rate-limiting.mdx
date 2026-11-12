@@ -101,6 +101,7 @@ export const recall = [
 export const quiz = [
   {
     id: 'reliability/rate-limiting/q1',
+    ordered: true,
     prompt: 'A token bucket refills 10 tokens per second and holds 20. After a quiet minute, the client sends 50 requests at once. How many get through?',
     options: [
       { text: '10, the refill rate', why: 'After a quiet minute the bucket is full with 20 tokens.' },
@@ -111,6 +112,7 @@ export const quiz = [
   },
   {
     id: 'reliability/rate-limiting/q2',
+    ordered: true,
     prompt: 'A fixed window allows 100 requests per calendar second. What is the most a client can send in any 0.2 s stretch?',
     options: [
       { text: '20, the limit scaled to 0.2 s', why: 'A fixed window only counts per calendar second. It never spreads requests evenly.' },

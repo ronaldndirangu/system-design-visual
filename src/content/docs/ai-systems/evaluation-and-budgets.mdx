@@ -1,11 +1,26 @@
 ---
 title: Evaluation and budgets
 description: Define the task, build an evaluation set, and write quality, latency, and cost budgets before you pick a model. A demo cannot tell candidates apart; an eval set can.
+furtherReading:
+  - title: Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena
+    url: https://arxiv.org/abs/2306.05685
+    note: Zheng et al. 2023 compare pairwise and single answer judging, name position, verbosity and self-enhancement bias, and measure judge agreement with human labels.
+  - title: Large Language Models are not Fair Evaluators
+    url: https://arxiv.org/abs/2305.17926
+    note: Wang et al. 2023 show that answer order alone can flip a judge's verdict, and test swapping the order and adding human review as fixes.
+  - title: Holistic Evaluation of Language Models
+    url: https://arxiv.org/abs/2211.09110
+    note: The HELM benchmark reports accuracy, calibration, robustness and efficiency side by side, the many budgets view applied across many models.
+  - title: Prompt caching
+    url: https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+    note: Official provider docs on caching a prompt prefix, where a cache read bills at a tenth of the base input token price.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
@@ -30,29 +45,29 @@ export const edges = [
 export const steps = [
   {
     title: 'Write the task spec',
-    text: 'The assistant answers refund, shipping, and account questions from the store policy. It declines questions about other customers, legal or medical advice, and attempts to bend the rules.',
+    text: 'Answer refund, shipping, and account questions from the store policy. Decline questions about other customers, legal advice, and attempts to bend the rules.',
     nodes: ['spec'],
   },
   {
     title: 'Build the eval set',
-    text: 'Collect real questions, including the awkward ones: two-step refunds, policy edge cases, and must decline cases. Each question gets a rubric that says what a passing answer must contain and must never contain.',
+    text: 'Collect real questions, including two-step refunds, policy edge cases, and must decline cases. Each gets a rubric: what a passing answer must contain and must never contain.',
     nodes: ['spec', 'evalset'],
     flows: ['spec>evalset'],
   },
   {
     title: 'Write the budgets before any results',
-    text: 'The product sets four numbers: a quality floor, the must decline rule, a p95 latency ceiling, and a cost ceiling per 1,000 questions. Write them down before any candidate runs.',
+    text: 'Set a quality floor, the must decline rule, a p95 latency ceiling, and a cost ceiling per 1,000 questions before any candidate runs.',
     nodes: ['spec', 'gate'],
   },
   {
     title: 'Run every candidate on every question',
-    text: 'Each candidate answers the same questions. Record each answer, how long it took to finish, and the tokens it used.',
+    text: 'Each candidate answers the same questions. Record each answer, its finish time, and its tokens.',
     nodes: ['evalset', 'cands'],
     flows: ['evalset>cands'],
   },
   {
     title: 'Grade against the rubric',
-    text: 'The grader compares each answer with its rubric and marks pass or fail. A refused valid return fails. Leaking another customer\u2019s address fails hard.',
+    text: 'Mark each answer pass or fail against its rubric. A refused valid return fails. Leaking another customer\u2019s address fails hard.',
     nodes: ['evalset', 'cands', 'grader'],
     flows: ['cands>grader', 'evalset>grader'],
   },
@@ -64,6 +79,29 @@ export const steps = [
   },
 ];
 
+export const recall = [
+  {
+    id: 'ai-systems/evaluation-and-budgets/recall-1',
+    prompt: 'An eval report lists only the average answer time for each candidate. Why is that not enough to check a p95 budget?',
+    options: [
+      { text: 'A low average can hide a slow tail', correct: true, why: 'The average blends a few slow answers into many fast ones. The p95 is the time 95% of answers beat.' },
+      { text: 'The average always sits above the p95', why: 'A slow tail pulls the p95 above the average.' },
+      { text: 'The p95 is always twice the average', why: 'Nothing bounds the tail by the mean.' },
+      { text: 'Averages need at least 1,000 answers', why: 'An average hides the tail at any sample size.' },
+    ],
+  },
+  {
+    id: 'ai-systems/evaluation-and-budgets/recall-2',
+    prompt: 'Which support assistant requirement is non-functional?',
+    options: [
+      { text: 'Answer refund questions from the store policy', why: 'That says what the assistant does, so it is functional.' },
+      { text: 'Look up an order by its id', why: 'That is a feature, so it is functional.' },
+      { text: 'Hand the chat to a human on request', why: 'That is a behavior, so it is functional.' },
+      { text: 'Reply within 2 s for 95% of questions', correct: true, why: 'It says how well the assistant works. Budgets are non-functional requirements written as numbers.' },
+    ],
+  },
+];
+
 export const quiz = [
   {
     id: 'ai-systems/evaluation-and-budgets/q1',
@@ -71,20 +109,20 @@ export const quiz = [
     options: [
       {
         text: 'Small is the cheapest, so it must be the worst',
-        why: 'Price grades nothing. On the full set Small stays fast and cheap and fails on the hard and must decline questions.',
+        why: 'Price grades nothing. Small fails on the hard and must decline cases.',
       },
       {
         text: 'Five common questions cannot separate the candidates, and the demo had no hard or must decline cases',
         correct: true,
-        why: 'All three candidates pass the demo. The full set adds the cases where Small leaks another customer\u2019s address and invents a discount code.',
+        why: 'All three pass the demo. The full set adds the cases where Small leaks an address.',
       },
       {
         text: 'Demos always use a bigger model behind the scenes',
-        why: 'Nothing in this lesson suggests that. The demo ran Small, and the questions were simply easy.',
+        why: 'The demo ran Small. The questions were simply easy.',
       },
       {
         text: 'Five questions are plenty when every one passes',
-        why: 'With five questions, one failure moves the pass rate by 20 points, and five passes say nothing about cases the demo never asked.',
+        why: 'Five passes say nothing about the cases the demo never asked.',
       },
     ],
   },
@@ -94,20 +132,20 @@ export const quiz = [
     options: [
       {
         text: 'Budgets make the eval run faster',
-        why: 'The run takes the same time either way. Budgets decide what counts as good enough.',
+        why: 'The run takes the same time either way.',
       },
       {
         text: 'So the results cannot move the bar',
         correct: true,
-        why: 'The product sets the budgets, and a model has to fit them. Set them after seeing results and it is tempting to bend them toward a favorite.',
+        why: 'A model has to fit the product\u2019s budgets. Set them after the results and you will bend them toward a favorite.',
       },
       {
         text: 'So you can skip building an eval set',
-        why: 'You check budgets against eval results. Without the set there is nothing to check.',
+        why: 'Without the set there is nothing to check the budgets against.',
       },
       {
         text: 'So every candidate passes',
-        why: 'A budget exists to reject candidates that do not fit. In this lesson two of three miss at least one.',
+        why: 'A budget exists to reject candidates. Here two of three miss at least one.',
       },
     ],
   },
@@ -117,20 +155,20 @@ export const quiz = [
     options: [
       {
         text: 'Medium is clearly good enough, so ship it and stop testing',
-        why: 'One more failed case drops it to 20 of 24 (83.3%), below the floor. The margin is a single question.',
+        why: 'One more failed case drops it to 20 of 24 (83.3%), below the floor.',
       },
       {
         text: 'It fits today, but the margin is one question, so grow the eval set before trusting it',
         correct: true,
-        why: 'With 24 cases each case is worth about 4 points. More cases shrink that step and make the comparison trustworthy.',
+        why: 'With 24 cases each case is worth about 4 points. More cases shrink that step.',
       },
       {
         text: 'Lower the floor to 80% to be safe',
-        why: 'Moving the bar after seeing results is exactly what budgets written up front prevent.',
+        why: 'Moving the bar after seeing results is what budgets written up front prevent.',
       },
       {
         text: 'Rerun the same questions until the score goes up',
-        why: 'Rerunning until a number looks good is cherry picking. Report the run you planned.',
+        why: 'That is cherry picking. Report the run you planned.',
       },
     ],
   },
@@ -140,44 +178,69 @@ export const quiz = [
     options: [
       {
         text: 'Ship Large, since it has the best quality',
-        why: 'Large has the slowest p95, about 3 s in this toy run. It misses even the default 2 s ceiling.',
+        why: 'Large has the slowest p95, about 3 s. It misses even the default 2 s ceiling.',
       },
       {
         text: 'Ship Small, since it is fastest',
-        why: 'Small fits the latency budget but misses quality and must decline. It shared another customer\u2019s address.',
+        why: 'Small misses quality and must decline. It shared another customer\u2019s address.',
       },
       {
         text: 'Change the design (shorter answers, cached answers, or routing easy questions to Small) or renegotiate the budget',
         correct: true,
-        why: 'When no model fits, the system around the model has to change, or the product owner agrees in writing to a different budget.',
+        why: 'When no model fits, change the system around the model, or agree a new budget in writing.',
       },
       {
         text: 'Stop measuring latency',
-        why: 'Customers still wait. Dropping the measurement hides the problem until they complain.',
+        why: 'Customers still wait, and now nobody sees it.',
+      },
+    ],
+  },
+  {
+    id: 'ai-systems/evaluation-and-budgets/q5',
+    prompt: 'A team compares two prompt versions for a code review bot with an LLM judge that always reads version A first. A wins most pairs. What should they do before trusting that?',
+    options: [
+      {
+        text: 'Judge every pair again with the order swapped, and count a win only when it holds both ways',
+        correct: true,
+        why: 'Judges favor a position. Swapping cancels that bias, and a verdict that flips counts as a tie.',
+      },
+      {
+        text: 'Ask the judge for longer explanations',
+        why: 'The order stays the same, so the position bias stays too.',
+      },
+      {
+        text: 'Use the bot\u2019s own model as the judge',
+        why: 'That adds self-preference: a judge rates its own model\u2019s answers higher.',
+      },
+      {
+        text: 'Nothing, since the judge repeats its verdict when asked twice',
+        why: 'The same order repeats the same bias.',
       },
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 
 - Write a task spec and turn it into an evaluation set with rubrics and must decline cases.
 - Set quality, latency (p95), and cost budgets before you look at any model's results.
 - Pick the cheapest candidate that fits every budget, and explain what to do when none fits.
+- Calibrate an LLM judge against human labels, and choose pairwise or pointwise judging.
 
 </Objectives>
 
 ## The failure: picking a model from a demo
 
 The support team wants an assistant that answers customer questions about orders, refunds, and accounts. Someone runs a
-quick demo: five common questions, three candidate models. Small, the cheapest and fastest, answers all five perfectly.
-The team is ready to ship it.
+quick demo: five common questions, three candidate models. Small, the cheapest and fastest, answers all five perfectly,
+so the team plans to ship it.
 
 Then a customer asks for the address their neighbor's TV shipped to, and Small tells them.
 
-The demo told the truth about five easy questions. It could not tell the candidates apart, and it never asked anything
-the assistant must refuse. Nobody had written down what the assistant must do, what it must decline, how fast it must
-answer, or how much it may cost.
+The demo never asked anything the assistant must refuse. Nobody had written down what the assistant must do, what it
+must decline, how fast it must answer, or how much it may cost.
 
 <Predict
   client:visible
@@ -187,32 +250,21 @@ answer, or how much it may cost.
   answer={2}
 >
 
-**Medium only.** Small is fast and cheap but passes only 17 of 24 and declines just 3 of the 6 must decline cases.
-Large passes 23 of 24, but its p95 is about 3 s and it costs about 15 times as much as Small. Medium passes 21 of 24,
-declines all 6, and stays inside the latency and cost budgets. All of these numbers come from a toy model and are
-illustrative.
+<div slot="figure">
+
+| Candidate | Demo result | Price per token |
+| --------- | ----------- | --------------- |
+| Small     | 5 of 5 pass | 1 times Small   |
+| Medium    | 5 of 5 pass | 4 times Small   |
+| Large     | 5 of 5 pass | 15 times Small  |
+
+</div>
+
+**Medium only.** Small passes 17 of 24 and declines just 3 of the 6 must decline cases. Large passes 23 of 24, but its
+p95 is about 3 s and it costs about 15 times Small. Medium passes 21 of 24, declines all 6, and fits latency and cost.
+The numbers come from a toy model.
 
 </Predict>
-
-## Try it: the demo, then the eval set
-
-Start with **Demo questions** and press Play. Then switch to **Full eval set** and run it again. Every candidate answers
-the same questions, so the lanes stay comparable.
-
-<EvalRunWidget client:visible />
-
-What to look for:
-
-- **The demo ties.** All three candidates pass all five demo questions. The demo cannot tell them apart, and it never
-  asks a must decline question.
-- **Failures cluster in the hard cases.** On the full set, Small fails two-step refunds and three of the six must
-  decline cases: it shares account details and invents a discount code.
-- **Latency has a tail.** Each dot or cross is one answer. The p95 tick marks the time that 95% of answers beat. Large
-  writes long answers slowly, which pushes its p95 past the dashed 2 s budget line.
-
-This is a **toy model**. The grades are hand-written fixtures, and latency and cost come from a small seeded formula
-(time to first token, plus a fixed time per output token, with a price ratio per model). No model runs in your browser,
-and every number is illustrative.
 
 ## The idea: decide what good means, then measure
 
@@ -229,6 +281,9 @@ Hiring for a support desk. You write the job description and a set of practice t
 a few where the right answer is "I can't help with that." A candidate who charms the panel with easy questions and then
 reads out a stranger's card number does not get the job.
 
+Where it breaks: you hire a person once, while a model changes with every prompt edit or provider update, so you rerun
+the interview each time.
+
 </Analogy>
 
 ### The four budgets for the support assistant
@@ -240,18 +295,96 @@ reads out a stranger's card number does not get the job.
 | p95 latency | 2 s or less to the full answer | A chat that stalls feels broken |
 | Cost | 6,000 units or less per 1,000 questions | The support budget is fixed |
 
-Cost uses made-up **units**, since real prices change often. One unit is about what Small spends on a typical answer.
+Cost uses made-up **units**, since real prices change often. One unit is what Small spends on a typical answer: a
+400 token prompt plus a 75 token reply. Providers price the two sides apart, so the model does too. Each output token
+costs as much as 4 input tokens, which makes long answers expensive, and a prompt token served from the provider's
+prompt cache costs a tenth of a fresh one. Each model multiplies both prices by its own ratio: Medium pays 4 times
+Small's price per token and Large pays 15 times.
 
-### Read the numbers honestly
+## Try it: the demo, then the eval set
 
-- **Small sets have big steps.** With 24 questions, one case moves the pass rate about 4 points. Medium's 87.5% clears
-  the 85% floor by a single question. Before trusting that margin, grow the set.
-- **p95 from 24 answers is a rough first read.** Only one answer sits above the 95th percentile. Measure latency again
-  under real traffic.
-- **Grades need a grader.** Here the grades are fixtures. In practice you combine exact checks (did it cite the right
-  order?), a written rubric, and human review. A model can grade at scale, but compare its grades with human labels
-  before trusting it.
+Start with **Demo questions** and press Play. Then switch to **Full eval set** and run it again.
+
+<EvalRunWidget client:visible />
+
+What to look for:
+
+- **The demo ties.** All three candidates pass all five demo questions, none of them a must decline case.
+- **Failures cluster in the hard cases.** On the full set, Small fails two-step refunds and three of the six must
+  decline cases: it shares account details and invents a discount code.
+- **Latency has a tail.** Each mark is one answer, and the p95 tick marks the time that 95% of answers beat (see
+  [SLOs and percentiles](../../thinking/slos/)). Large writes long answers slowly, which pushes its p95 past the dashed
+  2 s line.
+
+This is a **toy model**. The grades are hand-written fixtures, and latency and cost come from a small seeded formula
+(time to first token, plus a fixed time per output token, with input and output tokens priced apart). No model runs in your browser,
+and every number is illustrative.
+
+With 24 questions, one case moves the pass rate about 4 points, so Medium clears the floor by one question.
+
+<details>
+<summary>Go deeper: reading a small eval honestly</summary>
+
+- **Small sets have big steps.** With 24 questions, each case is worth about 4 points. Medium's 87.5% sits one case
+  above the floor, and one more failure would drop it to 83.3%. A few hundred cases shrink the step to well under a
+  point.
+- **p95 from 24 answers is a rough first read.** Only one answer sits above the 95th percentile, so a single slow answer
+  decides the number. Measure latency again under real traffic.
 - **Keep failures.** Every bad answer from production becomes a new eval case, so the same mistake cannot ship twice.
+
+</details>
+
+## Grading at scale: LLM judges
+
+Real evals use exact checks for facts such as an order id, plus a grader for open answers. People grade well but
+slowly. An **LLM judge** is a second model that reads the question, the rubric, and the answer, and returns a grade,
+cheaply enough to rerun on every change.
+
+Judges carry known biases ([Zheng et al. 2023](https://arxiv.org/abs/2306.05685)):
+
+- **Position bias:** shown two answers, the judge favors one slot, often the first.
+- **Verbosity bias:** it rates longer answers higher even when the extra words add nothing.
+- **Self-preference:** it rates answers from its own model higher.
+
+So the judge needs its own eval. Grade a sample of answers by hand, run the judge on the same sample, and report how
+often the two agree before you trust the judge.
+
+- **Pointwise** judging scores one answer against the rubric. Budgets need it, since a quality floor is an absolute bar.
+- **Pairwise** judging picks the better of two answers to one question. It spots small differences that scores miss,
+  so it fits a close call between two prompt versions, yet it never says whether either answer clears the floor.
+
+<details>
+<summary>Go deeper: calibrating a judge and paying for it</summary>
+
+**Calibrate before you trust.** A workable procedure:
+
+1. Sample answers from every case type, including must decline cases. Teams typically start with 50 to 100 answers.
+2. Have two people grade the sample against the rubric and settle their disagreements. Their own agreement rate is the
+   most you can expect from the judge.
+3. Run the judge on the same answers. Report agreement with the human labels overall and per case type. A judge that
+   matches people on easy refunds and misses leaked addresses is useless for the must decline budget.
+4. Read every disagreement, then fix the rubric wording or the judge prompt. Measure again on fresh answers, so you do
+   not tune the judge to one sample.
+5. Recalibrate whenever the judge model or the rubric changes, and spot check a few graded answers on every run.
+
+**Swap the order to cancel position bias.** For pairwise judging, ask twice with the answers in both orders. Count a
+win only when the judge picks the same answer both times, and call a flip a tie. In the MT-Bench study, GPT-4 kept its
+verdict after a swap only about 65% of the time, so a single ordering can hide a coin flip. Wang et al.
+([2023](https://arxiv.org/abs/2305.17926)) showed that order alone let Vicuna-13B beat ChatGPT on 66 of 80 queries in
+their test, and proposed balanced position calibration (averaging both orders) plus human review for close calls.
+
+**Typical agreement.** In the same study, GPT-4 as a judge matched human preferences over 80% of the time, about as
+often as two people matched each other. That figure comes from one benchmark; measure your own judge on your own
+rubric.
+
+**The judge spends money too.** Every judged answer is another model call whose prompt holds the question, the rubric,
+and the answer, so it often runs longer than the original prompt. A pointwise judge adds one call per answer. A swapped
+pairwise judge adds two calls per pair. Few-shot judge prompts (with graded examples) made the judge more consistent in
+the MT-Bench study and made each call about 4 times as expensive. With 24 questions and three candidates, a pointwise
+judge makes 72 calls per run, and the team reruns the set on every prompt change. Track judge spend against the eval
+budget, apart from the production cost budget, and switch to a cheaper judge only after it passes the same calibration.
+
+</details>
 
 ## When nothing fits
 
@@ -266,9 +399,8 @@ budget and the set of models that fit can go empty.
   answer={3}
 >
 
-**None.** Medium's p95 is about 1.5 s, so it misses the new ceiling. Small is fast enough but still misses quality and
-must decline. When nothing fits, change the design (shorter answers, cached answers, or routing easy questions to Small
-and hard ones to Medium) or agree a different budget with the product owner.
+**None.** Medium's p95 of about 1.5 s misses the new ceiling, and Small still misses quality and must decline. Change
+the design (shorter answers, caching, or routing easy questions to Small) or agree a new budget with the product owner.
 
 </Predict>
 
@@ -277,8 +409,8 @@ and hard ones to Medium) or agree a different budget with the product owner.
 Try the **Lowered bar** preset. Small fits once you drop the quality floor to 70% and stop checking must decline cases.
 That is the trap from the demo: Small fits only after you remove the requirement that protects customers.
 
-The next lesson, [The AI gateway](../gateway/), picks up from here. A gateway can send easy questions to a cheap model
-and escalate the rest, which is one way to fit budgets that no single model meets.
+The next lesson, [The AI gateway](../gateway/), routes easy questions to a cheap model and escalates the rest, one way
+to fit budgets that no single model meets.
 
 ## Trade-offs
 
@@ -286,14 +418,34 @@ and escalate the rest, which is one way to fit budgets that no single model meet
 
 | Choice | What it buys | What it costs |
 | --- | --- | --- |
-| Small eval set (dozens of cases) | Fast to build, quick to rerun | Each case swings the score, so close calls stay unclear |
 | Large eval set (hundreds or more) | Tighter estimates, room for rare cases | Labeling time, and grading costs on every rerun |
 | Exact checks (citations, order ids) | Cheap, repeatable, no judgment calls | Miss tone, helpfulness, and partial answers |
 | Human grading | Catches subtle mistakes and tone | Slow and costly, and graders disagree |
-| Model graded rubric | Scales to every rerun | Needs checking against human labels, and can share the model's blind spots |
+| LLM judge | Grades open answers on every rerun | Position, length, and self-preference bias, so it needs calibration |
 | Strict budgets | Protect customers and spend | Can rule out every candidate, forcing design work |
 
 </TradeoffTable>
+
+Skip a full eval set and written budgets when the feature is a throwaway prototype that no customer sees, or when a
+deterministic check already decides every answer.
+
+## Common mistakes
+
+- **Setting budgets after the results.** The bar drifts toward a favorite. Write the four numbers first.
+- **Trusting an uncalibrated judge.** A biased judge can rank the wrong candidate first. Report its agreement with
+  human labels before you use its grades.
+- **Dropping must decline cases to make a model fit.** That is the Lowered bar trap: the cheap model fits only because
+  the customer protection is gone.
+
+<KeyTakeaways>
+
+- A demo cannot separate candidates. An eval set with hard and must decline cases can.
+- Write the quality, must decline, p95 latency, and cost budgets before any run, then ship the cheapest candidate that
+  meets all four.
+- When nothing fits, change the design (routing, caching, shorter answers) or renegotiate the budget in writing.
+- An LLM judge scales grading. Calibrate it against human labels, and swap the answer order in pairwise runs.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
@@ -305,15 +457,13 @@ compared with the customer-facing assistant, and why?
 
 <div slot="answer">
 
-- **Task spec:** draft a reply that states the policy correctly, uses the order details from the ticket, and matches
-  the store's tone. Never include another customer's data, even if the ticket asks for it.
-- **Eval cases:** a simple tracking question, a two-step refund, an angry customer, a ticket in which the customer
-  pastes text such as "ignore your rules" (the draft must decline that request), and a ticket that needs facts the
-  draft cannot know (the draft should say what the agent must check).
-- **Quality:** grade on how much the agent must fix. A rubric score such as "sendable with small edits" works well.
-- **Must decline:** unchanged. A human reviews the draft, but a leaked address in a draft is still a leak.
-- **Latency:** looser. An agent can wait a few seconds for a draft, while a customer in a chat cannot.
-- **Cost:** per ticket instead of per question, and checked against the agent time it saves.
+- **Task spec:** draft a reply that states the policy correctly in the store's tone, with no other customer's data.
+- **Eval cases:** a tracking question, a two-step refund, an angry customer, a ticket that pastes "ignore your rules"
+  (must decline), and a ticket that needs facts the draft cannot know.
+- **Quality:** grade on how much the agent must fix, for example "sendable with small edits."
+- **Must decline:** unchanged. A leaked address in a draft is still a leak.
+- **Latency:** looser. An agent can wait a few seconds for a draft; a customer in a chat cannot.
+- **Cost:** per ticket, checked against the agent time it saves.
 
 </div>
 

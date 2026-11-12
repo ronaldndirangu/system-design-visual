@@ -839,12 +839,14 @@ button[data-tone="bad"] {
   min-width: 0;
   position: relative;
 }
+/* Positioned so absolutely positioned content, such as visually hidden text, scrolls with it instead of widening the page. */
 .sdv-scroll-x {
   --sdv-fade-start: 0px;
   --sdv-fade-end: 0px;
   border-radius: 0.5rem;
   overflow-x: auto;
   overscroll-behavior-x: contain;
+  position: relative;
 }
 .sdv-scroll-x[data-overflow-start] {
   --sdv-fade-start: 1.75rem;
@@ -1030,6 +1032,10 @@ button[data-tone="bad"] {
   gap: 0.9rem;
   min-width: 0;
   padding: 0.9rem;
+}
+/* Grid items default to min-width: auto, so one long badge or label would widen the stage past a phone screen. */
+.sdv-sim__stage > * {
+  min-width: 0;
 }
 .sdv-sim__toolbar {
   display: flex;
@@ -2605,6 +2611,30 @@ a.sdv-map__link:hover {
 }
 .sdv-compare tbody th {
   width: 40%;
+}
+.sdv-compare th,
+.sdv-compare td {
+  overflow-wrap: anywhere;
+}
+/* On a phone a three-column table keeps only the badge icon, and screen readers still hear the word. */
+@media (max-width: 30rem) {
+  .sdv-compare th,
+  .sdv-compare td {
+    padding-inline: 0.2rem;
+  }
+  .sdv-compare .sdv-badge:has(svg) {
+    padding: 0.25rem;
+    position: relative;
+  }
+  .sdv-compare .sdv-badge:has(svg) .sdv-badge__text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
 }
 .sdv-compare__head {
   align-items: center;

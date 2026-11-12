@@ -322,7 +322,7 @@ export default function SupportTraceWidget({
   if (hasRefunds) {
     rows.push(
       { label: 'Refunds run', cells: summaries.map((s) => String(s.refunded)) },
-      { label: 'Refunds declined by staff', cells: summaries.map((s) => String(s.declined)) },
+      { label: 'Refunds rejected by the policy check', cells: summaries.map((s) => String(s.declined)) },
       {
         label: 'Money refunded wrongly',
         cells: summaries.map((s) => `$${s.wrongRefundTotal.toLocaleString('en-US')}`),
