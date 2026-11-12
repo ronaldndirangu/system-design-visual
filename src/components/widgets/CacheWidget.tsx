@@ -150,7 +150,7 @@ export default function CacheWidget({ capacity = 0, skew = 1 }: Props) {
           {
             label: 'Average response time',
             value: `${stats.averageLatencyMs.toFixed(1)} ms`,
-            detail: `cache hit ${defaultCacheConfig.hitMs} ms, database ${defaultCacheConfig.missMs} ms`,
+            detail: `cache hit ${defaultCacheConfig.hitMs} ms, miss ${defaultCacheConfig.missMs} ms`,
           },
           { label: 'Links in the cache', value: `${formatCount(cached.size)} of ${formatCount(KEYS)}` },
         ]}

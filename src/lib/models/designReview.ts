@@ -69,8 +69,8 @@ export interface ReviewItem {
 const lessons = {
   loadBalancing: { id: 'scaling/load-balancing', title: 'The server melts' },
   caching: { id: 'scaling/caching', title: 'Caching' },
-  sharding: { id: 'scaling/sharding', title: 'Sharding and consistent hashing' },
-  readReplicas: { id: 'scaling/read-replicas', title: 'Read replicas' },
+  sharding: { id: 'scaling/sharding', title: 'Sharding and partitioning' },
+  readReplicas: { id: 'scaling/read-replicas', title: 'Replication' },
   retries: { id: 'reliability/retries', title: 'Retries with backoff and jitter' },
   queues: { id: 'reliability/queues-and-backpressure', title: 'Queues and backpressure' },
   outbox: { id: 'async/delivery-semantics', title: 'Delivery semantics and the outbox' },
