@@ -546,8 +546,9 @@ per second), and raise the average follow count from 300 to 3,000.
   second. The cost: a returning user's first load pulls up to 3,000 accounts, so it is slow.
 - **The crash.** In 120 s at peak, 3,472 posts per second leave about 416,667 outbox rows, which owe about 1.25
   billion feed writes. A 12.5 million fleet has about 2.08 million writes per second to spare at peak, so it catches
-  up in about 600 s. Posts made during the outage reach feeds up to 12 minutes late, and none are lost. The relay
-  may replay some jobs, and feed lists ignore the duplicate ids.
+  up in about 600 s. Feeds run behind for about 12 minutes. The relay drains the outbox in order, so no post reaches
+  feeds more than about 2 minutes late, and none are lost. The relay may replay some jobs, and feed lists ignore the
+  duplicate ids.
 
 </div>
 
