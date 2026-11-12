@@ -16,6 +16,7 @@ interface Question {
   count: number;
   answer: number;
   corrects: number;
+  texts: string[];
 }
 
 const evaluate = (source: string | undefined) => new Function(`return ${source}`)();
@@ -30,7 +31,7 @@ for (const file of lessons) {
     for (const q of evaluate(block[1]) as {
       id?: string;
       ordered?: boolean;
-      options: { correct?: boolean }[];
+      options: { text: string; correct?: boolean }[];
     }[]) {
       quizzes.push({
         file,
@@ -39,6 +40,7 @@ for (const file of lessons) {
         count: q.options.length,
         answer: q.options.findIndex((option) => option.correct),
         corrects: q.options.filter((option) => option.correct).length,
+        texts: q.options.map((option) => option.text),
       });
     }
   }
@@ -47,15 +49,33 @@ for (const file of lessons) {
     const options = attrs.match(/\boptions=\{(\[[\s\S]*?\])\}/);
     const answer = attrs.match(/\banswer=\{(\d+)\}/);
     if (!options || !answer) throw new Error(`${file} has a <Predict> without options or answer`);
+    const texts = evaluate(options[1]) as string[];
     predicts.push({
       file,
       id: attrs.match(/\bid="([^"]*)"/)?.[1],
       ordered: /^\s*ordered\s*$/m.test(attrs),
-      count: (evaluate(options[1]) as string[]).length,
+      count: texts.length,
       answer: Number(answer[1]),
       corrects: 1,
+      texts,
     });
   }
+}
+
+const leadingNumber = (text: string) => {
+  const match = text.match(/^(?:about|around|roughly|under|over|~|≈|\$)?\s*(\d[\d,]*(?:\.\d+)?)/i);
+  return match ? Number(match[1]?.replaceAll(',', '')) : undefined;
+};
+
+// A scale is 3 or more leading numbers in steady order, plus at most one first or last bookend such as "All of them".
+function looksLikeScale(texts: string[]) {
+  const numbers = texts.map(leadingNumber);
+  const inner = numbers.slice(1, -1);
+  if (inner.some((value) => value === undefined)) return false;
+  const values = numbers.filter((value) => value !== undefined);
+  if (values.length < 3 || values.length < texts.length - 1) return false;
+  const steps = values.slice(1).map((value, index) => Math.sign(value - (values[index] ?? 0)));
+  return steps.every((step) => step === 1) || steps.every((step) => step === -1);
 }
 
 const displayedCorrect = (q: Question) => choiceOrder(q.id ?? '', 0, q.count, q.ordered).indexOf(q.answer);
@@ -88,6 +108,13 @@ describe('lesson questions', () => {
       expect(q.answer, q.id).toBeGreaterThanOrEqual(0);
       expect(q.answer, q.id).toBeLessThan(q.count);
     }
+  });
+
+  it('marks numeric scales as ordered so shuffling never scrambles them', () => {
+    const scrambled = [...quizzes, ...predicts]
+      .filter((q) => !q.ordered && looksLikeScale(q.texts))
+      .map((q) => q.id);
+    expect(scrambled).toEqual([]);
   });
 
   it('spreads right answers so no display position holds more than 40%', () => {
