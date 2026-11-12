@@ -1,5 +1,13 @@
 import { createRng, hashString, type Rng, randomInt } from '../rng';
-import { type Budgets, candidates, DEFAULT_BUDGETS, EVAL_SEED, joinNames, PROMPT_TOKENS } from './evalBudget';
+import {
+  type Budgets,
+  candidates,
+  DEFAULT_BUDGETS,
+  EVAL_SEED,
+  joinNames,
+  PROMPT_TOKENS,
+  tokenCost,
+} from './evalBudget';
 import { percentile } from './serverFarm';
 
 /**
@@ -109,9 +117,6 @@ export const budgetNames: Record<BudgetName, string> = {
   cost: 'cost',
 };
 
-/** Same rule as lesson 1: Small answering a typical question costs one unit. */
-const TYPICAL_TOKENS = PROMPT_TOKENS + 75;
-
 const other: Record<Difficulty, Difficulty> = { easy: 'hard', hard: 'easy' };
 
 /** The same mix and seed always yield the same questions in the same order. */
@@ -143,7 +148,7 @@ export function tierLatency(tier: TierId, request: GatewayRequest): number {
 }
 
 export function tierCost(tier: TierId, request: GatewayRequest): number {
-  return round((candidates[tier].priceRatio * (PROMPT_TOKENS + request.outputTokens)) / TYPICAL_TOKENS);
+  return tokenCost(candidates[tier], { inputTokens: PROMPT_TOKENS, outputTokens: request.outputTokens });
 }
 
 const blank = { misrouted: false, escalated: false, missedBad: false, falseAlarm: false };

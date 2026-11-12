@@ -1,0 +1,168 @@
+---
+title: Sessions, tokens, and OAuth
+description: Decide how a server knows who is calling, spot the JWT mistakes that leak accounts, and see how OAuth 2 and OIDC hand out access.
+furtherReading:
+  - title: 'RFC 6749: The OAuth 2.0 Authorization Framework'
+    url: https://www.rfc-editor.org/rfc/rfc6749
+    note: The roles, grants and tokens behind every "Sign in with" button. Section 4.1 walks through the authorization code flow.
+  - title: 'RFC 7636: Proof Key for Code Exchange (PKCE)'
+    url: https://www.rfc-editor.org/rfc/rfc7636
+    note: How a one-time secret stops a stolen authorization code from being redeemed.
+  - title: 'OpenID Connect Core 1.0'
+    url: https://openid.net/specs/openid-connect-core-1_0.html
+    note: The identity layer on top of OAuth 2, including the ID token claims and the checks a client must run on them.
+  - title: 'JSON Web Token Cheat Sheet (OWASP)'
+    url: https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_Cheat_Sheet.html
+    note: 'The JWT threats this card names, such as unsigned "none" tokens, key type confusion, revocation and readable payloads, with a defense for each.'
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
+import Quiz from '../../../components/lesson/Quiz';
+
+export const quiz = [
+  {
+    id: 'foundations/auth/q1',
+    prompt: 'An attacker steals a JWT access token that expires in 12 hours. The user signs out a minute later. What happens to the stolen token?',
+    options: [
+      { text: 'It stops working, because the server deletes it', why: 'The server keeps no copy to delete. It checks a JWT by signature and expiry alone.' },
+      { text: 'It works for about 12 more hours, unless servers check a deny list', correct: true, why: 'The token did not change, so it still verifies. Hence access tokens of 5 to 15 minutes.' },
+      { text: 'It stops working, because sign-out changes its signature', why: 'The signature covers the header and payload, and neither changed.' },
+    ],
+  },
+  {
+    id: 'foundations/auth/q2',
+    prompt: 'A verifier checks each JWT with whatever `alg` its header names. Why is that dangerous?',
+    options: [
+      { text: 'It leaks the payload', why: 'Anyone holding a JWT can read the payload anyway. The danger is forgery.' },
+      { text: 'It slows verification', why: 'Reading one field costs nothing measurable.' },
+      { text: 'An attacker can send `alg: none` or switch algorithms and forge a token', correct: true, why: 'The token must never choose how it is checked. Pin the expected algorithm and reject the rest.' },
+    ],
+  },
+  {
+    id: 'foundations/auth/q3',
+    prompt: 'After "Sign in with Google", what tells your app who the user is?',
+    options: [
+      { text: 'The ID token, a JWT from Google whose `sub` claim names the user', correct: true, why: 'OIDC adds the ID token. Check its signature, `iss`, `aud` and `exp`, then key the account on `iss` plus `sub`.' },
+      { text: 'The Google password', why: 'The user types it on a Google page. The app never sees it.' },
+      { text: 'The access token', why: 'An access token says what the app may call. Identity comes from the OIDC ID token.' },
+    ],
+  },
+];
+
+[Security](../security/) showed that every request must prove who sent it. This card covers sessions, tokens,
+"Sign in with Google", and calls between services.
+
+<Objectives>
+
+- Choose between a server-side session and a self-contained token.
+- Spot the JWT mistakes that let attackers forge or reuse tokens.
+- Trace the OAuth 2 authorization code flow with PKCE, and say what OIDC adds.
+- Pick a way for one service to authenticate to another.
+
+</Objectives>
+
+## Sessions: the server remembers
+
+After the password check, the server maps a random session ID (128 bits or more) to the user in a store such
+as Redis, then sends the ID in a cookie with three flags:
+
+- `HttpOnly`: page JavaScript cannot read the cookie, so an XSS bug cannot steal it, though injected script can
+  still act as the user.
+- `Secure`: the cookie travels over HTTPS only.
+- `SameSite=Lax`: the browser leaves the cookie off cross-site form posts, the classic CSRF attack.
+
+Each request costs one store lookup. In return, sign-out is instant: delete the row and the cookie stops working.
+
+## Tokens: the token carries the proof
+
+A JSON Web Token (JWT) is three base64url parts joined by dots:
+
+```text
+header    {"alg":"RS256","typ":"JWT"}
+payload   {"sub":"u_42","exp":1767225600}
+signature RS256 over header.payload
+```
+
+Any server with the issuer's public key checks the signature and `exp` (expiry) without a lookup, so verification
+stays cheap across many services. The price: the server keeps no record it can delete.
+
+<details>
+<summary>Go deeper: sessions and tokens side by side</summary>
+
+| | Session cookie | JWT access token |
+| --- | --- | --- |
+| Where the truth lives | Session store on the server | Inside the token, signed |
+| Cost per request | One store lookup | One signature check |
+| Sign out now | Delete the row | Wait for expiry, or check a deny list |
+| Good fit | Browser apps on one site | APIs called by many services |
+
+A deny list brings back the lookup that tokens were meant to avoid, so most systems accept a few minutes of exposure
+instead and keep access tokens short.
+
+</details>
+
+### JWT mistakes that leak accounts
+
+- **Expecting early revocation.** A stolen JWT works until `exp`. Keep access tokens to 5 to 15 minutes and pair
+  them with a refresh token, which the server stores and can revoke.
+- **Trusting the header's `alg`.** A token marked `"alg": "none"` has no signature. Reject it, pin the one algorithm
+  you expect (such as RS256), and check `exp`, `iss` (issuer) and `aud` (audience) too.
+- **Secrets in the payload.** Base64url has no key, so anyone holding the token can read the payload.
+
+<details>
+<summary>Go deeper: the algorithm swap attack</summary>
+
+A verifier that follows the header can be tricked into checking an HS256 token with your RSA public key as the HMAC
+secret. That key is public, so the attacker can sign any payload they like. Pinning the algorithm closes the hole.
+
+</details>
+
+## Sign in with Google: OAuth 2 and OIDC
+
+OAuth 2 lets a user grant an app limited access without sharing a password. The authorization code flow with PKCE:
+
+1. The app hashes a random `code_verifier` with SHA-256 into a `code_challenge`, then redirects the browser to Google
+   with the challenge and the scopes it wants.
+2. The user signs in on Google's page and approves. The app never sees the password.
+3. Google redirects back with a short-lived, single-use authorization code.
+4. The app sends the code plus the `code_verifier` to Google's token endpoint and gets tokens back.
+
+A thief who grabs the code cannot redeem it, because the verifier never left the app.
+
+OAuth grants access: the access token says what the app may call. OpenID Connect (OIDC) adds identity: with the
+`openid` scope, Google also returns an ID token, a JWT whose `sub` claim is a stable user ID. The app checks its
+signature, `iss`, `aud` (its client ID) and `exp`, then signs the user in with its own session.
+
+## Service to service
+
+Between services, each caller needs a machine identity:
+
+- **mTLS:** both sides present certificates in the TLS handshake.
+- **Client credentials grant:** the service trades its own credentials for a short-lived access token and sends it
+  as `Authorization: Bearer`. A missing or expired token earns a `401`, as in [APIs](../apis/).
+- **Workload tokens:** the platform (Kubernetes, cloud managed identities) gives each workload a short-lived token
+  and rotates it, so no long-lived secret sits in config.
+
+<details>
+<summary>Go deeper: service identity in practice</summary>
+
+Service meshes such as Istio issue and rotate mTLS certificates for every workload, so teams rarely handle them by
+hand. With the client credentials grant, the service can prove itself with a client secret or, more safely, with a
+JWT signed by its own private key, so no shared secret crosses the wire.
+
+</details>
+
+<KeyTakeaways>
+
+- Sessions keep the truth on the server and allow instant sign-out. Flag the cookie `HttpOnly`, `Secure` and
+  `SameSite`.
+- JWTs verify without a lookup but cannot be revoked early, so keep access tokens to minutes and revoke refresh
+  tokens.
+- Pin the JWT algorithm, reject `alg: none`, check `exp`, `iss` and `aud`, and keep secrets out of the payload.
+- OAuth 2 grants access and OIDC adds identity. Use the authorization code flow with PKCE.
+- Services prove who they are with mTLS or short-lived tokens.
+
+</KeyTakeaways>
+
+<Quiz client:visible questions={quiz} />

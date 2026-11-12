@@ -33,8 +33,17 @@ export interface Candidate {
   firstTokenSeconds: number;
   /** Seconds per output token. */
   secondsPerToken: number;
-  /** Price per token relative to Small. */
+  /** Price per token relative to Small, for input and output alike. */
   priceRatio: number;
+}
+
+/** Tokens one model call reads and writes. Cached prompt tokens are counted apart from fresh ones. */
+export interface TokenUsage {
+  /** Prompt tokens read fresh, outside any prompt cache. */
+  inputTokens: number;
+  outputTokens: number;
+  /** Prompt tokens served from the provider's prompt cache. */
+  cachedInputTokens?: number;
 }
 
 export interface EvalScenario {
@@ -91,8 +100,13 @@ export interface BudgetVerdict {
 
 export const EVAL_SEED = 42;
 export const PROMPT_TOKENS = 400;
-/** A typical answer: the prompt plus 75 output tokens costs Small one unit. */
-const TYPICAL_TOKENS = PROMPT_TOKENS + 75;
+export const TYPICAL_OUTPUT_TOKENS = 75;
+/** Each output token costs this many input tokens, the usual shape of provider price lists. */
+export const OUTPUT_PRICE_RATIO = 4;
+/** A cached prompt token costs this share of a fresh one. */
+export const CACHED_INPUT_RATIO = 0.1;
+/** Scales prices so Small answering a typical question (the prompt plus 75 output tokens) costs one unit. */
+const INPUT_TOKEN_UNITS = 1 / (PROMPT_TOKENS + OUTPUT_PRICE_RATIO * TYPICAL_OUTPUT_TOKENS);
 
 export const DEFAULT_BUDGETS: Budgets = {
   minPassRate: 0.85,
@@ -354,8 +368,17 @@ export function latencyFor(candidate: Candidate, item: EvalCase, seed = EVAL_SEE
   return round(firstToken + item.outputTokens * candidate.secondsPerToken);
 }
 
+/** Cost units for one call: fresh input, cached input, and output are each priced on their own. */
+export function tokenCost(candidate: Pick<Candidate, 'priceRatio'>, usage: TokenUsage): number {
+  const weighted =
+    usage.inputTokens +
+    CACHED_INPUT_RATIO * (usage.cachedInputTokens ?? 0) +
+    OUTPUT_PRICE_RATIO * usage.outputTokens;
+  return round(candidate.priceRatio * weighted * INPUT_TOKEN_UNITS);
+}
+
 export function costFor(candidate: Candidate, item: EvalCase): number {
-  return round((candidate.priceRatio * (PROMPT_TOKENS + item.outputTokens)) / TYPICAL_TOKENS);
+  return tokenCost(candidate, { inputTokens: PROMPT_TOKENS, outputTokens: item.outputTokens });
 }
 
 export class EvalRun {

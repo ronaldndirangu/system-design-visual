@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { estimate, formatBytes, formatCount, presets, shortCodeLength } from '../../src/lib/models/estimates';
+import {
+  CLICK_WINDOW_DAYS,
+  estimate,
+  formatBytes,
+  formatCount,
+  INDEX_OVERHEAD,
+  presets,
+  REPLICATION_FACTOR,
+  shortCodeLength,
+} from '../../src/lib/models/estimates';
 import { planJourney, totalMs } from '../../src/lib/models/requestJourney';
 
 describe('estimate', () => {
@@ -11,9 +20,41 @@ describe('estimate', () => {
     // (11.6 + 1157) * 3 peak factor.
     expect(result.peakRequestsPerSecond).toBeCloseTo(3507, 0);
     // 1M * 365 * 5 years * 500 bytes.
-    expect(result.storageBytes).toBe(912_500_000_000);
+    expect(result.rawStorageBytes).toBe(912_500_000_000);
+    // 913 GB * 3 copies * 1.3 for indexes.
+    expect(formatBytes(result.storageBytes)).toBe('3.56 TB');
+    // 3,507 peak requests * 500 byte redirects.
+    expect(formatBytes(result.peakBandwidthBytesPerSecond)).toBe('1.75 MB');
+    // 1M new links * 7 day click window * 20% hot * 500 bytes.
+    expect(result.cacheBytes).toBe(700_000_000);
     expect(result.serversNeeded).toBe(3);
     expect(result.shortCodeLength).toBe(6);
+  });
+
+  it('provisions disk for every replica and the index overhead', () => {
+    for (const preset of Object.values(presets)) {
+      const result = estimate(preset.inputs);
+      expect(result.storageBytes).toBeCloseTo(
+        result.rawStorageBytes * REPLICATION_FACTOR * (1 + INDEX_OVERHEAD),
+        0,
+      );
+      expect(result.storageBytes).toBeGreaterThan(3 * result.rawStorageBytes);
+    }
+  });
+
+  it('sizes the cache by distinct links, so more clicks per link need no more memory', () => {
+    const base = presets.startup.inputs;
+    const few = estimate({ ...base, readsPerWrite: 10 });
+    const many = estimate({ ...base, readsPerWrite: 1_000 });
+    expect(many.readsPerSecond).toBe(few.readsPerSecond * 100);
+    expect(many.cacheBytes).toBe(few.cacheBytes);
+    expect(few.distinctLinksReadPerDay).toBe(base.newLinksPerDay * CLICK_WINDOW_DAYS);
+  });
+
+  it('never caches more links than exist', () => {
+    const result = estimate({ ...presets.startup.inputs, retentionYears: 0.01, hotFraction: 1 });
+    expect(result.distinctLinksReadPerDay).toBe(result.totalLinks);
+    expect(result.cacheBytes).toBeLessThanOrEqual(result.rawStorageBytes);
   });
 
   it('needs a single server for a side project', () => {

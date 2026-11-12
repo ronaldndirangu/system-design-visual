@@ -6,6 +6,15 @@ export const SECONDS_PER_DAY = 86_400;
 export const BASE62_ALPHABET = 62;
 /** Run servers at most this busy so a spike or a lost server does not tip you over. */
 export const TARGET_UTILIZATION = 0.7;
+/** Copies of every row, so one lost disk or zone loses no links. */
+export const REPLICATION_FACTOR = 3;
+/** Indexes, row headers and free space add roughly this share on top of the raw data. */
+export const INDEX_OVERHEAD = 0.3;
+/**
+ * Most clicks on a short link land in its first week, so the links read on any
+ * one day are roughly the last week's new links.
+ */
+export const CLICK_WINDOW_DAYS = 7;
 
 export interface EstimateInputs {
   newLinksPerDay: number;
@@ -14,7 +23,7 @@ export interface EstimateInputs {
   retentionYears: number;
   peakToAverage: number;
   requestsPerServer: number;
-  /** Share of each day's reads worth keeping in memory, from 0 to 1. */
+  /** Share of the links read each day worth keeping in memory, from 0 to 1. */
   hotFraction: number;
 }
 
@@ -23,8 +32,15 @@ export interface EstimateResult {
   readsPerSecond: number;
   peakRequestsPerSecond: number;
   totalLinks: number;
+  /** One copy of the link rows, before replication and indexes. */
+  rawStorageBytes: number;
+  /** Disk to provision: raw rows × replication × index overhead. */
   storageBytes: number;
+  /** Distinct links read in a day; a link clicked 100 times still counts once. */
+  distinctLinksReadPerDay: number;
   cacheBytes: number;
+  /** Redirect responses leaving the servers in the busiest hour. */
+  peakBandwidthBytesPerSecond: number;
   serversNeeded: number;
   shortCodeLength: number;
 }
@@ -75,9 +91,11 @@ export function estimate(inputs: EstimateInputs): EstimateResult {
   const readsPerSecond = writesPerSecond * inputs.readsPerWrite;
   const peakRequestsPerSecond = (writesPerSecond + readsPerSecond) * inputs.peakToAverage;
   const totalLinks = inputs.newLinksPerDay * 365 * inputs.retentionYears;
-  const storageBytes = totalLinks * inputs.bytesPerLink;
-  const readsPerDay = inputs.newLinksPerDay * inputs.readsPerWrite;
-  const cacheBytes = readsPerDay * inputs.hotFraction * inputs.bytesPerLink;
+  const rawStorageBytes = totalLinks * inputs.bytesPerLink;
+  const storageBytes = rawStorageBytes * REPLICATION_FACTOR * (1 + INDEX_OVERHEAD);
+  const distinctLinksReadPerDay = Math.min(totalLinks, inputs.newLinksPerDay * CLICK_WINDOW_DAYS);
+  const cacheBytes = distinctLinksReadPerDay * inputs.hotFraction * inputs.bytesPerLink;
+  const peakBandwidthBytesPerSecond = peakRequestsPerSecond * inputs.bytesPerLink;
   const serversNeeded = Math.max(
     1,
     Math.ceil(peakRequestsPerSecond / (inputs.requestsPerServer * TARGET_UTILIZATION)),
@@ -87,8 +105,11 @@ export function estimate(inputs: EstimateInputs): EstimateResult {
     readsPerSecond,
     peakRequestsPerSecond,
     totalLinks,
+    rawStorageBytes,
     storageBytes,
+    distinctLinksReadPerDay,
     cacheBytes,
+    peakBandwidthBytesPerSecond,
     serversNeeded,
     shortCodeLength: shortCodeLength(totalLinks),
   };
