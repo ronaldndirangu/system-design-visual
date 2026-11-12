@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { island } from './helpers';
 
 async function axeViolations(page: Page): Promise<string[]> {
   const results = await new AxeBuilder({ page })
@@ -53,8 +54,7 @@ function cellsOf(sim: Locator, rowName: RegExp): Promise<string[]> {
 }
 
 async function toggleByKeyboard(page: Page, scope: Locator, name: string, checked: boolean): Promise<void> {
-  const toggle = scope.getByRole('switch', { name, exact: true });
-  await expect(toggle).toBeEnabled();
+  const toggle = await island(scope.getByRole('switch', { name, exact: true }));
   await toggle.focus();
   await page.keyboard.press('Space');
   await expect(toggle).toBeChecked({ checked });
@@ -215,9 +215,7 @@ test('apis: offset pages repeat and skip, and expand-then-contract breaks no cli
   const contract = page.getByRole('region', { name: 'Interactive: One change, three clients' });
   await contract.scrollIntoViewIfNeeded();
   await expect(contract.getByText('No client breaks', { exact: true })).toBeVisible();
-  // The server render disables the radios until the island hydrates, and a disabled radio ignores focus.
-  const optionalField = contract.getByRole('radio', { name: /^Add an optional field/ });
-  await expect(optionalField).toBeEnabled();
+  const optionalField = await island(contract.getByRole('radio', { name: /^Add an optional field/ }));
 
   await optionalField.focus();
   await page.keyboard.press('ArrowRight');

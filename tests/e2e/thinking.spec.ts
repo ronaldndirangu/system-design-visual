@@ -1,12 +1,12 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { island } from './helpers';
 
 async function openSim(page: Page, path: string, title: RegExp): Promise<Locator> {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto(path);
   const sim = page.getByRole('region', { name: title });
   await sim.scrollIntoViewIfNeeded();
-  await expect(sim.getByRole('radio').first()).toBeEnabled();
-  return sim;
+  return island(sim);
 }
 
 async function runToEnd(sim: Locator) {

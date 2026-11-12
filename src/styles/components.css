@@ -1041,6 +1041,11 @@ button[data-tone="bad"] {
   gap: 1rem 1.5rem;
   grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
 }
+/* A row of options wider than one cell takes the whole row, so it stays radios while the widget has room. */
+.sdv-sim__controls
+  > .sdv-segmented[data-fit]:not([data-fit="8"], [data-fit="10"], [data-fit="12"], [data-fit="14"]) {
+  grid-column: 1 / -1;
+}
 
 .sdv-stats {
   border-collapse: collapse;
@@ -1106,9 +1111,10 @@ button[data-tone="bad"] {
   justify-content: space-between;
 }
 .sdv-control__row label,
-.sdv-control > legend {
-  color: var(--sl-color-white);
-  font-size: var(--sl-text-sm);
+.sdv-control > legend,
+.sdv-segmented__select > label {
+  color: var(--sdv-text-1);
+  font-size: var(--sdv-text-sm);
   font-weight: 600;
   padding: 0;
 }
@@ -1116,36 +1122,260 @@ button[data-tone="bad"] {
   margin-bottom: 0.35rem;
 }
 .sdv-control output {
-  color: var(--sl-color-text-accent);
-  font-size: var(--sl-text-sm);
+  color: var(--sdv-text-1);
+  font-family: var(--sdv-font-mono);
+  font-size: var(--sdv-text-sm);
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: var(--sdv-weight-ui);
   text-align: end;
 }
-.sdv-control input[type="range"] {
-  accent-color: var(--sl-color-text-accent);
+.sdv-control__hint {
+  color: var(--sdv-text-3);
+  font-size: var(--sdv-text-xs);
   margin: 0;
-  min-height: 1.75rem;
+}
+.sdv-control__range {
+  color: var(--sdv-text-3);
+  display: flex;
+  font-family: var(--sdv-font-mono);
+  font-size: var(--sdv-text-2xs);
+  font-variant-numeric: tabular-nums;
+  gap: 0.5rem;
+  justify-content: space-between;
+  margin-top: -0.5rem;
+}
+
+/* The track fills to --sdv-range-frac; the 44px input height is the hit area around a 6px track. */
+.sdv-control input[type="range"] {
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  height: var(--sdv-target);
+  margin: 0;
   width: 100%;
 }
-.sdv-control__hint {
-  color: var(--sl-color-gray-3);
-  font-size: var(--sl-text-xs);
-  margin: 0;
+.sdv-control input[type="range"]:disabled {
+  cursor: default;
+}
+.sdv-control input[type="range"]::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--sdv-accent) var(--sdv-range-frac, 0%),
+    var(--sdv-border-control) 0
+  );
+  border-radius: var(--sdv-radius-pill);
+  height: 6px;
+}
+.sdv-control input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  background: var(--sdv-surface-1);
+  border: 2px solid var(--sdv-accent);
+  border-radius: 50%;
+  height: 20px;
+  margin-top: -7px;
+  transition: transform var(--sdv-duration-fast) var(--sdv-ease-out);
+  width: 20px;
+}
+.sdv-control input[type="range"]::-moz-range-track {
+  background: var(--sdv-border-control);
+  border-radius: var(--sdv-radius-pill);
+  height: 6px;
+}
+.sdv-control input[type="range"]::-moz-range-progress {
+  background: var(--sdv-accent);
+  border-radius: var(--sdv-radius-pill);
+  height: 6px;
+}
+.sdv-control input[type="range"]::-moz-range-thumb {
+  background: var(--sdv-surface-1);
+  border: 2px solid var(--sdv-accent);
+  border-radius: 50%;
+  box-sizing: border-box;
+  height: 20px;
+  transition: transform var(--sdv-duration-fast) var(--sdv-ease-out);
+  width: 20px;
+}
+.sdv-control input[type="range"]:hover:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(1.1);
+}
+.sdv-control input[type="range"]:hover:not(:disabled)::-moz-range-thumb {
+  transform: scale(1.1);
+}
+
+.sdv-select {
+  background: var(--sdv-surface-2);
+  border: 1px solid var(--sdv-border-control);
+  border-radius: var(--sdv-radius-sm);
+  color: var(--sdv-text-1);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--sdv-text-sm);
+  font-weight: var(--sdv-weight-ui);
+  min-height: var(--sdv-target);
+  padding: 0.25rem 0.75rem;
+  width: 100%;
+}
+.sdv-select:disabled {
+  cursor: default;
+}
+
+/* Fit fallback: data-fit is the rem width one row of options needs, rounded up to a bucket. A narrower
+   container shows the select instead, so the row never wraps or clips. */
+.sdv-segmented[data-fit] {
+  container: sdv-seg / inline-size;
+  min-width: 0;
+  width: 100%;
+}
+.sdv-segmented__group {
+  display: var(--sdv-seg-group, grid);
+}
+.sdv-segmented__select {
+  display: var(--sdv-seg-select, none);
+}
+.sdv-segmented[data-fit="max"] > * {
+  --sdv-seg-group: none;
+  --sdv-seg-select: grid;
+}
+@container sdv-seg (width < 8rem) {
+  .sdv-segmented[data-fit="8"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 10rem) {
+  .sdv-segmented[data-fit="10"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 12rem) {
+  .sdv-segmented[data-fit="12"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 14rem) {
+  .sdv-segmented[data-fit="14"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 16rem) {
+  .sdv-segmented[data-fit="16"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 18rem) {
+  .sdv-segmented[data-fit="18"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 20rem) {
+  .sdv-segmented[data-fit="20"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 22rem) {
+  .sdv-segmented[data-fit="22"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 24rem) {
+  .sdv-segmented[data-fit="24"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 26rem) {
+  .sdv-segmented[data-fit="26"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 28rem) {
+  .sdv-segmented[data-fit="28"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 30rem) {
+  .sdv-segmented[data-fit="30"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 32rem) {
+  .sdv-segmented[data-fit="32"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 34rem) {
+  .sdv-segmented[data-fit="34"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 36rem) {
+  .sdv-segmented[data-fit="36"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 38rem) {
+  .sdv-segmented[data-fit="38"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 40rem) {
+  .sdv-segmented[data-fit="40"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 42rem) {
+  .sdv-segmented[data-fit="42"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 44rem) {
+  .sdv-segmented[data-fit="44"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 46rem) {
+  .sdv-segmented[data-fit="46"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
+}
+@container sdv-seg (width < 48rem) {
+  .sdv-segmented[data-fit="48"] > * {
+    --sdv-seg-group: none;
+    --sdv-seg-select: grid;
+  }
 }
 
 .sdv-segmented__options {
-  background: var(--sl-color-bg);
-  border: 1px solid var(--sdv-border);
-  border-radius: 0.6rem;
+  background: var(--sdv-surface-2);
+  border: 1px solid var(--sdv-border-control);
+  border-radius: var(--sdv-radius-pill);
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  padding: 0.25rem;
+  max-width: 100%;
+  padding: 0 3px;
+  width: fit-content;
 }
 .sdv-segmented label {
-  flex: 1 1 auto;
+  display: flex;
   margin: 0;
+  padding: 3px 0;
   position: relative;
 }
 /* Hidden inputs cover their whole label so every pointer hit lands on them at any sub-pixel offset. */
@@ -1165,68 +1395,124 @@ button[data-tone="bad"] {
   cursor: default;
 }
 .sdv-segmented span {
+  align-content: center;
   border: 1px solid transparent;
-  border-radius: 0.45rem;
-  color: var(--sl-color-gray-2);
-  cursor: pointer;
-  display: block;
-  font-size: var(--sl-text-sm);
+  border-radius: var(--sdv-radius-pill);
+  color: var(--sdv-text-2);
+  display: grid;
+  font-size: var(--sdv-text-sm);
+  font-weight: var(--sdv-weight-ui);
+  justify-items: center;
+  min-height: calc(var(--sdv-target) - 6px);
+  min-width: var(--sdv-target);
+  padding: 0 0.75rem;
+  transition:
+    background-color var(--sdv-duration-fast) var(--sdv-ease-out),
+    border-color var(--sdv-duration-fast) var(--sdv-ease-out),
+    color var(--sdv-duration-fast) var(--sdv-ease-out);
+  white-space: nowrap;
+}
+/* Reserves the bold width so choosing an option never shifts its neighbors. */
+.sdv-segmented span::after {
+  content: attr(data-label) / "";
   font-weight: 600;
-  padding: 0.35rem 0.6rem;
-  text-align: center;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
 }
 .sdv-segmented label:hover span {
-  color: var(--sl-color-white);
+  color: var(--sdv-text-1);
 }
 .sdv-segmented input:checked + span {
-  background: var(--sl-color-text-accent);
-  color: var(--sl-color-black);
-  text-decoration: underline;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 3px;
+  background: var(--sdv-surface-1);
+  border-color: var(--sdv-border-control);
+  color: var(--sdv-text-1);
+  font-weight: 600;
 }
 
 .sdv-toggle {
   align-items: center;
   cursor: pointer;
   display: inline-flex;
-  font-size: var(--sl-text-sm);
+  font-size: var(--sdv-text-sm);
   font-weight: 600;
   gap: 0.6rem;
+  min-height: var(--sdv-target);
   position: relative;
 }
 .sdv-toggle__track {
-  background: var(--sl-color-gray-5);
-  border: 1px solid var(--sl-color-gray-4);
-  border-radius: 999rem;
+  background: var(--sdv-surface-3);
+  border: 1px solid var(--sdv-border-control);
+  border-radius: var(--sdv-radius-pill);
   flex: none;
-  height: 1.4rem;
+  height: 1.5rem;
   position: relative;
-  transition: background-color 150ms ease;
+  transition: background-color var(--sdv-duration-fast) var(--sdv-ease-out);
   width: 2.5rem;
 }
 .sdv-toggle__track::after {
-  background: var(--sl-color-white);
+  background: var(--sdv-text-2);
   border-radius: 50%;
   content: "";
-  height: 1rem;
-  left: 0.15rem;
+  height: 18px;
+  left: 2px;
   position: absolute;
-  top: calc(50% - 0.5rem);
-  transition: transform 150ms ease;
-  width: 1rem;
+  top: calc(50% - 9px);
+  transition: transform var(--sdv-duration-fast) var(--sdv-ease-out);
+  width: 18px;
 }
 .sdv-toggle input:checked + .sdv-toggle__track {
-  background: var(--sl-color-text-accent);
-  border-color: var(--sl-color-text-accent);
+  background: var(--sdv-accent);
+  border-color: var(--sdv-accent);
 }
 .sdv-toggle input:checked + .sdv-toggle__track::after {
-  background: var(--sl-color-black);
-  transform: translateX(1.1rem);
+  background: var(--sdv-on-accent);
+  transform: translateX(1rem);
 }
-.sdv-toggle input:focus-visible + .sdv-toggle__track {
-  outline: 3px solid var(--sl-color-text-accent);
-  outline-offset: 2px;
+
+/* Speed: radios while the toolbar has room, the select below 30rem. */
+.sdv-sim__toolbar:has(> .sdv-speed) {
+  container: sdv-toolbar / inline-size;
+}
+.sdv-speed {
+  margin-inline-start: auto;
+}
+.sdv-speed__select {
+  display: none;
+}
+@container sdv-toolbar (width < 30rem) {
+  .sdv-speed > .sdv-segmented {
+    display: none;
+  }
+  .sdv-speed__select {
+    display: block;
+  }
+}
+
+@media (forced-colors: active) {
+  .sdv-segmented input:checked + span {
+    background: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+  .sdv-control input[type="range"] {
+    forced-color-adjust: none;
+  }
+  .sdv-control input[type="range"]::-webkit-slider-runnable-track {
+    background: CanvasText;
+  }
+  .sdv-control input[type="range"]::-moz-range-track,
+  .sdv-control input[type="range"]::-moz-range-progress {
+    background: CanvasText;
+  }
+  .sdv-control input[type="range"]::-webkit-slider-thumb {
+    background: Canvas;
+    border-color: Highlight;
+  }
+  .sdv-control input[type="range"]::-moz-range-thumb {
+    background: Canvas;
+    border-color: Highlight;
+  }
 }
 
 .sdv-crash__buttons {
@@ -1391,21 +1677,6 @@ button[data-tone="bad"] {
 }
 .sdv-estimator__scale-select {
   display: none;
-}
-.sdv-estimator__scale-select select {
-  background: var(--sdv-surface-raised);
-  border: 1px solid var(--sdv-border);
-  border-radius: 0.45rem;
-  color: var(--sl-color-white);
-  font: inherit;
-  font-size: var(--sl-text-sm);
-  min-height: var(--sdv-target);
-  padding: 0.35rem 0.6rem;
-  width: 100%;
-}
-.sdv-estimator__scale-select select:focus-visible {
-  outline: 3px solid var(--sl-color-text-accent);
-  outline-offset: 2px;
 }
 @container (max-width: 30rem) {
   .sdv-estimator__scale .sdv-segmented {
@@ -1913,12 +2184,19 @@ a.sdv-map__link:hover {
     animation: none;
   }
   .sdv-bars__fill,
+  .sdv-segmented span,
   .sdv-toggle__track,
   .sdv-toggle__track::after,
   .sdv-cache__bar,
   .sdv-cache__marker,
   .sdv-shards__key,
   .sdv-shards__cell {
+    transition: none;
+  }
+  .sdv-control input[type="range"]::-webkit-slider-thumb {
+    transition: none;
+  }
+  .sdv-control input[type="range"]::-moz-range-thumb {
     transition: none;
   }
 }

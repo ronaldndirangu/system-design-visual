@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
+import { island } from './helpers';
 
 async function axeViolations(page: Page): Promise<string[]> {
   const results = await new AxeBuilder({ page })
@@ -10,6 +11,25 @@ async function axeViolations(page: Page): Promise<string[]> {
   return results.violations.flatMap((violation) =>
     violation.nodes.map((node) => `${violation.id}: ${node.target.join(' ')} ${node.failureSummary}`),
   );
+}
+
+for (const { path, width, axe } of [
+  { path: 'case-studies/collaborative-editor/', width: 390, axe: true },
+  { path: 'case-studies/metrics/', width: 320, axe: false },
+]) {
+  test(`/${path} code blocks wrap without horizontal scroll at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(path);
+    const overflowing = await page
+      .locator('.expressive-code pre')
+      .evaluateAll((blocks) =>
+        blocks
+          .filter((pre) => pre.scrollWidth > pre.clientWidth + 1)
+          .map((pre) => pre.textContent?.slice(0, 40)),
+      );
+    expect(overflowing).toEqual([]);
+    if (axe) expect(await axeViolations(page)).toEqual([]);
+  });
 }
 
 test('/case-studies/collaborative-editor/ convergence duel shows index edits diverging and CRDT ids converging', async ({
@@ -89,13 +109,13 @@ test('/case-studies/metrics/ widgets pin lost errors, rollup reads, and alert pa
   }
 
   const tiers = page.getByRole('region', { name: 'Interactive: Which tier answers the dashboard' });
-  await tiers.scrollIntoViewIfNeeded();
+  await island(tiers);
   await tiers.getByRole('radio', { name: '1 year' }).check();
   await expect(tiers.getByRole('row', { name: /Points read per series/ })).toContainText('8,760');
   await expect(tiers.getByRole('row', { name: /Tier that answers it/ })).toContainText('1 h rollups');
 
   const alert = page.getByRole('region', { name: 'Interactive: When does the alert page someone' });
-  await alert.scrollIntoViewIfNeeded();
+  await island(alert);
   await alert.getByRole('radio', { name: '2 min' }).check();
   await expect(alert.getByRole('row', { name: /False pages/ })).toContainText('0');
   await expect(alert.getByRole('row', { name: /Pages sent/ })).toContainText('at 8.5 min');
@@ -192,8 +212,7 @@ test('/case-studies/search/ widgets pin recall, rebuild cost, ranking, and typea
 
   const index = page.getByRole('region', { name: 'Interactive: Look up a query in an inverted index' });
   await index.scrollIntoViewIfNeeded();
-  const popularity = index.getByRole('switch', { name: 'Add the offline popularity signal' });
-  await expect(popularity).toBeEnabled();
+  const popularity = await island(index.getByRole('switch', { name: 'Add the offline popularity signal' }));
   await expect(index.getByRole('row', { name: /Top result/ })).toContainText('d3');
   await popularity.focus();
   await page.keyboard.press('Space');
