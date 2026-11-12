@@ -1,11 +1,23 @@
 ---
 title: Event-driven design
 description: Keep one malformed click from stalling the analytics pipeline, then design the events themselves. Dead-letter queues, thin and fat events, choreography and orchestration, and schema changes that never break a running consumer.
+furtherReading:
+  - title: 'What do you mean by "Event-Driven"?'
+    url: https://martinfowler.com/articles/201701-event-driven.html
+    note: Martin Fowler separates event notification, event-carried state transfer, and event sourcing.
+  - title: "Schema Registry: schema evolution and compatibility"
+    url: https://docs.confluent.io/platform/current/schema-registry/fundamentals/schema-evolution.html
+    note: The backward, forward, and full compatibility checks a registry runs before a schema change ships.
+  - title: "Amazon SQS: using dead-letter queues"
+    url: https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html
+    note: Redrive policies, retry budgets, and why a dead-letter queue breaks FIFO order.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
@@ -32,31 +44,31 @@ export const edges = [
 export const steps = [
   {
     title: 'Fail and classify',
-    text: 'The consumer reads the click at the head of the partition, and the handler throws. First it sorts the error. A timeout or a busy database is transient: the next try may work. A click that fails to parse is permanent: it fails on every try, on every consumer.',
+    text: 'The handler fails on the click at the head of the partition. A timeout is transient. A parse failure is permanent.',
     nodes: ['topic', 'consumer'],
     flows: ['topic>consumer'],
   },
   {
     title: 'Retry a few times',
-    text: 'For a transient error, the consumer waits and tries the same click again, up to a small fixed budget. Every retry holds the whole partition, so the budget stays small. Retries with backoff and jitter covers how long to wait between tries.',
+    text: 'For a transient error, the consumer retries a few times. Each retry holds the partition.',
     nodes: ['consumer'],
     flows: [],
   },
   {
     title: 'Park and move on',
-    text: 'After the last try, or right away for a permanent error, the consumer writes the click to the dead-letter queue with the error, the try count, the partition, and the offset. It waits for the dead-letter queue to confirm a durable write, and only then commits the offset, so the partition moves again.',
+    text: 'After the last try, or at once for a permanent error, the consumer durably writes the click to the dead-letter queue, then commits the offset.',
     nodes: ['consumer', 'dlq'],
     flows: ['consumer>dlq'],
   },
   {
     title: 'Keep counting',
-    text: 'The clicks that waited behind the bad one flow to Click counts again, and lag drains back toward zero. One bad event now costs a few retries, and the rest of the partition keeps its pace.',
+    text: 'The waiting clicks flow to Click counts again, and lag drains.',
     nodes: ['topic', 'consumer', 'counts'],
     flows: ['topic>consumer', 'consumer>counts'],
   },
   {
     title: 'Alert, fix, replay',
-    text: 'The first parked click fires an alert to the team that owns the queue. They fix the producer or the consumer, then a replay job publishes the parked clicks back to the topic. Some of them may count twice, so replay is safe only with an idempotent consumer.',
+    text: 'The first park alerts the owner. After the fix, a replay job republishes parked clicks to an idempotent consumer.',
     nodes: ['dlq', 'replay', 'topic'],
     flows: ['dlq>replay', 'replay>topic'],
   },
@@ -82,25 +94,25 @@ export const choreoEdges = [
 export const choreoSteps = [
   {
     title: 'Publish',
-    text: 'The click service publishes click.recorded and moves on. It knows nothing about who reads the event.',
+    text: 'The click service publishes click.recorded without knowing who reads it.',
     nodes: ['click', 'topic'],
     flows: ['click>topic'],
   },
   {
     title: 'React',
-    text: 'Analytics and fraud scoring each read the topic with their own consumer group and act on their own. A new team adds a consumer without a change to the click service.',
+    text: 'Analytics and fraud scoring each read it in their own consumer group.',
     nodes: ['topic', 'analytics', 'fraud'],
     flows: ['topic>analytics', 'topic>fraud'],
   },
   {
     title: 'Chain',
-    text: 'Billing charges only for clean clicks, so it waits for fraud scoring. Fraud scoring publishes click.scored to its own topic, and billing reads that topic instead of click events.',
+    text: 'Billing charges only clean clicks, so it reads click.scored from fraud scoring.',
     nodes: ['fraud', 'scored', 'billing'],
     flows: ['fraud>scored', 'scored>billing'],
   },
   {
     title: 'Find the flow',
-    text: 'No service holds the whole flow. The rule "bill only clean clicks" lives in the topic billing subscribes to. To change the order, you change subscriptions in several services and trace it again.',
+    text: 'No service holds the whole flow. The billing rule lives in a subscription.',
     nodes: ['click', 'topic', 'analytics', 'fraud', 'scored', 'billing'],
     flows: [],
   },
@@ -126,27 +138,50 @@ export const orchEdges = [
 export const orchSteps = [
   {
     title: 'Start a run',
-    text: 'Each click starts one run of the click workflow. The workflow saves its progress in Workflow state, so a restarted orchestrator resumes where it stopped.',
+    text: 'Each click starts a workflow run, saved so a restart resumes it.',
     nodes: ['click', 'workflow', 'state'],
     flows: ['click>workflow', 'workflow>state'],
   },
   {
     title: 'Score',
-    text: 'The workflow sends a "score this click" command to fraud scoring and waits for the answer.',
+    text: 'The workflow asks fraud scoring for a score and waits.',
     nodes: ['workflow', 'fraud'],
     flows: ['workflow>fraud'],
   },
   {
     title: 'Bill and count',
-    text: 'A clean score sends a charge command to billing and a count command to analytics. The rule "bill only clean clicks" is one if statement in the workflow code.',
+    text: 'A clean score sends a charge to billing and a count to analytics: the billing rule is one if statement.',
     nodes: ['workflow', 'billing', 'analytics'],
     flows: ['workflow>billing', 'workflow>analytics'],
   },
   {
     title: 'Handle failure',
-    text: 'When billing fails, the workflow retries the charge. After the last try it marks the click unbilled so finance can review it. When a late step fails after an early step changed state, the workflow runs a compensating step that undoes the early one. Sagas covers compensation in depth.',
+    text: 'A failed charge is retried, then marked unbilled. A late failure compensates earlier steps.',
     nodes: ['workflow', 'billing', 'state'],
     flows: ['workflow>billing', 'workflow>state'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'async/event-driven-design/recall-1',
+    prompt: 'The click service saves a click row, then publishes the event, and the broker is down. What closes that gap?',
+    options: [
+      { text: 'Publish the event first, then save the click row', why: 'A failed save then leaves an event for a click that never existed.' },
+      { text: 'Write the click row and an outbox row in one local transaction, and let a relay publish', correct: true, why: 'Both rows commit or neither does, and the relay retries until the broker takes the event.' },
+      { text: 'Retry the publish inside the request until the broker answers', why: 'A crash during the retries still loses the event.' },
+      { text: 'Skip the click row and let analytics rebuild it from the topic', why: 'A failed publish still loses the click.' },
+    ],
+  },
+  {
+    id: 'async/event-driven-design/recall-2',
+    prompt: 'An effectively-once consumer skips clicks it already counted. What should that check key on?',
+    options: [
+      { text: 'A click id assigned once at the source', correct: true, why: 'Every copy the relay publishes carries the same id.' },
+      { text: 'The log offset of the event', why: 'A relay retry publishes the same click at a new offset.' },
+      { text: 'The click timestamp', why: 'Two real clicks can share a timestamp.' },
+      { text: 'A hash of the payload', why: 'Two identical clicks share a hash.' },
+    ],
   },
 ];
 
@@ -155,74 +190,73 @@ export const quiz = [
     id: 'async/event-driven-design/q1',
     prompt: 'A consumer retries a click that fails to parse every 0.3 s, with no limit. Clicks arrive at about 40 per second. What happens to that partition?',
     options: [
-      { text: 'It slows down a little, since the consumer still reads its other partitions', why: 'One consumer reads each partition in order. The clicks behind the head of this partition wait, however idle the other partitions are.' },
-      { text: 'Lag grows by about 40 clicks per second until someone steps in', correct: true, why: 'The head never advances, so every new click joins the backlog. In the widget, the retry lane has 335 clicks waiting by 10 s.' },
-      { text: 'A rebalance hands the click to a healthy consumer, which reads it', why: 'A malformed click fails on every consumer. A rebalance hands the same poison click to another consumer, and that consumer stalls the same way.' },
-      { text: 'The consumer gives up after a timeout and moves on', why: 'A plain retry loop never gives up. Skipping is a decision someone has to code, and without a dead-letter queue a skip silently loses the click.' },
+      { text: 'It slows a little, since the consumer still reads other partitions', why: 'Clicks behind this head wait, however idle the other partitions are.' },
+      { text: 'Lag grows by about 40 clicks per second until someone steps in', correct: true, why: 'The head never advances. In the widget, 335 clicks wait by 10 s.' },
+      { text: 'A rebalance hands the click to a healthy consumer, which reads it', why: 'A malformed click fails on every consumer, so the new owner stalls too.' },
+      { text: 'The consumer gives up after a timeout and moves on', why: 'A plain retry loop never gives up.' },
     ],
   },
   {
     id: 'async/event-driven-design/q2',
     prompt: 'Which failure should the consumer park in the dead-letter queue on its first try, with no retries?',
     options: [
-      { text: 'A click whose JSON fails to parse', correct: true, why: 'Parsing is permanent: every retry fails the same way, so retries only hold the partition while the backlog grows.' },
-      { text: 'A database timeout while writing the count', why: 'A timeout is usually transient, and the next try often works. In the widget, parking after one try parks 10 clicks that would have worked on the next try.' },
-      { text: 'A 503 response from a geo lookup service', why: 'A 503 means the service is busy or restarting. Retry a few times with backoff, then park only if the budget runs out.' },
-      { text: 'A rebalance that revokes the partition mid batch', why: 'A rebalance moves the partition to another consumer and leaves every event intact. The new owner reads again from the last committed offset, so nothing needs parking.' },
+      { text: 'A click whose JSON fails to parse', correct: true, why: 'Parsing fails the same way every time, so retries only hold the partition.' },
+      { text: 'A database timeout while writing the count', why: 'Timeouts are usually transient. In the widget, parking after one try parks 10 clicks the next try would have counted.' },
+      { text: 'A 503 response from a geo lookup service', why: 'A busy service usually recovers, so retry with backoff first.' },
+      { text: 'A rebalance that revokes the partition mid batch', why: 'The new owner resumes from the last committed offset.' },
     ],
   },
   {
     id: 'async/event-driven-design/q3',
     prompt: 'Billing must charge only for clicks that fraud scoring marks clean. The services use choreography. What changes?',
     options: [
-      { text: 'The click service calls fraud scoring, then billing, in order', why: 'That moves orchestration into the click service and couples the producer to every consumer it calls.' },
-      { text: 'Nothing changes: the broker delivers to fraud scoring before billing', why: 'Consumer groups read independently. The broker makes no promise about which group sees an event first.' },
-      { text: 'Billing reads click.scored from fraud scoring instead of click.recorded', correct: true, why: 'In choreography, order comes from who subscribes to what. The rule lives in the topic billing reads, which is also why it is easy to miss.' },
-      { text: 'Billing and fraud scoring join the same consumer group', why: 'A group splits partitions among its members, so each click would reach only one of the two services.' },
+      { text: 'The click service calls fraud scoring, then billing, in order', why: 'That couples the producer to every consumer.' },
+      { text: 'Nothing changes: the broker delivers to fraud scoring before billing', why: 'Consumer groups read independently, in no promised order.' },
+      { text: 'Billing reads click.scored from fraud scoring instead of click.recorded', correct: true, why: 'In choreography, order comes from subscriptions.' },
+      { text: 'Billing and fraud scoring join the same consumer group', why: 'A group splits partitions, so each click reaches only one of them.' },
     ],
   },
   {
     id: 'async/event-driven-design/q4',
     prompt: 'The click service must rename code to shortCode. Several teams read the click topic and deploy on their own schedules. Which path is safe?',
     options: [
-      { text: 'Rename the field in place and announce the deploy time', why: 'Every reader of code breaks at the deploy. In the widget, both readers park all 205 clicks after the rename.' },
-      { text: 'Rename the field in place, since tolerant readers ignore changes', why: 'A tolerant reader ignores fields it does not read. code is a field it reads, so to it the rename looks like a missing field.' },
-      { text: 'Remove code in one deploy, then add shortCode in the next', why: 'Every reader of code breaks between the two deploys, and the readers that need shortCode have nothing to read.' },
-      { text: 'Publish v2 with shortCode next to v1, move each reader over, then retire v1', correct: true, why: 'Old readers keep reading v1 while new ones read v2. The producer pays for two versions until the last reader moves.' },
+      { text: 'Rename the field in place and announce the deploy time', why: 'Every reader of code breaks. In the widget, both readers park all 205 clicks.' },
+      { text: 'Rename the field in place, since tolerant readers ignore changes', why: 'A tolerant reader still reads code, so the rename looks like a missing field.' },
+      { text: 'Remove code in one deploy, then add shortCode in the next', why: 'Every reader of code breaks between the two deploys.' },
+      { text: 'Publish v2 with shortCode next to v1, move each reader over, then retire v1', correct: true, why: 'Old readers keep v1 while new ones move to v2.' },
+    ],
+  },
+  {
+    id: 'async/event-driven-design/q5',
+    prompt: 'A shipping consumer applies order events in order per order id. An event for order 42 fails to parse and is parked. What should happen to later events for order 42?',
+    options: [
+      { text: 'Park them too until the fix, then replay them all in order', correct: true, why: 'Holding the key keeps its order, and other orders keep moving.' },
+      { text: 'Apply them now, and replay the parked event after the fix', why: 'The replayed event lands out of order.' },
+      { text: 'Retry them until the parked event comes back', why: 'That stalls every order in the partition.' },
+      { text: 'Move them to another partition so they skip the bad event', why: 'Order holds only within a partition.' },
     ],
   },
 ];
 
+<Recall questions={recall} />
+
 <Objectives>
 
-- Explain how one poison message stalls a partition, and park it in a dead-letter queue with an owner, an alert, and a replay path.
-- Choose between thin and fat events by what each consumer needs and what a replay should see.
+- Explain how one poison message stalls a partition, and park it with an owner, an alert, and a replay path.
+- Choose thin or fat events by what each consumer needs and what a replay should see.
 - Compare choreography and orchestration for a flow where one step depends on another.
-- Evolve an event schema with additive changes, tolerant readers, and versioned events, without breaking a running consumer.
+- Evolve an event schema with additive changes, tolerant readers, and versioned events.
 
 </Objectives>
 
 ## The failure: one bad click stalls the partition
 
-The analytics consumer from the [log lesson](../logs-and-pubsub/) reads the clicks topic in order and adds each click to
-the click counts. A release of the click service ships a bug, and for a few clicks it publishes an event that no
-parser can read. The consumer handles failures the obvious way: try again.
+The analytics consumer from [logs and pub/sub](../logs-and-pubsub/) reads the clicks topic in order. A buggy release
+publishes a few clicks that no parser can read. The consumer handles every failure the same way: wait 0.3 s and try
+again.
 
-```ts
-for (;;) {
-  const click = await partition.peek();
-  try {
-    await countClick(parse(click)); // parse throws on a malformed click
-    await partition.commit(click.offset);
-  } catch {
-    await sleep(300); // then try the same click again
-  }
-}
-```
-
-That loop works for a timeout, which succeeds on the next try. A malformed click fails every time. An event like that
-is a **poison message**: it fails on every try, on every consumer. A rebalance only hands it to another consumer in the
-group, and that consumer stalls in the same place.
+That works for a timeout. A malformed click is a **poison message**: it fails on every try, on every consumer, so a
+rebalance only moves the stall.
 
 <Predict
   client:visible
@@ -237,6 +271,16 @@ group, and that consumer stalls in the same place.
   answer={1}
 >
 
+<div slot="figure">
+
+| Time  | Head of the partition         | New clicks arriving |
+| ----- | ----------------------------- | ------------------- |
+| 2.0 s | Malformed click, try 1 fails  | About 40 per second |
+| 2.3 s | Same click, try 2 fails       | About 40 per second |
+| 2.6 s | Same click, try 3 fails       | About 40 per second |
+
+</div>
+
 **They wait forever. By 10 s, the retry lane in the widget below has counted 88 of 423 clicks, and 335 wait in the
 partition.** A partition hands events out in order, and the consumer commits an offset only after it handles the event
 at the head. The head never moves, so lag grows by about 40 clicks every second until a person steps in.
@@ -245,9 +289,9 @@ at the head. The head never moves, so lag grows by about 40 clicks every second 
 
 ## The idea: park what cannot succeed
 
-Give each event a small retry budget. When the budget runs out, or when the error is permanent, move the event to a
-separate **dead-letter queue**, commit its offset, and keep reading. The partition pays for a few retries, and the
-bad event waits somewhere a person can look at it.
+Give each event a small retry budget. When the budget runs out, or the error is permanent, move the event to a
+**dead-letter queue**, commit its offset, and keep reading. [Retries](../../reliability/retries/) covers backoff
+between tries.
 
 <StepDiagram
   client:visible
@@ -260,35 +304,34 @@ bad event waits somewhere a person can look at it.
 
 <Analogy>
 
-A sorting office meets a letter with an address nobody can read. The sorter does not hold up the whole machine to stare
-at it: the letter goes into a separate bin, and the rest of the mail keeps moving. Staff at the dead letter office
-open it later, look for a return address, and send it on or destroy it. The bin only works because someone empties it.
+A sorting office meets a letter with an unreadable address. The sorter drops it into a separate bin, and the rest of
+the mail keeps moving. Staff at the dead letter office open it later. The bin works only because someone empties it.
+
+Where it breaks: a letter is handled once, while a replayed click can arrive twice, so the consumer must be idempotent.
 
 </Analogy>
 
 ## Try it: retry forever against a dead-letter queue
 
-Both lanes read the same seeded partition of clicks. The lane on the left retries a failed click until it works. The
-lane on the right retries up to a budget and then parks the click. Each strip shows the clicks around the head of the
-partition, oldest on the left: solid for read and counted, dotted with a dashed border for parked, outlined for failed
-and retrying, striped for waiting, and a cross for a malformed click. Two percent of clicks hit a timeout once and work
-on the next try. This is a toy model with one partition, and the numbers are illustrative.
+Both lanes read the same seeded partition. The left lane retries a failed click until it works. The right lane retries
+up to a budget, then parks the click. Two percent of clicks time out once. The numbers are illustrative.
 
 <PoisonDuelWidget client:visible />
 
 What to look for:
 
-- **The retry lane never recovers.** From 2 s it retries the first malformed click every 0.3 s. At 10 s it is on try
-  27, has counted **88** of **423** clicks, and **335** clicks wait in the partition.
-- **The dead-letter lane parks after 0.6 s.** Three tries 0.3 s apart, then the malformed click moves to the
-  dead-letter queue and the partition moves again. The backlog still climbs to a peak of **52** at 3.3 s, because two
-  clicks right behind it hit a timeout and each costs a 0.3 s retry. Then the lane drains to 0 by about 4.2 s. It ends
-  the run with **416** clicks counted and **2** parked.
-- **Park after 1 try.** The lane never backs up, but it parks **12** clicks, and **10** of them only hit a timeout. One
-  more try would have counted them, and now someone has to replay them by hand.
-- **Park after 10 tries.** Each malformed click holds the partition for 2.7 s. The lane drains part of the backlog
-  between the two bad clicks and still ends with **157** waiting. A retry budget has to stay small next to the arrival
-  rate.
+- **The retry lane never recovers.** At 10 s it is on try 27, has counted **88** of **423** clicks, and **335** wait.
+- **The dead-letter lane parks after 0.6 s.** Two timeouts behind the click push the backlog to **52** at 3.3 s, then
+  it drains to 0 by about 4.2 s, with **416** counted and **2** parked.
+- **Park after 1 try.** The lane parks **12** clicks, and **10** only hit a timeout one more try would clear.
+- **Park after 10 tries.** Each malformed click holds the partition for 2.7 s, leaving **157** waiting.
+
+Parking is two writes: write the click to the dead-letter queue, wait for a durable acknowledgment, then commit the
+offset. Commit first, and a crash between the writes loses the click. The safe order can park it twice, which the
+click id makes harmless.
+
+<details>
+<summary>Go deeper: per-key order, owners, and each crash point</summary>
 
 Three things the widget leaves out matter in production:
 
@@ -300,9 +343,8 @@ Three things the widget leaves out matter in production:
 - **Retry topics keep the partition moving.** Many teams send a failed event to a retry topic with a delay, such as 10
   s, then 5 minutes, before the dead-letter queue. The main partition never waits, and order breaks the same way.
 
-Parking is two writes: the click goes to the dead-letter queue, and the offset commit goes to the log. A crash can land
-between them, the same gap the outbox in the [delivery semantics lesson](../delivery-semantics/) closes. Order the
-writes so a crash can only repeat work:
+A crash can land between the two writes of a park, the same gap the outbox in
+[delivery semantics](../delivery-semantics/) closes. Order the writes so a crash can only repeat work:
 
 - **Confirm the park, then commit.** Wait until the dead-letter queue acknowledges a durable write, then commit the
   source offset. Commit first, and a crash between the two writes loses the click from both places.
@@ -319,23 +361,30 @@ writes so a crash can only repeat work:
   a click twice. Pick one recovery horizon and keep all three at least that long, as
   [delivery semantics](../delivery-semantics/) explains.
 
-Replay sends events through the consumer a second time, and some of them may have half finished the first time. That
-is the same duplicate problem the [delivery semantics lesson](../delivery-semantics/) solved: make the consumer
-idempotent, keyed by click id, and replay is safe. Idempotency covers the technique in depth.
+Replay sends events through the consumer a second time, and some of them may have half finished the first time. Make
+the consumer idempotent, keyed by click id, and replay is safe. [Idempotency](../../reliability/idempotency/) covers the
+technique in depth.
+
+</details>
 
 ## Thin events and fat events
 
-The dead-letter queue keeps bad events from stopping the pipeline. The next decisions are about the events themselves,
-starting with how much each one carries.
+A **thin event** carries ids, such as the click id and the short code, and a consumer that needs details calls the
+producer back. A **fat event**, also called event-carried state transfer, carries the state consumers need, such as the
+referrer and the country.
 
-A **thin event** says that something happened and carries ids. A consumer that needs details calls the producer back.
+Fat events let each consumer work alone and replay the click as it was, at the cost of bigger messages and personal
+data copied into every topic. Most designs carry the fields consumers decide on, plus ids for anything large or private.
+
+<details>
+<summary>Go deeper: the same click, thin and fat</summary>
+
+With thin events, every consumer calls the click service for every click, and a replay an hour later sees today's
+data, such as a plan the owner bought after the click. Fat events also grow fields some consumer comes to depend on.
 
 ```json
 { "type": "click.recorded", "clickId": "c_81f2", "code": "abc123" }
 ```
-
-A **fat event** carries the state a consumer needs, so the consumer never calls back. Teams also call this event
-carried state transfer.
 
 ```json
 {
@@ -349,21 +398,15 @@ carried state transfer.
 }
 ```
 
-With thin events, analytics, fraud scoring, and billing each call the click service for every click. The click
-service now serves three times the reads, and when it goes down, every consumer stalls with it. A replay an hour later
-fetches the link as it is now, so it can count a click under a plan the owner bought after the click happened.
+With the thin version, analytics, fraud scoring, and billing each call the click service for every click. The click
+service serves three times the reads, and when it goes down, every consumer stalls with it.
 
-With fat events, each consumer works alone, and a replay sees the click exactly as it was. The costs move elsewhere:
-bigger messages, more fields that some consumer starts to depend on, and personal data such as IP addresses copied
-into every topic and every consumer. Most designs land in between: carry the fields consumers decide on, plus ids
-for anything large or private.
+</details>
 
 ## Choreography and orchestration
 
-Three services react to a click: analytics counts it, fraud scoring checks it, and billing charges the link owner for
-it. Billing must charge only for clicks that fraud scoring marks clean. There are two ways to coordinate them.
-
-In **choreography**, each service reacts to events and publishes its own. No service knows the whole flow.
+Fraud scoring checks each click, and billing charges only for clean ones. In **choreography**, each
+service reacts to events and publishes its own, and no service knows the whole flow.
 
 <StepDiagram
   client:visible
@@ -374,7 +417,7 @@ In **choreography**, each service reacts to events and publishes its own. No ser
   height={320}
 />
 
-In **orchestration**, one workflow owns the flow and sends a command to each service in turn.
+In **orchestration**, one workflow owns the flow and sends each service a command in turn.
 
 <StepDiagram
   client:visible
@@ -385,24 +428,22 @@ In **orchestration**, one workflow owns the flow and sends a command to each ser
   height={320}
 />
 
-Choreography keeps services loose: a new consumer needs no change upstream, and no central service can go down for
-everyone. The price is a flow you reconstruct from subscriptions, and chains of events that turn into cycles as the
-system grows. Orchestration puts order, retries, and compensation in one readable place, at the price of a central
-service that every new step has to change. A common split: choreography between teams for facts like click.recorded,
-and an orchestrator inside one team for a flow with strict steps, such as billing.
+Choreography keeps services loose: a new consumer needs no upstream change. The flow lives only in subscriptions.
+Orchestration puts order, retries, and compensation in one place, as [Sagas](../../distributed-data/sagas/) shows, and
+every new step changes that service. A common split: choreography
+between teams, and an orchestrator for a strict flow such as billing.
 
 ## Evolve the schema without breaking readers
 
-Producers and consumers deploy on their own schedules, and the topic holds events written by old code for days. Every
-field in an event is a promise to whoever reads it. Here is version 1 of the click event:
+Producers and consumers deploy on their own schedules, and the topic holds events from old code for days. Version 1 of
+the click event:
 
 ```json
 { "code": "abc123", "clickedAt": "2025-03-01T10:15:00Z", "referrer": "news.example.com" }
 ```
 
-Two consumers read it. The **strict reader** checks every event against the whole v1 contract and rejects any field it
-does not know. The **tolerant reader** checks only the two fields it uses, code and clickedAt, and ignores the rest.
-Both park an event they reject in a dead-letter queue, since no retry fixes a schema error.
+The **strict reader** rejects any field outside the v1 contract. The **tolerant reader** checks only code and
+clickedAt and ignores the rest. Both park rejected events, since no retry fixes a schema error.
 
 <Predict
   client:visible
@@ -427,25 +468,30 @@ turns that safe change into an outage, and the dead-letter alert from earlier is
 
 What to look for:
 
-- **Add an optional field.** The strict reader counts **106** clicks, all from before 3 s, then parks the next
-  **205** with "unknown field country". The tolerant reader counts all **311**.
-- **Rename a field in place.** Both readers park **205** clicks with "missing field code". Tolerance cannot save a
-  reader whose field disappeared. A rename is a removal plus an addition.
-- **Publish the rename as v2.** v1 stays exactly as it was, and the click service also publishes v2, with shortCode, to
-  a new topic. Both readers count all **311**, and the v2 topic holds **205** events for consumers that upgrade. The
-  producer pays for it: **516** events published, and two versions to run until the last v1 reader moves.
+- **Add an optional field.** The strict reader counts **106** clicks, all before 3 s, then parks **205** with "unknown
+  field country". The tolerant reader counts all **311**.
+- **Rename a field in place.** Both readers park **205** clicks with "missing field code": a rename is a removal plus
+  an addition.
+- **Publish the rename as v2.** Both readers count all **311**, the v2 topic holds **205** events, and the producer
+  publishes **516** in total.
 
-The rules that follow from it:
+The rules: add optional fields, read only the fields you use, and publish a breaking change as a new version.
+
+<details>
+<summary>Go deeper: the schema rules in practice</summary>
 
 - **Add, never rename or remove.** New fields are optional or have a default. A field a consumer reads keeps its name
   and its type: in the same toy model, sending clickedAt as a number breaks both readers.
 - **Read tolerantly.** Read only the fields you use and ignore the rest. Removing referrer breaks only the strict
   reader, because the tolerant one never read it.
-- **Version breaking changes.** Publish v2 to a new topic, or with a version field, next to v1. Move each reader, then
-  retire v1. The outbox relay from the [delivery semantics lesson](../delivery-semantics/) can publish both versions
-  from one outbox row.
+- **Version breaking changes.** Keep v1 and publish v2, with shortCode, to a new topic or with a version field. Move
+  each reader, then retire v1. The outbox relay from [delivery semantics](../delivery-semantics/) can publish both
+  versions from one outbox row.
 - **Check before you ship.** A schema registry with compatibility checks in the build rejects a breaking change before
-  it reaches the topic. APIs and contracts covers the same versioning rules for request and response APIs.
+  it reaches the topic. [APIs and contracts](../../foundations/apis/) covers the same versioning rules for request and
+  response APIs.
+
+</details>
 
 ## Trade-offs
 
@@ -453,41 +499,54 @@ The rules that follow from it:
 
 | Choice | What it buys | What it costs |
 | --- | --- | --- |
-| Retry forever | No event skipped, order kept | One poison message stalls the partition, and lag grows without limit |
-| Dead-letter queue after a few tries | The partition keeps moving, and bad events wait for a fix | Per-key order breaks, a park must be durable before the offset commit, and it needs an owner, an alert, a replay tool, and an idempotent consumer |
-| Thin events | Small messages, fresh data, private data stays home | Every consumer calls the producer back, and replay sees today's data |
-| Fat events | Consumers work alone, and replay sees the event as it was | Bigger messages, more fields to keep forever, personal data in every topic |
-| Choreography | Loose coupling, and new consumers need no upstream change | The flow lives nowhere, and event chains get hard to trace |
-| Orchestration | Order, retries, and compensation in one place | A central service that every new step has to change |
-| Additive changes with tolerant readers | Producers ship without waiting for every consumer | No renames, removals, or type changes in place |
-| Versioned events | Breaking changes without broken readers | Two versions to publish and run until the migration ends |
+| Retry forever | No event skipped, order kept | One poison message stalls the partition |
+| Dead-letter queue after a few tries | The partition keeps moving | Per-key order breaks, the park must be durable before the offset commit, and the queue needs an owner and an idempotent replay |
+| Choreography | New consumers need no upstream change | The flow lives nowhere |
+| Orchestration | Order, retries, and compensation in one place | Every new step changes one central service |
+| Versioned events | Breaking changes without broken readers | Two versions to run until the migration ends |
 
 </TradeoffTable>
+
+Skip the dead-letter queue when events must apply in strict order and a stall is safer than a gap, as with ledger
+entries: stop and alert instead. Skip versioned topics while one team deploys the producer and every consumer together.
+
+## Common mistakes
+
+- **Retrying permanent errors.** A parse failure fails every try. Park it at once.
+- **A dead-letter queue nobody owns.** Parked events sit unread, which is silent data loss.
+- **Committing the offset before the park is durable.** A crash between the writes loses the click.
+- **A strict reader that rejects unknown fields.** A safe additive change becomes an outage.
+- **Renaming a field in place.** Every reader of the old name breaks. Publish a new version.
+
+<KeyTakeaways>
+
+- Retry each event a few times, then park it, so one poison message cannot stall a partition.
+- Make the park durable before the offset commit, give the queue an owner and an alert, and replay only into an
+  idempotent consumer.
+- Fat events let consumers work alone. Choreography keeps services loose, and orchestration keeps a strict flow in one
+  place.
+- Add optional fields, read only what you use, and version breaking changes.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-The click pipeline gains a geo enrichment consumer that calls a third-party IP lookup service. That service goes down
-for about 10 minutes once a week. Marketing also wants a utm_campaign field on every click, and three consumers already
-read the click topic, one of them a strict reader. Design how the enrichment consumer handles failures and how the
-click service ships the new field.
+A new geo enrichment consumer calls a third-party IP lookup service that goes down for about 10 minutes once a week.
+Marketing also wants a utm_campaign field on every click, and one of the three click consumers is a strict reader.
+Design the enrichment consumer's failure handling and the rollout of the new field.
 
 <div slot="answer">
 
-- **Sort the errors.** Lookup timeouts and 5xx responses are transient: retry twice with backoff, then send the click
-  to a retry topic with longer delays, such as 1 minute and then 10 minutes, so the main partition never waits out an
-  outage. A click that fails to parse goes straight to the dead-letter queue.
-- **Or degrade.** If counts matter more than geo data, write the click without a country during the outage and
-  backfill it later from a separate topic. Analytics keeps its pace either way.
-- **Own the dead-letter queue.** Store the error, try count, partition, and offset with each parked click. Alert on
-  the first one and on growth, name an owning team, and keep a replay tool. Commit the source offset only after the
-  park is durable, and key the enrichment writes by click id so a duplicate park or a replay changes nothing twice.
-  Keep the click topic, the dead-letter queue, and the seen click ids for the same recovery horizon.
-- **Ship utm_campaign additively.** Make it optional with an empty default. Fix the strict reader first, or have it
-  ignore unknown fields, and add a registry compatibility check to the build so the next breaking change fails there.
-- **Keep the event lean.** The enrichment consumer needs the IP, which is personal data. Keep the IP in a topic only
-  that consumer reads, and put only the derived country in the shared click event.
+- **Sort the errors.** Retry lookup timeouts and 5xx responses twice with backoff, then use a retry topic at 1 minute
+  and 10 minutes, so the partition never waits out the outage. Parse failures go straight to the dead-letter queue.
+- **Own the dead-letter queue.** Store the error and source offset, alert on the first park, and name an owner. Commit
+  the source offset only after the park is durable, and key writes by click id so a duplicate park or replay is
+  harmless.
+- **Ship utm_campaign additively.** Make it optional, fix the strict reader first, and add a registry compatibility
+  check.
+- **Keep the IP out of the shared event.** Only the derived country goes in the click event.
 
 </div>
 
