@@ -49,6 +49,19 @@ describe('parsePractice', () => {
     });
     expect(parsePractice(raw).rounds).toEqual([round(), round({ rubricTotal: null })]);
   });
+
+  it('keeps valid per-step scores and drops malformed ones without losing the round', () => {
+    const scores = [2, 1, null, 0, 2, 1, null] as SavedRound['scores'];
+    const raw = JSON.stringify({
+      version: PRACTICE_VERSION,
+      rounds: [
+        round({ scores }),
+        { ...round(), scores: [2, 1] },
+        { ...round(), scores: [3, 1, 1, 1, 1, 1, 1] },
+      ],
+    });
+    expect(parsePractice(raw).rounds).toEqual([round({ scores }), round(), round()]);
+  });
 });
 
 describe('practice store', () => {

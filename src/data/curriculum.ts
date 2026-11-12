@@ -655,6 +655,17 @@ const modules: ModuleInput[] = [
         difficulty: 2,
         buildsOn: ['thinking/design-checklist'],
       },
+      {
+        id: 'practice/capstone',
+        title: 'Take sho.rt global',
+        summary:
+          'Design sho.rt for three regions and a 99.99% SLO, score each step, then compare with a reference answer.',
+        minutes: 65,
+        difficulty: 3,
+        drillMinutes: 45,
+        buildsOn: ['thinking/design-checklist', 'distributed-data/multi-region'],
+        bestAfter: 'distributed-data',
+      },
     ],
   },
 ];

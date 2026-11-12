@@ -98,8 +98,9 @@ of the clock, weighted toward the high-level design and the deep dive.
 
 <Steps>
 
-1. **Pick a prompt and a pace.** The prompts come from systems this course covers. The 20 minute drill builds the
-   habit of moving on; the 45 minute interview pace matches a common interview slot.
+1. **Pick a prompt and a pace.** Four prompts revisit systems this course builds, and ten are new to you. Each chip
+   names the module to finish first. The 20 minute drill builds the habit of moving on; the 45 minute interview pace
+   matches a common interview slot.
 
 2. **Get paper, then press Start round.** The step clock runs while you work. The checklist rail shows the time used
    on every step, and each step lists the questions to ask yourself.
@@ -114,8 +115,8 @@ of the clock, weighted toward the high-level design and the deep dive.
 5. **Score yourself, then read the outline.** Rate each step Missing, Partial, or Solid against its one line rubric.
    Then open the reference outline and compare.
 
-6. **Save the round if you like.** Saved rounds stay in this browser, so you can see whether your time and scores
-   improve.
+6. **Save the round if you like.** Saved rounds stay in this browser with your score for every step, so you can see
+   whether your time and scores improve. Each saved round names its weakest steps, the ones to drill next.
 
 </Steps>
 
@@ -193,11 +194,13 @@ them.** Assume 1 million active drivers, each sending its location every 4 secon
 1. **Requirements:** drivers send locations; riders see drivers within about 2 km, updated every few seconds. A nearby
    lookup returns in under 200 ms. Trip history, pricing, and matching are out of scope.
 2. **Estimates:** 1 million drivers every 4 seconds is 250,000 writes per second. The latest location per driver is
-   about 50 bytes, so all of them fit in about 50 MB of memory. Keeping every point would add about 1 TB a day.
+   about 50 bytes, so the raw payload is about 50 MB. Index entries and in-memory overhead bring that to a few hundred
+   MB, still small enough for memory. Keeping every point would add about 1 TB a day.
 3. **API:** `PUT /drivers/{id}/location` with latitude and longitude. `GET /drivers/nearby?lat=&lng=` returns a list of
    drivers with positions. Errors: unknown driver, and location out of range.
 4. **Data model:** the latest location keyed by driver ID, plus a grid index that maps each map cell to the drivers in
-   it. The hot query is "drivers in these few cells".
+   it. The hot query is "drivers in these few cells". The cells cover a rough square, so the server then computes each
+   candidate's exact distance and drops any driver beyond 2 km.
 5. **High-level design:** drivers send updates through a load balancer to location servers, which update an in-memory
    grid index split by city. Riders query the same servers by cell. A stream copies updates to cheap storage for
    later analysis.
