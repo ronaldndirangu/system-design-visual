@@ -3,6 +3,7 @@ title: How this course works
 description: What you will learn, how each lesson is built, and how to get the most out of the simulations.
 ---
 
+import ContinueLesson from '../../components/lesson/ContinueLesson.astro';
 import ProgressReset from '../../components/lesson/ProgressReset';
 import StudyPlans from '../../components/lesson/StudyPlans.astro';
 
@@ -59,8 +60,11 @@ instead. Each one keeps the core path and fits every sitting inside the time it 
 
 ## Your progress
 
-Mark a lesson complete at the bottom of its page. Progress lives in this browser's local storage, so it stays on this
-device and nobody else can see it.
+Mark a lesson complete at the bottom of its page. Quiz scores and the last lesson you opened save too, so the course
+map and this page can send you back where you stopped. Progress lives in this browser's local storage, so it stays on
+this device and nobody else can see it. Export it to a file to keep a copy or move it to another browser.
+
+<ContinueLesson />
 
 <ProgressReset client:visible />
 

@@ -1,6 +1,7 @@
 ---
 import { anchorFor, curriculum, difficultyLabels, findModule } from '../../data/curriculum';
 import { lessonHref } from '../../lib/paths';
+import ContinueLesson from '../lesson/ContinueLesson.astro';
 
 interface Props {
   /** Use h3 headings when the map sits under a page section heading. */
@@ -13,6 +14,7 @@ const Heading = headingLevel === 2 ? 'h2' : 'h3';
 ---
 
 <div class:list={['sdv-map', 'not-content', { 'sdv-map--compact': compact }]}>
+  {!compact && <ContinueLesson />}
   {
     curriculum.map((module) => (
         <section class="sdv-map__module" id={compact ? undefined : anchorFor(module.id)} aria-labelledby={`map-${module.id}`}>
@@ -73,12 +75,12 @@ const Heading = headingLevel === 2 ? 'h2' : 'h3';
 </div>
 
 <script>
-  import { readProgress, subscribeProgress } from '../../lib/progress';
+  import { isComplete, readProgress, subscribeProgress } from '../../lib/progress';
 
   function paint() {
-    const { completed } = readProgress();
+    const progress = readProgress();
     for (const item of document.querySelectorAll<HTMLElement>('.sdv-map__lesson[data-lesson-id]')) {
-      const done = Boolean(item.dataset.lessonId && completed[item.dataset.lessonId]);
+      const done = Boolean(item.dataset.lessonId && isComplete(progress, item.dataset.lessonId));
       item.toggleAttribute('data-complete', done);
       const badge = item.querySelector<HTMLElement>('.sdv-map__done');
       if (badge) badge.hidden = !done;

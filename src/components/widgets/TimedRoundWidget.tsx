@@ -26,7 +26,13 @@ import {
   tickRound,
   totalBudgetMs,
 } from '../../lib/models/timedRound';
-import { clearPractice, readPractice, saveRound, subscribePractice } from '../../lib/practiceProgress';
+import {
+  clearPractice,
+  isPracticePersistent,
+  readPractice,
+  saveRound,
+  subscribePractice,
+} from '../../lib/practiceProgress';
 import { Segmented, Toggle } from '../sim/controls';
 import { MotionRoot } from '../sim/MotionRoot';
 import { ScenarioChips } from '../sim/ScenarioChips';
@@ -82,6 +88,10 @@ export default function TimedRoundWidget() {
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [confirmingClear, setConfirmingClear] = useState(false);
   const practice = useSyncExternalStore(subscribePractice, readPractice, () => null);
+  const persistent = useSyncExternalStore(subscribePractice, isPracticePersistent, () => true);
+  const savedWhere = persistent
+    ? 'Saved on this device only.'
+    : 'Saved for this tab only, because your browser blocked storage.';
 
   const rootRef = useRef<HTMLDivElement>(null);
   const setupRef = useRef<HTMLFieldSetElement>(null);
@@ -689,8 +699,10 @@ export default function TimedRoundWidget() {
               {practice === null
                 ? 'Loading saved rounds.'
                 : practice.rounds.length === 0
-                  ? 'No saved rounds yet. Rounds you save stay on this device only.'
-                  : `${practice.rounds.length} saved ${practice.rounds.length === 1 ? 'round' : 'rounds'}. Saved on this device only.`}
+                  ? persistent
+                    ? 'No saved rounds yet. Rounds you save stay on this device only.'
+                    : 'No saved rounds yet. Your browser blocked storage, so rounds you save last for this tab only.'
+                  : `${practice.rounds.length} saved ${practice.rounds.length === 1 ? 'round' : 'rounds'}. ${savedWhere}`}
             </p>
             {confirmingClear ? (
               // biome-ignore lint/a11y/useSemanticElements: a labelled group of buttons, not a form section

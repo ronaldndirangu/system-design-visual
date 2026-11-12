@@ -30,7 +30,7 @@ export default function Predict({ id, question, options, answer, ordered, why, f
     <section className="sdv-predict not-content" aria-label="Make a prediction">
       <p className="sdv-predict__eyebrow">Predict first</p>
       {figure && <div className="sdv-predict__figure">{figure}</div>}
-      <fieldset disabled={!card.hydrated} aria-describedby={describedBy}>
+      <fieldset aria-describedby={describedBy}>
         <legend className="sdv-predict__question">{question}</legend>
         <ChoiceList card={card} labels={options} answer={answer} pickedLabel="Your guess" />
       </fieldset>
@@ -47,7 +47,6 @@ export default function Predict({ id, question, options, answer, ordered, why, f
         <button
           type="button"
           className="sdv-button sdv-button--primary"
-          disabled={!card.hydrated}
           aria-describedby={describedBy}
           onClick={() => card.submit()}
         >

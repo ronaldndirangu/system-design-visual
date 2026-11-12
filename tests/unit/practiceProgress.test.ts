@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearPractice,
   emptyPractice,
+  isPracticePersistent,
   MAX_SAVED_ROUNDS,
   PRACTICE_STORAGE_KEY,
   PRACTICE_VERSION,
@@ -52,14 +53,19 @@ describe('parsePractice', () => {
 
 describe('practice store', () => {
   let store: Map<string, string>;
+  let failWrites: boolean;
 
   beforeEach(() => {
     store = new Map();
+    failWrites = false;
     const target = new EventTarget();
     vi.stubGlobal('window', {
       localStorage: {
         getItem: (key: string) => store.get(key) ?? null,
-        setItem: (key: string, value: string) => store.set(key, value),
+        setItem: (key: string, value: string) => {
+          if (failWrites) throw new Error('QuotaExceededError');
+          store.set(key, value);
+        },
         removeItem: (key: string) => store.delete(key),
       },
       addEventListener: target.addEventListener.bind(target),
@@ -110,5 +116,19 @@ describe('practice store', () => {
     unsubscribe();
     clearPractice();
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports tab-only saves when storage refuses writes', () => {
+    saveRound(round());
+    expect(isPracticePersistent()).toBe(true);
+
+    failWrites = true;
+    saveRound(round({ finishedAt: '2025-03-02T10:00:00.000Z' }));
+    expect(isPracticePersistent()).toBe(false);
+    expect(readPractice().rounds).toHaveLength(2);
+
+    failWrites = false;
+    clearPractice();
+    expect(isPracticePersistent()).toBe(true);
   });
 });

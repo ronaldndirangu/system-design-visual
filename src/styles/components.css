@@ -732,6 +732,20 @@ fieldset:disabled .sdv-choice,
   font-size: var(--sl-text-sm);
   margin: 0.5rem 0 0;
 }
+.sdv-quiz__done {
+  align-items: center;
+  border-top: 1px solid var(--sdv-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  justify-content: space-between;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+}
+.sdv-quiz__done p {
+  font-weight: 600;
+  margin: 0;
+}
 
 .sdv-complete {
   text-align: center;
@@ -754,8 +768,12 @@ fieldset:disabled .sdv-choice,
   gap: 0.75rem;
   justify-content: center;
 }
-.sdv-complete__actions a.sdv-button {
+.sdv-complete__actions a.sdv-button,
+.sdv-continue a.sdv-button {
   text-decoration: none;
+}
+.sdv-continue a.sdv-button {
+  max-width: 100%;
 }
 
 .sdv-reset {
@@ -767,10 +785,32 @@ fieldset:disabled .sdv-choice,
 .sdv-reset p {
   margin: 0;
 }
-.sdv-reset__confirm {
+.sdv-reset__confirm,
+.sdv-reset__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+.sdv-reset__dialog {
+  background: var(--sdv-surface-raised);
+  border: 1px solid var(--sdv-border);
+  border-radius: var(--sdv-radius-lg);
+  box-shadow: var(--sdv-shadow-overlay);
+  color: var(--sdv-text-1);
+  max-width: min(28rem, calc(100vw - 2 * var(--sdv-space-4)));
+  padding: var(--sdv-space-6);
+}
+.sdv-reset__dialog::backdrop {
+  background: rgb(0 0 0 / 0.5);
+}
+.sdv-reset__dialog .sdv-reset__dialog-title {
+  color: var(--sdv-text-1);
+  font-size: var(--sl-text-xl);
+  margin: 0;
+}
+.sdv-reset__dialog p {
+  color: var(--sdv-text-2);
+  margin: var(--sdv-space-3) 0 var(--sdv-space-5);
 }
 button[data-tone="bad"] {
   border-color: var(--sdv-bad);

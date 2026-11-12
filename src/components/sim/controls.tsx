@@ -52,9 +52,8 @@ interface SegmentedProps<T extends string> {
 
 export function Segmented<T extends string>({ label, value, options, onChange }: SegmentedProps<T>) {
   const name = useId();
-  const hydrated = useHydrated();
   return (
-    <fieldset className="sdv-control sdv-segmented" disabled={!hydrated}>
+    <fieldset className="sdv-control sdv-segmented">
       <legend>{label}</legend>
       <div className="sdv-segmented__options">
         {options.map((option) => (
@@ -81,7 +80,6 @@ interface ToggleProps {
 }
 
 export function Toggle({ label, checked, onChange }: ToggleProps) {
-  const hydrated = useHydrated();
   return (
     <label className="sdv-control sdv-toggle">
       <input
@@ -89,7 +87,6 @@ export function Toggle({ label, checked, onChange }: ToggleProps) {
         role="switch"
         aria-checked={checked}
         checked={checked}
-        disabled={!hydrated}
         onChange={(event) => onChange(event.currentTarget.checked)}
       />
       <span className="sdv-toggle__track" aria-hidden="true" />

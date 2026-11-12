@@ -1,6 +1,6 @@
-import { setComplete } from '../../lib/progress';
+import { isComplete, lessonProgress, setComplete } from '../../lib/progress';
 import { UiIcon } from '../viz/icons';
-import { useProgress } from './useProgress';
+import { useProgress, useProgressPersistent } from './useProgress';
 
 interface Props {
   lessonId: string;
@@ -11,7 +11,9 @@ interface Props {
 
 export default function LessonComplete({ lessonId, title, nextHref, nextTitle }: Props) {
   const progress = useProgress();
-  const done = Boolean(progress?.completed[lessonId]);
+  const persistent = useProgressPersistent();
+  const done = progress ? isComplete(progress, lessonId) : false;
+  const quizBest = progress ? lessonProgress(progress, lessonId).quizBest : undefined;
 
   return (
     <section
@@ -25,8 +27,11 @@ export default function LessonComplete({ lessonId, title, nextHref, nextTitle }:
       <p className="sdv-complete__text">
         {done
           ? 'Nice work. This lesson shows a check mark on the course map.'
-          : 'Mark it complete to track your progress on the course map.'}{' '}
-        Progress saves on this device only.
+          : 'Mark it complete to track your progress on the course map.'}
+        {quizBest && ` Quiz best: ${quizBest.score} of ${quizBest.total}.`}{' '}
+        {persistent
+          ? 'Progress saves on this device only.'
+          : 'Saved for this tab only, because your browser blocked storage.'}
       </p>
       <div className="sdv-complete__actions">
         <button

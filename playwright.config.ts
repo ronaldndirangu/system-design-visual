@@ -8,7 +8,8 @@ export default defineConfig({
   testDir: 'tests/e2e',
   fullyParallel: true,
   forbidOnly: ci,
-  retries: ci ? 1 : 0,
+  // A retry would hide hydration races, so every test passes on its first run.
+  retries: 0,
   workers: ci ? 4 : undefined,
   reporter: ci ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: {

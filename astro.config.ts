@@ -30,9 +30,13 @@ export default defineConfig({
       head: [
         { tag: 'script', content: earlyClickReplay },
         // Sliders and selects would drift from the widget state if dragged before their island hydrates.
+        // Simulations say they are loading until then; clicks in that gap replay after hydration.
         {
           tag: 'style',
-          content: 'astro-island[ssr] :is(input[type="range"], select) { pointer-events: none; }',
+          content: [
+            'astro-island[ssr] :is(input[type="range"], select) { pointer-events: none; }',
+            'astro-island[ssr] .sdv-sim__header::after { content: "Loading interactive..."; color: var(--sl-color-gray-2); font-size: var(--sdv-text-xs); }',
+          ].join('\n'),
         },
       ],
       sidebar: buildSidebar(),
