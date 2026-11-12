@@ -1,0 +1,504 @@
+---
+title: Shortener at scale
+description: Take the sho.rt URL shortener through a viral link, a dead app server, and a new region of readers, and size every fix with the numbers from Module 2.
+furtherReading:
+  - title: 'Google SRE book: Load balancing at the frontend'
+    url: https://sre.google/sre-book/load-balancing-frontend/
+    note: How Google spreads user traffic across regions and then across machines.
+  - title: 'RFC 9111: HTTP caching'
+    url: https://www.rfc-editor.org/rfc/rfc9111
+    note: The Cache-Control rules every CDN edge follows when it stores a redirect.
+  - title: 'Scaling Memcache at Facebook (NSDI 2013)'
+    url: https://www.usenix.org/conference/nsdi13/technical-sessions/presentation/nishtala
+    note: Leases, regional pools, and stampede fixes at a scale far past sho.rt.
+---
+
+import Recall from '../../../components/lesson/Recall.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+
+export const nodes = [
+  { id: 'reader', kind: 'client', x: 70, y: 60, label: 'Reader', sublabel: 'clicks' },
+  { id: 'cdn', kind: 'cdn', x: 230, y: 60, label: 'CDN edge', sublabel: 'cached 302s' },
+  { id: 'lb', kind: 'loadBalancer', x: 390, y: 60, label: 'Load balancer' },
+  { id: 'app', kind: 'server', x: 550, y: 60, label: 'App servers', sublabel: '16' },
+  { id: 'creator', kind: 'client', x: 70, y: 200, label: 'Creator', sublabel: 'makes links' },
+  { id: 'cache', kind: 'cache', x: 390, y: 200, label: 'Cache', sublabel: 'hot codes' },
+  { id: 'primary', kind: 'database', x: 550, y: 200, label: 'Primary', sublabel: 'writes' },
+  { id: 'replica', kind: 'database', x: 550, y: 340, label: 'Replicas', sublabel: 'reads' },
+];
+
+export const edges = [
+  { from: 'reader', to: 'cdn' },
+  { from: 'cdn', to: 'lb' },
+  { from: 'creator', to: 'lb' },
+  { from: 'lb', to: 'app' },
+  { from: 'app', to: 'cache' },
+  { from: 'app', to: 'replica' },
+  { from: 'app', to: 'primary' },
+  { from: 'primary', to: 'replica' },
+];
+
+export const steps = [
+  {
+    title: 'A click at the edge',
+    text: 'A reader clicks sho.rt/abc1234. The nearest CDN edge holds a cached 302 for that code and answers in a few milliseconds. The origin never hears about this click.',
+    nodes: ['reader', 'cdn'],
+    flows: ['reader>cdn'],
+  },
+  {
+    title: 'An edge miss',
+    text: 'Another edge has no copy. It asks the origin, where the load balancer picks one of 16 healthy app servers.',
+    nodes: ['cdn', 'lb', 'app'],
+    flows: ['cdn>lb', 'lb>app'],
+  },
+  {
+    title: 'Cache first',
+    text: 'The app server looks the code up in the cache. Nine lookups in ten end here.',
+    nodes: ['app', 'cache'],
+    flows: ['app>cache'],
+  },
+  {
+    title: 'Replica on a cache miss',
+    text: 'On a miss, the app server reads the link from a replica, stores it in the cache, and returns the 302.',
+    nodes: ['app', 'replica', 'cache'],
+    flows: ['app>replica', 'app>cache'],
+  },
+  {
+    title: 'A new link',
+    text: 'A creator makes a link. The write goes to the primary, which streams it to every replica a few milliseconds later.',
+    nodes: ['creator', 'lb', 'app', 'primary', 'replica'],
+    flows: ['creator>lb', 'lb>app', 'app>primary', 'primary>replica'],
+  },
+];
+
+export const quiz = [
+  {
+    id: 'case-studies/shortener-at-scale/q1',
+    prompt:
+      'sho.rt will store about 15.8 billion links over five years. Why pick 7 base62 characters for the code over 6?',
+    options: [
+      {
+        text: 'Six characters cannot hold 15.8 billion codes.',
+        why: '62⁶ is about 56.8 billion, so six characters hold them. The trouble is how full the space gets.',
+      },
+      {
+        text: 'Six characters leave the space 28% full, so random codes collide more and more often.',
+        correct: true,
+        why: 'Seven characters give about 3.5 trillion codes. Five years fills under 0.5% of them, so a random code almost never collides.',
+      },
+      {
+        text: 'Longer codes make redirects faster.',
+        why: 'Lookup time depends on the index. One extra character barely changes it.',
+      },
+      {
+        text: 'Seven characters hide how many links exist.',
+        why: 'Random codes hide the count at any length, and counter codes leak it at any length.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/shortener-at-scale/q2',
+    prompt:
+      'A small sho.rt deployment runs 3 app servers at 70% busy. One dies. What happens to the other two?',
+    options: [
+      {
+        text: 'They hold steady at 70%, because the balancer drops the dead server’s share.',
+        why: 'Clients still send that share. The balancer moves it onto the survivors.',
+      },
+      {
+        text: 'They rise to about 75%, close to their old load.',
+        why: 'That holds for 16 servers: 70% × 16 ÷ 15 ≈ 75%. With 3 servers, each survivor takes half the lost share.',
+      },
+      {
+        text: 'They wait for health checks, and then everything recovers.',
+        why: 'Health checks stop the failed requests. The survivors still carry more load after that.',
+      },
+      {
+        text: 'Each runs at 105%, so the pool tips over.',
+        correct: true,
+        why: '70% × 3 ÷ 2 = 105%. A pool passes the N+1 check only when u × N ÷ (N − 1) stays under 100%, with room to spare.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/shortener-at-scale/q3',
+    prompt:
+      'After sho.rt puts redirects behind a CDN, the click dashboard drops by about two thirds while traffic grows. What happened?',
+    options: [
+      {
+        text: 'The CDN drops clicks under load.',
+        why: 'The CDN answered every click. The origin never heard about the ones answered at the edge.',
+      },
+      {
+        text: 'Edges answer cached 302s, so the origin counter sees only edge misses.',
+        correct: true,
+        why: 'Count from edge logs, or send the 302 with no-store so every click reaches the origin and pays the trip.',
+      },
+      {
+        text: 'Readers click less when a page loads faster.',
+        why: 'Traffic grew. The count fell because the counter moved out of the click path.',
+      },
+      {
+        text: 'The counter shards lost writes during the move.',
+        why: 'Lost writes would show as a one-time gap. A steady two-thirds drop matches the edge hit ratio.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/shortener-at-scale/q4',
+    prompt:
+      'A creator in the new region makes a link and opens it at once. The regional origin answers 404, though the primary has the row. What fixes it?',
+    options: [
+      {
+        text: 'A longer cache TTL for new links.',
+        why: 'The cache never had the link. A longer TTL would keep a wrong answer around longer.',
+      },
+      {
+        text: 'A new code, since the first one collided.',
+        why: 'A collision returns someone else’s link. A 404 means the reader found no row.',
+      },
+      {
+        text: 'A freshness token from the write, so the regional replica waits or forwards to the primary when it trails.',
+        correct: true,
+        why: 'The regional replica had not applied the write yet. The token gives the creator read your writes. Keep 404 TTLs short so an edge never pins the miss.',
+      },
+      {
+        text: 'A purge of the whole CDN.',
+        why: 'A purge empties every edge and floods the origin. The miss came from a replica that trailed the primary.',
+      },
+    ],
+  },
+];
+
+export const recall = [
+  {
+    id: 'case-studies/shortener-at-scale/recall-1',
+    prompt:
+      'A cached entry for a hot key expires, and 500 requests miss in the same instant. What stops all 500 from reading the database?',
+    options: [
+      {
+        text: 'A longer TTL',
+        why: 'A longer TTL delays the next expiry. When it comes, all 500 requests still miss together.',
+      },
+      {
+        text: 'Single flight: one request fetches, and the rest wait for its result',
+        correct: true,
+        why: 'The first miss takes a lock or a promise for the key. Everyone else shares its answer, so the database sees one read.',
+      },
+      {
+        text: 'More read replicas',
+        why: 'Replicas add capacity. The stampede still multiplies one miss by every waiting request.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/shortener-at-scale/recall-2',
+    ordered: true,
+    prompt:
+      'Health checks run every 5 s and mark a server down after 3 failures. A server crashes right after it passes a check. About how long does the balancer keep sending it requests?',
+    options: [
+      { text: 'About 1 s', why: 'One second is a timeout, and the check has to fail three times.' },
+      { text: 'About 5 s', why: 'Five seconds covers one failed check. The balancer waits for three.' },
+      { text: 'About 15 s', correct: true, why: '3 failures × 5 s = 15 s of requests sent to a dead server.' },
+    ],
+  },
+  {
+    id: 'case-studies/shortener-at-scale/recall-3',
+    prompt:
+      'One link gets 20,000 clicks a second, and each click adds 1 to its counter row. Which fix spreads the writes?',
+    options: [
+      {
+        text: 'A cache in front of the counter',
+        why: 'A cache answers reads from a copy. Every increment still changes the one row that owns the count.',
+      },
+      {
+        text: 'Read replicas for the counter shard',
+        why: 'Replicas replay every write, so each replica sees the same 20,000 increments.',
+      },
+      {
+        text: 'Salt the counter into parts on different shards, and add the parts on read',
+        correct: true,
+        why: 'Eight parts, abc1234#0 to abc1234#7, spread the increments across shards. Batching once a second shrinks them further.',
+      },
+    ],
+  },
+];
+
+<Recall questions={recall} />
+
+<Objectives>
+
+- Size a URL shortener's storage, code length, cache, and app pool from a short brief.
+- Protect the database when one viral link expires from the cache.
+- Count the requests a dead app server fails before health checks remove it.
+- Serve a new region from CDN edges and replicas, and keep a creator's own link readable.
+- Score your own design against a rubric before you read the reference answers.
+
+</Objectives>
+
+**Route:** Intermediate, case 1 of 12 on the beginner route through Module 6. Next on the route:
+[Shortener bad day](../shortener-bad-day/).
+
+## The brief
+
+You built sho.rt piece by piece in Module 2. This case puts every piece under load at once, and you make the calls.
+Work each step on paper first. A reference answer sits under each step, folded away.
+
+**What sho.rt must do**
+
+- Turn a long URL into a short code, and answer each click with a 302 redirect.
+- Count clicks per link for the owner's dashboard.
+- Let a creator open a new link the moment they make it.
+- Keep serving when one app server dies.
+- Serve readers in a new region as fast as readers at home.
+
+**The numbers**
+
+| Constraint         | Target                                         |
+| ------------------ | ---------------------------------------------- |
+| New links          | 100 per second                                 |
+| Redirects          | 10,000 per second on average, 50,000 at peak   |
+| Link record        | About 500 bytes, kept for 5 years              |
+| Redirect latency   | p99 under 100 ms for readers in both regions   |
+| Click counts       | Visible on the dashboard within a minute       |
+| One server lost    | No server above 85% busy afterward             |
+
+## How to work this case
+
+Give each step five minutes. Write numbers, then a sentence on why. Score yourself with this rubric before you open
+the answer.
+
+| Step                  | Partial                          | Solid                                                      |
+| --------------------- | -------------------------------- | ---------------------------------------------------------- |
+| Size the traffic      | Storage only                     | Storage, code length, cache hit rate, and database reads    |
+| Spread the redirects  | "Add servers"                    | A server count that passes the N+1 check                   |
+| Absorb the viral link | A cache                          | Stampede control, edge caching, and a plan for the counter |
+| Lose an app server    | "Health checks"                  | Failed requests counted, plus a faster ejection            |
+| Serve a new region    | "Use a CDN"                      | Edge TTLs, an origin shield, and read your writes          |
+| Where the data lives  | "Shard it"                       | A shard key, a placement, and a reason for each            |
+
+Score before you read. A partial answer on every step is a fine first pass.
+
+## The failure: one link goes viral
+
+At 7:58 p.m., a sports star posts sho.rt/abc1234 to 40 million followers. Clicks on that one code climb from zero to
+20,000 a second in under a minute. The cache holds the link, so the first wave goes fine.
+
+At 8:03 p.m., the cache entry's TTL runs out. Every app server misses at once, and each miss reads the database. The
+replica serving those reads stalls, every other code's misses queue behind it, and redirects across the whole site slow
+to seconds. Nothing broke. One popular key turned an ordinary expiry into a flood.
+
+<Predict
+  client:visible
+  id="case-studies/shortener-at-scale/predict-1"
+  question="The viral code gets 20,000 clicks a second, and a database read takes 50 ms. Its cache entry expires with no stampede protection. About how many reads for that one code reach the database before the cache refills?"
+  options={['About 1', 'About 16', 'About 1,000', 'About 20,000']}
+  ordered
+  answer={2}
+  why={[
+    'One read is the goal. It takes single flight across the whole fleet.',
+    'Sixteen is what single flight on each of 16 app servers allows.',
+    'Every click in the 50 ms window misses, and 20,000 × 0.05 = 1,000.',
+    'That is a full second of clicks. The cache refills after 50 ms.',
+  ]}
+>
+
+**About 1,000.** Every click that arrives during the 50 ms read finds an empty cache: 20,000 × 0.05 = 1,000 reads for
+one row. Single flight on each app server cuts that to 16, one per server.
+
+</Predict>
+
+## The idea: every layer guards the next
+
+A redirect passes through four layers: CDN edge, app pool, cache, and database. Each layer exists to shield the one
+behind it. The design work is sizing each shield and planning what happens when it fails: an entry expires, a server
+dies, or a region starts cold.
+
+<StepDiagram client:visible title="One click through sho.rt" nodes={nodes} edges={edges} steps={steps} height={400} />
+
+## Step 1: Size the traffic
+
+Start with the brief's numbers. Work out total storage after five years, how many base62 characters a code needs, how
+many reads reach the database at a 90% cache hit rate, and how many replicas serve them. Use
+[the caching lesson](../../scaling/caching/) for hit rates.
+
+<details>
+<summary>Show one possible answer</summary>
+
+- **Links**: 100 per second × 86,400 × 365 × 5 ≈ 15.8 billion. At 500 bytes each, that is about 7.9 TB.
+- **Code length**: 62⁶ ≈ 56.8 billion, so six characters would be 28% full by year five, and random codes would
+  collide often. 62⁷ ≈ 3.5 trillion keeps it under 0.5%. Use seven.
+- **Database reads**: 50,000 redirects at a 90% hit rate leave 5,000 reads a second.
+- **Replicas**: at 2,000 reads a second each, four replicas give 8,000. Losing one leaves 6,000, still above 5,000.
+
+</details>
+
+## Step 2: Spread the redirects
+
+Each app server handles about 4,500 redirects a second before it slows. Pick a pool size for the 50,000 peak, then run
+the N+1 check: if one server dies, the survivors each carry u × N ÷ (N − 1). Three servers at 70% leave each survivor at
+105%. Ten at 70% leave each at 77.8%.
+
+<details>
+<summary>Show one possible answer</summary>
+
+- 50,000 ÷ 4,500 ≈ 11 servers at 100%, which is too hot. At 70% each server takes about 3,150, so 50,000 ÷ 3,150 ≈ 16.
+- **N+1**: 70% × 16 ÷ 15 ≈ 74.7%. One loss keeps every survivor under the 85% target.
+- Spread the 16 across at least two zones so one zone outage does not take half the pool.
+
+</details>
+
+## Step 3: Absorb the viral link
+
+One code takes 20,000 clicks a second. Plan three things: stop the stampede when its cache entry expires, keep the edges
+from all missing at once, and keep its click counter from melting one shard. Review
+[when the cache misses at once](../../scaling/caching/#when-the-cache-misses-at-once) and
+[hot keys](../../scaling/sharding/#hot-keys-hot-reads-and-hot-writes).
+
+<details>
+<summary>Show one possible answer</summary>
+
+- **Stampede**: single flight per app server caps a miss at 16 reads. Add TTL jitter so hot keys never expire
+  together, and serve stale while one request refreshes.
+- **Edges**: cache the 302 at the edge for 60 seconds. An
+  [origin shield](../../scaling/cdn/#origin-shield-one-cache-in-front-of-the-origin) collapses misses from every edge
+  into one origin request.
+- **Counter**: salt the hot counter into 8 parts, abc1234#0 to #7, and have each app server batch its counts once a
+  second. The dashboard trails by a second, well inside the one minute target.
+- **Edge clicks**: edges answer most clicks, so count from edge logs. Sending no-store instead makes every click pay
+  the origin trip.
+
+</details>
+
+## Step 4: Lose an app server
+
+At peak, one of the 16 servers crashes just after a health check passes. Checks run every 5 s, and three failures mark
+it down. Count the failed requests, then shrink that number.
+
+<Predict
+  client:visible
+  id="case-studies/shortener-at-scale/predict-2"
+  question="At 50,000 redirects a second spread over 16 servers, one server dies. Health checks take 15 s to remove it. About how many requests fail first?"
+  options={['About 3,100', 'About 47,000', 'About 190,000', 'About 750,000']}
+  ordered
+  answer={1}
+  why={[
+    'That is one second of the dead server’s share.',
+    'Its share is 50,000 ÷ 16 ≈ 3,125 a second, for 15 s.',
+    'That is a full minute of its share. Checks remove it in 15 s.',
+    'That is 15 s of all traffic. The other 15 servers keep answering.',
+  ]}
+>
+
+**About 47,000.** The balancer keeps sending the dead server its 1/16 share, 3,125 requests a second, for 15 s.
+
+</Predict>
+
+Review [plan for a crash](../../scaling/load-balancing/#plan-for-a-crash) before you open the answer.
+
+<details>
+<summary>Show one possible answer</summary>
+
+- **Outlier detection** ejects a server after a short run of failed responses, often within a second.
+- **Retry once on another server.** A redirect is a GET with no side effects, so the balancer can send it again.
+- **Least requests with two random choices** caps a broken server at about twice its share while it still looks idle.
+- Together these cut 47,000 failures to a few thousand, and the retry hides most of those.
+
+</details>
+
+## Step 5: Serve a new region
+
+sho.rt opens to readers in a region 180 ms from the origin. Decide what the edges cache and for how long, how the origin
+copes with every edge warming up alone, and how a creator in that region opens a link they just made. Review
+[freshness tokens](../../scaling/read-replicas/#freshness-tokens-read-your-writes-and-monotonic-reads).
+
+<details>
+<summary>Show one possible answer</summary>
+
+- **Edges**: regional edges answer cached 302s in a few milliseconds. Misses still cross to the origin once.
+- **Shield**: each edge warms alone, so put a shield in front of the origin to merge their misses.
+- **Regional replica**: a replica in the region answers edge misses in 10 ms. It trails the primary by a little.
+- **Read your writes**: the create call returns a freshness token. The regional replica waits for that position or
+  forwards the read to the primary.
+- **Short negative TTL**: cache a 404 for a few seconds at most, or an early click pins the miss at the edge.
+
+</details>
+
+## Step 6: Where the data lives
+
+Year one holds about 1.6 TB, and year five 7.9 TB. Decide when to shard, what key to shard on, and whether to place
+keys by range or by hash. Review [range or hash placement](../../scaling/sharding/#range-or-hash-placement).
+
+<details>
+<summary>Show one possible answer</summary>
+
+- **Year one**: one primary and four replicas hold 1.6 TB and serve 8,000 reads a second.
+- **Shard before the primary passes about 2 TB**, around year two, so backups and rebuilds stay quick.
+- **Key**: the code. Every redirect reads exactly one code, so every read hits one shard.
+- **Placement**: hash. New links get the most clicks, and range placement on a growing code space would send them all
+  to the newest shard.
+
+</details>
+
+## Reading your score
+
+Count your solid answers. Four or more means you can carry Module 2 into an interview. Two or three means the pieces
+are there and the numbers need practice: redo Steps 1 and 2 with the [capstone](../../practice/capstone/) brief. Fewer
+than two means a lesson needs another pass. Step 3 maps to caching and sharding, Step 4 to load balancing, and Step 5
+to the CDN and read replicas.
+
+Common misses: forgetting that edge hits never reach the click counter, sizing a pool that fails the N+1 check, and
+caching a 404 long enough to hide a brand new link.
+
+## Trade-offs
+
+<TradeoffTable title="Choices sho.rt made at scale">
+
+| Choice                          | What it buys                                 | What it costs                                    |
+| ------------------------------- | -------------------------------------------- | ------------------------------------------------ |
+| Cache the 302 at the edge       | Fast clicks worldwide, a quiet origin        | Clicks you must count from edge logs             |
+| Single flight per server        | A hot miss costs at most 16 reads            | Waiters share one slow read                      |
+| Salted, batched click counters  | Hot writes spread across shards              | Reads gather 8 parts, and counts trail a second  |
+| 16 servers for a 50,000 peak    | One loss keeps survivors under 75%           | Idle capacity most of the day                    |
+| Freshness tokens                | Creators see their own links at once         | Some reads wait or travel to the primary         |
+| Hash placement on the code      | Even load, with new links spread out         | No cheap range scans by code                     |
+
+</TradeoffTable>
+
+<KeyTakeaways>
+
+- Size first: 15.8 billion links, 7.9 TB, 7 base62 characters, and 5,000 database reads a second at peak.
+- One hot key turns a cache expiry into 1,000 database reads. Single flight, jitter, and stale reads stop it.
+- Run the N+1 check on every pool: u × N ÷ (N − 1) must stay well under 100%.
+- Health checks alone fail about 47,000 requests at peak. Outlier detection and one retry shrink that.
+- Edges, a shield, and a regional replica serve a new region. Freshness tokens keep a creator's own link readable.
+
+</KeyTakeaways>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+**Plan a launch.** A partner will post one sho.rt link to 40 million followers at noon tomorrow, and you expect 100,000
+clicks a second for ten minutes.
+
+1. What do you warm before noon, and how?
+2. Does the 16 server pool hold if the edges miss for the first few seconds?
+3. How will the owner's dashboard count every click?
+
+<div slot="answer">
+
+- **Warm the link**: create it the day before, request it through each regional edge, and give it a TTL with jitter.
+- **Pool**: if edges answer 90%, the origin sees 10,000 a second, well inside 16 servers. A cold first second can send
+  the full 100,000, so the shield and single flight have to absorb that burst.
+- **Counting**: read edge logs every few seconds, and add salted, batched counts from the origin for edge misses.
+
+</div>
+
+</Challenge>
