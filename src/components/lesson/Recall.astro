@@ -1,0 +1,50 @@
+---
+import { findLesson } from '../../data/curriculum';
+import { lessonHref } from '../../lib/paths';
+import Callout from './Callout.astro';
+import Quiz, { type QuizQuestion } from './Quiz';
+
+interface Props {
+  /** Earlier lesson ids. Defaults to the current lesson's buildsOn. */
+  lessons?: string[];
+  /** One or two questions on those lessons. Ids start with the current lesson id. */
+  questions?: QuizQuestion[];
+}
+
+const routeId = Astro.locals.starlightRoute?.id;
+const ids = Astro.props.lessons ?? (routeId ? (findLesson(routeId)?.buildsOn ?? []) : []);
+const earlier = ids.flatMap((id) => {
+  const lesson = findLesson(id);
+  return lesson ? [{ href: lessonHref(id), title: lesson.title }] : [];
+});
+const questions = Astro.props.questions ?? [];
+const skipId = `sdv-recall-end-${routeId?.replaceAll('/', '-') ?? 'lesson'}`;
+---
+
+{
+  earlier.length > 0 && (
+    <>
+      <Callout variant="recall" label="Recall from earlier lessons" class="sdv-recall">
+        <p>
+          This lesson builds on{' '}
+          {earlier.map((lesson, index) => (
+            <>
+              {index > 0 && (index === earlier.length - 1 ? ' and ' : ', ')}
+              <a href={lesson.href}>{lesson.title}</a>
+            </>
+          ))}
+          .{questions.length > 0 && ' Answer from memory before you read on, or skip ahead.'}
+        </p>
+        {questions.length > 0 && (
+          <>
+            <a class="sdv-recall__skip" href={`#${skipId}`}>
+              Skip recall
+            </a>
+            <Quiz client:visible title="From earlier lessons" questions={questions} />
+          </>
+        )}
+      </Callout>
+      <span id={skipId} class="sdv-recall__end" tabindex="-1" />
+    </>
+  )
+}
