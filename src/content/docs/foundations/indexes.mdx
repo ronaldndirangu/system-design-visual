@@ -190,8 +190,7 @@ per click.
 >
 
 **About 1,000 times more with no index, and one more page with it.** A scan reads every page, so 100,000 pages become
-100,000,000. A B-tree reads one page per level, and 1,000 times the rows adds about one level: 4 reads become 5. In
-illustrative page costs, the scan grows from 1 second to about 17 minutes, and the lookup from 0.4 ms to 0.5 ms.
+100,000,000. A B-tree reads one page per level, and 1,000 times the rows adds about one level: 4 reads become 5.
 
 </Predict>
 
@@ -266,7 +265,7 @@ indexes fill 80,164 pages, about 80% on top of the 100,000-page table.
 <IndexWriteCostWidget client:visible />
 
 Turn on `(user_id)` and `(user_id, created_at)` together and the widget flags `(user_id)` as redundant, a prefix of the
-composite index. Turn off the `code` index and the redirect scans again.
+composite index.
 
 <details>
 <summary>Go deeper: what a real insert pays</summary>
@@ -276,6 +275,9 @@ full leaf splits in two, which writes another page or two. Every change also goe
 holds: each index adds work to every insert, every delete, and every update of an indexed column.
 
 </details>
+
+A B-tree updates pages in place, while a log-structured engine appends every write and sorts later, trading cheaper
+writes for extra read work. The optional [Storage engines](../storage-engines/) deep dive compares the two.
 
 ### One index, two jobs
 

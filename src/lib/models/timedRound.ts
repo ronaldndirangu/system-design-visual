@@ -167,9 +167,20 @@ export function weakestSteps(scores: readonly (RubricScore | null)[]): number[] 
   return scores.flatMap((score, index) => (score === lowest ? [index] : []));
 }
 
-/** Picks a different prompt than the current one. The same seed always picks the same prompt. */
-export function drawPromptIndex(seed: number, count: number, current: number): number {
+/**
+ * Picks a different prompt than the current one, from the preferred indexes when any of them is
+ * free. The same seed always picks the same prompt.
+ */
+export function drawPromptIndex(
+  seed: number,
+  count: number,
+  current: number,
+  preferred?: readonly number[],
+): number {
   if (count < 2) return 0;
+  const pool = (preferred ?? []).filter((index) => index !== current && index >= 0 && index < count);
+  const [first] = pool;
+  if (first !== undefined) return pool[randomInt(createRng(seed), 0, pool.length - 1)] ?? first;
   const pick = randomInt(createRng(seed), 0, count - 2);
   return pick >= current ? pick + 1 : pick;
 }
