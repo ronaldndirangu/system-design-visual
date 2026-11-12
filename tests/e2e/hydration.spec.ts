@@ -1,18 +1,5 @@
-import { expect, type Page, test } from '@playwright/test';
-import { island } from './helpers';
-
-/** Holds every island bundle until `release` runs, so the page stays server rendered meanwhile. */
-async function holdIslandCode(page: Page): Promise<() => void> {
-  let release: () => void = () => {};
-  const islandCode = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await page.route('**/_astro/**/*.js', async (route) => {
-    await islandCode;
-    await route.continue();
-  });
-  return release;
-}
+import { expect, test } from '@playwright/test';
+import { holdIslandCode, island } from './helpers';
 
 test('every click that lands before its island hydrates applies in order', async ({ page }) => {
   const release = await holdIslandCode(page);

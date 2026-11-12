@@ -1,4 +1,4 @@
-import { isComplete, lessonProgress, setComplete } from '../../lib/progress';
+import { isComplete, lessonProgress, readProgress, setComplete } from '../../lib/progress';
 import { UiIcon } from '../viz/icons';
 import { useProgress, useProgressPersistent } from './useProgress';
 
@@ -14,6 +14,7 @@ export default function LessonComplete({ lessonId, title, nextHref, nextTitle }:
   const persistent = useProgressPersistent();
   const done = progress ? isComplete(progress, lessonId) : false;
   const quizBest = progress ? lessonProgress(progress, lessonId).quizBest : undefined;
+  const loading = progress === null;
 
   return (
     <section
@@ -28,18 +29,23 @@ export default function LessonComplete({ lessonId, title, nextHref, nextTitle }:
         {done
           ? 'Nice work. This lesson shows a check mark on the course map.'
           : 'Mark it complete to track your progress on the course map.'}
-        {quizBest && ` Quiz best: ${quizBest.score} of ${quizBest.total}.`}{' '}
-        {persistent
-          ? 'Progress saves on this device only.'
-          : 'Saved for this tab only, because your browser blocked storage.'}
+        {quizBest &&
+          (quizBest.set
+            ? ` Quiz best: ${quizBest.score} of ${quizBest.total}.`
+            : ` Earlier quiz result: ${quizBest.score} of ${quizBest.total}.`)}{' '}
+        {loading
+          ? 'Loading your progress.'
+          : persistent
+            ? 'Progress saves on this device only.'
+            : 'Saved for this tab only, because your browser blocked storage.'}
       </p>
       <div className="sdv-complete__actions">
         <button
           type="button"
           className={`sdv-button${done ? '' : ' sdv-button--primary'}`}
           aria-pressed={done}
-          disabled={progress === null}
-          onClick={() => setComplete(lessonId, !done)}
+          aria-busy={loading || undefined}
+          onClick={() => setComplete(lessonId, !isComplete(readProgress(), lessonId))}
         >
           <UiIcon name="check" />
           {done ? 'Completed' : 'Mark lesson complete'}

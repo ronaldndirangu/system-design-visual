@@ -1,5 +1,12 @@
-import { useEffect, useState } from 'react';
-import { isComplete, lessonProgress, readProgress, recordQuiz, setComplete } from '../../lib/progress';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  isComplete,
+  lessonProgress,
+  questionSetFingerprint,
+  readProgress,
+  recordQuiz,
+  setComplete,
+} from '../../lib/progress';
 import { ToneBadge } from '../sim/StatTable';
 import { UiIcon } from '../viz/icons';
 import { ChoiceError, ChoiceList, useChoiceCard } from './ChoiceCard';
@@ -47,6 +54,7 @@ export default function Quiz({
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [lesson, setLesson] = useState<LessonContext | null>(null);
   const progress = useProgress();
+  const questionSet = useMemo(() => questionSetFingerprint(questions), [questions]);
   const answered = questions.filter((question) => question.id in answers).length;
   const score = questions.filter((question) => {
     const answer = answers[question.id];
@@ -64,8 +72,8 @@ export default function Quiz({
     const missed = questions
       .filter((question) => !question.options[answers[question.id] ?? -1]?.correct)
       .map((question) => question.id);
-    recordQuiz(lesson.id, questions.length - missed.length, questions.length, missed);
-  }, [lesson, answers, answered, questions]);
+    recordQuiz(lesson.id, questions.length - missed.length, questions.length, missed, questionSet);
+  }, [lesson, answers, answered, questions, questionSet]);
 
   return (
     <section className="sdv-quiz not-content" aria-label={title}>
