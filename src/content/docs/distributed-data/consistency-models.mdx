@@ -381,7 +381,11 @@ later read on any phone shows it.
 <summary>Go deeper: ZooKeeper and sync</summary>
 
 ZooKeeper works this way. One leader orders every write, and a follower answers reads from its own copy, which can lag.
-A client that needs the newest value calls `sync` first, which makes its follower catch up with the leader.
+A client can call `sync` before reading to catch its server up with the leader. ZooKeeper documents that this does not
+strictly guarantee the latest value: `sync` is not a quorum operation, so during a leader change an old leader that
+still believes it leads can answer it. A successful quorum write before the read gives the stronger barrier. The two
+rest on different prerequisites: `sync` then read assumes the leader has not changed, and a formal linearizable read
+needs a quorum to confirm the leader during the read.
 
 </details>
 
@@ -414,15 +418,20 @@ Many databases let you pick the promise per request.
 <summary>Go deeper: how a leader serves a linearizable read</summary>
 
 An old leader may not know it was replaced: a partition can elect a new leader while the old one still answers
-clients from its own copy. Raft offers two safe ways to read.
+clients from its own copy. A new leader can also lag: it holds every committed entry, but its commit index may not yet
+cover the newest ones. So each new leader first commits a no-op entry from its own term and serves no reads until it
+does. It does this once per term, and every later read reuses that barrier. Raft then offers two safe ways to read.
 
 With a **read index**, the leader notes its commit index, exchanges one round of heartbeats with a majority to confirm
 it still leads, waits until its state machine has applied up to that index, and then answers. A follower can serve the
-read too: it asks the leader for the read index and waits until it has applied that far.
+read too: it asks the leader for a read index, the leader confirms it with that heartbeat round, and the follower waits
+until it has applied that far. The follower’s own commit index is not enough, because it can trail the leader’s.
 
-With a **lease**, the leader skips the heartbeat round. After a majority acknowledges a heartbeat, no other leader can
-win an election until an election timeout passes, so the leader answers reads alone until then. This trusts that server
-clocks drift by a bounded amount.
+With a **lease**, the leader skips the heartbeat round. After a majority acknowledges a heartbeat, the leader answers
+reads alone until the lease runs out. This is safe only when elections honor the lease: a follower that acknowledged
+the leader refuses to vote for anyone else until the lease could have expired, measured with conservative bounds on
+clock speed and process pauses. Bounded clock drift alone does not stop a new leader from winning while an old lease
+still runs. The [Raft](../raft/) lesson walks through a failover in which a read arrives before the next write.
 
 </details>
 

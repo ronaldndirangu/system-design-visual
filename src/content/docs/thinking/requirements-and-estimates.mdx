@@ -1,9 +1,21 @@
 ---
 title: Requirements and estimates
 description: Turn a vague product idea into numbers you can design against. Size a URL shortener from a side project to planet scale.
+furtherReading:
+  - title: 'The System Design Primer: back-of-the-envelope calculations'
+    url: https://github.com/donnemartin/system-design-primer#back-of-the-envelope-calculations
+    note: Powers of two and latency numbers to keep at hand while you estimate.
+  - title: 'The System Design Primer: design Pastebin.com (or Bit.ly)'
+    url: https://github.com/donnemartin/system-design-primer/blob/master/solutions/system_design/pastebin/README.md
+    note: A worked shortener and paste site, from use cases and constraints to usage math.
+  - title: 'Site Reliability Engineering: introduction (Google)'
+    url: https://sre.google/sre-book/introduction/
+    note: Its capacity planning section covers forecasting demand, adding launches on top, and load testing the plan.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
@@ -47,6 +59,29 @@ export const steps = [
   },
 ];
 
+export const recall = [
+  {
+    id: 'thinking/requirements-and-estimates/recall-1',
+    prompt: 'Someone clicks a popular short link. In the common case, which box answers with the long URL?',
+    options: [
+      { text: 'The cache, from memory', correct: true, why: 'Hot links live in memory, so the cache answers most clicks without touching a disk.' },
+      { text: 'The database, from disk', why: 'The database keeps the truth and answers on a cache miss. A popular link rarely misses.' },
+      { text: 'DNS', why: 'DNS turns the short domain into an address. It never sees the path that holds the short code.' },
+      { text: 'The CDN', why: 'The CDN serves static files such as scripts and images. Short code lookups run in the app servers and the cache.' },
+    ],
+  },
+  {
+    id: 'thinking/requirements-and-estimates/recall-2',
+    prompt: 'An estimate says the shortener must handle 3,507 requests per second at peak. Which of the four words for slow does that number describe?',
+    options: [
+      { text: 'Throughput', correct: true, why: 'Throughput counts requests finished each second, so a requests per second target is a throughput target.' },
+      { text: 'Latency', why: 'Latency is how long one request takes, in milliseconds. The 100 ms redirect goal is the latency target.' },
+      { text: 'Performance', why: 'Performance asks whether one user on a quiet day gets a fast answer.' },
+      { text: 'Scalability', why: 'Scalability asks whether the system stays fast as load grows. The peak rate is the load itself.' },
+    ],
+  },
+];
+
 export const quiz = [
   {
     id: 'thinking/requirements-and-estimates/q1',
@@ -80,17 +115,51 @@ export const quiz = [
       { text: '10', why: 'Ten characters work, but they make every link longer than it needs to be. Seven already covers 3.5 trillion.' },
     ],
   },
+  {
+    id: 'thinking/requirements-and-estimates/q4',
+    prompt: 'Five years of links add up to 913 GB of raw data. A teammate says one 1 TB disk covers it. What should you plan for?',
+    options: [
+      { text: 'About 3.56 TB: 3 copies of the data, plus about 30% for indexes', correct: true, why: '913 GB × 3 ≈ 2.74 TB, and × 1.3 ≈ 3.56 TB, almost 4 times the raw figure.' },
+      { text: 'One 1 TB disk, since 913 GB fits', why: 'That holds one copy with no indexes. Lose the disk and every link is gone.' },
+      { text: 'About 1.2 TB, adding 30% for indexes', why: 'Indexes are only part of it. Production keeps 3 copies so one lost disk or zone loses no links.' },
+      { text: 'About 91 TB, since each link is clicked 100 times', why: 'Clicks are reads. A redirect stores nothing, unless you add click analytics.' },
+    ],
+  },
+  {
+    id: 'thinking/requirements-and-estimates/q5',
+    ordered: true,
+    prompt: 'At peak the shortener finishes 3,507 requests per second, and each takes 20 ms. About how many requests are in flight at once?',
+    options: [
+      { text: 'About 7', why: 'That uses 2 ms. Convert 20 ms to 0.02 seconds before you multiply.' },
+      { text: 'About 70', correct: true, why: 'In flight = throughput × latency = 3,507 × 0.02 ≈ 70. Spread over 3 servers, each holds about 23 open requests.' },
+      { text: 'About 700', why: 'That uses 0.2 seconds, ten times the real latency.' },
+      { text: 'About 70,000', why: 'That multiplies by 20 instead of 0.02. Latency must be in seconds when throughput is per second.' },
+    ],
+  },
+  {
+    id: 'thinking/requirements-and-estimates/q6',
+    prompt: 'A photo app serves 1 MB images at the same 3,507 requests per second at peak. Which estimate do you revisit first?',
+    options: [
+      { text: 'Bandwidth: about 3.5 GB/s, so serve the images from a CDN', correct: true, why: '3,507 × 1 MB ≈ 3.5 GB/s (28 Gbit/s), about 2,000 times the 1.75 MB/s of short links.' },
+      { text: 'App servers, since each image takes more work to look up', why: 'Finding an image by id costs about the same as finding a short link. The response size is what grows.' },
+      { text: 'Short code length, since images are bigger than links', why: 'Code length depends on how many items you store. Item size does not change it.' },
+      { text: 'Nothing, since the request rate is the same', why: 'Each response is 2,000 times bigger, so 1.75 MB/s becomes about 3.5 GB/s.' },
+    ],
+  },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 
 - Split a product idea into functional and non-functional requirements.
-- Estimate requests per second, storage, and server count with back-of-envelope math.
+- Estimate requests per second, servers, cache and bandwidth with back-of-envelope math.
+- Size disk from raw data, 3 copies and index overhead.
 - Explain why the read to write ratio and the peak factor matter more than precision.
 
 </Objectives>
 
-## The failure: a disk that fills in a month
+## The failure: a disk that fills in months
 
 A small team ships a URL shortener on one server with a 100 GB disk. Nobody does the math. A few months later the disk is
 full, writes start failing, and every new short link returns an error.
@@ -99,13 +168,17 @@ full, writes start failing, and every new short link returns an error.
   client:visible
   id="thinking/requirements-and-estimates/predict-1"
   ordered
-  question="The growing startup scale adds 1 million links a day at about 500 bytes each. How much storage do 5 years of links need?"
+  question="The growing startup scale adds 1 million links a day at about 500 bytes each. How much raw data do 5 years of links add up to?"
   options={['About 1 GB', 'About 100 GB', 'About 1 TB', 'About 100 TB']}
   answer={2}
 >
 
-1,000,000 links × 365 days × 5 years ≈ 1.8 billion links. At 500 bytes each, that is about **900 GB**, close to 1 TB.
-A 100 GB disk lasts about 200 days at this rate, and much less if traffic grows. Ten minutes of arithmetic would have caught it.
+1,000,000 links × 365 days × 5 years = 1.825 billion links. At 500 bytes each, that is about **913 GB** of raw data,
+close to 1 TB. A 100 GB disk holds about 200 days of raw links, and indexes cut that to about 150. Ten minutes of
+arithmetic would have caught it.
+
+That 913 GB is one copy. Production keeps **3 copies** (2.74 TB), and indexes add about **30%** more, so plan for
+about **3.56 TB** of disk.
 
 </Predict>
 
@@ -115,7 +188,8 @@ Before drawing a single box, write down two lists.
 
 - **Functional requirements** say what the system does: create a short link, and redirect anyone who opens it.
 - **Non-functional requirements** say how well it does it: redirects in under 100 ms, the service stays up 99.9% of the
-  time, and a link never changes once created.
+  time, and a link never changes once created. The [SLOs](../slos/) lesson turns targets like these into numbers you
+  can measure.
 
 Then list what you will **not** build yet, such as analytics or custom aliases. Saying no out loud keeps the design small.
 
@@ -126,22 +200,67 @@ Then list what you will **not** build yet, such as analytics or custom aliases. 
 Planning a wedding dinner works the same way. You first decide what you serve (the menu), then how well (hot food, no
 long waits). Only then do you count guests, estimate how many arrive at once, and pick the size of the kitchen.
 
+Where it breaks: a guest list is fixed weeks ahead, and the dinner ends at midnight. A service can gain 100 times its
+users in a day and runs for years, so its estimates must cover growth and time.
+
 </Analogy>
 
-## Estimates in five lines
+## Estimates in a few lines
 
-Aim for the right **order of magnitude** and round freely: a day has about 100,000 seconds
-(86,400 exactly).
+Aim for the right **order of magnitude** and round freely: a day has about 100,000 seconds (86,400 exactly).
 
 ```text
-writes per second = new links per day ÷ 86,400
-reads per second  = writes per second × clicks per link
-peak per second   = (writes + reads) × peak factor
-storage           = links per day × 365 × years × bytes per link
-servers           = peak ÷ (one server's capacity × 0.7)
+writes/s  = new links per day ÷ 86,400
+reads/s   = writes/s × clicks per link
+peak/s    = (writes/s + reads/s) × peak factor
+servers   = peak/s ÷ (one server's capacity × 0.7)
+links     = links per day × 365 × years
+raw data  = links × bytes per link
+disk      = raw data × 3 copies × 1.3 for indexes
+cache     = links read per day × 20% hot × bytes
+bandwidth = peak/s × bytes per response
 ```
 
-The 0.7 keeps each server at most 70% busy, so a traffic spike or one lost server does not tip the rest over.
+The 0.7 keeps each server at most 70% busy, which leaves headroom for bursts. Losing a server is a separate check. Here is
+the growing startup: 1 million new links a day, 100 clicks per link, a 3× peak, 5 years, 500 bytes per link, and app
+servers that each handle about 2,000 redirects a second.
+
+### Traffic
+
+```text
+writes  = 1,000,000 ÷ 86,400 ≈ 11.57/s
+reads   = 11.57 × 100 ≈ 1,157/s
+both    = 11.57 + 1,157 ≈ 1,169/s
+peak    = 1,169 × 3 ≈ 3,507/s
+servers = 3,507 ÷ (2,000 × 0.7) ≈ 2.5, so 3
+```
+
+Then check **N-1**, the loss of one server: with 3 servers, the 2 survivors each run 88% busy. A fourth server keeps
+the 3 survivors at 58%. [Load balancing](../../scaling/load-balancing/) shows why waits climb near 100%.
+
+The peak is a **throughput** target, one of the four words from the [anatomy of a web app](../anatomy-of-a-web-app/).
+If each redirect takes 20 ms, about 3,507 × 0.02 ≈ 70 requests are in flight at once, about 23 per server.
+
+### Storage
+
+```text
+links  = 1,000,000 × 365 × 5 = 1.825 billion
+raw    = 1.825 billion × 500 B = 912.5 GB
+copies = 912.5 GB × 3 ≈ 2.74 TB
+disk   = 2.74 TB × 1.3 ≈ 3.56 TB
+```
+
+The widget rounds the raw figure to 913 GB. Disk ends up near 4 times the raw data.
+
+### Bandwidth
+
+```text
+bandwidth = 3,507/s × 500 B ≈ 1.75 MB/s
+```
+
+That is about 14 Mbit/s, a sliver of one server's network card. Short links are tiny, so bandwidth is not the bottleneck
+here. It would dominate for images or video: the same 3,507 requests per second at 1 MB each need about 3.5 GB/s
+(28 Gbit/s), which is why media sites serve files from a [CDN](../../scaling/cdn/).
 
 ## Try it
 
@@ -149,13 +268,63 @@ Pick a scale and drag the sliders. Watch which numbers jump by a factor of 1,000
 
 <EstimatorWidget client:visible />
 
-A few things to notice:
+### What to notice
 
-- **Reads dwarf writes.** At 100 clicks per link, reads are 99% of all traffic. That is why the next lessons focus on
-  making reads cheap.
-- **Storage grows forever** unless links expire. Retention is a product decision with a big infrastructure bill.
-- **The short code barely grows.** Each extra base62 character multiplies capacity by 62, so 7 characters cover trillions
-  of links.
+- **Reads dwarf writes.** At 100 clicks per link, reads are 99% of all traffic, so the read path gets most of the
+  design work.
+- **Disk grows with time, and the cache does not.** Slide the years from 1 to 20: disk grows 20 times, while the cache
+  holds at 700 MB because only the last week of links is hot.
+- **Retention has an infrastructure bill.** Planet scale keeps 365 billion links on about 712 TB of disk.
+- **The short code barely grows.** Each extra base62 character multiplies capacity by 62: 6 characters at startup scale,
+  7 at planet scale.
+
+## Deep dives
+
+### Copies and indexes multiply the disk
+
+Raw data counts each link once. A production database keeps about **3 copies**, usually in different zones, so one lost
+disk or zone loses no links and reads can spread across the copies. Each copy also carries
+[indexes](../../foundations/indexes/) (the lookup from short code to row), row headers, and free space for new writes,
+which together add roughly 30%. The multipliers stack: 3 × 1.3 = 3.9, so an estimate that skips them comes out almost 4
+times too small.
+
+### Size the cache by links, not clicks
+
+A link clicked 100 times takes one cache slot, so count **distinct** links. Most clicks on a short link land in its
+first week, so on any day readers touch about 7 days of new links.
+
+```text
+links read per day = 1,000,000 × 7 = 7 million
+cache = 7 million × 20% × 500 B = 700 MB
+```
+
+700 MB fits in one cache server's memory with room to spare. Sizing by clicks (100 million a day) would ask for 10 GB,
+about 14 times too much. The 20% is a rule of thumb, and real traffic is more skewed: one viral link can swamp a single
+cache node, as [access patterns](../access-patterns/) shows. [Caching](../../scaling/caching/) covers eviction once the
+cache fills.
+
+<details>
+<summary>Go deeper: where the peak factor comes from</summary>
+
+Traffic follows people's days: evenings run hotter than nights, and one viral post can multiply clicks within minutes.
+A factor of 2 to 3 over the daily average is a common first guess for consumer apps. Replace it with measured traffic as
+soon as you have some. The 70% target absorbs bursts within the peak minute; the N-1 check above covers a lost server.
+A fleet sized to run at 70% fails that check: lose 1 of 3 servers and the survivors hit 105%.
+
+</details>
+
+<details>
+<summary>Go deeper: numbers worth memorizing</summary>
+
+Estimates go faster with a few anchors:
+
+- 2¹⁰ ≈ 1 thousand, 2²⁰ ≈ 1 million, 2³⁰ ≈ 1 billion, and 2⁴⁰ ≈ 1 trillion.
+- A day is about 10⁵ seconds, and a year is about 3 × 10⁷ seconds.
+- 1 million a day is about 12 a second, and 1 billion a day is about 12,000 a second.
+- 1 billion items × 1 KB = 1 TB.
+- Networks are sold in bits and disks in bytes: 1 MB/s is 8 Mbit/s.
+
+</details>
 
 ## Trade-offs
 
@@ -171,19 +340,50 @@ A few things to notice:
 
 </TradeoffTable>
 
+**When to skip the math.** An internal tool for 50 people runs on one small server, so spend the time on features. Once
+a service is live, measure real traffic and keep estimates for what has not happened yet, such as a launch, a new
+region, or click analytics.
+
+## Common mistakes
+
+- **Sizing disk from raw data.** Skipping 3 copies and 30% for indexes leaves the plan almost 4 times short.
+- **Sizing the cache by clicks.** A link clicked 100 times fills one slot, so count distinct links.
+- **Planning for the average.** Servers fail in the busiest minute, so size for the peak and keep 30% headroom.
+- **Chasing precision.** Rounding 86,400 seconds to 100,000 moves the answer by 14%. A wrong guess of clicks per link
+  moves it 100 times.
+- **Skipping the not yet list.** Click analytics added later turns every read into a write as well.
+
+<KeyTakeaways>
+
+- Write the functional and non-functional requirements first, plus what you will not build yet.
+- Traffic: divide daily totals by 86,400, multiply by clicks per link and the peak factor, then keep servers under 70%
+  busy.
+- Disk is raw data × 3 copies × 1.3 for indexes, near 4 times the raw number.
+- Size the cache by distinct hot links, and check bandwidth: tiny for short links, dominant for images and video.
+- Get the order of magnitude right. The ratios matter more than the decimals.
+
+</KeyTakeaways>
+
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-Estimate a **paste sharing site**. People save 100,000 text snippets a day, each about 10 KB. Every paste is read 10 times
-on average, and pastes stay for 2 years. Work out writes per second, reads per second, and total storage.
+**Closing rubric: size a paste site.** People save 100,000 text snippets a day, each about 10 KB. Every paste is read
+10 times on average, pastes stay for 2 years, and traffic peaks at 3 times the average.
+
+1. How many writes and reads per second, on average and at peak?
+2. How much raw data, and how much disk with 3 copies and 30% for indexes?
+3. Which number drives the design, and what do you build because of it?
 
 <div slot="answer">
 
-- Writes: 100,000 ÷ 86,400 ≈ **1.2 per second**.
-- Reads: 1.2 × 10 ≈ **12 per second**. One small server handles this easily.
-- Storage: 100,000 × 365 × 2 × 10 KB ≈ **730 GB**. Storage drives this design far more than traffic does, so cheap
-  object storage beats a bigger database server.
+- **Traffic.** Writes: 100,000 ÷ 86,400 ≈ **1.2 per second**. Reads: 1.2 × 10 ≈ **12 per second**. Peak:
+  (1.2 + 11.6) × 3 ≈ **38 per second**. One small server handles this, and peak bandwidth is only about
+  38 × 10 KB ≈ 380 KB/s.
+- **Storage.** 100,000 × 365 × 2 = 73 million pastes × 10 KB ≈ **730 GB** of raw data. With 3 copies and indexes:
+  730 GB × 3 × 1.3 ≈ **2.85 TB** of disk.
+- **The driver is storage.** Keep paste bodies in object storage, which keeps its own copies and bills for about
+  730 GB, and keep only the small metadata rows in a database.
 
 </div>
 

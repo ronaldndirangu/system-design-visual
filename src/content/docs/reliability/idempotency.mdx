@@ -16,6 +16,7 @@ import IdempotencyWidget from '../../../components/widgets/IdempotencyWidget';
 export const recall = [
   {
     id: 'reliability/idempotency/recall-1',
+    ordered: true,
     prompt: 'A payment service starts 20 purchases a second, and each payment takes 3 s to finish. On average, how many payments are in progress at once?',
     options: [
       { text: 'About 7, the rate divided by the time', why: 'Little’s law multiplies the arrival rate by the time each item stays: 20 × 3 = 60.' },

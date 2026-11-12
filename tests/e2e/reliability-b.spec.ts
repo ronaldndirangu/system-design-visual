@@ -1,8 +1,9 @@
 import { expect, type Page, test } from '@playwright/test';
 
-async function openSim(page: Page, path: string, name: string) {
+async function openSim(page: Page, path: string, name: string, details?: string) {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto(path);
+  if (details) await page.getByText(details).click();
   const sim = page.getByRole('region', { name: `Simulation: ${name}` });
   await sim.scrollIntoViewIfNeeded();
   const skip = sim.getByRole('button', { name: 'Skip to the end' });
@@ -53,7 +54,12 @@ test.describe('/reliability/rate-limiting/', () => {
   });
 
   test('window duel shows the boundary burst', async ({ page }) => {
-    const { sim, skip } = await openSim(page, 'reliability/rate-limiting/', 'Fixed window or sliding window');
+    const { sim, skip } = await openSim(
+      page,
+      'reliability/rate-limiting/',
+      'Fixed window or sliding window',
+      'Go deeper: fixed and sliding windows',
+    );
     await skip.click();
     await expect(sim.getByText('Run complete', { exact: true })).toBeVisible();
     const peak = sim
@@ -64,7 +70,12 @@ test.describe('/reliability/rate-limiting/', () => {
   });
 
   test('retry duel shows Retry-After beating instant retries', async ({ page }) => {
-    const { sim, skip } = await openSim(page, 'reliability/rate-limiting/', 'Two clients meet a 429');
+    const { sim, skip } = await openSim(
+      page,
+      'reliability/rate-limiting/',
+      'Two clients meet a 429',
+      'Go deeper: what clients do with a 429',
+    );
     await skip.click();
     await expect(sim.getByText('Run complete', { exact: true })).toBeVisible();
     const gaveUp = sim
@@ -133,6 +144,7 @@ test.describe('/reliability/observability/', () => {
     page,
   }) => {
     await page.goto(path);
+    await page.getByText('Go deeper: find the slow span in a trace').click();
     const hunt = page.getByRole('region', { name: 'Interactive: Find the slow span' });
     await hunt.scrollIntoViewIfNeeded();
     const parent = hunt.getByRole('button', { name: /^api\.browse/ });

@@ -3,32 +3,10 @@ title: Unique IDs
 description: Give every link, message, and order an ID that never collides. Compare counter ranges, Snowflake IDs, UUIDv7, and random base62 codes.
 ---
 
-import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
-
-export const recall = [
-  {
-    id: 'foundations/unique-ids/recall-1',
-    prompt: 'Links copy owner_name. A user with 469 links renames. What changes?',
-    options: [
-      { text: 'One users row', why: 'Copies keep the old name.' },
-      { text: 'Nothing, the join updates it', why: 'Copies skip the join.' },
-      { text: '469 link rows', correct: true, why: 'Every copy must change.' },
-    ],
-  },
-  {
-    id: 'foundations/unique-ids/recall-2',
-    prompt: 'Redirects read a key-value copy. A takedown deletes the row. Then what?',
-    options: [
-      { text: 'Nothing more', why: 'Redirects skip the table.' },
-      { text: 'Delete its key-value entry', correct: true, why: 'Otherwise it keeps redirecting.' },
-      { text: 'Rebuild the table index', why: 'The stale copy remains.' },
-    ],
-  },
-];
 
 export const quiz = [
   {
@@ -70,8 +48,6 @@ export const quiz = [
     ],
   },
 ];
-
-<Recall questions={recall} />
 
 <Objectives>
 
@@ -127,11 +103,16 @@ on a duplicate key. With 10 million links stored, a new code collides about once
 
 </Predict>
 
+The same ratio helps an attacker: a bot that tries 1 million random codes collects about 175 real links. Short codes
+suit public links. Private links such as shared documents need 16 or more random base62 characters (about 95 bits)
+plus a rate limit on misses.
+
 ## Choosing
 
 | Need                                  | Pick                                                                 |
 | ------------------------------------- | -------------------------------------------------------------------- |
-| Short, hard-to-guess public codes     | Random base62, with a unique constraint and retry                    |
+| Short public codes                    | Random base62, with a unique constraint and retry                    |
+| Private, unguessable links            | 16 or more random base62 characters, plus a rate limit on misses     |
 | Short codes with no retries           | Counter ranges, scrambled by a reversible shuffle before base62      |
 | Time-sorted IDs from many machines    | Snowflake or UUIDv7                                                  |
 | IDs minted offline on devices         | UUIDv4 or UUIDv7                                                     |

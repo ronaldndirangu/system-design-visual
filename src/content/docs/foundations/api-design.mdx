@@ -1,0 +1,379 @@
+---
+title: API design details
+description: Page through a changing list without repeats, report errors a caller can act on, and change a contract without breaking old clients.
+furtherReading:
+  - title: 'Slack Web API: pagination'
+    url: https://docs.slack.dev/apis/web-api/pagination/
+    note: A production cursor API that returns an opaque next cursor and a page size limit on every list call.
+  - title: 'RFC 9457: Problem Details for HTTP APIs'
+    url: https://www.rfc-editor.org/rfc/rfc9457
+    note: The standard JSON shape for error bodies, with type, title, status, and detail fields.
+  - title: 'RFC 8594: The Sunset HTTP Header Field'
+    url: https://www.rfc-editor.org/rfc/rfc8594
+    note: How a server tells callers the date a resource or an old API version stops responding.
+  - title: 'Martin Fowler: TolerantReader'
+    url: https://martinfowler.com/bliki/TolerantReader.html
+    note: Why clients should read only the fields they need and ignore the rest.
+---
+
+import Recall from '../../../components/lesson/Recall.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import PaginationWidget from '../../../components/widgets/PaginationWidget';
+import ContractChangeWidget from '../../../components/widgets/ContractChangeWidget';
+
+export const nodes = [
+  { id: 'dash', kind: 'client', x: 80, y: 60, label: 'Dashboard', sublabel: 'paging' },
+  { id: 'tab', kind: 'client', x: 80, y: 216, label: 'Another tab', sublabel: 'creating links' },
+  { id: 'api', kind: 'server', x: 250, y: 140, label: 'Links API', sublabel: '/v1/users/7/links' },
+  { id: 'db', kind: 'database', x: 420, y: 140, label: 'Database', sublabel: 'newest first' },
+];
+export const edges = [
+  { from: 'dash', to: 'api' },
+  { from: 'tab', to: 'api' },
+  { from: 'api', to: 'db' },
+];
+export const steps = [
+  {
+    title: 'Page 1',
+    text: 'The dashboard asks for page=1&size=10 and gets rows 1 to 10, newest first: links #50 to #41.',
+    nodes: ['dash', 'api', 'db'],
+    flows: ['dash>api', 'api>db', 'db>api', 'api>dash'],
+  },
+  {
+    title: 'A new link lands on top',
+    text: 'Another tab creates #51. It sorts first, so every older link moves down one row. Link #41 is now row 11.',
+    nodes: ['tab', 'api', 'db'],
+    flows: ['tab>api', 'api>db'],
+  },
+  {
+    title: 'Page 2 repeats a link',
+    text: 'Page 2 means rows 11 to 20. Row 11 now holds #41, which page 1 already showed. No error, just a duplicate.',
+    nodes: ['dash', 'api', 'db'],
+    flows: ['dash>api', 'api>db', 'db>api', 'api>dash'],
+  },
+  {
+    title: 'Fix: ask for what comes after #41',
+    text: 'The dashboard sends after=41 instead and gets #40 to #31. New links on top cannot move that answer.',
+    nodes: ['dash', 'api', 'db'],
+    flows: ['dash>api', 'api>db', 'db>api', 'api>dash'],
+  },
+  {
+    title: 'Deletes and deep pages',
+    text: 'A delete slides rows up, so an offset skips a link. An offset also walks past every earlier row, while a cursor seeks straight to its spot.',
+    nodes: ['tab', 'api', 'db'],
+    flows: ['tab>api', 'api>db'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'foundations/api-design/recall-1',
+    prompt: 'A phone sends POST /v1/links, and the connection drops before the 201 arrives. What makes the retry safe?',
+    options: [
+      { text: 'Resend it with the same Idempotency-Key header', correct: true, why: 'The server stored the first response under that key and replays it.' },
+      { text: 'Nothing, because POST is idempotent', why: 'HTTP makes no such promise for POST. Each attempt can create another link.' },
+      { text: 'Send the retry as GET /v1/links instead', why: 'GET only reads. It cannot create the link.' },
+      { text: 'Wait for a 409 Conflict, then retry', why: 'Two creates with no shared key look valid, so both succeed.' },
+    ],
+  },
+];
+
+export const quiz = [
+  {
+    id: 'foundations/api-design/q1',
+    prompt: 'A user reads page 1 of their links with ?page=1&size=20. Before they press Next, 3 new links are created. What does page 2 start with?',
+    options: [
+      { text: 'The last 3 links from page 1, again', correct: true, why: 'The new links push every older link down 3 rows, so rows 21 to 23 hold links the user just saw.' },
+      { text: 'The 3 new links', why: 'New links sort to the top, onto page 1, which the user already left.' },
+      { text: 'Link number 21, as planned', why: 'The offset counts rows, and the rows moved. Old link 18 now sits at row 21.' },
+      { text: 'An error, since the list changed', why: 'The database answers OFFSET 20 without complaint. It cannot know what the client saw.' },
+    ],
+  },
+  {
+    id: 'foundations/api-design/q2',
+    prompt: 'Which change to the link response can ship in /v1 without breaking a client that ignores unknown fields?',
+    options: [
+      { text: 'Rename "url" to "destination"', why: 'Every client that reads or sends "url" breaks.' },
+      { text: 'Send "clicks" as the string "1,204"', why: 'Clients that decode "clicks" as a number fail. A type change breaks them.' },
+      { text: 'Add an optional "title" field', correct: true, why: 'A tolerant reader skips fields it does not know, so old clients keep working.' },
+      { text: 'Switch the redirect default from 302 to 301', why: 'No client errors, which is worse: browsers cache the 301, and click counts quietly stall.' },
+    ],
+  },
+  {
+    id: 'foundations/api-design/q3',
+    prompt: 'You must rename "url" to "destination". Old mobile app versions stay installed for years. What plan keeps them working?',
+    options: [
+      { text: 'Rename it in place and email every user to update', why: 'Many phones never update, so those users hit errors on deploy day.' },
+      { text: 'Rename it in place at 3 a.m. when traffic is low', why: 'The old apps break the same way when their users wake up.' },
+      { text: 'Return 410 Gone to old app versions', why: 'The users still cannot see their links.' },
+      { text: 'Return both fields in /v1, move clients to "destination", and drop "url" only in /v2', correct: true, why: 'Expand, migrate, then contract. Old apps keep reading /v1 until its traffic reaches zero.' },
+    ],
+  },
+  {
+    id: 'foundations/api-design/q4',
+    prompt: 'POST /v1/links fails because the alias sale is taken. The app must say "pick another alias", and support must find the request in the logs. Which response does both?',
+    options: [
+      { text: '409 Conflict with only a human message', why: 'The app must match English text, and support has no ID to search for.' },
+      { text: '200 OK with { "ok": false } in the body', why: 'Anything that reads the status concludes the create worked.' },
+      { text: '409 Conflict with the code alias_taken, a message, and a request_id', correct: true, why: 'The app branches on the code, and the request ID leads support to one log line.' },
+      { text: '400 Bad Request with the message "Alias taken"', why: 'The request was well formed, and a bare message gives nothing stable to match.' },
+    ],
+  },
+];
+
+<Recall questions={recall} />
+
+<Objectives>
+
+- Explain why offset pages repeat and skip items on a changing list, and page with a cursor instead.
+- Return errors with a stable code and a request ID that apps and support can act on.
+- Tell a breaking change from a safe one, and ship a breaking one with expand, then contract.
+- Put a version where callers can see it, and retire an old one without stranding them.
+
+</Objectives>
+
+## The failure: page 2 repeats page 1
+
+The dashboard lists a user's links newest first, 10 per page, with `GET /v1/users/7/links?page=2&size=10`. Every test
+passes. Then a power user who creates links from a script while browsing writes in: page 2 shows links from page 1, and
+a link they know exists never appears on any page. Nothing errored, and the logs look clean.
+
+<Predict
+  client:visible
+  id="foundations/api-design/predict-1"
+  question="A user has 50 links and pages through them 10 at a time with ?page=N&size=10. While they read, a script creates about one new link every two seconds. What do they see on later pages?"
+  options={['Exactly the next 10 links each time', 'Some links they already saw on an earlier page', 'Only the new links', 'An error, since the list changed']}
+  answer={1}
+>
+
+**Some links they already saw.** Each new link sorts first and pushes every older link down one row, so the top of
+page 2 now holds links from page 1. In the busy creator run below, offset pagination shows **10 repeated rows** and
+needs a sixth page to reach the end of 50 links. Deletions do the reverse: rows slide up, and a link slips past unseen.
+
+</Predict>
+
+## The idea: name the last link you saw
+
+An offset says "skip 10 rows". Rows are positions, and positions move whenever the list changes above them. A cursor
+says "start after link #41". A link keeps its identity however many links arrive or vanish, so the next page starts in
+the right place every time.
+
+<StepDiagram client:visible title="Offset pagination on a changing list" nodes={nodes} edges={edges} steps={steps} height={290} />
+
+<Analogy>
+
+A friend reads your mail aloud from a pile, newest on top. You ask for letters 11 to 20, and two new letters land on
+top while they read, so 11 and 12 are ones you already heard. Ask for "the 10 letters under the bank letter" instead,
+and new arrivals do not matter.
+
+The analogy breaks at the pile. Your friend spots the bank letter at a glance; a database needs an index on the cursor
+key to find link #41 fast. And if the bank letter is shredded, your friend is stuck, while the query still asks for ids
+below 41.
+
+</Analogy>
+
+## Try it
+
+Two clients page through the same 50 links while the same links get created and deleted. The left lane asks for
+`?page=N&size=10`. The right lane asks for `?size=10&after=<last id>`. Press Play on the busy creator first. In this toy
+model the client fetches a page every 3 seconds, and a seeded schedule makes every run identical.
+
+<PaginationWidget client:visible />
+
+What to notice:
+
+- **Busy creator.** Offset pagination shows 10 repeated rows and needs 6 pages to reach the end of 50 links. The cursor
+  shows each link once, in 5 pages. Neither lane shows the 13 links created after page 1 loaded; a refresh puts them
+  on top.
+- **Deletions.** Each delete slides the links below it up one row, so offset pagination skips 6 links it never showed.
+  The cursor skips none.
+- **Quiet list.** With nothing changing, both lanes show all 50 links once, which is why the bug passes tests.
+
+<details>
+<summary>Go deeper: the Both run, counted</summary>
+
+Offset pagination shows 9 repeats and skips 5 links. Of the 41 links that existed for its whole session, 28 appear
+once, 8 appear twice or more, and 5 never appear: 28 + 8 + 5 = 41. The cursor lane finishes sooner, so 46 links last
+its whole session, and it shows each of them exactly once.
+
+Offset pages also walk 201 rows in this run, against 48 for the cursor. At page 500 with 20 links per page, an offset
+steps over 10,000 rows to return 20.
+
+</details>
+
+## Cursors in practice
+
+The two lanes differ by one clause in the query.
+
+```sql
+-- Offset: page 3 walks past 20 rows, then returns 10.
+SELECT code, url FROM links
+WHERE user_id = 7
+ORDER BY id DESC
+LIMIT 10 OFFSET 20;
+
+-- Cursor: seek past the last link seen, return 10.
+SELECT code, url FROM links
+WHERE user_id = 7 AND id < 41
+ORDER BY id DESC
+LIMIT 10;
+```
+
+The cursor query needs an index on `(user_id, id)` to seek instead of scan; the [indexes lesson](../indexes/) shows
+why. Sort on a key that never repeats, or add `id` as a tiebreaker and put both in the cursor.
+
+Hand the client an **opaque cursor**, such as `"next": "eyJpZCI6NDF9"`, and return `"next": null` on the last page.
+The client sends it back unread, so you can change the sort or the encoding later without breaking anyone.
+
+## Errors a caller can act on
+
+The status code from [API styles](../apis/) says what kind of failure happened. The body says which one, and the
+request ID says where to look.
+
+### One body shape for every error
+
+```json
+{
+  "error": {
+    "code": "alias_taken",
+    "message": "The alias sale is already in use.",
+    "request_id": "req_7Hq2LmX9"
+  }
+}
+```
+
+Apps branch on `code`, people read `message`, and support asks for `request_id`. Each code joins the contract: an app
+that checks for `alias_taken` breaks if you rename it.
+
+<details>
+<summary>Go deeper: Problem Details (RFC 9457)</summary>
+
+RFC 9457 standardizes an error body as the `application/problem+json` media type. Its members are `type` (a URI that
+names the kind of problem), `title`, `status`, `detail`, and `instance`, and you may add your own, such as
+`request_id`. Generic tools can read it without knowing your API. A custom shape works as well when every endpoint
+uses it.
+
+</details>
+
+### Request IDs connect a complaint to a log line
+
+A user writes in: "Creating a link failed this morning." Without an ID, you search millions of log lines by time and
+guess. So assign an ID to every request (or adopt the caller's `traceparent`), return it as `X-Request-Id` on **every**
+response, write it on every log line, and pass it to every service you call. One ticket, one search.
+
+## Breaking changes and versions
+
+Once a client ships, the API is a promise: field names, types, required fields, status codes, error codes, and
+defaults. Old phones keep old app versions for years, and partners change on their own schedule. Adding an optional
+field or a new endpoint is safe for clients that ignore unknown fields. Renaming or removing a field, changing its
+type, or making a parameter required breaks them. Changing a default can break them silently.
+
+<ContractChangeWidget client:visible />
+
+What to notice:
+
+- **Rename a field, in place.** The old mobile app and the partner read `url`, so both break on deploy, and so do web
+  tabs opened before it. **Expand, then contract** breaks nobody, at the price of running `/v1` and `/v2` together.
+- **Change a default, in place.** No client errors, yet browsers cache the `301`, skip the server, and the dashboards
+  undercount clicks. A silent break is harder to catch than a crash.
+- **Add an optional field, with the strict parser on.** The partner's parser rejects unknown fields, so even the safest
+  change breaks it. Turn the toggle off, and nobody breaks.
+
+So clients should be **tolerant readers**: read the fields you need and ignore the rest.
+
+### Expand, then contract
+
+This turns one breaking change into three safe steps. Expand: add the new shape next to the old one and accept both.
+Migrate: move clients over, tracking traffic per version and per client. Contract: remove the old shape, but only in a
+new version, so clients that never migrate keep working.
+
+### Versioning
+
+The simplest place for a version is the URL, as in `/v1/links` and `/v2/links`: easy to see in logs, to route, and to
+try in a browser. Bump it only for breaking changes. To retire one, announce a date, return a `Sunset` header on its
+responses, and turn it off when its traffic reaches zero or the date arrives.
+
+<details>
+<summary>Go deeper: versions in a header</summary>
+
+Some APIs put the version in a header, such as `Accept: application/vnd.shortener.v2+json` or a dated
+`Api-Version: 2025-06-01`. URLs stay stable, and a client can move one request at a time. Logs and caches must read
+the header too, and a cache must list it in `Vary` so it does not serve a `v1` body to a `v2` client. Either place
+works when you are consistent.
+
+</details>
+
+## Trade-offs
+
+<TradeoffTable title="Choices for lists and contracts">
+
+| Choice | What it buys | What it costs |
+| --- | --- | --- |
+| Offset pagination (`?page=3`) | Jump to any page; easy totals | Repeats and skips on a changing list; deep pages walk every earlier row |
+| Cursor pagination (`?after=<cursor>`) | Stable pages; one index seek per page | No jumping to page 37; needs a unique, indexed sort key |
+| One error body shape with codes | Apps branch on codes; support finds one log line | Every code joins the contract |
+| Change the contract in place | One version; fast to ship | Old clients break, some of them silently |
+| Expand, then contract, with `/v2` | No client breaks | Two versions to run until the old one retires |
+
+</TradeoffTable>
+
+When not to use them: a list that holds still while someone reads it, such as an admin table, can keep offsets. And
+when one team deploys a server and its only client together, such as a batch job, a rename in place is fine. Browser
+tabs do not count, since old tabs run old code.
+
+## Common mistakes
+
+- Paging a changing list with `OFFSET` because it passed tests on a list that held still.
+- Sorting a cursor on `created_at` alone, so two links with one timestamp straddle a page and one never shows.
+- Returning errors as `200 OK` or free text, so apps parse English and monitoring counts failures as success.
+- Returning the request ID only on success, which nobody files a ticket about.
+- Calling a new field safe while a partner validates responses strictly.
+
+<KeyTakeaways>
+
+- An offset names a position, and positions move when the list changes. A cursor names the last item seen, so pages
+  stay stable and each page costs one index seek.
+- Give every error one body shape: a stable code for apps, a message for people, and a request ID for support.
+- Adding an optional field is safe for tolerant readers. Renames, type changes, new required fields, and changed
+  defaults break clients, some of them silently.
+- Ship a breaking change as expand, migrate, then contract in a new version, and retire the old version when its
+  traffic reaches zero.
+
+</KeyTakeaways>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+**Design a bulk import:** a user uploads a CSV with 500 long URLs to `POST /v1/link-imports`, and the shortener
+creates a link for each.
+
+1. Row 212 asks for a taken alias, and row 380 holds a URL that does not parse. What happens to the other 498 rows,
+   and how does the client learn about the 2 failures?
+2. How does the client page through the 500 results?
+3. The phone drops mid upload. What makes the retry safe?
+4. How do clients that only know `/v1` keep working?
+
+**A strong answer** keeps the good rows, reuses the existing error codes, pages with a cursor, makes the retry safe,
+and says whether `/v1` changes.
+
+<div slot="answer">
+
+1. **Partial success, reported per row.** Create the 498 good links and record each failure with its row number and
+   the single create's error code, `alias_taken` or `invalid_url`. Callers who need all or nothing send
+   `"atomic": true`, which runs every insert in one [transaction](../transactions/).
+2. **With a cursor** over the results, ordered by row number, plus `?status=failed` to show just the two problems.
+3. **An `Idempotency-Key` on the upload,** so a retry returns the same import. Count all 500 creates against the
+   user's [rate limit](../../reliability/rate-limiting/).
+4. **The feature is additive:** new endpoints and new error codes in the same body shape, so `/v1` needs no bump.
+
+</div>
+
+</Challenge>

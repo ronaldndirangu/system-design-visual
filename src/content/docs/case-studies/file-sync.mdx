@@ -1,0 +1,626 @@
+---
+title: File sync
+description: Keep one folder identical on a laptop, a phone, and the web while uploads drop, two devices edit the same file offline, and deletes must reach every copy. Hash files into blocks, commit a manifest, and stream every change to every device.
+furtherReading:
+  - title: "Streaming File Synchronization"
+    url: https://dropbox.tech/infrastructure/streaming-file-synchronization
+    note: How Dropbox clients commit blocklists, learn which blocks the server lacks, and let other devices start downloading before an upload ends.
+  - title: "Dropbox content hash"
+    url: https://docs.dropboxapi.com/dropbox-api/docs/technical-reference/content-hash
+    note: The 4 MB block size, and how a file hash is built from the SHA-256 of each block.
+  - title: "FastCDC: a Fast and Efficient Content-Defined Chunking Approach for Data Deduplication"
+    url: https://www.usenix.org/conference/atc16/technical-sessions/presentation/xia
+    note: Gear-based content-defined chunking, about ten times faster than Rabin-based chunking with similar deduplication.
+---
+
+import Recall from '../../../components/lesson/Recall.astro';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import FileSyncDuelWidget from '../../../components/widgets/FileSyncDuelWidget';
+
+export const nodes = [
+  { id: 'laptop', kind: 'client', x: 70, y: 150, label: 'Laptop', sublabel: 'sync client' },
+  { id: 'api', kind: 'server', x: 240, y: 150, label: 'Sync API', sublabel: 'commits and reads' },
+  { id: 'blocks', kind: 'database', x: 420, y: 50, label: 'Block store', sublabel: 'keyed by SHA-256' },
+  { id: 'meta', kind: 'database', x: 420, y: 250, label: 'Metadata DB', sublabel: 'journal per namespace' },
+  { id: 'feed', kind: 'queue', x: 600, y: 250, label: 'Change feed', sublabel: 'from the outbox' },
+  { id: 'phone', kind: 'client', x: 600, y: 150, label: 'Phone', sublabel: 'another device' },
+];
+
+export const edges = [
+  { from: 'laptop', to: 'api' },
+  { from: 'api', to: 'blocks' },
+  { from: 'api', to: 'meta' },
+  { from: 'meta', to: 'feed', dashed: true },
+  { from: 'feed', to: 'phone' },
+  { from: 'phone', to: 'api' },
+];
+
+export const steps = [
+  {
+    title: 'Hash the file into blocks',
+    text: 'The laptop splits the new video into 4 MB blocks and hashes each with SHA-256. The ordered list of hashes, the blocklist, describes the whole file.',
+    nodes: ['laptop'],
+    flows: [],
+  },
+  {
+    title: 'The first commit asks what is missing',
+    text: 'The laptop commits the path, the blocklist, and the version it last saw. The API checks the block index and replies with the hashes it lacks.',
+    nodes: ['laptop', 'api', 'blocks'],
+    flows: ['laptop>api', 'api>blocks'],
+  },
+  {
+    title: 'Upload only the missing blocks',
+    text: 'The laptop sends each missing block under its hash. The store hashes the bytes again and rejects a mismatch. A dropped link costs one block.',
+    nodes: ['laptop', 'api', 'blocks'],
+    flows: ['laptop>api', 'api>blocks'],
+  },
+  {
+    title: 'Commit the manifest',
+    text: 'The laptop commits again. Every block is present and the base version still matches, so one transaction appends a journal row, updates the latest view, and writes an outbox row.',
+    nodes: ['laptop', 'api', 'meta'],
+    flows: ['laptop>api', 'api>meta'],
+  },
+  {
+    title: 'Announce the change',
+    text: 'A relay publishes the outbox row to the change feed: namespace 42 reached version 1,207. A relay crash only repeats the message.',
+    nodes: ['meta', 'feed'],
+    flows: ['meta>feed'],
+  },
+  {
+    title: 'Other devices catch up from their cursor',
+    text: 'The phone’s open request returns. It reads every journal row after its cursor, fetches the blocks it lacks, writes the file, and then saves its new cursor.',
+    nodes: ['feed', 'phone', 'api', 'blocks'],
+    flows: ['feed>phone', 'phone>api', 'api>blocks'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'case-studies/file-sync/recall-1',
+    prompt: 'A client sends a payment request, the response times out, and the client retries. What lets the server charge only once?',
+    options: [
+      { text: 'A shorter timeout on the client', why: 'A shorter timeout fires more retries, and each one is another chance to charge twice.' },
+      { text: 'The same idempotency key on both attempts, with the first result kept in a dedupe store', correct: true, why: 'The server finds the key and returns the stored result instead of charging again.' },
+      { text: 'Retrying only after the server answers', why: 'After a timeout no answer arrives, so the client cannot tell whether the charge happened.' },
+      { text: 'Exactly-once delivery from the network', why: 'Networks drop and repeat requests, so the server must make repeats harmless.' },
+    ],
+  },
+  {
+    id: 'case-studies/file-sync/recall-2',
+    prompt: 'A service saves a row and must publish an event about it. Why write the event to an outbox table in the same transaction?',
+    options: [
+      { text: 'The outbox delivers each event exactly once', why: 'A relay that crashes before marking a row sent publishes it again.' },
+      { text: 'It makes the broker part of the database transaction', why: 'The broker stays outside. The relay copies committed rows to it later.' },
+      { text: 'The row and the event commit together, and a relay publishes the event afterward, at least once', correct: true, why: 'Neither half can exist without the other, and a relay crash only causes a repeat.' },
+      { text: 'It keeps events in order across every service', why: 'An outbox orders the events of one database, and consumers still handle repeats.' },
+    ],
+  },
+];
+
+export const quiz = [
+  {
+    id: 'case-studies/file-sync/q1',
+    prompt: 'Why does the client send its commit, with the list of block hashes, before it uploads any block bytes?',
+    options: [
+      {
+        text: 'So the server can reserve disk space for the whole file',
+        why: 'The server stores blocks by hash and needs no reservation. The first commit tells the client which blocks to skip.',
+      },
+      {
+        text: 'So the server can reply with only the hashes it lacks, and the client skips every block the server holds',
+        correct: true,
+        why: 'Right. A hash names the content, so the server checks its block index and asks for the rest. After a drop, the same question resumes the upload.',
+      },
+      {
+        text: 'So other devices can open the file sooner',
+        why: 'Other devices see the file only after the final commit, once every block is stored.',
+      },
+      {
+        text: 'So the server can lock the path while the upload runs',
+        why: 'The design takes no lock. The base version on the final commit catches a competing edit.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/file-sync/q2',
+    prompt: 'A 2 GB file uses fixed 4 MB blocks. An app rewrites 3 blocks in place, and the link drops once when one of those blocks is 2 MB into its upload. How many MB does the client send?',
+    options: [
+      {
+        text: '12 MB',
+        why: 'That counts the three blocks once. The 2 MB sent before the drop is lost, and that block goes again in full.',
+      },
+      {
+        text: '16 MB',
+        why: 'The drop wastes the 2 MB in flight, not a whole extra block.',
+      },
+      {
+        text: '2,000 MB',
+        why: 'That is the whole-file upload. The server already holds the other 497 blocks.',
+      },
+      {
+        text: '14 MB',
+        correct: true,
+        why: 'Right. Three changed blocks are 12 MB, and the drop throws away 2 MB that the client sends again.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/file-sync/q3',
+    prompt: 'A laptop’s commit times out, but the server had committed it as version 1,207. The laptop retries with the same blocklist and base version 1,180. Which statement is true of a careful design?',
+    options: [
+      {
+        text: 'The retry is safe without anything extra, because block hashes make every request repeatable.',
+        why: 'Hashes make block uploads repeatable. A commit changes the version, so its retry needs its own key.',
+      },
+      {
+        text: 'The server should answer 409, and the client should save a conflicted copy.',
+        why: 'That is what happens without a key: the laptop files a conflicted copy of its own edit.',
+      },
+      {
+        text: 'The retry carries the first attempt’s idempotency key, so the server returns version 1,207 again.',
+        correct: true,
+        why: 'Right. The dedupe store returns the first result. Judged as a new commit, base 1,180 looks stale and earns a 409.',
+      },
+      {
+        text: 'The server should ignore the stale base and write version 1,208.',
+        why: 'Ignoring the base version also hides real conflicts from other devices, and their edits get overwritten.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/file-sync/q4',
+    prompt: 'A team builds a registry for container images. Each image is a stack of layers, and many images share base layers. Which file-sync idea carries over most directly?',
+    options: [
+      {
+        text: 'Name each layer by the hash of its bytes, and upload only the layers the registry lacks',
+        correct: true,
+        why: 'Right. Registries check each layer digest first and skip layers they hold, the same move as the missing-blocks reply.',
+      },
+      {
+        text: 'Save conflicting pushes of a tag as conflicted copies',
+        why: 'A tag simply points at the newest pushed image. Nobody edits a layer offline.',
+      },
+      {
+        text: 'Keep a per-device cursor into a change journal',
+        why: 'A pull fetches one image by name and digest. No device follows a stream of changes.',
+      },
+      {
+        text: 'Split each layer with content-defined chunking',
+        why: 'Registries store each layer whole under its digest.',
+      },
+    ],
+  },
+];
+
+<Recall questions={recall} />
+
+<Objectives>
+
+- Estimate the storage, metadata, and upload load of a sync service, and explain why bytes and metadata live in
+  different stores.
+- Explain how content-hashed blocks let an upload resume and skip bytes the server holds, and when content-defined
+  chunking beats fixed blocks.
+- Design a per-namespace journal, device cursors, and an outbox-driven change feed that never loses a change.
+- Handle offline conflicts with base versions and conflicted copies, and deletes with tombstones and safe block cleanup.
+
+</Objectives>
+
+**Route:** Intermediate, an extra case off the beginner route through Module 6. Take it after [Chat](../chat/).
+
+## The failure: a video that never finishes uploading
+
+Maya records a 300 MB video and drops it into her synced folder on a train. The first version of the sync client sends
+each new or changed file as one `PUT` with the whole file in the body. The train’s Wi-Fi uploads at 20 Mbit/s, so the
+video needs 120 seconds of clean link. The link drops for 5 seconds about every 2 minutes. Each drop kills the request,
+and the server throws away the partial body, because it cannot tell half a video from a whole one.
+
+The same client wastes bytes on a good link too. Maya’s photo app keeps a 1 GB library file and rewrites one small
+region of it on every save. Each save sends all 1,000 MB again.
+
+<Predict
+  client:visible
+  id="case-studies/file-sync/predict-1"
+  question="Two clients upload the same video over identical train links, and both links drop at the same moments. One sends the whole file in one request. The other hashes the file into 4 MB blocks, asks the server which blocks it lacks, and sends those one at a time. Which finishes first?"
+  options={[
+    'The whole-file request, because one request has less overhead than many',
+    'The block upload, by more than two minutes',
+    'They finish together, because both links run at the same speed',
+  ]}
+  answer={1}
+>
+
+<div slot="figure">
+
+| Setting    | Value                                         |
+| ---------- | --------------------------------------------- |
+| File       | A new 300 MB video                            |
+| Uplink     | 20 Mbit/s, so 120 s of clean link             |
+| Link drops | 5 s down, about every 2 minutes               |
+
+</div>
+
+**The block upload, at 134.2 s against 311.8 s.** At 110 s the link drops. The whole-file request has sent 275.5 MB,
+and the server throws all of it away. The block upload loses the 1.8 MB of the one block in flight, asks again which
+blocks are missing, and carries on. The whole-file client loses another 178.3 MB at 186 s and sends 753.8 MB in total
+to deliver 300 MB.
+
+</Predict>
+
+## Requirements and estimates
+
+**Functional requirements.** A user’s folder looks the same on every signed-in device. Adds, edits, renames, moves,
+and deletes on one device reach the others. Edits made offline sync when the device reconnects. Large files upload over
+bad links and resume after a drop. People restore an earlier version, or a deleted file, for 30 days. Shared folders
+let several people see and edit the same files. Live co-editing inside one document, search, and previews stay out of
+scope.
+
+**Non-functional requirements.** Never lose a committed file, and never silently overwrite an edit. Changes reach other
+online devices within a few seconds. Upload only the bytes the server lacks, because uplinks are the scarcest resource
+in the system.
+
+**Estimates (illustrative).** The method comes from [requirements and estimates](../../thinking/requirements-and-estimates/).
+
+- **Users.** 10 million users, 2 million of them active each day, with 2 devices each on average. Most shared folders
+  have a handful of members. The largest we plan for has 2,000 members on 4,000 devices.
+- **Bytes.** 10 GB per user is 100 PB before deduplication. That belongs in [object storage](../../scaling/object-storage/),
+  which handles replication, erasure coding, and storage tiers.
+- **Files.** At 2 MB per average file, each user has 5,000 files, so the service tracks 50 billion of them. At about
+  300 bytes per row for path, hashes, and version, the current metadata alone is about 15 TB before any history.
+- **Blocks.** Most files fit in one 4 MB block, so expect about 50 billion blocks. An index entry of about 64 bytes (a
+  32-byte hash, a location, and a count) puts the block index near 3.2 TB.
+- **Commits.** Each active user saves 20 files a day: 40 million commits a day, about 460 a second on average and 1,400
+  at a 3x peak.
+- **Upload.** 20 files of 2 MB for 2 million users is 80 TB a day, about 930 MB/s on average and nearly 3 GB/s at
+  peak, before deduplication trims it.
+
+Two very different stores fall out of these numbers. Bytes need a huge, simple store that only ever adds and deletes
+whole blocks. Metadata is thousands of times smaller and needs careful ordering, because every device replays it. The
+design keeps them apart.
+
+## API and data model
+
+The client talks to a small JSON API for metadata and moves bytes as named blocks.
+
+- **`POST /commit`** takes a namespace (a user’s folder tree or one shared folder), a path, the blocklist, the size,
+  the `base_version` the client last saw for that path, and an `Idempotency-Key` header. It answers in one of three
+  ways: the new version; a list of block hashes the server lacks; or `409 Conflict` with the current version when
+  another device committed first.
+- **`PUT /blocks/{sha256}`** stores one block. The store hashes the body and rejects it when the hash differs from the
+  name, so a truncated or corrupted block never lands. Sending the same block twice changes nothing.
+- **`GET /changes?namespace=42&cursor=1200`** returns the journal rows after version 1,200, a new cursor, and whether
+  more rows wait. **`GET /changes/wait`** holds the request open for up to a minute and returns as soon as the
+  namespace moves past the cursor.
+- **`GET /blocks/{sha256}`** returns a block. Any device that knows the hash and has access to a file that uses it can
+  fetch it.
+
+The data model starts from the queries, the way [data modeling](../../foundations/data-modeling/) teaches. Three
+queries matter: list every change in a namespace after version V, find the current file at a path, and check whether
+the store holds a block.
+
+- **`journal`**, keyed by (namespace, version). Every add, edit, rename, and delete appends a row with the path, the
+  blocklist, the size, and a deleted flag. Versions come from a counter per namespace and only increase. Rows never
+  change after they land.
+- **`latest`**, keyed by (namespace, path). It holds the version and blocklist of the file there now, so listing a
+  folder needs no replay.
+- **`outbox`**, rows the commit writes in the same transaction for the relay to publish.
+- **`block_index`**, keyed by hash. It records where each block lives and how many retained versions use it.
+
+The journal and the latest view shard by namespace, so one commit touches one shard. The block index shards by hash,
+because a block belongs to no single namespace.
+
+## High-level design
+
+Bytes and metadata take separate paths. Blocks go to the block store, which knows nothing about files. A file version
+is a small manifest that points at blocks, and it becomes visible in one commit to the metadata database.
+
+<StepDiagram client:visible title="One file from a laptop to a phone" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+The rule that makes the design safe: a file becomes visible only through a commit, and the commit succeeds only when
+every block it names is stored. Other devices never download half a video. A crash at any step leaves either the old
+version or the new one.
+
+<Analogy>
+
+Moving a bookshelf in one piece is the whole-file upload: drop it on the stairs, and you carry it up from the bottom
+again. Packing the books into numbered boxes is the block upload. A dropped box costs one box. The new house checks the
+labels and tells you which boxes it already has, so you carry only the rest. The move counts as done when the
+receiver signs the packing list, which is the manifest.
+
+Where it breaks: two houses rarely hold identical boxes, while identical blocks are common across versions of one file
+and across users.
+
+</Analogy>
+
+## Deep dive: hashed blocks survive a flaky link
+
+The block upload rests on **content addressing**: each block’s name is the SHA-256 of its bytes. Three things follow.
+A retry of `PUT /blocks/{hash}` is harmless, because the name fixes the content. The server can verify every block it
+receives. And the first commit can answer “which of these do you lack?” for any file, whether the client is resuming
+an upload or sending a file the server has seen before.
+
+The [video streaming](../video-streaming/) case study uses multipart upload for the same problem. Multipart resumes
+inside one upload session that the server remembers. Hashes need no session: a client that crashes, restarts, or
+switches networks asks the same question tomorrow and gets the same answer. Dropbox uses 4 MiB (4,194,304-byte) blocks,
+and a file’s content hash is the SHA-256 of its blocks’ SHA-256 digests joined in order. This lesson rounds to a
+decimal 4 MB.
+
+Hashing costs CPU. At 500 MB/s, hashing a 1 GB file takes about 2 seconds on a laptop and longer on a phone, so clients
+re-hash only files whose size or modified time changed.
+
+In the duel below each client gets its own 20 Mbit/s link, and both links drop at the same moments, so neither
+competes for bandwidth. This toy sends blocks one at a time, and each block pays a round trip.
+
+<FileSyncDuelWidget client:visible scenarios={['flaky', 'tiny']} />
+
+What to look for with **Flaky train Wi-Fi**:
+
+- **One drop, two very different losses.** At 110 s the whole-file request throws away **275.5 MB** and starts over.
+  The block upload loses **1.8 MB** and resumes with the next missing block.
+- **Blocks finish at 134.2 s.** The whole-file upload loses another **178.3 MB** at 186 s and finishes at **311.8 s**,
+  after sending **753.8 MB**. Blocks send **301.8 MB**, close to the file size.
+- **Requests are the price.** Blocks make **79 requests** against 3, and the round trips add about 8 seconds. Real
+  clients keep several blocks in flight to hide that.
+
+What to look for with **Small file, good link**:
+
+- **Blocks lose this race.** A new 2 MB note finishes in **0.9 s** as one request and in **1.2 s** as a commit, a
+  block, and a second commit. With nothing to skip and nothing to resume, blocks only add round trips.
+
+## Deep dive: send only the blocks that changed
+
+Hashes pay off a second time when a file changes. The photo app rewrites one region of its 1 GB library file. The
+client re-hashes the file, and 249 of its 250 block hashes match the version on the server. The first commit asks for
+one block.
+
+<FileSyncDuelWidget client:visible scenarios={['edit']} title="One changed block in a 1 GB file" />
+
+What to look for with **Small edit, big file**:
+
+- **The server already holds 996 MB.** Only **4 MB** cross the link, in **3 requests**.
+- **Blocks finish in 3.9 s.** About 2 s of that is hashing 1,000 MB on the laptop. The whole-file client sends 1,000 MB
+  and takes **400.1 s**.
+
+The same check deduplicates across files and users. A copy of a file, a file moved between folders, or a popular
+installer that a thousand people save all commit with blocks the server already holds, so none of their bytes cross
+the link again.
+
+<details>
+<summary>Go deeper: deduplication across users leaks information</summary>
+
+If the server deduplicates across all users, the missing-blocks reply tells a client whether anyone already stored a
+block. An attacker who guesses a document’s contents can learn whether it exists on the service, and a client that
+knows a hash can claim bytes it never had. Services defend in a few ways: deduplicate only within one user or one
+shared folder, make the client upload a block before trusting the hash for a new account, or encrypt with per-user keys,
+which ends cross-user deduplication entirely. Each choice gives up some storage savings for privacy.
+
+</details>
+
+### Insertions move every fixed block
+
+The photo app rewrote bytes in place, so every block boundary stayed where it was. Edits that insert or delete bytes
+behave differently.
+
+<Predict
+  client:visible
+  id="case-studies/file-sync/predict-2"
+  question="An app inserts 100 bytes near the start of the same 1 GB file. With fixed 4 MB blocks, roughly how much does the client upload?"
+  options={[
+    'About 4 MB, the one block that holds the new bytes',
+    'Only the 100 new bytes',
+    'Nearly the whole 1,000 MB',
+  ]}
+  answer={2}
+>
+
+**Nearly the whole file.** Fixed blocks start every 4 MB, measured from the start of the file. Inserting 100 bytes
+slides every later byte 100 places along, so every later block holds different bytes and gets a new hash. The server
+recognizes almost nothing.
+
+</Predict>
+
+**Content-defined chunking** picks boundaries from the content itself. The client slides a rolling hash over a small
+window of bytes and cuts a chunk wherever the hash’s low 13 bits are all zero, which happens on average every 8 KB.
+After an insertion, the cuts fall back into step at the first boundary past the edit, so only the one or two chunks
+around it change. Minimum and maximum sizes stop runs of tiny or giant chunks. Backup tools such as restic and Borg
+work this way.
+
+The costs are CPU and bookkeeping. Rabin fingerprints, the classic rolling hash, are slow, and FastCDC uses a simpler
+Gear hash that runs about ten times faster with similar deduplication. Small chunks find more matches and inflate
+everything else: a 1 GB file in 8 KB chunks is 125,000 chunks, about 4 MB of hashes in its manifest, against 8 KB for
+250 fixed blocks. The block index grows by the same factor. Fixed 4 MB blocks win when most edits rewrite in place or
+replace whole files, which describes most of what people sync.
+
+## Deep dive: the change feed and cursors
+
+Every commit appends one row to its namespace’s journal, with the next version number. That gives each namespace one
+total order of changes, and it makes a device’s progress a single number: its **cursor**, the last version it
+applied.
+
+A device catches up with `GET /changes?cursor=1200`. It applies the rows in order, downloads any blocks it lacks, and
+saves its new cursor only after the files are on disk. A crash in between replays a few rows, and replaying is safe,
+because each row says “this path now holds this blocklist”. Applying it twice leaves the same file.
+
+Push makes this fast. The commit transaction also writes an outbox row, and a relay publishes it to the change feed.
+The [Delivery semantics and the outbox](../../async/delivery-semantics/) lesson explains why the outbox matters: if the
+API published after the commit, a crash in between would leave a committed file that no device hears about. The relay
+delivers at least once, so devices see some notifications twice.
+
+Duplicates do no harm, because a notification carries only “namespace 42 changed”. The journal stays the source of
+truth. A device holding `GET /changes/wait` open hears the notification, reads the journal from its cursor, and finds
+either new rows or nothing. If the feed goes down, the long poll times out after a minute, and the device reads the
+journal anyway. Changes arrive late and never vanish.
+
+Each shared folder is its own namespace with its own versions, and a device keeps one cursor per namespace. No order
+across namespaces is needed: a change in a shared project folder never has to wait for a change in a private one.
+
+A cursor can fall too far behind. The journal keeps rows for the 30-day restore window and then compacts them. A
+laptop that returns after three months gets a reset answer, lists the folder from `latest`, and compares hashes with
+its own files.
+
+## Offline edits and conflicts
+
+Maya edits `report.docx` on her laptop on the train, starting from version 1,180. Meanwhile Sam edits the same file at
+his desk and commits version 1,190. Maya’s laptop reconnects and commits with `base_version` 1,180.
+
+The commit is a conditional write, the same tool the [ticketing](../ticketing/) case study uses to sell each seat once.
+The server applies it only when the path’s current version equals the base version. Here the current version is 1,190,
+so the server answers `409 Conflict`.
+
+A sync service cannot merge arbitrary binary files, so it keeps both. Sam’s version stays at `report.docx`, and Maya’s
+laptop commits hers as a new file, `report (Maya’s conflicted copy).docx`. Nothing is lost, and a person merges the two.
+A format-aware three-way merge, which compares both edits with the base version, can resolve some offline conflicts,
+such as edits to different paragraphs. Live co-editing is a different problem, covered in the
+[collaborative editor](../collaborative-editor/) case study.
+
+Last writer wins by timestamp looks simpler and loses work. Device clocks drift, so the later edit can carry the
+earlier time, and the losing edit vanishes without a trace. Server-assigned versions need no clocks.
+
+Two other conflicts need rules:
+
+- **Edit against delete.** Maya deletes a file while Sam edits it offline. Keep Sam’s edit and bring the file back: an
+  extra file costs a click to delete, while a lost edit costs an afternoon.
+- **Names that collide.** `Report.docx` and `report.docx` are two files on Linux and one on a default Windows or Mac
+  disk. The client must detect the clash before writing and rename one of them.
+
+<details>
+<summary>Go deeper: paths or file ids</summary>
+
+Keying the journal by path keeps it simple: a row says what lives at a path. A rename of a folder holding 10,000 files,
+though, appends 10,000 rows, and every device replays them, even though no block moves. Keying files by a stable id with
+a parent pointer makes the rename one row. Every path lookup then walks the tree from the root, and a move must check
+that a folder never ends up inside itself. Both designs work at scale. Pick by which operation your users repeat more.
+
+</details>
+
+## Deletes, tombstones, and block cleanup
+
+A delete appends a journal row with the deleted flag set: a **tombstone**. Devices replay it like any other change
+and remove the file.
+
+Without tombstones, a returning device would compare its folder with the server and find a file the server lacks. It
+cannot tell “deleted on another device” from “created here while offline”, and if it guesses wrong, it uploads the file
+again and resurrects it everywhere. The tombstone records the reason. It also lets the restore button work for 30 days.
+
+Freeing the bytes is harder, because one block can back many versions, files, and users. A block can go only when no
+retained version names it. There are two common ways to find such blocks.
+
+- **Reference counts.** Each block index entry counts the retained versions that use it, and a block with a count of
+  zero gets deleted. The counts live on block index shards while commits run on journal shards, so a crash between the
+  two updates leaves a count wrong. A wrong high count leaks storage, and a wrong low count deletes live data.
+- **Mark and sweep.** A background job walks every retained manifest, marks each hash it finds, and deletes unmarked
+  blocks. It is slower and robust against drift.
+
+Both must coordinate with commits in flight. A client that has uploaded its blocks and has not yet committed holds
+blocks that no manifest names. A sweep in that gap deletes them, and the commit then names blocks that are gone. A
+grace period plus an existence check at commit narrows the gap without closing it, because the sweep can delete a
+block just after the check passes. Close it on the block index entry, where both sides meet:
+
+- An upload or commit **pins** each block it names for a few days, a conditional write that fails if the block is
+  condemned. A commit that hits a condemned block uploads it again.
+- The sweep first marks a block **condemned**, a conditional write that fails while a pin holds, and deletes the bytes
+  only after that write succeeds.
+
+The two writes touch one entry, so they cannot interleave: either the pin lands first and the block survives, or the
+condemn lands first and the commit re-uploads. Pins that expire also clean up uploads that never commit.
+
+## Failure walkthrough
+
+Follow one commit through the failures it meets. Each recovery comes from a piece of the design above.
+
+| What fails | What the user sees | What recovers it |
+| ---------- | ------------------ | ---------------- |
+| The link drops mid-upload | A short pause | The client retries the block with backoff and jitter, as in [retries](../../reliability/retries/), then asks again which blocks are missing |
+| The client crashes after uploading blocks | The file syncs after restart | The blocks stay pinned for days. On restart the commit renews the pins and finds nothing missing |
+| The commit’s answer times out after it succeeded | Nothing | The retry carries the same [idempotency](../../reliability/idempotency/) key and gets version 1,207 back |
+| The relay crashes after publishing | Nothing | It publishes again, and devices read the journal and find nothing new |
+| The change feed goes down | Changes arrive up to a minute late | Long polls time out and devices read the journal from their cursors |
+| The metadata shard’s leader fails | Commits pause for a few seconds | A replica takes over, as in [Raft](../../distributed-data/raft/). Block uploads continue, and commits retry with their keys |
+
+The third row is the subtle one. Without an idempotency key, the retry looks like a new commit with base version
+1,180, the server answers `409`, and Maya’s laptop files a conflicted copy of her own edit.
+
+## Trade-offs
+
+<TradeoffTable title="Choosing how files travel and change">
+
+| Setting                    | What it buys                                                  | What it costs                                                    |
+| -------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Whole file, one request    | Simplest; the 2 MB note lands in 0.9 s against 1.2 s          | 753.8 MB sent for a 300 MB video; 1,000 MB for a 4 MB edit       |
+| Fixed 4 MB hashed blocks   | Resumes after drops; 4 MB sent for an in-place edit           | Hashing CPU, more requests, and insertions shift every block     |
+| Content-defined chunks     | Insertions change one or two chunks                           | More CPU, bigger manifests, and a larger block index             |
+| Cross-user deduplication   | Popular files stored once                                     | Leaks whether a file exists, and blocks per-user encryption      |
+| Conflicted copies          | No edit is ever lost                                          | People merge the two copies by hand                              |
+| 30-day tombstones          | Returning devices replay deletes, and restores work           | More metadata, and blocks wait longer before cleanup             |
+
+</TradeoffTable>
+
+Skip this design when files are written once and never change, such as profile photos or receipts: a single upload to
+[object storage](../../scaling/object-storage/) through a pre-signed URL does the job. Skip it when people edit inside
+one document at the same moment, and use the [collaborative editor](../collaborative-editor/) design.
+
+## Common mistakes
+
+- **Showing a file before every block lands.** Commit the manifest last, so no device downloads half a file.
+- **Last writer wins by device clock.** Clocks drift and silent overwrites lose work. Compare server versions and keep
+  a conflicted copy.
+- **Deleting by absence.** A file missing from a listing may be deleted or not yet uploaded. Record tombstones.
+- **Sweeping blocks on a timer alone.** A grace period narrows the race with clients that stored blocks and have not
+  committed yet. Pins and condemn marks on the same entry close it.
+- **Trusting the push channel.** Notifications get lost and repeated. Devices read the journal from their cursor and
+  poll when push goes quiet.
+
+<KeyTakeaways>
+
+- Name each block by the SHA-256 of its bytes. A drop then costs one block, and the server skips blocks it holds.
+- Keep bytes and metadata apart. A version is a manifest of hashes, and it appears in one small commit.
+- Each namespace has an append-only journal with rising versions. Devices catch up from a cursor, and a notification
+  only says “look”.
+- Commit against a base version. A stale base is a conflict, and the losing edit survives as a conflicted copy.
+- Deletes are tombstones. A block goes only when no retained version uses it and no pending commit holds a pin on it.
+
+</KeyTakeaways>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+**Closing rubric: grow one dimension tenfold.** Keep this lesson’s estimates (20 files saved per active user a day, a 3x
+peak, and a largest shared folder of 2,000 members on 4,000 devices), and grow that folder tenfold: 20,000 employees on
+40,000 devices.
+
+1. Which part hits its limit first, and by how much?
+2. What do you change, and what does the change cost?
+3. At the morning peak, the metadata shard holding the folder fails over, and one laptop’s commit answer arrives 30
+   seconds late. What happens to the folder and to that commit?
+
+<div slot="answer">
+
+**Fan-out to devices breaks first.**
+
+- **Commits are fine.** 20,000 people saving 20 files is 400,000 commits a day: about 5 a second, and 14 at a 3x
+  peak. One journal shard handles that easily.
+- **Fan-out grows a hundredfold.** Each commit wakes the other 39,999 devices, and each one reads the journal.
+  Commits and devices both grow tenfold, so wake-ups and journal reads climb from about 5,600 to 560,000 a second, all
+  on one shard.
+- **Change: batch the wake-ups and cache the journal tail.** Notify each device at most once a second, and serve
+  journal reads from replicas or a cache of recent rows, which never change once written. The cost is up to a second
+  of extra delay, plus replica lag. A device must move its cursor only to the last version it actually read.
+- **Failover.** Commits to the folder pause until a new leader takes over, while block uploads continue. Clients retry
+  with their idempotency keys, backoff, and jitter, so 40,000 devices do not retry in step. The keys must live in the
+  same replicated database as the journal, written in the same transaction, or the new leader forgets them.
+- **The late answer.** The laptop times out and retries with the same key, and the server returns the first result.
+  Without the key, the stale base earns a `409` and a conflicted copy of the laptop’s own edit.
+- **Extension.** Split the giant folder into one namespace per top-level subfolder, each with its own versions, to
+  spread commits and reads over shards. The cost is no single order across the whole folder, and a move between
+  subfolders becomes two commits that devices must tolerate seeing apart.
+
+</div>
+
+</Challenge>

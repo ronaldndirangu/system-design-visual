@@ -24,16 +24,6 @@ export const recall = [
       { text: 'About 12 writes a second, so writes are light', correct: true, why: '1 million ÷ 86,400 ≈ 12. With many clicks per link, reads dominate the load.' },
     ],
   },
-  {
-    id: 'practice/timed-round/recall-2',
-    prompt: 'In a timed round you have just finished the API step. Which step comes next?',
-    options: [
-      { text: 'Data model: what you store and how you read it', correct: true, why: 'Step 4 names the entities, their keys, and the queries that hit them most.' },
-      { text: 'High-level design: which boxes, and how a request flows', why: 'The boxes come after the data model, since the store you pick depends on it.' },
-      { text: 'Deep dive: where the design breaks first', why: 'The deep dive is step 6. It needs a high-level design to dig into.' },
-      { text: 'Estimates: how big the system is', why: 'Estimates are step 2, so they come before the API.' },
-    ],
-  },
 ];
 
 export const quiz = [

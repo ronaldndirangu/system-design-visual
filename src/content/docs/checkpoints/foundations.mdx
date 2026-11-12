@@ -19,6 +19,7 @@ export const quiz = [
   },
   {
     id: 'checkpoint/foundations/q2',
+    ordered: true,
     prompt: 'A client sends well-formed JSON to POST /links, but expires_at holds a date in the past. Which response fits best?',
     options: [
       { text: '400 Bad Request', why: '400 means the request is malformed, such as broken JSON or a missing field. This body parses fine.' },

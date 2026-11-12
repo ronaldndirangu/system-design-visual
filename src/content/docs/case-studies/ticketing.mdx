@@ -71,7 +71,7 @@ export const steps = [
   },
   {
     title: 'Pay before the hold expires',
-    text: 'The winner has a few minutes to pay. Pressing Pay claims the hold with one more conditional write and a fresh deadline. If the buyer leaves, or the claim outlasts its deadline, the seat goes back on sale and a late payment is voided. A unique constraint on (event, seat) in the orders table guards the very last step.',
+    text: 'The winner has a few minutes to pay. Every claim gets a fresh hold id, and the payment carries it. Pressing Pay claims the hold with one more conditional write and a fresh deadline. If the buyer leaves, or the claim outlasts its deadline, the seat goes back on sale and a late payment is voided, even when the same buyer has claimed the seat again. A unique constraint on (event, seat) in the orders table guards the very last step.',
     nodes: ['app', 'db'],
     flows: ['app>db', 'db>app'],
   },
@@ -289,23 +289,24 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
    problem. (See [requirements and estimates](../../thinking/requirements-and-estimates/) for the method.)
 
 3. **API.** `GET /events/{id}/seats` returns the seat map and can be a second stale. `POST /holds` takes an event and a
-   seat and returns a hold with its expiry time, or `409 Conflict` when someone else got there first.
-   `POST /orders` takes a hold and a payment token, with an `Idempotency-Key` header so a retried checkout cannot buy
+   seat and returns a hold with its `hold_id` and expiry time, or `409 Conflict` when someone else got there first.
+   `POST /orders` takes the `hold_id` and a payment token, with an `Idempotency-Key` header so a retried checkout cannot buy
    twice (the [Idempotency](../../reliability/idempotency/) lesson covers keys in depth). It claims the hold before it
    charges the card, and answers `409 Conflict` when the hold has already lapsed.
 
 4. **Data model.** A `seats` table keyed by (event, seat) holds the status (`available`, `held`, `paying` or `sold`),
-   the holder, and the deadline for the current hold. An `orders` table records each paid ticket, with a unique
-   constraint on (event, seat) as a final guard.
+   the holder, a `hold_id` that every new claim increments, and the deadline for the current hold. An `orders` table
+   records each paid ticket with the `hold_id` it paid for, and a unique constraint on (event, seat) as a final guard.
 
 5. **High-level design.** Fans pass through a waiting room, then a load balancer, to stateless app servers. The servers
    read the seat map from a cache and send every claim to the seat database.
 
 6. **Deep dive: the claim.** This is where the design breaks first, and the simulations below live here. Three tools
    make the database reject a second claim. A conditional write:
-   `UPDATE seats SET status = 'held', holder = ?, expires = now() + 8 min WHERE event = ? AND seat = ? AND (status =
-   'available' OR (status IN ('held', 'paying') AND expires < now())))`, then check how many rows changed. A sold seat
-   matches neither branch, so no claim can take it back. A row lock: `SELECT ... FOR UPDATE` inside a transaction, then
+   `UPDATE seats SET status = 'held', holder = ?, hold_id = hold_id + 1, expires = now() + 8 min WHERE event = ? AND
+   seat = ? AND (status = 'available' OR (status IN ('held', 'paying') AND expires < now())) RETURNING hold_id`, then
+   check how many rows changed and keep the returned `hold_id`. A sold seat matches neither branch, so no claim can take
+   it back. A row lock: `SELECT ... FOR UPDATE` inside a transaction, then
    the write. A unique constraint that refuses a second order row for the same seat. The [Transactions and
    constraints](../../foundations/transactions/) lesson covers all three, and [Holds that expire](#holds-that-expire)
    adds the checkout steps.
@@ -345,17 +346,21 @@ So every hold gets a deadline, and the deadline binds every buyer, including one
 hold is a lease, and [Time, leases, and fencing](../../distributed-data/time-leases-fencing/) explains why the check
 belongs in the write. A seat moves through a small state machine, and each move is one conditional write on its row:
 
-1. **Held.** The claim from step 6 sets `status = 'held'`, the holder, and a deadline.
+1. **Held.** The claim from step 6 sets `status = 'held'`, the holder, a fresh `hold_id`, and a deadline. The server
+   keeps that `hold_id` with the checkout, and every later step names it.
 2. **Paying.** When the buyer presses Pay, the server claims the hold before it charges anything:
-   `UPDATE seats SET status = 'paying', expires = now() + 10 min WHERE event = ? AND seat = ? AND holder = ? AND
-   status = 'held' AND expires > now()`. One row changed means this checkout owns the seat, with a fresh deadline that
-   covers a slow bank. Zero rows means the hold already lapsed, so the buyer picks again before any money moves.
-3. **Sold.** The bank authorizes the card. One transaction then inserts the order row and marks the seat sold, only if
-   the claim still stands (`WHERE holder = ? AND status = 'paying' AND expires > now()`). The server captures the money
-   after that commit.
+   `UPDATE seats SET status = 'paying', expires = now() + 10 min WHERE event = ? AND seat = ? AND hold_id = ? AND
+   holder = ? AND status = 'held' AND expires > now()`. One row changed means this checkout owns the seat, with a fresh
+   deadline that covers a slow bank. Zero rows means the hold already lapsed, so the buyer picks again before any money
+   moves. The authorization request carries the `hold_id` in its metadata, so the approval names the claim it pays for.
+3. **Sold.** The bank authorizes the card. One transaction then inserts the order row with that `hold_id` and marks the
+   seat sold, only if the claim still stands (`WHERE event = ? AND seat = ? AND hold_id = ? AND holder = ? AND status =
+   'paying' AND expires > now()`). The server captures the money after that commit.
 4. **Expired.** A hold or claim past its deadline goes back on sale, and the next claim from step 6 can take it. When
    the bank approves after that, the conditional write changes zero rows, and the server voids the authorization (or
    refunds a captured charge). The buyer gets an apology instead of a ticket for someone else's seat.
+5. **Released.** A buyer who cancels frees the seat with the same full match on event, seat, `hold_id`, holder, status
+   and deadline, so a stale cancel from an old tab cannot free a newer claim.
 
 Both lanes below use conditional writes, so neither one sells a seat twice. They face the same 400 buyers, who press Pay
 or walk away at the same moments. Only the hold rules differ.
@@ -378,6 +383,28 @@ What to look for:
 Real holds last 5 to 10 minutes, and the claim's deadline should cover the payment provider's slowest normal answer. The
 claim still needs a deadline: a checkout that hangs forever strands its seat exactly like a hold that never expires.
 [Payments](../payments/) covers what to do when the bank never answers at all.
+
+### Same buyer, new claim
+
+The holder alone cannot fence a late approval, because one buyer can claim the same seat twice. Ana claims A10 at 20:00
+and presses Pay at 20:01, so her claim lapses at 20:11. Her bank stalls, so she reloads, claims A10 again at 20:12, and
+presses Pay at 20:13. Then both approvals arrive, oldest first. The last two columns show the outcome when the Sold
+write matches on `hold_id` and when it matches on the holder only.
+
+| Time  | Message                 | Names     | A10's `hold_id` | Match on `hold_id`   | Match on holder only |
+| ----- | ----------------------- | --------- | --------------- | -------------------- | -------------------- |
+| 20:00 | Ana claims A10          | (none)    | 1               | Held                 | Held                 |
+| 20:01 | Ana presses Pay         | hold 1    | 1               | Paying               | Paying               |
+| 20:12 | Ana claims A10 again    | (none)    | 2               | Held                 | Held                 |
+| 20:13 | Ana presses Pay again   | hold 2    | 2               | Paying               | Paying               |
+| 20:14 | The approval for hold 1 | hold 1    | 2               | Voided, zero rows    | Sold                 |
+| 20:15 | The approval for hold 2 | hold 2    | 2               | Sold                 | Voided, zero rows    |
+
+Matching on `hold_id` sells the seat once, to the claim that paid for it. Matching on the holder only lets the approval
+for hold 1 sell A10 even though its claim lapsed at 20:11. The order then points at hold 1 while the seat says hold 2,
+and the server voids the approval for hold 2. Worse, if the cleanup job already voided authorization 1 at 20:11, the
+capture fails and Ana holds a ticket nobody paid for. The `hold_id` does the job the reservation version does in
+[Ride sharing](../ride-sharing/): every message names the claim it answers, and the write checks it.
 
 ## The waiting room
 
@@ -414,14 +441,14 @@ tickets left, so contention moves from 10,000 seat rows to one.
 ## Failure walkthrough: the app server crashes mid-checkout
 
 Ana holds seat A10 and presses Pay at 20:00:00. The server claims the hold, so A10 is `paying` with a deadline of
-20:10:00. It asks the bank to authorize her card and passes her order's idempotency key along. The bank approves at
-20:00:02, and the server crashes before the Sold transaction. Ana's money is on hold at the bank, A10 is still
-`paying`, and no ticket exists.
+20:10:00. It asks the bank to authorize her card, passes her order's idempotency key along, and puts the `hold_id` in
+the authorization's metadata. The bank approves at 20:00:02, and the server crashes before the Sold transaction. Ana's
+money is on hold at the bank, A10 is still `paying`, and no ticket exists.
 
 1. **Ana's browser retries.** It sends `POST /orders` again with the same `Idempotency-Key`, and the load balancer picks
    another server. The first server's lease on the key has run out, so the new server takes over the claim, as the
-   [Idempotency](../../reliability/idempotency/) lesson describes. It finds A10 `paying`, held by Ana, with 9 minutes
-   left.
+   [Idempotency](../../reliability/idempotency/) lesson describes. It finds A10 `paying`, held by Ana under the same
+   `hold_id` her order attempt stored, with 9 minutes left.
 2. **It asks the bank again with the same key.** The bank returns the approval it already gave, so Ana's card carries
    one authorization. The server runs the Sold transaction and captures the money after the commit. Ana gets her
    ticket a few seconds late.
@@ -435,7 +462,7 @@ Ana holds seat A10 and presses Pay at 20:00:00. The server claims the hold, so A
 
 The seat row also fences a server that only paused. If the first server wakes up after step 2 and runs its own Sold
 transaction, A10 is no longer `paying`, so the write changes zero rows, and the unique constraint on (event, seat)
-backs it up.
+backs it up. If Ana had claimed A10 again in the meantime, the paused server's `hold_id` would no longer match either.
 
 ## Ticketing versus payments
 
@@ -476,8 +503,9 @@ payment is captured, nothing expires: the only way back is a second transaction 
   second claim.
 - Correctness turns collisions into retries and load. A waiting room admits fans at the rate the database can serve,
   in arrival order, and the conditional write still guards every seat.
-- Every hold and every checkout claim has a deadline. Pay claims the seat before money moves, and capture happens only
-  after the Sold commit, so a crash ends in a retry or a void, never a second sale.
+- Every hold and every checkout claim has a deadline and a fresh `hold_id`. Pay claims the seat before money moves, the
+  Sold write matches the `hold_id` the payment carries, and capture happens only after the Sold commit, so a crash or
+  a late approval ends in a retry or a void, never a second sale.
 
 </KeyTakeaways>
 
@@ -509,10 +537,11 @@ database sustains 20,000 conditional writes per second, and raise the crowd from
   answers at the edge from signed position tokens that never touch the seat database.
 - **The crash.** For 20 s no claim commits. A claim whose reply was lost in the failover gets retried, and the retry
   changes zero rows if the first write already took the seat, so the server rereads the row: if the holder is this
-  buyer, the claim succeeded. The waiting room pauses admission until the database is back. Holds lose 20 s of their
-  8 to 10 minutes, which is harmless. With synchronous replication to the standby, every committed sale survives.
-  With asynchronous replication, the last few commits can vanish and a sold seat can sell again, so seat writes pay
-  the extra milliseconds per commit (the [Read replicas](../../scaling/read-replicas/) lesson covers the trade).
+  buyer, the claim succeeded, and the row's `hold_id` names it. The waiting room pauses admission until the database
+  is back. Holds lose 20 s of their 8 to 10 minutes, which is harmless. With synchronous replication to the standby,
+  every committed sale survives. With asynchronous replication, the last few commits can vanish and a sold seat can
+  sell again, so seat writes pay the extra milliseconds per commit (the [Read replicas](../../scaling/read-replicas/)
+  lesson covers the trade).
 
 </div>
 

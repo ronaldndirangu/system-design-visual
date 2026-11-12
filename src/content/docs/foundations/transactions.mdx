@@ -1,9 +1,20 @@
 ---
 title: Transactions and constraints
 description: Two requests write the same row at once and one silently vanishes. Keep one database correct with atomic statements, conditional updates, row locks, isolation levels, and unique keys.
+furtherReading:
+  - title: 'PostgreSQL documentation: Transaction Isolation'
+    url: https://www.postgresql.org/docs/current/transaction-iso.html
+    note: What each isolation level prevents in PostgreSQL, and the serialization errors your code must retry.
+  - title: 'A Critique of ANSI SQL Isolation Levels (Berenson et al., 1995)'
+    url: https://www.microsoft.com/en-us/research/publication/a-critique-of-ansi-sql-isolation-levels/
+    note: The paper that named lost update and write skew, and showed snapshot isolation sits between the standard levels.
+  - title: 'Hermitage: testing transaction isolation levels'
+    url: https://github.com/ept/hermitage
+    note: Small two-session scripts that show which anomalies real databases allow at each level.
 ---
 
 import Recall from '../../../components/lesson/Recall.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -12,29 +23,6 @@ import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
 import TransactionsWidget from '../../../components/widgets/TransactionsWidget';
-
-export const recall = [
-  {
-    id: 'foundations/transactions/recall-1',
-    prompt: 'Links live as documents, and a new release adds an expires_at field. The document database accepts it with no migration. What still needs care?',
-    options: [
-      { text: 'Nothing, since a schemaless database has no schema', why: 'The database skips checking the shape. The app still expects one, so the schema moves into the code.' },
-      { text: 'Every reader must handle documents with and without expires_at', correct: true, why: 'Old documents still exist. Readers handle both shapes until a background job or the next write upgrades them.' },
-      { text: 'The database rewrites every old document to add the field', why: 'It rewrites nothing on its own. Old documents keep their old shape until the app changes them.' },
-      { text: 'An ALTER TABLE must run before the release', why: 'That is how tables change. A document database takes the new field as soon as the app writes it.' },
-    ],
-  },
-  {
-    id: 'foundations/transactions/recall-2',
-    prompt: 'Which value is the best candidate to copy onto every link row, so a read skips a join?',
-    options: [
-      { text: 'The click count', why: 'It changes on every redirect, the busiest path. Keeping the copy doubles writes from 20,000 to 40,000 a second.' },
-      { text: 'The owner’s display name', correct: true, why: 'Previews read it constantly and owners rename rarely. Reads of the copy vastly outnumber the writes that keep it fresh.' },
-      { text: 'The time of the latest click', why: 'It changes with every click too, so the copy pays the same bill on the hot path as a click count.' },
-      { text: 'Today’s click total', why: 'It rises with every click. A value that changes on a hot path is better kept once.' },
-    ],
-  },
-];
 
 export const nodes = [
   { id: 'a', kind: 'server', x: 80, y: 60, label: 'Handler A', sublabel: 'click 2' },
@@ -48,19 +36,19 @@ export const edges = [
 export const steps = [
   {
     title: 'Both handlers read',
-    text: 'Clicks 2 and 3 on sho.rt/launch land a moment apart. Handler A reads clicks = 1. Handler B also reads clicks = 1, because A has not written yet.',
+    text: 'Clicks 2 and 3 on sho.rt/launch land a moment apart. Handler A reads clicks = 1, and so does Handler B, because A has not written yet.',
     nodes: ['a', 'b', 'db'],
     flows: ['db>a', 'db>b'],
   },
   {
     title: 'A writes 2',
-    text: 'Handler A adds 1 to what it read and sends UPDATE ... SET clicks = 2. The row now says 2, which is correct so far.',
+    text: 'Handler A adds 1 to what it read and writes clicks = 2. Correct so far.',
     nodes: ['a', 'db'],
     flows: ['a>db'],
   },
   {
     title: 'B writes 2 over it',
-    text: 'Handler B also computed 1 + 1 from its old read, so it writes 2 as well. The row should say 3. One click is gone, and no error, log line, or alert mentions it.',
+    text: 'Handler B also computed 1 + 1, so it writes 2 as well. The row should say 3. One click is gone, and nothing reports it.',
     nodes: ['b', 'db'],
     flows: ['b>db'],
   },
@@ -72,60 +60,82 @@ export const steps = [
   },
   {
     title: 'Same gap, other data',
-    text: 'Any read, decide, write cycle has this gap: two editors saving a destination, two users claiming one alias, two orders spending one balance.',
+    text: 'Any read, decide, write cycle has this gap: two editors saving one destination, two users claiming one alias.',
     nodes: ['a', 'b', 'db'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'foundations/transactions/recall-1',
+    prompt: 'A click handler upserts clicks_daily, then increments click_count on links, with no transaction. The second statement fails. What is left?',
+    options: [
+      { text: 'click_count misses a click that clicks_daily counted', correct: true, why: 'Each statement committed alone. That is the drift data modeling warns about when you store a value twice.' },
+      { text: 'The database rolls back the upsert', why: 'Only a transaction ties two statements together, and there is none here.' },
+      { text: 'Nothing, since the dashboard sums the days on load', why: 'The denormalized design reads click_count precisely to skip that sum.' },
+    ],
   },
 ];
 
 export const quiz = [
   {
     id: 'foundations/transactions/q1',
+    ordered: true,
     prompt: 'The launch row holds clicks = 7. Two handlers each run SELECT clicks, then UPDATE ... SET clicks = 8, at the same moment. What does the row hold afterward?',
     options: [
-      { text: '9', why: 'Each handler computed 7 + 1 from its own read. Neither saw the other, so neither wrote 9.' },
-      { text: '8', correct: true, why: 'Both wrote 8. The second write replaced the first, and one click vanished without an error. This is a lost update.' },
-      { text: '7', why: 'Both writes succeeded. The row moved to 8; it just should have moved to 9.' },
-      { text: 'The database raises an error', why: 'At the default isolation level in most databases, both writes succeed quietly. Silence is what makes lost updates dangerous.' },
+      { text: '9', why: 'Each handler computed 7 + 1 from its own read, so neither wrote 9.' },
+      { text: '8', correct: true, why: 'Both wrote 8, so one click vanished without an error: a lost update.' },
+      { text: '7', why: 'Both writes succeeded; the row moved to 8.' },
+      { text: 'The database raises an error', why: 'At the default isolation level in most databases, both writes succeed quietly.' },
     ],
   },
   {
     id: 'foundations/transactions/q2',
     prompt: 'Which change fixes the click counter with the least new code?',
     options: [
-      { text: 'UPDATE links SET clicks = clicks + 1 WHERE alias = :alias', correct: true, why: 'The database reads and writes the current value in one step while it holds the row, so concurrent increments queue up and all count.' },
-      { text: 'Wrap the SELECT and the UPDATE in BEGIN and COMMIT', why: 'A transaction makes the pair all or nothing. At Read Committed, another transaction can still read the old value in between, so updates still get lost.' },
-      { text: 'Add an index on the clicks column', why: 'Indexes speed up finding rows. They do nothing to stop two writers from overwriting each other.' },
-      { text: 'Run every update twice to be safe', why: 'Writing a stale value twice still writes a stale value, and on a quiet link it would double count.' },
+      { text: 'UPDATE links SET clicks = clicks + 1 WHERE alias = :alias', correct: true, why: 'The database reads and writes the current value in one step, so every increment counts.' },
+      { text: 'Wrap the SELECT and the UPDATE in BEGIN and COMMIT', why: 'A transaction makes the pair all or nothing. At Read Committed, another handler can still read the old value in between.' },
+      { text: 'Add an index on the clicks column', why: 'Indexes speed up finding rows. They do not stop two writers overwriting each other.' },
+      { text: 'Run every update twice to be safe', why: 'Writing a stale value twice still writes a stale value.' },
     ],
   },
   {
     id: 'foundations/transactions/q3',
     prompt: 'An editor saves with UPDATE ... WHERE version = 4, and the database reports 0 rows updated. What should the API do?',
     options: [
-      { text: 'Report success, since the request was valid', why: 'Nothing was saved. Reporting success hides the conflict and loses the editor\'s change.' },
-      { text: 'Retry the same statement until it succeeds', why: 'The row is at version 5 now and will never match version 4 again. A blind retry loops forever or, worse, gets rewritten to skip the check.' },
-      { text: 'Say someone else changed the link, show the latest version, and let the editor reapply', correct: true, why: 'A conditional update turns a silent overwrite into a visible conflict. The API answers 409 Conflict (or 412 over HTTP preconditions) with the current state.' },
-      { text: 'Delete the row and insert the new value', why: 'That erases the other editor\'s change, which is exactly the bug the version check exists to stop.' },
+      { text: 'Report success, since the request was valid', why: 'Nothing was saved. Reporting success loses the editor\'s change.' },
+      { text: 'Retry the same statement until it succeeds', why: 'The row is at version 5 now and will never match version 4. A blind retry loops forever.' },
+      { text: 'Say someone else changed the link, show the latest version, and let the editor reapply', correct: true, why: 'The version check turned a silent overwrite into a visible conflict: answer 409 with the current state.' },
+      { text: 'Delete the row and insert the new value', why: 'That erases the other editor\'s change, the bug the version check exists to stop.' },
     ],
   },
   {
     id: 'foundations/transactions/q4',
     prompt: 'Why is a unique key a better guard for new custom aliases than SELECT ... FOR UPDATE?',
     options: [
-      { text: 'A new alias has no row yet, so there is nothing to lock', correct: true, why: 'Row locks protect rows that exist. Both claims check, find nothing, and insert. The unique key checks at the moment of insert, so the second one fails.' },
-      { text: 'Unique keys make inserts faster', why: 'A unique index adds a little work to every insert. You pay that cost for correctness.' },
-      { text: 'FOR UPDATE works only under Serializable', why: 'FOR UPDATE works at any isolation level. Here it simply has no existing row to hold.' },
-      { text: 'Locks always cause deadlocks', why: 'Locks deadlock only when transactions take them in conflicting orders. That is a separate problem from this one.' },
+      { text: 'A new alias has no row yet, so there is nothing to lock', correct: true, why: 'Row locks protect existing rows. The unique key checks at insert time, so the second insert fails.' },
+      { text: 'Unique keys make inserts faster', why: 'A unique index adds a little work to every insert.' },
+      { text: 'FOR UPDATE works only under Serializable', why: 'FOR UPDATE works at any isolation level. Here it has no row to hold.' },
+      { text: 'Locks always cause deadlocks', why: 'Deadlocks need conflicting lock orders, a separate problem.' },
     ],
   },
   {
     id: 'foundations/transactions/q5',
     prompt: 'Your team switches PostgreSQL to Serializable isolation to protect a read, decide, write flow. What new work does the application take on?',
     options: [
-      { text: 'None. Serializable fixes it with no code changes', why: 'Serializable stops the anomaly by aborting one of the conflicting transactions. Somebody has to handle that abort.' },
-      { text: 'Catch serialization failures and run the whole transaction again', correct: true, why: 'The database cancels one transaction instead of letting both commit. The app retries it from the first read, ideally with a short random backoff.' },
-      { text: 'Add a unique key on every column', why: 'Unique keys forbid duplicate values. They have nothing to do with isolation levels.' },
-      { text: 'Move all reads to a replica', why: 'Replicas lag behind the primary, so reads there see older data. That widens the gap.' },
+      { text: 'None. Serializable fixes it with no code changes', why: 'Serializable stops the anomaly by aborting one transaction. Somebody has to handle that abort.' },
+      { text: 'Catch serialization failures and run the whole transaction again', correct: true, why: 'The database aborts one transaction. The app reruns it from the first read after a short random backoff.' },
+      { text: 'Add a unique key on every column', why: 'Unique keys forbid duplicate values. They are unrelated to isolation levels.' },
+      { text: 'Move all reads to a replica', why: 'Replicas lag the primary, so reads there see older data and widen the gap.' },
+    ],
+  },
+  {
+    id: 'foundations/transactions/q6',
+    prompt: 'In the data modeling design, each click updates both clicks_daily and click_count. How do you keep them equal when one write fails?',
+    options: [
+      { text: 'Run both writes inside one BEGIN and COMMIT', correct: true, why: 'If either fails, both roll back. Both are atomic increments, so concurrent clicks lose nothing either.' },
+      { text: 'Run the click_count update first', why: 'A failure between the two writes still leaves them apart.' },
+      { text: 'Switch to Serializable isolation', why: 'Without BEGIN and COMMIT, each statement still commits alone.' },
     ],
   },
 ];
@@ -135,17 +145,17 @@ export const quiz = [
 <Objectives>
 
 - Spot a lost update: two requests read the same value, and the second write silently erases the first.
-- Fix it three ways: an atomic statement, a conditional update with a version number, or a row lock.
+- Fix it with an atomic statement, a conditional update, or a row lock.
 - Stop duplicate custom aliases with a unique key, and explain why a check before the insert cannot.
-- Describe what isolation levels promise, and why stronger levels make the application retry.
+- Match isolation levels to the anomalies they allow, and explain why stronger levels need retries.
 
 </Objectives>
 
 ## The failure: a viral link loses clicks
 
-The shortener shows each link's click count. The redirect handler does the obvious thing: read `clicks`, add one, write
-it back. It works on every test link. Then `sho.rt/launch` goes viral, the handlers start to overlap, and the counter
-falls behind the real traffic. Nothing crashes, and no log line mentions it.
+The shortener shows each link's click count. The redirect handler reads `clicks`, adds one, and writes it back. It
+works on every test link. Then `sho.rt/launch` goes viral, the handlers overlap, and the counter falls behind the real
+traffic. Nothing crashes, and no log line mentions it.
 
 <Predict
   client:visible
@@ -156,74 +166,76 @@ falls behind the real traffic. Nothing crashes, and no log line mentions it.
 >
 
 **Fewer than 30.** When two handlers read the same value, both write that value plus 1, and one click vanishes. In the
-simulation below, the counter ends at **17**: 13 of the 30 clicks are gone. No request failed, so nobody gets an
-alert.
+simulation below, the counter ends at **17**: 13 of the 30 clicks are gone, and no request failed.
 
 </Predict>
 
 ## The idea: close the gap between read and write
 
-Between a handler's read and its write, another handler can change the row. Each tool in this lesson closes that gap in
-a different way: let the database compute the new value, refuse a write when the row changed, hold a lock, or make the
-bad outcome impossible with a constraint.
+Between a handler's read and its write, another handler can change the row. Each tool here closes that gap: the
+database computes the value, refuses a stale write, holds a lock, or a constraint forbids the bad outcome.
 
 <StepDiagram client:visible title="A lost update, step by step" nodes={nodes} edges={edges} steps={steps} height={290} />
 
 <Analogy>
 
-Two volunteers keep a tally on a whiteboard. Each one reads the number, walks over to check a visitor in, then erases
-the board and writes the number they remember plus one. When both check someone in at once, they both write the same
-number, and one visitor disappears from the count. The fix is to let each volunteer add a tick mark to the board
-instead of rewriting the total.
+Two volunteers keep a tally on a whiteboard. Each reads the number, checks a visitor in, then rewrites the total as the
+number they remember plus one. When both check someone in at once, one visitor disappears. The fix: each volunteer
+adds a tick mark instead of rewriting the total.
 
 </Analogy>
 
+Where the analogy breaks: tick marks work because every visitor adds one. They cannot decide which of two destination
+edits wins, or who owns an alias. Those need a version check or a constraint.
+
 ## Try it
 
-The simulation sends the same requests to two copies of the row. Only the write statement differs between the lanes.
-Press Play on the busy counter first, then try the other scenarios.
-
-The simulation is a toy model. It stretches each handler to a few tenths of a second so you can watch them overlap.
-Real handlers take milliseconds, and a busy link overlaps them just the same. The counts are illustrative.
+Both lanes get the same requests; only the write differs. Press Play on the busy counter, then try the other
+scenarios. The toy stretches each handler to tenths of a second so you can watch them overlap.
 
 <TransactionsWidget client:visible />
 
-What to look for:
+What to notice:
 
-- **Busy click counter.** Every overlap in the left lane can cost a click. The left lane stores 17 of 30; the atomic
-  increment stores all 30.
-- **Quiet link.** Both lanes store all 10 clicks. The bug hides until traffic grows, which is why it passes tests.
-- **Three editors.** Last write wins tells every editor "Saved", yet 7 of 9 saves erase a teammate's change unseen.
-  The conditional update rejects 5 saves and erases none.
-- **Same custom alias.** Check, then insert leaves 15 rows for 5 aliases. The unique key keeps 5 rows and gives 10
-  claims a clear 409 Conflict.
+- **Busy click counter.** The left lane stores 17 of 30 clicks; the atomic increment stores all 30.
+- **Quiet link.** Both lanes store all 10. The bug hides until traffic grows, so it passes tests.
+- **Three editors.** Last write wins tells everyone "Saved", yet 7 of 9 saves erase a teammate's change. The
+  conditional update rejects 5 and erases none.
+- **Same custom alias.** Check, then insert leaves 15 rows for 5 aliases. The unique key keeps 5 and gives 10 claims a
+  409 Conflict.
+- **Answers arrive in write order.** A claim hears back when its insert lands, whoever checked first. On `jobs`, User
+  13 checks first, at 10.2 s, but User 14's insert lands at 10.7 s, so User 13 loses at 10.8 s. The log flags only
+  the first collision, on `launch`; the rest show in the totals and timeline. Each alias's late fourth claim gets
+  "Taken" in both lanes.
 
-## Three tools for one row
+## Tools that close the gap
 
-**Atomic statement.** When the new value follows from the old one, let the database compute it. The database holds the
-row for the instant it reads and writes, so concurrent increments queue up and all count.
+### Three tools for one row
+
+**Atomic statement.** When the new value follows from the old one, let the database compute it. Concurrent increments
+queue on the row and all count.
 
 ```sql
 UPDATE links SET clicks = clicks + 1 WHERE alias = 'launch';
 ```
 
-**Conditional update.** When a person or your code decides the new value, store a version number and write only if it
-still matches what you read. This is also called optimistic concurrency control.
+**Conditional update.** When a person decides the new value, store a version number and write only if it still matches
+what you read. This is optimistic concurrency control.
 
 ```sql
--- Read: the editor opens version 4.
-SELECT url, version FROM links WHERE alias = 'launch';
-
--- Save: succeeds only if nobody saved since.
+-- The editor opened version 4.
 UPDATE links
 SET url = 'https://example.com/new', version = version + 1
 WHERE alias = 'launch' AND version = 4;
 ```
 
-If the update changes 0 rows, someone else saved first. Show the latest version and let the editor decide. A conflict
-the user can see beats a change that silently disappears.
+If it changes 0 rows, someone saved first. Show the latest version and let the editor decide.
 
-**Row lock.** When the code must read, decide, and write with nobody else in between, lock the row as you read it.
+**Row lock.** When code must read, decide, and write with nobody in between, lock the row with `SELECT ... FOR UPDATE`.
+Other writers wait, so hold it for milliseconds, never across a network call.
+
+<details>
+<summary>Go deeper: a row lock in SQL</summary>
 
 ```sql
 BEGIN;
@@ -233,13 +245,15 @@ UPDATE links SET clicks = 18 WHERE alias = 'launch';
 COMMIT;
 ```
 
-Locks are correct and simple, but every other writer waits while you hold one. Hold them for milliseconds, never across
-a network call or a user's think time.
+Two transactions that lock the same two rows in opposite orders wait on each other forever. The database detects
+the deadlock and aborts one. Lock rows in a fixed order, such as by id, to avoid it.
 
-## Two people claim the same alias
+</details>
 
-The shortener lets people pick a custom alias. The handler checks whether the alias is free, then inserts it. The
-**Same custom alias** scenario above sends 20 people after 5 aliases, three of them on each word within half a second.
+### Two people claim the same alias
+
+The custom alias handler checks that the alias is free, then inserts it. The **Same custom alias** scenario above sends
+20 people after 5 aliases.
 
 <Predict
   client:visible
@@ -249,14 +263,13 @@ The shortener lets people pick a custom alias. The handler checks whether the al
   answer={1}
 >
 
-**Up to 3.** All three checks run before any insert lands, so all three find the alias free and all three insert. Every
-user sees "Your link is ready", but a redirect can follow only one row. A row lock cannot help here either: a new alias
-has no row to lock yet.
+**Up to 3.** All three checks run before any insert lands, so all three insert, and every user sees "Your link is
+ready". A row lock cannot help: a new alias has no row to lock yet.
 
 </Predict>
 
-A **unique constraint** closes the gap. The database checks for a duplicate at the moment of the insert, so the second
-insert fails no matter how the requests interleave.
+A **unique constraint** closes the gap. The database checks for a duplicate at insert time, using a unique
+[index](../indexes/), so the second insert fails however the requests interleave.
 
 ```sql
 ALTER TABLE links ADD CONSTRAINT links_alias_key UNIQUE (alias);
@@ -267,41 +280,98 @@ ON CONFLICT (alias) DO NOTHING
 RETURNING id;
 ```
 
-When the insert returns no row, the API answers **409 Conflict** and suggests another alias. Keep the friendly check in
-the form as a hint for the user, and let the constraint enforce the rule.
+When the insert returns no row, the API answers **409 Conflict** and suggests another alias. The form's "is it free?"
+check stays as a hint; the constraint enforces the rule.
 
-## Isolation levels: how much the database protects you
+### Isolation levels and the anomalies they allow
 
-`BEGIN` and `COMMIT` make a group of statements all or nothing. The **isolation level** decides what each transaction
-sees of the others while they run.
+A transaction gives a group of statements four guarantees, called **ACID**:
 
-- **Read Committed** (the PostgreSQL default) shows each statement the latest committed data. A read in your code,
-  followed by a write of a value you computed, still loses updates.
-- **Repeatable Read** shows a transaction one snapshot for its whole life. In PostgreSQL, the second writer to a changed
-  row fails with a serialization error instead of overwriting it. In MySQL (where this level is the default), a plain
-  `SELECT` reads the snapshot and the later `UPDATE` still overwrites, so you need `FOR UPDATE`.
-- **Serializable** aborts any transaction whose result could differ from running them one at a time. It catches the
-  most problems, and the application must catch the error and retry the whole transaction.
+- **Atomic:** all statements commit, or none do. That keeps the two click writes from [data modeling](../data-modeling/)
+  together.
+- **Consistent:** each commit leaves the data obeying its constraints, such as one row per alias.
+- **Isolated:** concurrent transactions see each other's work only as far as the isolation level allows.
+- **Durable:** once `COMMIT` returns, the change survives a crash.
 
-Stronger isolation trades silent bugs for loud retries. Check which level your database uses by default, and write
-code that is correct at that level. Unique keys and atomic statements protect you at every level.
+The isolation level decides which **anomalies** slip through:
 
-Everything here happens inside one database. When a change spans two databases or services, no single `COMMIT` covers
-it. The [Sagas](../../distributed-data/sagas/) lesson in Module 5 picks up that problem.
+- **Dirty read:** the dashboard shows a destination from an edit that later rolls back.
+- **Non-repeatable read:** a report reads the `launch` destination twice and gets two URLs.
+- **Phantom:** a quota check counts a user's links twice and gets 49, then 50.
+- **Lost update:** two handlers read `clicks = 1` and both write 2.
+- **Write skew:** two requests each see 49 links under a 50-link quota and each insert one, so the user ends with 51.
+
+<TradeoffTable title="Which anomalies each isolation level allows">
+
+| Level                         | Dirty read | Non-repeatable read | Phantom   | Lost update       | Write skew |
+| ----------------------------- | ---------- | ------------------- | --------- | ----------------- | ---------- |
+| Read Committed                | Prevented  | Allowed             | Allowed   | Allowed           | Allowed    |
+| Repeatable Read, SQL standard | Prevented  | Prevented           | Allowed   | Varies            | Varies     |
+| Repeatable Read, PostgreSQL   | Prevented  | Prevented           | Prevented | Aborts one writer | Allowed    |
+| Serializable                  | Prevented  | Prevented           | Prevented | Prevented         | Prevented  |
+
+</TradeoffTable>
+
+Read Committed, the PostgreSQL default, blocks only dirty reads. The SQL standard defines only the first three
+anomalies, so engines differ on the last two. Repeatable Read catches two writes to the same row and misses write skew:
+Serializable or `FOR UPDATE` on the user's row stops it. Stronger levels abort one conflicting transaction, so the app
+must catch the error and rerun it. Unique keys and atomic statements work at every level.
+
+<details>
+<summary>Go deeper: how PostgreSQL and MySQL implement the levels</summary>
+
+PostgreSQL implements Repeatable Read as snapshot isolation: each transaction reads one snapshot, so phantoms never
+appear in its reads, and the second writer to a row another transaction changed fails with a serialization error.
+Write skew still passes, because the two transactions write different rows. Serializable adds tracking of which
+transactions read data that others wrote, and aborts one when no serial order fits. The error carries SQLSTATE 40001.
+Retry from the first statement with a short random backoff.
+
+MySQL's InnoDB defaults to Repeatable Read. A plain `SELECT` reads the snapshot, yet a later `UPDATE` changes the
+latest committed row, so a read in your code followed by a write still loses updates. Use an atomic statement or
+`FOR UPDATE`. Locking reads (`FOR UPDATE`, `FOR SHARE`) take next-key locks: they lock the index entries they read and
+the gaps between them, so nobody can insert a phantom into that range until you commit.
+
+</details>
+
+When a change spans two databases or services, no single `COMMIT` covers it. The
+[Sagas](../../distributed-data/sagas/) lesson picks up that problem.
 
 ## Trade-offs
 
 <TradeoffTable title="Keeping one row correct under concurrent writes">
 
-| Choice                                  | What it buys                                                     | What it costs                                                              |
-| --------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Atomic statement (`clicks = clicks + 1`) | Correct counts in one round trip, no extra code                  | Works only when SQL can compute the new value; one hot row still queues writers |
-| Conditional update (version column)     | No locks while users think; conflicts become visible            | The app must handle "0 rows updated": reload, merge, or ask the user        |
-| Row lock (`SELECT ... FOR UPDATE`)      | Read, decide in code, and write with nobody in between          | Other writers wait; long holds and inconsistent lock order cause stalls and deadlocks |
-| Serializable isolation                  | The database catches conflict patterns you did not foresee      | Some transactions abort and must be retried; more overhead under contention |
-| Unique constraint                       | Duplicates become impossible at any isolation level              | A small cost on every insert; the API must turn the violation into a clear 409 |
+| Choice                                   | What it buys                                        | What it costs                                                      |
+| ---------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------ |
+| Atomic statement (`clicks = clicks + 1`) | Correct counts in one round trip                    | Works only when SQL can compute the value; a hot row queues writers |
+| Conditional update (version column)      | No locks while users think; conflicts become visible | The app must handle "0 rows updated"                               |
+| Row lock (`SELECT ... FOR UPDATE`)       | Read, decide, and write with nobody in between      | Other writers wait; long holds stall, and mixed lock order deadlocks |
+| Serializable isolation                   | Catches conflict patterns you did not foresee       | Aborted transactions must be retried                               |
+| Unique constraint                        | Duplicates are impossible at any isolation level    | A small cost per insert; the API maps the violation to 409         |
 
 </TradeoffTable>
+
+When not to use them: skip row locks and Serializable for counters; an atomic statement needs no waits or retries.
+Skip the version column on values your code computes from the old one. Skip Serializable as a default when a unique
+key or conditional update already guards the rule.
+
+## Common mistakes
+
+- **Trusting BEGIN and COMMIT alone.** At Read Committed, a read followed by a computed write still loses updates inside
+  a transaction.
+- **Checking before inserting.** Two requests can both pass the check. Let a unique constraint decide.
+- **Retrying a conditional update blindly.** 0 rows updated means someone else saved. Reload and let the person decide.
+- **Raising isolation without retry code.** Stronger levels abort transactions. Catch the error and rerun the whole
+  transaction.
+- **Holding a lock across a network call.** Every other writer queues behind it.
+
+<KeyTakeaways>
+
+- A read in code followed by a computed write lets a concurrent request silently erase a change.
+- Let the database compute the value, check a version, or lock the row, depending on who decides the new value.
+- A rule about rows that do not exist yet, such as a free alias, needs a unique constraint.
+- Stronger isolation levels allow fewer anomalies and turn silent bugs into errors the app retries.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
@@ -312,15 +382,19 @@ Design the write path for two shortener features, and say what the API returns w
 1. **Custom aliases.** A marketing push sends thousands of people to claim aliases at once.
 2. **Live click counts.** A launch link takes 10,000 clicks a second, and the dashboard shows its count.
 
+**A strong answer:**
+
+1. Enforces one row per alias in the database and returns 409 on a collision.
+2. Names the hot counter row as the bottleneck.
+3. Spreads or batches counter writes and states how far the dashboard lags.
+
 <div slot="answer">
 
-1. **Put a unique key on `alias`** and insert with `ON CONFLICT DO NOTHING` (or catch the unique violation). Answer
-   409 Conflict with a few suggested aliases. Keep the "is it free?" check in the form for a fast hint, and never rely
-   on it for correctness.
-2. **The atomic increment is correct, but one hot row becomes the bottleneck.** Every increment waits its turn on that
-   row. Split the count across, say, 16 counter rows per link, add each click to a random one, and sum them on read.
-   Or collect clicks in memory or a queue and write `clicks = clicks + 412` once a second. Either way the dashboard
-   trails the true count by a moment, which nobody minds.
+1. **Put a unique key on `alias`** and insert with `ON CONFLICT DO NOTHING`. Answer 409 Conflict with a few suggested
+   aliases. The form's "is it free?" check is only a hint.
+2. **The atomic increment is correct, but the hot row becomes the bottleneck.** Split the count across, say, 16 counter
+   rows per link, add each click to a random one, and sum on read. Or batch clicks in memory or a queue and write
+   `clicks = clicks + 412` once a second. The dashboard trails by a moment, which nobody minds.
 
 </div>
 

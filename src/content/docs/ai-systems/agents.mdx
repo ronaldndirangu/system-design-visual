@@ -493,8 +493,12 @@ effects that already happened.
 - **Idempotency keys.** Give each intended action one key, such as the request id plus "refund 1077". The refund
   service stores the key with the result. If the call times out and the agent retries with the same key, the service
   returns the first result and pays nothing more.
-- **Compensating actions.** A side effect that already happened cannot be unsent. Send a correction email, or reverse a
-  refund through the normal refund process, and log both actions so support can see what happened.
+- **Compensating actions.** A side effect that already happened cannot be unsent, and cancellation cannot promise to
+  reverse money that already moved. For an email that went out, send a correction email. For a refund that is still
+  pending, cancel it through the payment provider when the provider supports cancellation. Otherwise, or once the
+  refund has completed, record the outcome and hand recovery to a person, because another refund cannot reverse a
+  completed refund. Any new charge to the customer needs its own authorization. Log every step so support can see what
+  happened.
 
 </details>
 

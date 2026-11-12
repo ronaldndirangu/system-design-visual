@@ -1,9 +1,23 @@
 ---
 title: Security basics
 description: Any signed-in user can delete anyone's short link. Fix it by answering four questions on every request, in order, whether the channel is private, who is calling, whether they may touch this object, and where the keys live.
+furtherReading:
+  - title: 'OWASP API1:2023 Broken Object Level Authorization'
+    url: https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/
+    note: The top API security risk and this lesson's bug. Check that the caller may touch every object an ID names.
+  - title: OWASP SQL Injection Prevention Cheat Sheet
+    url: https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html
+    note: Prepared statements with bound parameters come first, with allow-list validation and least privilege as extra layers.
+  - title: OWASP Cross-Site Request Forgery Prevention Cheat Sheet
+    url: https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
+    note: Synchronizer tokens, SameSite cookies as a second layer, and why one XSS bug defeats every CSRF defense.
+  - title: 'MDN: Content Security Policy (CSP)'
+    url: https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP
+    note: How a CSP header limits which scripts a page may run, so an injected script never executes.
 ---
 
 import Recall from '../../../components/lesson/Recall.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -12,29 +26,6 @@ import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
 import SecurityWidget from '../../../components/widgets/SecurityWidget';
-
-export const recall = [
-  {
-    id: 'foundations/security/recall-1',
-    prompt: 'A script calls POST /v1/links in a tight loop. Which response tells it to wait and then send the same request again?',
-    options: [
-      { text: '403 Forbidden, since the caller lacks permission', why: 'A 403 means this caller may not do this. Sending it again gets the same answer.' },
-      { text: '422 Unprocessable Content, since a rule failed', why: 'A 422 means the request breaks a rule. The client must change it before it tries again.' },
-      { text: '429 Too Many Requests, with a Retry-After header', correct: true, why: 'A 429 says slow down, and Retry-After says when. The same request may work after that wait.' },
-      { text: '409 Conflict, since the alias is already taken', why: 'A 409 means the request clashes with current state. Sending it unchanged clashes again.' },
-    ],
-  },
-  {
-    id: 'foundations/security/recall-2',
-    prompt: 'The shortener still runs TLS 1.2. A user 150 ms away by round trip opens a new connection. What does moving to TLS 1.3 save?',
-    options: [
-      { text: 'One round trip, about 150 ms', correct: true, why: 'TLS 1.3 agrees on keys in 1 round trip. TLS 1.2 needs 2.' },
-      { text: 'Two round trips, about 300 ms', why: 'A reused connection saves 2 round trips by skipping TCP and TLS. TLS 1.3 removes 1.' },
-      { text: 'The DNS lookup, about 30 ms', why: 'DNS runs before TLS, whatever the TLS version. A cached answer is what skips it.' },
-      { text: 'Nothing, since TLS costs only CPU time', why: 'TLS waits on the network. Each handshake round trip costs 150 ms at this distance.' },
-    ],
-  },
-];
 
 export const nodes = [
   { id: 'client', kind: 'client', x: 70, y: 80, label: "Ben's browser", sublabel: 'DELETE a link' },
@@ -55,31 +46,31 @@ export const edges = [
 export const steps = [
   {
     title: 'Is the channel private?',
-    text: "Ben's browser opens a TLS connection to the HTTPS edge. The edge proves it holds the certificate for sho.rt, and from then on the request, cookie and all, crosses the cafe Wi-Fi as ciphertext. The edge sends an HSTS header, so the browser uses https:// for this site from then on, even when a link or bookmark says http://.",
+    text: 'The HTTPS edge proves it holds the certificate for sho.rt, so the request and its cookie cross the cafe Wi-Fi as ciphertext.',
     nodes: ['client', 'edge'],
     flows: ['client>edge'],
   },
   {
     title: 'Who is calling?',
-    text: 'The sign-in check reads the session cookie or token, verifies its signature with a key from the secret manager, and reads its expiry time. A missing, forged, or expired credential stops here with 401 Unauthorized.',
+    text: "The sign-in check verifies the credential's signature with a key from the secret manager, then its expiry. A missing, forged, or expired credential gets 401 Unauthorized.",
     nodes: ['edge', 'signin', 'vault'],
     flows: ['edge>signin', 'vault>signin'],
   },
   {
     title: 'May Ben delete this link?',
-    text: 'The handler loads the link and compares its owner with the caller. It deletes only for the owner or an admin. Every other caller stops here with 403 Forbidden, whatever client sent the request.',
+    text: "The handler deletes only for the link's owner or an admin. Everyone else gets 403 Forbidden, whatever client sent the request.",
     nodes: ['signin', 'handler', 'db'],
     flows: ['signin>handler', 'db>handler'],
   },
   {
     title: 'Delete and record',
-    text: 'The handler deletes the row and writes an audit line: who, which link, when, and the result. The line names Ben and the link code. It holds no cookie, token, or password.',
+    text: 'The handler deletes the row and logs Ben, the link code, the time, and the result, with no cookie, token, or password.',
     nodes: ['handler', 'db'],
     flows: ['handler>db'],
   },
   {
     title: 'Where do the keys live?',
-    text: 'The token signing key and the database password live only in the secret manager. The deploy injects them into the running service, so the repo, the build logs, and every laptop clone hold none of them. Rotating a key means changing it in one place.',
+    text: 'The signing key and database password live only in the secret manager, injected at deploy. The repo, build logs, and laptop clones hold none, so rotating a key means changing one place.',
     nodes: ['vault', 'signin', 'handler'],
     flows: ['vault>signin', 'vault>handler'],
   },
@@ -136,30 +127,48 @@ export const quiz = [
       { text: 'SHA-256 is broken', why: 'SHA-256 is fine for checksums and signatures. It is fast, which is exactly what someone guessing passwords wants.' },
     ],
   },
+  {
+    id: 'foundations/security/q6',
+    prompt: 'Tokens last 15 minutes and the API checks only signature and expiry. Ana is removed from the team at 10:00; her latest token was issued at 9:52. Until when can she still delete links?',
+    options: [
+      { text: '10:00', why: 'That needs a per-request membership lookup or a revoked-token list.' },
+      { text: '10:15', why: 'The 15 minutes start at 9:52, when the token was issued.' },
+      { text: '10:07', correct: true, why: '9:52 plus 15 minutes. The refresh step must check membership, so she gets no new token.' },
+      { text: 'Until she signs out', why: 'Signing out discards only her copy; expiry ends the token at 10:07.' },
+    ],
+  },
+];
+
+export const recall = [
+  {
+    id: 'foundations/security/recall-1',
+    prompt: 'Ben opens sho.rt on cafe Wi-Fi. Which step keeps his session cookie unreadable to others on that network?',
+    options: [
+      { text: 'The DNS lookup', why: 'DNS only turns the name into an IP address, and classic DNS travels unencrypted.' },
+      { text: 'The TLS handshake', correct: true, why: 'It proves the server holds the certificate for sho.rt and agrees on keys, so the cookie crosses encrypted.' },
+      { text: 'The TCP handshake', why: 'TCP sets up a byte stream. The bytes stay readable until TLS encrypts them.' },
+      { text: 'The HTTP status code', why: 'It comes back after the cookie has already crossed the network.' },
+    ],
+  },
 ];
 
 <Recall questions={recall} />
 
 <Objectives>
 
-- Name the four questions every request answers, in order: is the channel private, who is calling, may this caller do
-  this to this object, and where do the keys live.
-- Choose between 401 Unauthorized and 403 Forbidden.
-- Check ownership or role on the server for every object, and deny by default.
+- Name the four questions every request answers, in order.
+- Choose between 401 and 403, and check ownership on the server for every object.
 - Walk a secret through its lifecycle: store, inject, rotate, revoke, and audit.
+- Stop SQL injection, cross-site scripting, and cross-site request forgery with their standard fixes.
 
 </Objectives>
 
 ## The failure: any signed-in user can delete any link
 
-The shortener lets people delete their own links with `DELETE /links/{code}`. The handler checks that the caller has a
-valid session, then deletes the row with that code. It never compares the link's owner with the caller. Every test
-passes, because each tester deletes their own links.
-
-In production, any signed-in user who knows a code can delete someone else's link, including one printed on a
-thousand posters. The server logs each delete as a normal, authenticated request, so nothing looks wrong until the
-owner complains. Security reviewers call this missing object-level authorization, and it tops the OWASP list of API
-security risks.
+The shortener deletes links with `DELETE /links/{code}`. The handler checks that the caller has a valid session, then
+deletes the row. It never compares the link's owner with the caller. Every test passes, because each tester deletes
+their own links. In production, any signed-in user who knows a code can delete someone else's link, including one
+printed on a thousand posters, and the logs show only normal, authenticated deletes.
 
 <Predict
   client:visible
@@ -179,111 +188,132 @@ through.
 
 ## The idea: four questions, in order
 
-Every request has to answer four questions before the handler touches data. Each question has its own defense, and the
-other three cannot stand in for a missing one.
+Every request answers four questions before the handler touches data, and each needs its own defense.
 
-1. **Is the channel private?** TLS (HTTPS) encrypts traffic between the client and the server and proves the server
-   owns the domain. Without it, anyone on a shared network can read the request, cookies included. A server that
-   refuses plain HTTP acts too late: by the time it says no, the cookie has already crossed the network. Two settings
-   keep the cookie off plain HTTP in the first place. An HSTS header (Strict-Transport-Security) tells the browser to
-   rewrite every http:// URL for the site to https:// before sending, and the HSTS preload list covers the very first
-   visit. The `Secure` flag on the session cookie stops the browser from attaching it to a plain HTTP request at all.
-2. **Who is calling?** This is authentication. The server checks a credential: a session cookie that maps to a session
-   it stores, or a signed token whose signature and expiry it verifies on every request. Passwords live only as slow,
-   salted hashes such as bcrypt or Argon2, and multi-factor authentication (MFA) means a stolen password alone gets
-   nobody in.
-3. **May this caller do this to this object?** This is authorization. Deny by default, then allow when a rule says yes:
-   the caller owns the link, or holds a role such as admin. Check on the server, on every request, for the exact
-   object. Give each person and service the least privilege its job needs.
-4. **Where do the keys live?** The server's own secrets, such as API keys, database passwords, and token signing keys,
-   live in a secret manager and reach the service as environment variables or files injected at deploy. They never
-   appear in source code or logs, and they rotate on a schedule and at once after a leak.
+1. **Is the channel private?** TLS encrypts the traffic and proves the server owns the domain: the handshake from
+   [What happens when you click a link](../what-happens-when-you-click/). Without it, anyone on the cafe Wi-Fi can read
+   the cookie.
+2. **Who is calling?** Authentication: the server looks up a session cookie, or verifies a signed token's signature
+   and expiry.
+3. **May this caller do this to this object?** Authorization: deny by default, then allow the owner or an admin, on
+   the server, for the exact object.
+4. **Where do the keys live?** Keys and passwords live in a secret manager, never in code or logs.
+
+<details>
+<summary>Go deeper: keeping the cookie off plain HTTP</summary>
+
+A server that refuses plain HTTP acts too late: by the time it says no, the cookie has already crossed the network.
+Two settings keep the cookie off plain HTTP in the first place. An HSTS header (Strict-Transport-Security) tells the
+browser to rewrite every http:// URL for the site to https:// before sending, and the HSTS preload list covers the very
+first visit. The `Secure` flag on the session cookie stops the browser from attaching it to a plain HTTP request at all.
+In the diagram's first step, the edge sends that HSTS header, so Ben's browser uses https:// for sho.rt from then on,
+even when a link or bookmark says http://.
+
+</details>
 
 <StepDiagram client:visible title="One delete request, four questions" nodes={nodes} edges={edges} steps={steps} height={290} />
 
 <Analogy>
 
-Picture an office building. The locked front door keeps the street out (TLS). The badge reader in the lobby checks who
-you are and whether your badge has expired (authentication). Each room has its own access list, so a valid badge
-opens your team's rooms and no others (authorization). The master keys sit in a locked cabinet with a sign-out sheet,
-and nobody tapes a spare under the reception desk (secrets). This lesson's bug is a building where any valid badge
-opens every room.
+In an office building, the locked front door keeps the street out (TLS). The badge reader checks who you are and
+whether your badge expired (authentication). Each room has its own access list (authorization). Master keys sit in a
+locked cabinet with a sign-out sheet (secrets). This lesson's bug: any valid badge opens every room.
+
+Where it breaks: a guard might notice a stranger with your badge. An API sees only bytes, so a copied cookie or token
+works for anyone until it expires or the session ends.
 
 </Analogy>
 
 ## Try it
 
-The simulation sends the same stream of requests through two copies of the API. The lane on the left misses one
-defense, which you pick with the scenario chips. The lane on the right has all of them. Each request crosses three
-checkpoints (TLS, sign-in, and access) and ends deleted or rejected with a reason.
-
-The stream mixes link owners, other signed-in users, expired tokens, anonymous callers, and an admin. Solid outlines
-mark callers who should get through; dashed outlines mark callers who should be stopped. Watch **Wrongly allowed**:
-each one is a link deleted by someone with no right to it.
-
-The simulation is a toy model. Real checks take microseconds, and the callers, counts, and timings here are
-illustrative. The same seed always replays the same stream.
+The simulation sends one stream of requests through two copies of the API. The left lane misses the defense you pick
+with the scenario chips; the right lane has all four. Dashed outlines mark callers who should be stopped. Watch
+**Wrongly allowed**: each one is a link deleted by someone with no right to it.
 
 <SecurityWidget client:visible />
 
-What to look for:
+What to notice:
 
-- **No ownership check.** The left lane deletes all 10 links that signed-in users ask to delete without owning them.
-  The right lane stops the same 10 with 403 Forbidden. Both lanes allow the same 15 legitimate deletes.
-- **Expired tokens accepted.** Ten requests carry tokens that expired days ago. Their signatures still verify, so the
-  left lane lets all 10 delete links. The right lane answers 401 Unauthorized, and each holder has to sign in again.
-- **Plain HTTP on the cafe Wi-Fi hop.** Ben follows an old http:// bookmark. At 2.6 s, his delete crosses the cafe
-  network in plain text, and the wire panel shows his readable headers. Later, someone on that network reuses Ben's
-  session, and the left lane allows 6 deletes, because sign-in and ownership both see Ben. On the right, the API sent an
-  HSTS header on Ben's earlier visits, so his browser switches the bookmark to https:// before anything leaves the
-  laptop. The listener sees only ciphertext and gets 401.
-- **Admin key in the repo.** Anyone who can read the repo holds the key. The left lane allows 3 deletes by repo
-  readers before the team notices at 10 s and revokes the key at 12 s. The rotation also breaks the cleanup job, whose
-  key lives in its code: 2 of its runs fail with 401 until a new build ships at 16 s. The right lane's repo holds no
-  key, so repo readers get 401 and the job never breaks.
+- **No ownership check.** The left lane lets signed-in users delete all 10 links they do not own; the right lane
+  answers 403. Both allow the same 15 legitimate deletes.
+- **Expired tokens accepted.** Ten tokens expired days ago, yet their signatures still verify, so the left lane lets
+  all 10 delete. The right lane answers 401.
+- **Plain HTTP on the cafe Wi-Fi hop.** At 2.6 s, an old http:// bookmark sends Ben's cookie in plain text. A listener
+  reuses it for 6 deletes on the left. On the right, HSTS switches to https:// first, and the listener gets 401.
+- **Admin key in the repo.** Repo readers make 3 deletes before the team notices at 10 s and revokes the key at 12 s.
+  The cleanup job, whose key lives in its code, then fails 2 runs with 401 until a new build ships at 16 s.
 
-## 401 or 403
+<details>
+<summary>Go deeper: reading the simulation</summary>
 
-The two codes answer different questions, and clients act on them differently.
+Each request crosses three checkpoints (TLS, sign-in, and access) and ends deleted or rejected with a reason. The
+stream mixes link owners, other signed-in users, expired tokens, anonymous callers, and an admin; solid outlines mark
+callers who should get through. In the plain HTTP scenario, the wire panel shows Ben's readable headers on the left
+and only ciphertext on the right. In the admin key scenario, the right lane's repo holds no key, so repo readers get
+401 and the cleanup job never breaks. The simulation is a toy model: real checks take microseconds, the callers,
+counts, and timings are illustrative, and the same seed always replays the same stream.
 
-- **401 Unauthorized** means "I cannot tell who you are." The credential is missing, forged, or expired. Despite its
-  name, 401 is about authentication. The client should sign in again or refresh its token.
-- **403 Forbidden** means "I know who you are, and the answer is no." Signing in again changes nothing. The caller
-  needs a different role or a different object.
+</details>
 
-Some APIs answer 404 Not Found for objects the caller may not see, so a stranger cannot learn which codes exist. Pick
-one rule and apply it everywhere. [APIs and contracts](../apis/) covers the rest of the status codes.
+## Deep dives
 
-## Authorization lives on the server
+### 401 or 403
 
-Hiding the Delete button on other people's links is good design for honest users, and it protects nothing. Any HTTP
-client can send the same request without your web app. The rule holds only when the server enforces it.
+- **401 Unauthorized:** "I cannot tell who you are." The credential is missing, forged, or expired; sign in again.
+- **403 Forbidden:** "I know who you are, and the answer is no." Signing in again changes nothing.
+
+Some APIs answer 404 for objects the caller may not see, so strangers cannot learn which codes exist; pick one rule
+everywhere. [API styles](../apis/) covers status codes, and [API design details](../api-design/) covers error bodies a
+client can act on.
+
+### Authorization lives on the server
+
+Hiding the Delete button protects nothing, because any HTTP client can send the same request. Check ownership on the
+server for every object, in one function that every handler calls, and deny by default. Long random link codes do not
+help: every shared URL publishes its code.
+
+<details>
+<summary>Go deeper: the authorization rules and the check in code</summary>
 
 - **Check every object.** Signing in proves who the caller is. It says nothing about which links they may touch.
 - **Check in one place.** Put the rule in one function that every handler calls, or in the query itself, so a new
   endpoint cannot forget it.
 - **Deny by default.** A new endpoint starts closed and opens only for the callers a rule names.
-- **Grant least privilege.** The cleanup job needs to delete expired links. It does not need an admin key that can
-  delete anything.
+- **Grant least privilege.** The cleanup job needs to delete expired links. An admin key that can delete anything
+  gives it far more than that.
 
 ```ts
-async function deleteLink(caller: User, code: string): Promise<Response> {
+async function deleteLink(
+  caller: User,
+  code: string,
+): Promise<Response> {
   const link = await links.find(code);
   if (!link) return status(404);
-  const allowed = link.ownerId === caller.id || caller.role === 'admin';
+  const allowed =
+    link.ownerId === caller.id || caller.role === 'admin';
   if (!allowed) return status(403);
   await links.remove(code);
   return status(204);
 }
 ```
 
-Long random link codes do not help here. Every shared URL publishes its code, so codes are public by design.
+</details>
 
-## Proving who is calling
+### Proving who is calling
+
+Sign-in checks a password stored as a slow, salted hash, then issues a session ID the server looks up or a signed token
+any service with the key can verify. Mark the session cookie `Secure` (never sent over plain HTTP), `HttpOnly` (hidden
+from page scripts), and `SameSite=Lax` (left off POSTs that other sites start). SameSite is one of two layers against
+cross-site request forgery; see the CSRF row in [Four classic web attacks](#four-classic-web-attacks).
+[Sessions, tokens, and OAuth](../auth/) compares sessions with tokens and covers JWT pitfalls and OAuth 2.
+
+<details>
+<summary>Go deeper: passwords, sessions, and signed tokens</summary>
 
 **Passwords.** Store a slow, salted hash from bcrypt, scrypt, or Argon2, never the password itself. The salt makes
-identical passwords hash differently, and the slowness makes each guess against a stolen table expensive. Add MFA so a
-leaked password alone gets nobody in, and put rate limiting on the sign-in endpoint to slow guessing.
+identical passwords hash differently, and the slowness makes each guess against a stolen table expensive. Add
+multi-factor authentication (MFA) so a leaked password alone gets nobody in, and put rate limiting on the sign-in
+endpoint to slow guessing.
 
 **Sessions.** After sign-in, the server stores a session and hands the browser a long random ID in a cookie marked
 `Secure`, `HttpOnly`, and `SameSite`. Each request costs a lookup, and signing out deletes the session at once.
@@ -293,55 +323,141 @@ can verify it without a lookup. A token keeps working until it expires, so keep 
 with a refresh step. Always check the signature and the expiry; the second scenario shows what happens when you skip
 one.
 
-## Secrets: store, inject, rotate, revoke, audit
+</details>
 
-A secret is any value that grants access: an API key, a database password, a token signing key. Treat each one as
-having a lifecycle.
+### Secrets: store, inject, rotate, revoke, audit
+
+Any value that grants access is a secret. **Store** it in a secret manager, **inject** it at deploy, **rotate** it on a
+schedule and after any leak, **revoke** the old copy once nothing uses it, and **audit** every use. Revoking is what
+makes a leaked copy worthless.
+
+<details>
+<summary>Go deeper: the secret lifecycle, leaked keys, and defense in depth</summary>
 
 1. **Store** it in a secret manager, encrypted, with access granted per service.
 2. **Inject** it at deploy or startup as an environment variable or mounted file. Code reads it by name and never
    holds the value.
 3. **Rotate** it on a schedule and at once after a suspected leak. Accept the old and new keys for a short overlap, so
    nothing breaks mid switch.
-4. **Revoke** the old key once nothing uses it. Revocation is what makes a leaked copy worthless.
+4. **Revoke** the old key once nothing uses it.
 5. **Audit** every read and use. An admin delete from an unfamiliar service is how the team in the simulation noticed.
 
-A key committed to a repo stays in git history, every clone, and old build logs, even after someone deletes the line.
-Rotate first, then clean up. Secret scanning in CI catches most of these before they merge.
+**A key in git history.** A key committed to a repo stays in git history, every clone, and old build logs, even after
+someone deletes the line. Rotate first, then clean up. Secret scanning in CI catches most of these before they merge.
 
-## Encryption at rest
+**Encryption at rest.** Disk, database, and backup encryption protect data when someone walks off with a drive or
+copies a snapshot. They do nothing about a request your own app accepts, because the app reads decrypted data. Keep
+the encryption keys in a key management service, apart from the data. For a few especially sensitive fields, encrypt
+the field itself so even a database administrator sees ciphertext.
 
-Disk, database, and backup encryption protect data when someone walks off with a drive or copies a snapshot. They do
-nothing about a request your own app accepts, because the app reads decrypted data. Keep the encryption keys in a key
-management service, apart from the data. For a few especially sensitive fields, encrypt the field itself so even a
-database administrator sees ciphertext.
+**Defense in depth.** Each scenario in the simulation removes one defense and keeps the other three, and harm still
+gets through. Layers work because each one catches what the others miss: TLS protects the cookie, sign-in rejects the
+stale token, authorization stops the wrong user, and the secret manager limits who holds the keys.
 
-## Defense in depth
+**Logs without secrets.** Log enough to investigate: who called, which object, what happened, and a request ID. Leave
+out the secrets. Redact `Authorization` headers, cookies, tokens, and passwords before a line is written, because logs
+get copied to many places and kept for a long time. Rate limiting on expensive and sensitive endpoints adds one more
+layer.
 
-Each scenario in the simulation removes one defense and keeps the other three, and harm still gets through. Layers
-work because each one catches what the others miss: TLS protects the cookie, sign-in rejects the stale token,
-authorization stops the wrong user, and the secret manager limits who holds the keys.
+</details>
 
-Log enough to investigate: who called, which object, what happened, and a request ID. Leave out the secrets. Redact
-`Authorization` headers, cookies, tokens, and passwords before a line is written, because logs get copied to many
-places and kept for a long time. Rate limiting on expensive and sensitive endpoints adds one more layer. For how TLS
-sets up the private channel, see the handshake in [What happens when you click a link](../what-happens-when-you-click/).
+## Four classic web attacks
+
+These attacks abuse what the code does with a request it accepts, and each has a standard fix. JWT mistakes and OAuth
+flows live in [Sessions, tokens, and OAuth](../auth/).
+
+| Attack                            | How it hits the shortener                                         | Standard fix                                                                      |
+| --------------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Broken access control (IDOR)      | `DELETE /links/k7wp` works for any signed-in caller               | Check that the caller owns link `k7wp`, on reads as well as deletes               |
+| SQL injection                     | An alias of `x' OR '1'='1` glued into the query matches every row | Parameterized queries: the value travels apart from the SQL                       |
+| Cross-site scripting (XSS)        | A link title holding a `<script>` tag runs on the stats page      | Escape output, set a Content-Security-Policy, mark session cookies `HttpOnly`     |
+| Cross-site request forgery (CSRF) | Another site makes Ben's browser POST to sho.rt with his cookie   | `SameSite=Lax` cookies plus a per-session CSRF token; never change state with GET |
+
+The SQL injection fix in code:
+
+```js
+// Bad: the input becomes part of the SQL text
+db.query(
+  "SELECT * FROM links WHERE alias = '" + input + "'"
+);
+// Good: the input travels as a bound value
+db.query('SELECT * FROM links WHERE alias = $1', [input]);
+```
+
+<details>
+<summary>Go deeper: how each attack plays out</summary>
+
+**Broken access control.** This lesson's bug is an insecure direct object reference (IDOR): the request names an
+object, and the server acts after checking only that the caller is signed in. `GET /links/k7wp/stats` leaks the same
+way a delete does. OWASP ranks broken object level authorization first among API security risks.
+
+**SQL injection.** With the bad query, the alias `x' OR '1'='1` makes the condition true for every row, and the stats
+page returns every link in the table. A bound parameter sends the SQL and the value separately, so the database reads
+the input as data whatever quotes it holds. Give the service's database account only the rights it needs, so one
+missed query cannot drop a table.
+
+**Cross-site scripting.** If the stats page pastes Ana's link title into its HTML as it is, every visitor's browser
+runs her script as part of sho.rt: it can read the page and send requests as the signed-in visitor. Escaping on output
+shows the title as text. Most template engines escape by default, and the risk returns wherever code inserts raw HTML.
+A `Content-Security-Policy` header that allows scripts only from your own origin keeps an injected inline script from
+running, and `HttpOnly` keeps a script that does run from reading the session cookie.
+
+**Cross-site request forgery.** Ben, signed in to sho.rt, opens a page on another site that quietly submits a hidden
+form to the shortener's settings page and changes his email address. Without defenses, the browser attaches his
+cookie, and the server sees a normal request from Ben. `SameSite=Lax` leaves the cookie off POSTs that another site
+starts, which stops this attack in current browsers. The CSRF token covers the gaps: the server puts a random
+per-session value in each form and rejects a state-changing request without it, and the other site cannot read the
+token to forge the form. It still matters for older browsers and for a page on a sibling subdomain, which counts as
+the same site. Lax still sends the cookie when another site links to yours, so a GET must never change state. An XSS
+bug defeats both layers, because the injected script runs on your own origin and can read the token.
+
+</details>
 
 ## Trade-offs
 
 <TradeoffTable title="Securing a small API">
 
-| Choice                                | What it buys                                           | What it costs                                                         |
-| ------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------- |
-| Server sessions (random ID in cookie) | Instant sign-out and revocation; a tiny cookie         | A session lookup on every request; a store to run                     |
-| Signed tokens with short expiry       | No lookup; any service with the key can verify         | Revocation waits for expiry; a refresh flow and key rotation to build |
-| Ownership check on every object       | Stops cross-user access on every endpoint              | One more lookup or condition per request; every endpoint must call it |
-| Roles such as admin                   | Simple rules for broad powers                          | Coarse; an admin account or key becomes the prize worth stealing      |
-| Secret manager with injection         | One place to store, rotate, revoke, and audit          | A startup dependency and some setup work                              |
-| TLS on every hop, internal included   | Privacy and tamper protection everywhere               | Certificates to issue and renew; a small handshake cost               |
-| HSTS and `Secure` cookies             | Cookies stay off plain HTTP, even from old links       | An HTTPS mistake locks users out until the HSTS max-age expires       |
+| Choice                                | What it buys                                   | What it costs                                                         |
+| ------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------- |
+| Server sessions (random ID in cookie) | Instant sign-out and revocation; a tiny cookie | A session lookup on every request; a store to run                     |
+| Signed tokens with short expiry       | No lookup; any service with the key can verify | Revocation waits for expiry; a refresh flow and key rotation to build |
+| Ownership check on every object       | Stops cross-user access on every endpoint      | One more lookup or condition per request; every endpoint must call it |
+| Secret manager with injection         | One place to store, rotate, revoke, and audit  | A startup dependency and some setup work                              |
 
 </TradeoffTable>
+
+**When not to use them.** A single web app that needs instant sign-out gains little from signed tokens. Owner-only
+rules need no role system until a second kind of user appears. Never write your own password hashing, token signing,
+or encryption; use a vetted library.
+
+<details>
+<summary>Go deeper: roles, internal TLS, and HSTS</summary>
+
+| Choice                              | What it buys                                       | What it costs                                                   |
+| ----------------------------------- | -------------------------------------------------- | --------------------------------------------------------------- |
+| Roles such as admin                 | Simple rules for broad powers                      | Coarse; an admin account or key becomes the prize worth stealing |
+| TLS on every hop, internal included | Privacy and tamper protection everywhere           | Certificates to issue and renew; a small handshake cost         |
+| HSTS and `Secure` cookies           | Cookies stay off plain HTTP, even from old links   | An HTTPS mistake locks users out until the HSTS max-age expires |
+
+</details>
+
+## Common mistakes
+
+- Hiding a button and calling it access control.
+- Checking a token's signature and skipping its expiry.
+- Committing keys to the repo, or writing tokens and cookies into logs.
+- Building SQL by gluing strings, or inserting user text into a page as raw HTML.
+- Changing state with GET.
+
+<KeyTakeaways>
+
+- Every request answers four questions in order, and no defense covers for a missing one.
+- 401 means the server cannot tell who is calling. 403 means it knows and says no.
+- Authorization runs on the server, for the exact object, on every request.
+- After a secret leaks, rotate and revoke it first, then clean up.
+- Bound parameters stop SQL injection, escaping plus a CSP stops XSS, and SameSite plus a CSRF token stops CSRF.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
@@ -350,16 +466,17 @@ sets up the private channel, see the handshake in [What happens when you click a
 The shortener adds teams: several users manage one workspace's links together, as viewers, editors, or owners. Which
 of the four checks change, and where does each rule live?
 
+**Rubric:** a strong answer says which checks change, puts each rule in one server-side place, and says how fast
+removing a member takes effect.
+
 <div slot="answer">
 
-- **Authorization changes the most.** Each link gets a `workspace_id`, and a memberships table records each user's
-  role in each workspace. The rule becomes "the caller is an editor or owner in this link's workspace." It lives in one
-  server-side function that every handler calls, for reads and lists as well as deletes.
-- **Check membership on every request.** Removing someone from a workspace should cut access at once. If tokens carry
-  roles, keep them short lived or look roles up per request, so a removed member does not keep access until expiry.
-- **Authentication stays the same.** Sign-in still answers who is calling. Workspace automation can get its own API
-  keys, scoped to one workspace, stored in the secret manager on your side, and revocable on their own.
-- **TLS and secrets stay the same.** Audit lines gain the workspace, so owners can see who changed what.
+- **Authorization changes most.** Links get a `workspace_id`, and a memberships table holds each user's role per
+  workspace. One server-side function checks "editor or owner in this link's workspace" for reads, lists, and deletes.
+- **Removal must cut access fast:** look roles up per request to cut it at once, or keep role-carrying tokens short
+  lived.
+- **Authentication, TLS, and secrets stay the same.** Workspace automation gets its own scoped, revocable API keys in
+  the secret manager, and audit lines gain the workspace.
 
 </div>
 

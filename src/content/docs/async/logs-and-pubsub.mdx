@@ -85,6 +85,7 @@ export const steps = [
 export const recall = [
   {
     id: 'async/logs-and-pubsub/recall-1',
+    ordered: true,
     prompt: 'Keys live on 4 shards placed with hash mod 4. You add a fifth shard and switch to hash mod 5. About what share of keys move?',
     options: [
       { text: 'About 20%', why: 'That is the minimum a fifth shard needs. Only consistent hashing gets close to it.' },
@@ -95,6 +96,7 @@ export const recall = [
   },
   {
     id: 'async/logs-and-pubsub/recall-2',
+    ordered: true,
     prompt: 'A line admits 200 requests per second and holds 100 requests on average. By Little\'s law, how long does a request wait in line on average?',
     options: [
       { text: '0.5 s', correct: true, why: 'L = λ × W, so W = L ÷ λ = 100 ÷ 200 = 0.5 s.' },
