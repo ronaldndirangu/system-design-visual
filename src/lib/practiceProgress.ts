@@ -2,7 +2,7 @@
  * Finished practice rounds saved in this browser's localStorage, using the
  * same versioned pattern as lesson progress. Nothing leaves the device.
  */
-import { PACES, type PaceId, STEP_COUNT } from './models/timedRound';
+import { PACES, type PaceId, type RubricScore, STEP_COUNT } from './models/timedRound';
 
 export const PRACTICE_STORAGE_KEY = 'sdv:practice-rounds';
 export const PRACTICE_VERSION = 1;
@@ -21,6 +21,8 @@ export interface SavedRound {
   /** Null when the learner skipped the self-assessment. */
   rubricTotal: number | null;
   rubricMax: number;
+  /** Self-assessed score for each checklist step, null where skipped. Rounds saved before scores existed have none. */
+  scores?: (RubricScore | null)[];
 }
 
 export interface PracticeData {
@@ -41,6 +43,16 @@ function isCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
+function isScore(value: unknown): value is RubricScore | null {
+  return value === null || value === 0 || value === 1 || value === 2;
+}
+
+/** A malformed score list costs only the per-step detail, so the round itself survives. */
+function parseScores(value: unknown): (RubricScore | null)[] | undefined {
+  if (!Array.isArray(value) || value.length !== STEP_COUNT || !value.every(isScore)) return undefined;
+  return [...value];
+}
+
 function parseRound(value: unknown): SavedRound | null {
   if (!isRecord(value)) return null;
   const { promptId, pace, finishedAt, usedSeconds, budgetSeconds, rubricTotal, rubricMax } = value;
@@ -50,6 +62,7 @@ function parseRound(value: unknown): SavedRound | null {
     return null;
   if (!isCount(budgetSeconds) || !isCount(rubricMax)) return null;
   if (rubricTotal !== null && (!isCount(rubricTotal) || rubricTotal > rubricMax)) return null;
+  const scores = parseScores(value.scores);
   return {
     promptId,
     pace: pace as PaceId,
@@ -58,6 +71,7 @@ function parseRound(value: unknown): SavedRound | null {
     budgetSeconds,
     rubricTotal,
     rubricMax,
+    ...(scores ? { scores } : {}),
   };
 }
 

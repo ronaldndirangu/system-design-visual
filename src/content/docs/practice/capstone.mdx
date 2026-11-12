@@ -1,0 +1,350 @@
+---
+title: Take sho.rt global
+description: Design sho.rt for three continents with multi-region redirects, click analytics, abuse limits, custom aliases, and a 99.99% SLO. Score each checklist step, then reveal a reference answer.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+
+export const quiz = [
+  {
+    id: 'practice/capstone/q1',
+    prompt: 'Why can every region serve sho.rt redirects from its own copy of the links table?',
+    options: [
+      { text: 'A link never changes after creation, so a copy that lags by a second is almost always correct', correct: true, why: 'Immutable rows make async replication safe for reads. The one gap, a link seconds old, has a cheap fix: on a miss, ask the region that created the link.' },
+      { text: 'Every region writes each link at the same time', why: 'Synchronous writes to three continents would add hundreds of milliseconds to every creation. sho.rt replicates asynchronously because the rows never change.' },
+      { text: 'The CDN stores every link forever', why: 'A CDN caches popular responses for a while. sho.rt still needs a full copy of the table behind it for the long tail of links.' },
+      { text: 'Redirects can return stale results without harm', why: 'A wrong redirect sends someone to the wrong site. The design stays correct because rows never change, and a deletion replicates as a status change that caches drop within minutes.' },
+    ],
+  },
+  {
+    id: 'practice/capstone/q2',
+    prompt: 'Two people claim the custom alias sho.rt/launch in different regions within the same second. Which design keeps exactly one owner?',
+    options: [
+      { text: 'Claim every alias through one consensus group that spans the three regions', correct: true, why: 'A majority must agree before the claim succeeds, so the second claim sees the first and gets a 409. Alias claims are rare, so the extra 150 ms costs little.' },
+      { text: 'Let each region accept claims locally and replicate them later', why: 'Both claims succeed, then replication finds two owners. One person loses a link they were told they owned.' },
+      { text: 'Keep the alias claimed by whoever wrote last', why: 'Last writer wins silently overwrites the first owner. It suits caches, and it breaks a promise of ownership.' },
+      { text: 'Give each region its own random code prefix', why: 'Prefixes keep random codes apart. A custom alias is chosen by a person, so its text cannot carry a region prefix.' },
+    ],
+  },
+  {
+    id: 'practice/capstone/q3',
+    prompt: 'The click log in Europe stops accepting writes. What should European redirects do?',
+    options: [
+      { text: 'Keep redirecting, buffer clicks in a bounded local queue, and count any clicks dropped when it fills', correct: true, why: 'The redirect carries the 99.99% SLO and the analytics allow 0.1% loss. A bounded buffer protects the redirect servers, and the drop counter keeps the loss visible.' },
+      { text: 'Return errors until the log recovers', why: 'That spends the redirect error budget to protect click counts, which have the looser target.' },
+      { text: 'Hold each redirect until its click is written', why: 'Waiting ties redirect latency to the log. When the log hangs, every worker hangs with it.' },
+      { text: 'Buffer every click in memory with no limit', why: 'An unbounded buffer grows until the server runs out of memory, which takes the redirects down too.' },
+    ],
+  },
+  {
+    id: 'practice/capstone/q4',
+    prompt: 'Anonymous users may create 10 links an hour per IP address. Each region keeps its own counters. What does that cost?',
+    options: [
+      { text: 'An attacker who spreads requests across all three regions can create up to 30 links an hour', correct: true, why: 'GeoDNS sends most users to one region, so local counters catch almost everyone. Tripling a small limit for a determined attacker is a fair price for creations that never wait on another continent.' },
+      { text: 'Every creation waits for a round trip to the other two regions', why: 'That is the cost of a global counter. Local counters answer from the same region.' },
+      { text: 'Signed in accounts lose their daily limit', why: 'Account limits work the same way, per region. They change only in the same way: three regions allow up to three times the limit.' },
+      { text: 'Nothing at all', why: 'Every choice costs something. Here the cost is a looser limit for anyone who reaches more than one region.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Design a whole system end to end against a written brief with real numbers.
+- Serve reads from every region while keeping writes that must be unique correct.
+- Fit failover, cache warm up, and replication lag inside a 99.99% error budget.
+- Score each checklist step against a rubric before you compare it with a reference answer.
+
+</Objectives>
+
+## The brief
+
+sho.rt began this course as one server in one region. It now has users on three continents, and the company wants it
+to feel local everywhere and stay up when a whole region goes dark. You have built every part of this design in earlier
+modules. This page asks you to put them together without the lesson guiding each step.
+
+**What sho.rt must do**
+
+- Redirect a short link to its long URL.
+- Create links with a random code, or with a custom alias the owner picks, such as sho.rt/launch.
+- Show each owner click counts per link, split by country and by referrer.
+- Limit abuse: cap how fast anyone creates links, and block links to known malware sites.
+- Delete a link everywhere when its owner or the abuse team removes it.
+
+**The numbers**
+
+| Constraint                 | Target                                                                    |
+| -------------------------- | ------------------------------------------------------------------------- |
+| New links                  | 10 million a day, 1% of them custom aliases                               |
+| Clicks                     | 100 per link on average                                                   |
+| Peak factor                | 3 times the daily average                                                 |
+| Regions                    | North America, Europe, and Asia, each with about a third of the traffic   |
+| Redirect latency           | p99 under 50 ms, measured at the server in the nearest region             |
+| Redirect availability      | 99.99% of redirect requests succeed in each calendar month                |
+| Click counts               | Visible to owners within 5 minutes, with at most 0.1% of clicks lost      |
+| Anonymous creation limit   | 10 links an hour per IP address                                           |
+| Account creation limit     | 1,000 links a day per account                                             |
+| Takedown                   | A deleted link stops redirecting in every region within 5 minutes        |
+| Retention                  | Links live for 10 years                                                   |
+
+## How to work the capstone
+
+Set a 45 minute clock, or run the interview pace in [the timed round](../timed-round/). Work each step of
+[the design checklist](../../thinking/design-checklist/) on paper. When a step's time is up, score it Missing, Partial,
+or Solid with the rubric below, then open that step's answer. Score before you read: an answer you have just read makes
+your own page look better than it was.
+
+| Step              | Partial                                          | Solid                                                                         |
+| ----------------- | ------------------------------------------------ | ----------------------------------------------------------------------------- |
+| Requirements      | Features listed                                  | Features plus quality bars, with redirects and analytics held to different targets |
+| Estimates         | Requests per second                              | Peak redirects and writes, storage for 10 years, and the code space it needs   |
+| API               | Endpoints named                                  | Endpoints with status codes for alias conflicts, blocked URLs, and rate limits |
+| Data model        | Tables listed                                    | Keys chosen from the access patterns, and where each table lives               |
+| High-level design | One diagram                                      | Separate redirect, creation, and click paths across three regions              |
+| Deep dive         | A risk named                                     | The 99.99% budget turned into a failover time, a capacity plan, and a fix for lag |
+| Trade-offs        | One choice explained                             | Each major choice with its rejected alternative and its cost                   |
+
+Each answer below is one sound design. A different design that meets the brief and comes with its reasons scores just
+as well.
+
+## Step 1: Requirements
+
+Write the features in scope, the features you leave out, and the quality bar for each path. Then name the one
+requirement that most shapes the design.
+
+<details>
+<summary>Show one possible answer</summary>
+
+- **In scope:** redirects, random and custom creation, per link click counts by country and referrer, creation
+  limits, a malware blocklist, and deletion everywhere.
+- **Out of scope for this round:** link editing, user accounts beyond an id and a quota, billing, and dashboards
+  beyond counts.
+- **Redirects:** p99 under 50 ms in the nearest region, 99.99% of requests succeed each month. This is the product.
+- **Creation:** a few hundred milliseconds is fine, and 99.9% availability is enough. People create a link once and
+  click it many times.
+- **Click counts:** within 5 minutes, 0.1% loss allowed. Counts are useful and never worth failing a redirect for.
+- **Aliases:** exactly one owner per alias, worldwide. This is the only strongly consistent promise in the brief.
+- **The shaping requirement:** 99.99% redirect availability across regions. Every region must answer redirects on
+  its own, and a region failure must clear in minutes.
+
+</details>
+
+## Step 2: Estimates
+
+Work out peak writes per second, peak redirects per second, link storage over 10 years, click storage, and the
+redirect error budget for a month. Then check whether 6 character codes are enough.
+
+<details>
+<summary>Show one possible answer</summary>
+
+- **Writes:** 10 million a day ÷ 86,400 ≈ 116 per second. At peak, about **350 per second**. Aliases are 1% of that,
+  about 1 per second on average.
+- **Redirects:** 116 × 100 ≈ 11,600 per second. At peak, about **35,000 per second** worldwide, or about 12,000 per
+  region.
+- **Link storage:** about 500 bytes a link × 10 million a day ≈ 5 GB a day. Over 10 years that is 36.5 billion links
+  and about **18 TB**, or about 55 TB with a full copy in each region.
+- **Clicks:** about 1 billion a day at 200 bytes ≈ 200 GB a day of raw events. Keep 30 days raw (6 TB) and keep the
+  hourly counts per link and country, which are far smaller.
+- **Error budget:** 1 billion redirects a day is about 30 billion a month. At 99.99%, **3 million failed redirects** a
+  month is the whole budget.
+- **Code space:** 62 characters in 6 places give 56.8 billion codes. After 10 years, 36.5 billion are taken, so a
+  random pick hits a used code about 64% of the time and needs about 3 tries. Use **7 characters**: 3.5 trillion
+  codes, about 1% full after 10 years.
+
+</details>
+
+## Step 3: API
+
+Name each endpoint with its inputs, its outputs, and the errors it returns. Pick the redirect status code and say why.
+
+<details>
+<summary>Show one possible answer</summary>
+
+- `POST /links` with `{ long_url, alias? }` returns **201** with `{ code, short_url }`. Errors: **409** when the alias
+  is taken, **422** when the URL is on the malware blocklist or the alias is shorter than 8 characters, **429** with
+  `Retry-After` when the caller is over a creation limit.
+- `GET /{code}` returns **302** with a `Location` header, or **404** for an unknown or deleted code. A 302 makes the
+  browser ask sho.rt on every click, so every click reaches the analytics. A 301 would let browsers cache the redirect
+  and skip sho.rt on repeat clicks, which saves load and undercounts.
+- `GET /links/{code}/stats?from=&to=&by=country` returns counts per hour for the owner, from the analytics store.
+- `DELETE /links/{code}` returns **204** for the owner or the abuse team, and starts the takedown everywhere.
+
+</details>
+
+## Step 4: Data model
+
+List each table with its key and its main query. Say which tables every region holds and which live in one place.
+
+<details>
+<summary>Show one possible answer</summary>
+
+- **links**, keyed by `code`: `long_url`, `owner_id`, `created_at`, `status` (active or deleted). The redirect reads
+  one row by code, so a key value store fits. Every region holds a full copy, replicated asynchronously, because rows
+  never change after creation. A deletion is a status change that replicates like any other write.
+- **aliases**, keyed by `alias`: `owner_id`, `home_region`, and `claimed_at`, in a small store run by one consensus
+  group across the three regions. After a claim succeeds, the link row is written with the alias as its code. Random
+  codes are exactly 7 characters and aliases take 8 to 30, so an alias can never take over a random code.
+- **click events**: `event_id`, `code`, time, country, referrer, region. Appended to a log in each region, then stored
+  for 30 days in object storage.
+- **click counts**, keyed by `(code, hour, country)` and by `(code, hour, referrer)`: one count each. Owners read a
+  range of hours for one code, so the code leads the key.
+- **rate limit counters**, keyed by IP address or account plus the time window, in an in-memory store in each region,
+  each entry expiring with its window.
+
+</details>
+
+<Predict
+  client:visible
+  id="practice/capstone/predict-1"
+  question="Suppose the aliases table worked like the links table: each region accepts writes and replicates them later. Ana in Tokyo and Ben in Paris both claim sho.rt/launch within the same second. What happens?"
+  options={[
+    'Ana wins, because Tokyo is earlier in the day',
+    'Both claims succeed, and replication later finds two owners for one alias',
+    'Both claims fail, and each person sees a 409',
+  ]}
+  answer={1}
+>
+
+Both succeed. Each region checks its own copy, finds the alias free, and says yes. Seconds later, replication carries
+both rows across, and one owner loses an alias they were told they own. Random codes avoid this with a region prefix,
+because each region draws from its own set. A custom alias has no such escape, since a person picks the text. So alias
+claims go through one consensus group that spans the regions, and the second claim waits for a majority, sees the
+first, and gets a 409.
+
+</Predict>
+
+## Step 5: High-level design
+
+Draw the redirect path, the creation path, and the click path. Show which steps stay inside one region and which cross
+regions.
+
+<details>
+<summary>Show one possible answer</summary>
+
+**Redirect path, all inside one region.** GeoDNS with a 60 s TTL sends the browser to the nearest healthy region. A
+load balancer passes the request to a redirect server, which checks its in-memory cache, then a regional cache tier,
+then the regional copy of the links table. It answers 302 and hands a click event to a small local buffer without
+waiting. With most links served from cache, about 12,000 redirects per second per region needs only a few dozen
+servers.
+
+**Creation path.** The creation service checks the creation limits in the regional counter store, then checks the URL
+against the malware blocklist. For a random code, it picks 7 characters whose first character names this region, and
+writes the row to the regional links store, which replicates it to the other two. For an alias of 8 or more
+characters, it first claims the alias and records this region as its home through the consensus group, then writes
+the row the same way.
+
+**Click path.** Each redirect server ships buffered events to the regional click log. A stream processor in each
+region counts clicks per link per hour by country and by referrer, and writes the counts to a global analytics store
+every minute. The stats endpoint reads from there, well inside 5 minutes.
+
+**Takedown path.** A delete writes `status = deleted` to the regional store, which replicates within seconds. The
+in-memory cache holds each entry for at most 1 minute and the regional cache tier for at most 3. The two limits add
+up, so a deleted link stops redirecting everywhere within about 4 minutes plus a few seconds of replication, inside the
+5 minute target.
+
+</details>
+
+<Predict
+  client:visible
+  id="practice/capstone/predict-2"
+  question="Europe carries a third of all redirects. Its region goes dark, and it takes 15 minutes to move European users to another region. Does the month still meet 99.99%?"
+  options={[
+    'Yes, because two thirds of the traffic was fine the whole time',
+    'No, because one third of traffic failing for 15 minutes uses more than the whole month’s budget',
+    'Yes, because the 99.99% target ignores regional outages',
+  ]}
+  answer={1}
+>
+
+No. A month has 43,200 minutes. One third of the traffic failing for 15 minutes is 15 ÷ 43,200 × 1/3 ≈ 0.012% of the
+month's redirects. The budget is 0.01%. A single region outage may last at most about 13 minutes before the month is
+lost, and that leaves nothing for any other failure. Failover has to be automatic and finish in a couple of minutes,
+with people watching instead of deciding.
+
+</Predict>
+
+## Step 6: Deep dive
+
+Pick the riskiest part of your design and work it in detail. The reference answer takes redirect availability: turn the
+error budget into a failover time, plan capacity for a lost region, and handle a link that has not replicated yet.
+
+<details>
+<summary>Show one possible answer</summary>
+
+**Failover time.** Health checks run every 10 s from several places, and a region is marked down after 3 failures in
+a row, about 30 s. GeoDNS then stops handing out that region, and with a 60 s TTL most browsers move within a minute.
+That puts a full region failover near 2 minutes. At a third of the traffic, that spends about 15% of the month's
+budget, leaving room for a second outage and for ordinary errors. Read [multi-region systems](../../distributed-data/multi-region/)
+again if the DNS timing feels unfamiliar.
+
+**Capacity for a lost region.** When Europe goes dark, its 12,000 redirects per second split across the other two
+regions, so each one rises from about 12,000 to about 18,000 per second at peak. Size each region for half the global
+peak plus headroom, and keep the autoscaler's floor at that size, since the surge arrives faster than new servers
+start.
+
+**Cold caches after failover.** The surviving regions have never cached Europe's popular links, so most of the shifted
+traffic misses the cache and lands on the links store. Size the store to take that miss surge for a few minutes, and
+let the cache tier request each missing code once while other requests for it wait, so a popular link causes one
+store read. [Caching](../../scaling/caching/) covers this request coalescing.
+
+**A link that has not replicated yet.** A link created in Asia reaches Europe in about a second. If someone in Europe
+clicks it first, the European store has no row. A random code's first character names its home region, and an
+alias's home region sits in the alias store, so on a miss the redirect server asks Asia directly. A round trip from
+Europe to Asia takes 150 to 250 ms, so the call reuses a connection kept open and waits up to 300 ms, then answers 404
+only if Asia also says no. Real 404s are rare, so this fallback adds a slow cross region call to very few requests.
+
+**What the design loses in a disaster.** Links replicate asynchronously, so a region that dies with a second of
+unreplicated writes loses those links until it returns. About 350 links per second at peak means a few hundred links
+at most, and their owners got codes that briefly fail. The reference design accepts this; synchronous replication would add
+100 ms or more to every creation to avoid it.
+
+</details>
+
+## Step 7: Trade-offs
+
+Name the major choices in your design. For each one, name the alternative you passed over and what your choice costs.
+
+<details>
+<summary>Show one possible answer</summary>
+
+<TradeoffTable title="Major choices in the reference design">
+
+| Choice                                          | Alternative passed over                     | What the choice costs                                                    |
+| ----------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------ |
+| Full links copy in every region, async          | One home region for all reads               | About 55 TB of storage, and up to a second of links lost in a disaster   |
+| Region prefix on random codes                   | A global code counter                       | Each region draws from a third of the codes, and every code reveals its home region |
+| One consensus group for aliases                 | Accept aliases locally, fix conflicts later | About 150 ms per alias claim, and claims stop if two regions go dark      |
+| 302 redirects                                   | 301 redirects                               | Every repeat click reaches sho.rt, which raises redirect load             |
+| Creation limits counted per region              | One global counter per IP and account       | A determined attacker gets up to 3 times the limit                        |
+| Fire and forget clicks with a bounded buffer    | Write each click before redirecting         | Up to 0.1% of clicks lost during log outages                              |
+| GeoDNS with a 60 s TTL                          | Anycast to every region                     | About a minute of DNS lag during failover                                 |
+
+Anycast is a strong alternative for the last row: one IP address announced from every region moves traffic in
+seconds. It needs control over network routing, which a small team may lack, so the reference design starts with
+GeoDNS and keeps anycast as the next step if failover time eats too much of the budget.
+
+</TradeoffTable>
+
+</details>
+
+## Reading your score
+
+- **Requirements scored Partial** usually means one quality bar for the whole system. Give redirects, creation, and
+  analytics their own targets, then let each target decide how much each path pays for availability.
+- **Estimates scored Partial** usually means the code space or the error budget went unchecked. Both turn into design
+  choices: 7 character codes and a failover time.
+- **Deep dive scored Partial** usually means the risk was named without numbers. Turn the 99.99% target into minutes,
+  then check your failover against it.
+- **Trade-offs scored Partial** usually means choices without their alternatives. Each row in the table above names
+  what the design passed over.
+
+Revisit the lessons behind your weakest step: [SLOs](../../thinking/slos/) for budgets,
+[unique IDs](../../foundations/unique-ids/) for code space, [rate limiting](../../reliability/rate-limiting/) for
+creation limits, and [queues and backpressure](../../reliability/queues-and-backpressure/) for the click buffer.
+
+## Check your understanding
+
+<Quiz client:visible questions={quiz} />
