@@ -483,6 +483,9 @@ body {
     align-items: center;
     min-block-size: var(--sdv-target);
   }
+  .sl-markdown-content details > summary {
+    padding-block: max(0px, calc((var(--sdv-target) - 1lh) / 2));
+  }
   site-search button[data-open-modal],
   .social-icons a,
   .sl-anchor-link {

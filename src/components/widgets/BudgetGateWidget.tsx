@@ -248,7 +248,7 @@ export default function BudgetGateWidget({
                   <text className="sdv-gate__name" x={tx} y={y - 3} textAnchor={anchor}>
                     {candidates[s.candidate].label}: {verdict.fits ? 'fits' : 'misses'}
                   </text>
-                  <text className="sdv-gate__detail" x={tx} y={y + 12} textAnchor={anchor}>
+                  <text className="sdv-gate__detail" x={tx} y={y - 3} dy="1.25em" textAnchor={anchor}>
                     {units(s.costPer1k)} units, declines {s.declinesHandled}/{s.declineCases}
                   </text>
                 </g>
