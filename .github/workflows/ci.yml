@@ -44,7 +44,7 @@ jobs:
           include-hidden-files: true
 
   # Browser tests run on pull requests and main pushes that touch code, config, or the tests themselves, so a layout
-  # regression blocks the pull request before it reaches main. Content-only changes skip them. Nightly runs cover all.
+  # regression blocks the pull request before it reaches main. Changes limited to unit tests or root Markdown skip them. Nightly runs cover all.
   playwright-version:
     name: Resolve Playwright version
     runs-on: ubuntu-latest
@@ -63,7 +63,8 @@ jobs:
           EVENT: ${{ github.event_name }}
           BEFORE: ${{ github.event.before }}
         run: |
-          code='^(src/(components|lib|styles|layouts|pages)/|tests/e2e/|playwright\.config|astro\.config|package\.json|pnpm-lock\.yaml|\.github/workflows/)'
+          # Mirrors scopeFromChanges in scripts/e2e-scope.ts: only unit tests and root-level Markdown skip.
+          skip='^(tests/unit/|[^/]+\.md$)'
           case "$EVENT" in
             push) base="$BEFORE" ;;
             pull_request) base="HEAD^1" ;;
@@ -71,10 +72,10 @@ jobs:
           esac
           if [ -z "$base" ] || ! changed="$(git diff --name-only "$base" HEAD 2>/dev/null)"; then
             echo "run=true" >> "$GITHUB_OUTPUT"
-          elif printf '%s\n' "$changed" | grep -qE "$code"; then
+          elif printf '%s\n' "$changed" | grep -qvE "$skip"; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Content-only change: skipping browser tests."
+            echo "Unit test or root Markdown change only: skipping browser tests."
             echo "run=false" >> "$GITHUB_OUTPUT"
           fi
       - id: lockfile

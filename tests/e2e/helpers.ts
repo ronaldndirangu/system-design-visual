@@ -45,3 +45,16 @@ export async function island(locator: Locator): Promise<Locator> {
   );
   return locator;
 }
+
+/** Holds every island bundle until `release` runs, so the page stays server rendered meanwhile. */
+export async function holdIslandCode(page: Page): Promise<() => void> {
+  let release: () => void = () => {};
+  const islandCode = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/_astro/**/*.js', async (route) => {
+    await islandCode;
+    await route.continue();
+  });
+  return release;
+}

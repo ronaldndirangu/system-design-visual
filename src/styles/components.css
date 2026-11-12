@@ -812,6 +812,22 @@ fieldset:disabled .sdv-choice,
   color: var(--sdv-text-2);
   margin: var(--sdv-space-3) 0 var(--sdv-space-5);
 }
+.sdv-reset__dialog .sdv-reset__summary {
+  color: var(--sdv-text-2);
+  margin: var(--sdv-space-3) 0;
+  padding-inline-start: var(--sdv-space-5);
+}
+.sdv-reset__modes {
+  border: 0;
+  display: grid;
+  gap: var(--sdv-space-2);
+  margin: 0 0 var(--sdv-space-5);
+  padding: 0;
+}
+.sdv-reset__modes legend {
+  font-weight: 600;
+  margin-block-end: var(--sdv-space-2);
+}
 button[data-tone="bad"] {
   border-color: var(--sdv-bad);
   color: var(--sl-color-white);
