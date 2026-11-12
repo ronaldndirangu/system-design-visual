@@ -1,0 +1,161 @@
+---
+title: Anatomy of a web app
+description: Meet the boxes every design in this course draws, follow one click through them, and learn the four words people use when they say a system is slow.
+furtherReading:
+  - title: 'The System Design Primer: performance vs scalability, latency vs throughput'
+    url: https://github.com/donnemartin/system-design-primer#performance-vs-scalability
+    note: Short definitions of both pairs, with links to longer talks and papers.
+  - title: An overview of HTTP (MDN)
+    url: https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Overview
+    note: What a browser and a server say to each other on every request.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+
+export const nodes = [
+  { id: 'client', kind: 'client', x: 70, y: 180, label: 'Browser' },
+  { id: 'dns', kind: 'dns', x: 230, y: 60, label: 'DNS' },
+  { id: 'cdn', kind: 'cdn', x: 70, y: 320, label: 'CDN', sublabel: 'static files' },
+  { id: 'lb', kind: 'loadBalancer', x: 230, y: 180, label: 'Load balancer' },
+  { id: 'app', kind: 'server', x: 390, y: 180, label: 'App servers', sublabel: 'stateless' },
+  { id: 'cache', kind: 'cache', x: 550, y: 100, label: 'Cache' },
+  { id: 'db', kind: 'database', x: 550, y: 260, label: 'Database' },
+  { id: 'queue', kind: 'queue', x: 390, y: 320, label: 'Queue', sublabel: 'slow jobs' },
+];
+
+export const edges = [
+  { from: 'client', to: 'dns' },
+  { from: 'client', to: 'cdn' },
+  { from: 'client', to: 'lb' },
+  { from: 'lb', to: 'app' },
+  { from: 'app', to: 'cache' },
+  { from: 'app', to: 'db' },
+  { from: 'app', to: 'queue' },
+];
+
+export const steps = [
+  {
+    title: 'Find the address',
+    text: 'Someone clicks sho.rt/abc123. The browser asks DNS for the IP address behind sho.rt and keeps the answer for a while, so the next click skips this step.',
+    nodes: ['client', 'dns'],
+    flows: ['client>dns'],
+  },
+  {
+    title: 'Load static files nearby',
+    text: 'The page for creating links loads its scripts from a CDN, a set of servers near the user that hold file copies. A redirect skips this step.',
+    nodes: ['client', 'cdn'],
+    flows: ['client>cdn'],
+  },
+  {
+    title: 'Spread the load',
+    text: 'The request reaches the load balancer, which forwards it to one healthy app server. The user never learns which one.',
+    nodes: ['client', 'lb', 'app'],
+    flows: ['client>lb', 'lb>app'],
+  },
+  {
+    title: 'Check memory first',
+    text: 'The app server asks the cache, an in-memory store, for abc123. A hit answers in under a millisecond and never touches the database.',
+    nodes: ['app', 'cache'],
+    flows: ['app>cache'],
+  },
+  {
+    title: 'Fall back to the source of truth',
+    text: 'On a miss, the app server reads the database, which keeps every link on disk through restarts. It copies the answer into the cache for the next click, then sends the redirect.',
+    nodes: ['app', 'db', 'cache'],
+    flows: ['app>db'],
+  },
+  {
+    title: 'Hand slow work to a queue',
+    text: 'When someone creates a link, the app server stores it and puts a job on a queue to check the long URL against a list of malware sites. A worker runs the check later, so creating a link stays fast.',
+    nodes: ['app', 'db', 'queue'],
+    flows: ['app>db', 'app>queue'],
+  },
+];
+
+export const quiz = [
+  {
+    id: 'thinking/anatomy-of-a-web-app/q1',
+    prompt: 'Redirects take 20 ms when one person tests them and 2 s at the evening peak. What kind of problem is this?',
+    options: [
+      { text: 'A scalability problem: some resource saturates as load grows', correct: true, why: 'The system is fast alone and slow under load. Find the box that runs out first, such as a full database or a hot cache key.' },
+      { text: 'A performance problem in the redirect code', why: 'Slow code would be slow for one person too. At 20 ms alone, the code is fine.' },
+      { text: 'A DNS problem', why: 'The browser caches the DNS answer, and DNS time does not grow with your traffic.' },
+    ],
+  },
+  {
+    id: 'thinking/anatomy-of-a-web-app/q2',
+    prompt: 'Why do app servers keep no user data between requests?',
+    options: [
+      { text: 'So any server can answer any request, and adding a server adds capacity', correct: true, why: 'Stateless servers are interchangeable. The load balancer can send a request anywhere, and a crashed server loses nothing.' },
+      { text: 'To make each request faster', why: 'Keeping state locally can be faster. Servers drop it to stay interchangeable.' },
+      { text: 'Because servers have no memory', why: 'They have plenty. The data lives in the cache and database so every server can see it.' },
+    ],
+  },
+  {
+    id: 'thinking/anatomy-of-a-web-app/q3',
+    prompt: 'A service finishes 2,000 requests per second, and each takes 50 ms. About how many requests are in flight at once?',
+    options: [
+      { text: 'About 100', correct: true, why: 'In flight = throughput × latency = 2,000 × 0.05 s = 100. Size connection pools for that many.' },
+      { text: 'About 40', why: 'That divides 2,000 by 50. Multiply the rate by the time each request takes instead.' },
+      { text: 'About 2,000', why: 'That holds only if every request took a full second.' },
+    ],
+  },
+];
+
+Every design in this course draws the same few boxes. Learn what each one does now, and every later diagram reads like
+a sentence. The running example is the URL shortener: people create short links such as `sho.rt/abc123`, and anyone
+who opens one gets redirected to the long URL.
+
+<Objectives>
+
+- Name the boxes a web app diagram uses and the one job each does.
+- Follow a click and a new link through those boxes.
+- Tell latency from throughput, and a performance problem from a scalability problem.
+
+</Objectives>
+
+## One click, box by box
+
+Step through a click on a short link, then the creation of a new one.
+
+<StepDiagram client:visible title="A click on a short link, step by step" nodes={nodes} edges={edges} steps={steps} height={380} />
+
+Three ideas hold the picture together. **Stateless app servers** keep nothing between requests, so you add servers when
+traffic grows. **The cache** answers the common reads from memory, and **the database** keeps the truth on disk. **The
+queue** takes work the user does not need to wait for.
+
+## Where each box gets its lesson
+
+| Box           | Its job                                       | Where you learn it                                                  |
+| ------------- | --------------------------------------------- | ------------------------------------------------------------------- |
+| DNS           | Turns a name into an address                  | [What happens when you click](../../foundations/what-happens-when-you-click/) |
+| Load balancer | Spreads requests across healthy servers       | [Load balancing](../../scaling/load-balancing/)                     |
+| Cache         | Serves hot reads from memory                  | [Caching](../../scaling/caching/)                                   |
+| Database      | Stores the truth and answers queries          | [Data modeling](../../foundations/data-modeling/)                   |
+| Queue         | Holds work for later and absorbs bursts       | [Queues and backpressure](../../reliability/queues-and-backpressure/) |
+| CDN           | Serves files from near the user               | [CDN](../../scaling/cdn/)                                           |
+
+## Four words for slow
+
+**Latency** is how long one request takes, in milliseconds. **Throughput** is how many requests finish each second.
+They are linked: requests in flight = throughput × latency. A service that finishes 1,000 requests a second at 50 ms
+each holds about 50 in flight at any moment.
+
+**Performance** asks whether the system is fast for one user on a quiet day. **Scalability** asks whether it stays fast
+as users, data, and traffic grow. A performance problem shows up with one user, so profile that slow request. A
+scalability problem shows up only under load, so look for the box that saturates first. The
+[reference sheet](../../reference/) keeps these definitions next to the latency numbers.
+
+<KeyTakeaways>
+
+- A web app is a browser, DNS, a load balancer, stateless app servers, a cache, a database, a queue, and a CDN.
+- Stateless servers let you scale by adding machines. State lives in the cache and the database.
+- Latency is time per request, and throughput is requests per second. In flight = throughput × latency.
+- Slow for one user is a performance problem. Slow only at peak is a scalability problem.
+
+</KeyTakeaways>
+
+<Quiz client:visible questions={quiz} />

@@ -1,8 +1,21 @@
 ---
 title: Data modeling and storage choice
 description: List the URL shortener's five queries first, then run each one against tables, documents, and key-value records on the same data. The access pattern picks the shape, and one system often uses more than one.
+furtherReading:
+  - title: 'System Design Primer: SQL or NoSQL'
+    url: https://github.com/donnemartin/system-design-primer#sql-or-nosql
+    note: Reasons to choose relational or NoSQL storage, with sample workloads that suit each.
+  - title: 'Amazon DynamoDB: NoSQL design'
+    url: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-general-nosql-design.html
+    note: Why a NoSQL schema starts from the access patterns, and how keys and indexes follow from them.
+  - title: 'MongoDB: Data modeling'
+    url: https://www.mongodb.com/docs/manual/data-modeling/
+    note: When to embed related data in one document and when to reference it, decided by how the app reads it.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
+import Callout from '../../../components/lesson/Callout.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -26,32 +39,44 @@ export const edges = [
 export const steps = [
   {
     title: 'The redirect knows only the code',
-    text: 'A browser asks for sho.rt/bATJ4g. The handler has one fact, the code, and must return the long URL fast, about 20,000 times a second across all links.',
+    text: 'A browser asks for sho.rt/bATJ4g. The handler knows only the code and must return the long URL, about 20,000 times a second.',
     nodes: ['browser', 'handler'],
     flows: ['browser>handler'],
   },
   {
     title: 'Documents are keyed by user',
-    text: 'Each user is one document with a links array inside, and only _id (the user) is indexed. Nothing leads from bATJ4g to its owner, so the database opens all 300 documents, 981 KB, to return one URL.',
+    text: 'Each user is one document with its links inside, and only _id is indexed. To find bATJ4g, the database opens all 300 documents, 981 KB.',
     nodes: ['handler', 'docs'],
     flows: ['handler>docs', 'docs>handler'],
   },
   {
     title: 'One document keeps growing',
-    text: 'User 1 owns 469 links, so that document already weighs 148 KB, 15% of all the data. Every new link changes it, and MongoDB refuses any document over 16 MB.',
+    text: 'User 1 owns 469 links in one 148 KB document. Every new link grows it, and MongoDB refuses documents over 16 MB.',
     nodes: ['docs'],
   },
   {
     title: 'Fix: give the redirect its own key',
-    text: 'Store one key-value record per code with the URL inside. The redirect becomes a single get. Tables stay the source of truth for accounts and links. An index on links.code would also rescue the documents.',
+    text: 'Store one key-value record per code, and the redirect becomes a single get. Tables stay the source of truth.',
     nodes: ['handler', 'kv'],
     flows: ['handler>kv', 'kv>handler'],
   },
   {
     title: 'The inverse failure',
-    text: 'Key-value alone fails the other way. It answers only by key, so the dashboard and the takedown page through all 3,300 keys, 100 per round trip: 33 round trips each.',
+    text: 'Key-value alone answers only by key, so the dashboard and takedown page through all 3,300 keys in 33 round trips.',
     nodes: ['handler', 'kv'],
     flows: ['handler>kv'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'foundations/data-modeling/recall-1',
+    prompt: 'What does an access pattern record?',
+    options: [
+      { text: 'The tables and columns the data needs', why: 'That is the schema, which the access patterns help you choose.' },
+      { text: 'Who reads what, how often, and the read to write ratio', correct: true, why: 'Those facts pick the shape. Links are read far more than written, so the read by code must be cheap.' },
+      { text: 'The peak number of users online', why: 'A user count says nothing about which key each query knows.' },
+    ],
   },
 ];
 
@@ -60,184 +85,200 @@ export const quiz = [
     id: 'foundations/data-modeling/q1',
     prompt: 'Your team must pick storage for a new feature. What should it write down first?',
     options: [
-      { text: 'Every query the feature runs, with its key and how often it runs', correct: true, why: 'The lookups decide the shape. A query by code 20,000 times a second and a query by domain 3 times a day want different access paths.' },
-      { text: 'The database the team knows best', why: 'Familiarity matters for running a system, yet it says nothing about whether a shape answers the hot query in one read or a scan.' },
-      { text: 'Whether the data is relational', why: 'Nearly all data has relationships. The useful question is which lookups must be fast and which can be slow.' },
-      { text: 'The expected number of users', why: 'Size matters, but at any size the redirect needs a lookup by code and the dashboard needs a lookup by owner.' },
+      { text: 'Every query, the key it knows, and its rate', correct: true, why: 'A query by code 20,000 times a second and one by domain 3 times a day want different access paths.' },
+      { text: 'The database the team knows best', why: 'Familiarity says nothing about whether the hot query takes one read or a scan.' },
+      { text: 'Whether the data is relational', why: 'Nearly all data has relationships; which lookups must be fast matters more.' },
+      { text: 'The expected number of users', why: 'At any size, the redirect still looks up by code.' },
     ],
   },
   {
     id: 'foundations/data-modeling/q2',
-    prompt: 'A document store keeps one document per user with links embedded, and only _id is indexed. Which query hurts most?',
+    prompt: 'Documents are one per user with links embedded, and only _id is indexed. Which query hurts most?',
     options: [
-      { text: 'Loading one user\'s dashboard', why: 'The dashboard knows the user, so it reads one document by _id. A large account makes that document heavy, but it is still one read.' },
-      { text: 'Redirecting sho.rt/bATJ4g', correct: true, why: 'The redirect knows only the code. With no index on links.code, the database opens every document: 300 documents and 981 KB for one URL, 20,000 times a second.' },
-      { text: 'Creating a link for a user with 4 links', why: 'That appends to one small document found by _id.' },
-      { text: 'Loading a user profile', why: 'Profiles are looked up by user, which is exactly the key these documents use.' },
+      { text: 'Loading one user\'s dashboard', why: 'It reads one document by _id.' },
+      { text: 'Redirecting sho.rt/bATJ4g', correct: true, why: 'It knows only the code, so the database opens all 300 documents, 981 KB, for one URL.' },
+      { text: 'Creating a link for a user with 4 links', why: 'It appends to one small document found by _id.' },
+      { text: 'Loading a user profile', why: 'Profiles are found by user, the documents\' key.' },
     ],
   },
   {
     id: 'foundations/data-modeling/q3',
-    prompt: 'A key-value store keyed by code must also serve the dashboard. Which fix holds up as the data grows?',
+    prompt: 'A key-value store keyed by code must also serve the dashboard. Which fix scales?',
     options: [
-      { text: 'Scan all keys; key-value stores are fast', why: 'Fast per key, yet the scan reads every key in the store. In the toy that is 3,300 keys in 33 round trips, and it grows with every link anyone creates.' },
-      { text: 'Raise the scan page size to 10,000 keys', why: 'Fewer round trips, the same data moved. The cost still grows with the whole store.' },
-      { text: 'Keep a second record per user that lists their codes, and update it on every create and delete', correct: true, why: 'That is a secondary index you maintain by hand. The dashboard reads one known key, and in exchange every write updates two records that must stay in sync.' },
-      { text: 'Move to a document store, since documents scale better', why: 'Documents keyed by user would serve the dashboard and break the redirect. No shape wins every query.' },
+      { text: 'Scan all keys; key-value stores are fast', why: 'The scan reads all 3,300 keys in 33 round trips and grows with every link.' },
+      { text: 'Raise the scan page size to 10,000 keys', why: 'Fewer round trips, the same data moved.' },
+      { text: 'Keep a record per user listing their codes, updated on every create and delete', correct: true, why: 'A secondary index you maintain by hand: the dashboard reads one key, and every write updates two records.' },
+      { text: 'Move to a document store', why: 'Documents keyed by user would break the redirect instead.' },
     ],
   },
   {
     id: 'foundations/data-modeling/q4',
-    prompt: 'The team adds click_count to links so the dashboard reads 20 rows instead of 49. What did that cost?',
+    prompt: 'A click_count column on links cuts the dashboard from 49 rows to 20. What does it cost?',
     options: [
-      { text: 'Nothing, since the total can always be recomputed', why: 'Recomputing is how you repair drift. Until then, readers see whichever copy they read.' },
-      { text: 'Every click now writes two rows, and the two counts can disagree if one write fails', correct: true, why: 'Denormalizing doubles the click writes (40,000 a second in the toy) and creates a second copy to keep in sync, with a transaction, a batch job, or periodic repair.' },
-      { text: 'The dashboard now needs a join', why: 'It is the reverse: the stored total removes the join to clicks_daily.' },
-      { text: 'The links table can no longer have indexes', why: 'A new column has no effect on existing indexes.' },
+      { text: 'Nothing, since the total can be recomputed', why: 'Until a recompute, readers see whichever copy they read.' },
+      { text: 'Every click writes two rows, and the counts can disagree if one write fails', correct: true, why: 'Click writes double, to 40,000 a second in the toy, and something must keep the copies in sync.' },
+      { text: 'The dashboard now needs a join', why: 'The reverse: the stored total removes the join.' },
+      { text: 'The links table can no longer have indexes', why: 'A new column does not affect existing indexes.' },
     ],
   },
   {
     id: 'foundations/data-modeling/q5',
-    prompt: 'You shard the links table by code across 8 machines. Which query now has to ask every shard?',
+    prompt: 'You shard links by code across 8 machines. Which query must ask every shard?',
     options: [
-      { text: 'Redirect by code', why: 'The code is the shard key, so the router knows the one shard that holds it.' },
-      { text: 'Clicks per day for one link', why: 'Daily counts are keyed by code too, so they live on the same shard as their link.' },
-      { text: 'One user\'s 20 newest links', correct: true, why: 'A user\'s links are spread across shards by code. The dashboard asks all 8 and merges, unless you keep a second copy partitioned by owner.' },
-      { text: 'Creating a link', why: 'A new link has a code, so it goes to exactly one shard.' },
+      { text: 'Redirect by code', why: 'The code is the shard key, so one shard answers.' },
+      { text: 'Clicks per day for one link', why: 'Daily counts are keyed by code, on the link\'s shard.' },
+      { text: 'One user\'s 20 newest links', correct: true, why: 'A user\'s links spread across shards by code, so the dashboard asks all 8 and merges.' },
+      { text: 'Creating a link', why: 'A new link has a code, so it goes to one shard.' },
     ],
   },
   {
     id: 'foundations/data-modeling/q6',
-    prompt: 'The shortener starts keeping every raw click event, about 20,000 a second, and analytics reads one link\'s clicks over a time range. Which NoSQL family fits that access pattern?',
+    prompt: 'Analytics now keeps every raw click, about 20,000 a second, and reads one link\'s clicks over a time range. Which NoSQL family fits?',
     options: [
-      { text: 'Wide column, partitioned by code and day, with rows sorted by time', correct: true, why: 'Wide column stores absorb a steady stream of appends cheaply, and a read for one link and day stays inside one partition, already in time order.' },
-      { text: 'Graph, with an edge from each click to its link', why: 'Graphs pay off on queries that follow relationships several hops out. Counting one link\'s clicks over a time range is one range read, and the graph would gain 20,000 edges a second for no benefit.' },
-      { text: 'Document, one per link, with every click appended to an array', why: 'A popular link\'s document grows without limit toward the size cap, and every click updates the same hot document.' },
-      { text: 'Key-value, one random key per click event', why: 'Writes are cheap, yet the store spreads keys by hash, so returning one link\'s clicks in time order means scanning every key.' },
+      { text: 'Wide column, partitioned by code and day, sorted by time', correct: true, why: 'It absorbs a steady stream of appends cheaply, and one link-day read stays in one partition, in time order.' },
+      { text: 'Graph, with an edge from each click to its link', why: 'Graphs pay off on multi-hop walks; this is one range read.' },
+      { text: 'Document per link, with clicks appended to an array', why: 'A popular link\'s document grows without limit, and every click hits it.' },
+      { text: 'Key-value, one random key per click', why: 'One link\'s clicks in time order means scanning every key.' },
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 
 - List a system's queries and their rates before choosing how to store its data.
 - Predict whether tables, documents, or key-value records answer a query with one key, a secondary index, or a full scan.
 - Match each NoSQL family (key-value, document, wide column, graph) to an access pattern it serves well.
-- Weigh denormalization: faster reads in exchange for a second copy that every write must keep in sync.
-- Explain how schema changes and sharding interact with the shape, and why one system often uses more than one.
+- Weigh denormalization, sharding, and mixed shapes: each extra copy speeds a read and adds write work.
 
 </Objectives>
 
 ## The failure: one document per user
 
-A team building the shortener reasons that each user owns their links, so it stores each user as one document with a
-`links` array inside. Sign up, create a link, and load the dashboard all work on day one: each reads or writes one
-document by its `_id`. Then the first short link goes out in a newsletter, and the redirect has to find it.
+A team stores each user as one document with a `links` array inside. Sign up, create, and the dashboard each touch one
+document by `_id`. Then a short link goes out in a newsletter, and the redirect has to find it.
+
+<Callout variant="note" title="Index primer">
+
+An **index** is a sorted copy of one or more columns, with a pointer from each entry back to its row, like the index
+at the back of a book. A lookup by that column walks the sorted copy and jumps straight to the matching rows instead of
+scanning the whole table. Relational databases usually build it as a B-tree. The price lands on writes: every insert,
+update, or delete must also update each index on the table, so indexes speed reads and slow writes. Databases index
+the primary key for you. A **secondary index** is
+any index on another column, such as `owner_id` on a links table keyed by code. This lesson leans on them, and
+[Indexes](../indexes/) covers them in full.
+
+</Callout>
 
 <Predict
   client:visible
   id="foundations/data-modeling/predict-1"
-  question="Each user is one document with an embedded links array, and only _id (the user) is indexed. A request for sho.rt/bATJ4g arrives. What must the database read to find the long URL?"
+  question="Only _id (the user) is indexed. What must the database read to resolve sho.rt/bATJ4g?"
   options={['One link record, found by its code', 'The owner\'s document, found by _id', 'Every user document', 'Only the documents updated today']}
   answer={2}
 >
 
-**Every user document.** The redirect knows the code, and the documents are keyed by user. With no index on
-`links.code`, the database opens all **300 documents (981 KB)** to return one URL. At 20,000 redirects a second, the toy
-model below moves **19.6 GB/s**. Meanwhile user 1, the busiest account, owns 469 links in one **148 KB** document that
-every new link makes bigger, and MongoDB refuses any document over 16 MB.
+**Every user document.** The documents are keyed by user and nothing indexes `links.code`, so the database opens all
+**300 documents (981 KB)** for one URL. At 20,000 redirects a second, that is **19.6 GB/s**.
 
 </Predict>
 
-The inverse design fails too. A pure key-value store keyed by code makes the redirect a single read, then makes "this
-user's newest links" and "every link to this domain" scan every key in the store.
+The inverse fails too: a key-value store keyed by code makes the redirect one read and makes every other query scan
+every key.
 
 ## The idea: list the queries, then pick the shape
 
-Before choosing storage, write down every question the system asks of its data, what it knows when it asks, and how
-often. For the shortener, the list is short:
+Before choosing storage, write down the system's [access patterns](../../thinking/access-patterns/): each question it
+asks of its data, what it knows when it asks, and how often.
 
-| Query         | What it asks                                | What it knows | Toy rate        |
-| ------------- | ------------------------------------------- | ------------- | --------------- |
-| Redirect      | The long URL for one code                   | The code      | 20,000 a second |
-| Create a link | Store a new code, refusing duplicates       | The code      | 20 a second     |
-| Dashboard     | A user's 20 newest links with click counts  | The user      | 50 a second     |
-| Analytics     | Clicks per day for one link                 | The code      | 10 a second     |
-| Takedown      | Every link that points at one domain        | The domain    | 3 a day         |
+| Query         | What it asks                          | What it knows | Toy rate        |
+| ------------- | ------------------------------------- | ------------- | --------------- |
+| Redirect      | Long URL for one code                 | Code          | 20,000 a second |
+| Create a link | Store a new code, no duplicates       | Code          | 20 a second     |
+| Dashboard     | A user's 20 newest links with clicks  | User          | 50 a second     |
+| Analytics     | Clicks per day for one link           | Code          | 10 a second     |
+| Takedown      | Every link to one domain              | Domain        | 3 a day         |
 
-The redirect outnumbers everything else by about 250 to 1, and it knows only the code. Whatever else the design does,
-the redirect must reach its record by code in one step. The other queries ask by user and by domain, so they need either
-an index on those fields or a layout that puts the answer in one place.
+The redirect outnumbers the rest about 250 to 1 and knows only the code, so it must reach its record in one step. The
+dashboard and takedown need an index on user or domain, or a layout that groups the answer.
 
 <StepDiagram client:visible title="When the layout fights the hot query" nodes={nodes} edges={edges} steps={steps} height={290} />
 
 <Analogy>
 
-A library shelves books by author. "Every book by this author" is one walk to one shelf. "The book called *Dune*"
-would mean walking every shelf, so the library also keeps a catalog sorted by title. The catalog is a second copy of
-the facts, sorted for a different question, and a librarian has to update it every time a book arrives or leaves.
-That is a secondary index, and the upkeep is its price.
+A library shelves books by author. Finding *Dune* by title would mean walking every shelf, so the library keeps a
+catalog sorted by title, updated whenever a book arrives or leaves. That catalog is a secondary index, and its upkeep
+is the price. The analogy breaks on timing: a librarian can file cards at the end of the day, while a database updates
+every index inside the same write.
 
 </Analogy>
 
 ## Try it
 
 The widget stores one seeded dataset three ways: 300 users, 3,000 links, and 30,000 clicks rolled up into 11,702 daily
-counts, 981 KB in every shape. Links per user are skewed: the median user has 4, and user 1 has 469.
+counts, 981 KB in every shape. The median user has 4 links, and user 1 has 469.
 
-- **Tables:** `users`, `links`, and `clicks_daily` rows. `links` is keyed by code, with secondary indexes on
-  `(owner_id, created_at)` and `(domain)`.
-- **Documents:** the design from the failure above. One document per user embeds its links and their daily clicks,
-  and only `_id` is indexed.
-- **Key-value:** one record per code holding the URL, owner, domain, and daily clicks. Nothing else is indexed.
+- **Tables:** `users`, `clicks_daily`, and `links` keyed by code, with indexes on `(owner_id, created_at)` and
+  `(domain)`.
+- **Documents:** one per user, embedding its links and their daily clicks. Only `_id` is indexed.
+- **Key-value:** one record per code with the URL, owner, domain, and daily clicks. Nothing else is indexed.
 
-Pick a query and press Play. All three shapes run it at once, and each grid lights the squares it reads or writes.
-Each square is 1% of that shape's stored data.
-
-The simulation is a toy model. Every query costs 0.5 toy ms per round trip, plus a small charge per record, per index
-entry, and per KB, all computed from the dataset. Real latency depends on the engine, caching, hardware, and data size.
-Compare the shapes with each other, and treat the milliseconds as illustrative.
+Pick a query and press Play. Each grid lights the squares it reads or writes, and each square is 1% of that shape's
+data. Times are toy milliseconds, so compare the shapes with each other.
 
 <DataModelingWidget client:visible />
 
-What to look for:
+What to notice:
 
-- **Redirect.** Tables and Key-value each read one record in 0.51 toy ms. Documents scan all 300 documents in 11.8 ms,
-  which at 20,000 a second would move 19.6 GB/s.
-- **Create a link.** All three write by key. Tables write one row plus 2 index entries; Key-value puts the code only if
-  it is absent. Documents update user 1's document by `_id`, and the toy charges all 149 KB of it to add 0.2 KB. That
-  whole-document charge is a toy assumption: real engines apply targeted updates such as MongoDB's `$push`. The
-  document still grows with every link, and every write for that user lands on it.
-- **Dashboard.** Tables walk the owner index: 20 index entries and 49 rows (20 links plus their 29 daily rows) in 0.89
-  ms. Documents read one 148 KB document to show 20 of its 469 links. Key-value pages through 3,300 keys in 33 round
-  trips, 42.8 ms.
-- **Analytics.** Key-value wins this one: the record for bATJ4g holds all 21 days of its 3,507 clicks, one read. Tables
-  read the same 21 days as a primary key range. Documents scan again.
-- **Takedown.** Tables read the 103 matching rows through the domain index. Documents and Key-value scan everything.
-  At 3 a day, even a scan is affordable, so this query should not choose your database.
-- **The fit table.** Tables win or tie four of five queries here. Key-value wins analytics and ties the redirect and
-  create.
+- **Redirect.** Tables and Key-value read one record in 0.51 toy ms. Documents scan all 300 in 11.8 ms.
+- **Dashboard.** Tables walk the owner index to 49 rows (20 links and 29 daily rows) in 0.89 ms. Documents read 148 KB
+  to show 20 of 469 links. Key-value pages through 3,300 keys in 33 round trips, 42.8 ms.
+- **Analytics.** Key-value wins: the record for bATJ4g holds all 21 days of its 3,507 clicks.
+- **Takedown.** Tables read 103 rows through the domain index. The others scan, which is affordable at 3 a day.
+
+<details>
+<summary>Go deeper: the other results and what the toy model charges</summary>
+
+- **Create a link.** All three write by key. Tables write one row plus 2 index entries, Key-value puts the code only if
+  it is absent, and Documents update user 1's document by `_id`, which grows with every link.
+- **Dashboard.** Tables read 20 index entries before the 49 rows. Key-value pages 100 keys per round trip.
+- **Analytics.** Tables read the same 21 days as a primary key range. Documents scan again.
+- **The fit table.** Tables win or tie four of five queries. Key-value wins analytics and ties the redirect and create.
   Documents win none, because this dashboard belongs to the busiest account. For the median user with 4 links, the
   document is 1.5 KB and the dashboard costs 0.52 ms, ahead of tables at 0.65 ms (23 rows).
 
+Every query costs 0.5 toy ms per round trip, plus a small charge per record, per index entry, and per KB, all computed
+from the dataset. At 20,000 redirects a second, the Documents scan would move 19.6 GB/s. Real latency depends on the
+engine, caching, hardware, and data size, so treat the milliseconds as illustrative.
+
+For Create a link, the toy charges all 149 KB of user 1's document to add 0.2 KB. That whole-document charge is a toy
+assumption: real engines apply targeted updates such as MongoDB's `$push`. The document still grows with every link,
+and every write for that user lands on it. An index on `links.code` would also rescue the documents for the redirect.
+
+</details>
+
 ## Tables and the four NoSQL families
 
-The widget runs three shapes, and the full menu is a little longer. Relational tables are one option. "NoSQL" is the
-umbrella name for the non-relational rest, which fall into four families. Each family makes one kind of access cheap.
+Relational tables are one option. "NoSQL" names the non-relational rest, which fall into four families, each making
+one kind of access cheap.
 
-| Family                            | How it stores data                                          | Access pattern it suits                                                  | Where the shortener could use it                                        |
-| --------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| Key-value (Redis, DynamoDB)       | One opaque value under each key                             | Read or write by an exact key                                            | The redirect: code to long URL                                          |
-| Document (MongoDB, Couchbase)     | Nested records, usually JSON, with fields it can index      | Read or write one self-contained record in a single step                 | A user's profile and settings, shown together on one page               |
-| Wide column (Cassandra, Bigtable) | Rows grouped into partitions by a key, sorted inside each   | A heavy stream of appends, read back one partition at a time             | Raw click events, partitioned by code and day, sorted by time           |
-| Graph (Neo4j, Neptune)            | Nodes and the edges that connect them                       | Queries that follow relationships several hops out                       | Abuse review: accounts that share domains or payment cards with a banned one |
+| Family                            | How it stores data                        | Access pattern it suits                     | Shortener use                                  |
+| --------------------------------- | ----------------------------------------- | ------------------------------------------- | ---------------------------------------------- |
+| Key-value (Redis, DynamoDB)       | One opaque value per key                  | Reads and writes by an exact key            | The redirect: code to long URL                 |
+| Document (MongoDB, Couchbase)     | Nested JSON records with indexable fields | One self-contained record in a single step  | A user's profile and settings                  |
+| Wide column (Cassandra, Bigtable) | Partitions by key, sorted inside          | Heavy appends, read one partition at a time | Raw clicks by code and day, sorted by time     |
+| Graph (Neo4j, Neptune)            | Nodes and the edges between them          | Walks that follow edges several hops out    | Accounts sharing domains with a banned one     |
 
-Relational tables cover the ground between: lookups on several different fields, joins, and constraints that keep
-related rows consistent. The widget leaves out wide column and graph stores, since none of the five queries needs a
-time series of raw events or a multi-hop walk.
+Tables cover the ground between: lookups on several fields, joins, and constraints across rows.
 
+<details>
+<summary>Go deeper: link bATJ4g in each shape</summary>
+
+The widget leaves out wide column and graph stores, since no query here needs a raw event stream or a multi-hop walk.
 Here is the link `bATJ4g` in the three shapes the widget runs. Each layout answers some questions in one step and
-others only with an index or a scan.
+others only with an index or a scan. A graph used for abuse review could also link accounts that share cards with a
+banned one.
 
 ```sql
 -- Tables: one fact in one place, joined at read time.
@@ -287,22 +328,32 @@ documents under keys and adds global secondary indexes, which are second copies 
 and kept in sync by the database. Judge a product by the access patterns it makes cheap, and expect to design for the
 queries in every one of them.
 
+</details>
+
 ## Denormalization: faster reads, costlier writes
 
-To **denormalize** is to copy data into the shape a read wants, so the read skips a join or a second lookup. The bill
-arrives on the write path. Every change must now reach every copy, and a copy that misses an update serves stale data
-until something repairs it.
+To **denormalize** is to copy data where a read wants it, so the read skips a join or a second lookup. Every change
+must then reach every copy, and a copy that misses one serves stale data.
 
-Take the owner's display name. Suppose each link gets a public preview page that says who created it. The normalized
-design keeps the name once, in `users`, and the preview joins `links` to `users`. Copy an `owner_name` column onto
-every link row, and the preview reads one row. When user 1 renames their account, the app now rewrites 469 link rows,
-and any row the update misses keeps the old name. Names change rarely and previews load constantly, so this copy
-usually pays for itself. The widget's key-value records make the same bet: each one copies the owner and domain from
+Copying the owner's display name onto each link row is the cheap case: a rename rewrites 469 rows, and names change
+rarely. A running `click_count` on each link is the costly case. The dashboard reads **20 rows in 0.74 ms** instead of
+**49 rows in 0.89 ms**, and every click now writes twice, from **20,000 to 40,000 writes a second**. If one write lands
+and the other fails, the copies drift. Keep them together with a transaction (see
+[Transactions and constraints](../transactions/)), or batch the totals once a second and rebuild them nightly from
+`clicks_daily`.
+
+Clicks outnumber dashboard loads 400 to 1, so the normalized design, or a batched total, is the better deal.
+Denormalize when reads of the copy far outnumber the writes that keep it fresh.
+
+<details>
+<summary>Go deeper: both dashboards in SQL</summary>
+
+Embedding links in a user document is denormalization too, with the same bill. The display name pays because a public
+preview page that says who created the link loads constantly and skips the join to `users`. Any link row the rename
+misses keeps the old name. The widget's key-value records make the same bet: each one copies the owner and domain from
 its link.
 
-The click counter is the harder case, because the copied value changes on the hottest path. The dashboard shows a click
-count for each link. A **normalized** design stores each fact once: clicks live in `clicks_daily`, and the dashboard
-sums them.
+A **normalized** design stores each click once, in `clicks_daily`, and the dashboard sums the days.
 
 ```sql
 -- Each click upserts one daily row.
@@ -317,7 +368,7 @@ GROUP BY l.code, l.long_url, l.created_at
 ORDER BY l.created_at DESC;
 ```
 
-A **denormalized** design also keeps a running total on the link row, so the dashboard skips the join.
+A **denormalized** design adds a second write to every click and drops the join.
 
 ```sql
 -- Each click now writes twice: the daily row above, and the total.
@@ -328,20 +379,29 @@ FROM links WHERE owner_id = 1
 ORDER BY created_at DESC LIMIT 20;
 ```
 
-In the toy model, the denormalized dashboard reads **20 rows in 0.74 ms** instead of **49 rows in 0.89 ms**. The price
-lands on the busiest path: clicks arrive with every redirect, so writes go from **20,000 to 40,000 a second**, and the
-two copies can drift if one write lands and the other fails. Keep them together with a transaction (see
-[Transactions and constraints](../transactions/)), or batch the totals from a queue once a second and rebuild them from
-`clicks_daily` each night.
-
-Here clicks outnumber dashboard loads 400 to 1, so the normalized design, or a batched total, is the better deal. The
-rule of thumb: denormalize when reads of the copy vastly outnumber the writes that keep it fresh, as with the display
-name, and keep one copy when the value changes on a hot path, as with the click count. Embedding links in a user
-document is denormalization too, with the same bill.
+</details>
 
 ## Schema changes, sharding, and mixed shapes
 
-### Schema changes in each shape
+Real shorteners mix shapes. A common design keeps **tables as the source of truth** and serves the redirect from a
+**key-value copy keyed by code** (see [Caching](../../scaling/caching/)). A takedown must delete both, or the bad link
+keeps redirecting.
+
+[Sharding](../../scaling/sharding/) splits rows across machines by a shard key, and only queries that know that key
+reach a single shard.
+
+- Shard by **code**, and the redirect, create, and analytics each touch one shard. The dashboard asks every shard and
+  merges, unless you keep a second copy partitioned by owner.
+- Shard by **owner**, as one document per user effectively does, and the dashboard touches one shard while every
+  redirect must find which shard holds its code.
+
+Each extra access path is another copy to write and keep in sync, the same trade-off [indexes](../indexes/) make on
+one machine.
+
+<details>
+<summary>Go deeper: schema changes in each shape</summary>
+
+In the mixed design, the create path fills the key-value copy and every edit updates it.
 
 Requirements change. Say the shortener adds link expiry, so every link gains an `expires_at`.
 
@@ -358,64 +418,68 @@ Requirements change. Say the shortener adds link expiry, so every link gains an 
 "Schemaless" means the database skips checking the shape. The application still has a schema, the old data still
 exists, and the queries still decide which lookups need an index.
 
-### Mixing shapes, and how sharding changes the choice
-
-Real shorteners rarely pick one shape. A common design keeps **tables as the source of truth** for accounts, links, and
-daily clicks, with the indexes the dashboard and takedown need. The redirect path reads a **key-value copy keyed by
-code**, in a cache or a key-value store, which the create path fills and every edit updates (see
-[Caching](../../scaling/caching/)). That copy is denormalization with a sharp edge: a takedown must delete the
-key-value entry as well as the row, or the bad link keeps redirecting.
-
-The shape also decides how the data splits when one machine is not enough. [Sharding](../../scaling/sharding/) divides
-rows across machines by a shard key, and only queries that know that key reach a single shard.
-
-- Shard links by **code**, and the redirect, create, and analytics each touch one shard. The dashboard asks by owner,
-  so it asks every shard and merges, unless you keep a second copy partitioned by owner.
-- Shard by **owner**, as the one-document-per-user design effectively does, and the dashboard touches one shard while
-  every redirect has to find out which shard holds its code.
-
-This is the [indexes](../indexes/) trade-off at the scale of machines: each extra access path is another copy to write
-and keep in sync. Relational databases shard too (Citus and Vitess, or distributed SQL such as Spanner and
-CockroachDB), and document and key-value stores need a good partition key just as much. What scales is a hot query that
+Every shape shards. Relational databases shard with Citus and Vitess, or as distributed SQL such as Spanner and
+CockroachDB, and document and key-value stores need a good partition key just as much. What scales is a hot query that
 one partition can answer.
+
+</details>
 
 ## Trade-offs
 
 <TradeoffTable title="Choosing a storage shape for the shortener">
 
-| Choice                                 | What it buys                                                                  | What it costs                                                                          |
-| -------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Tables with indexes                    | Any query with a matching index takes a few reads; constraints and transactions keep links consistent | Every index adds work to each write; joins, migrations, and sharding need planning |
-| Documents, one per user                | One read returns a user with everything shown beside them; a typical dashboard is one 1.5 KB read | Lookups by any other field scan unless indexed; a big account's document grows toward the size cap, and all its writes land on that one document |
-| Key-value by code                      | The cheapest known-key read and write, and easy to spread across machines     | Any question other than "get this key" scans every key or needs a copy you maintain    |
-| Denormalized copies (owner name, click total) | Reads skip a join; the dashboard reads 20 rows instead of 49           | Every change writes each copy (a rename rewrites 469 rows, clicks double to 40,000 writes a second); copies can drift |
-| Tables plus a key-value redirect copy  | Each query gets a shape that fits it                                          | Two systems to run, and every edit and takedown must reach both copies                 |
+| Choice                                | What it buys                                      | What it costs                                                  |
+| ------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------- |
+| Tables with indexes                   | Fast lookups on indexed fields; constraints       | Index work on every write; sharding needs planning             |
+| Documents, one per user               | One read returns a user and their page            | Other lookups scan unless indexed; big documents keep growing  |
+| Key-value by code                     | The cheapest known-key reads, easy to spread      | Any other question scans or needs a copy you maintain          |
+| Denormalized copies                   | Reads skip a join: 20 rows instead of 49          | 469 rows per rename, 40,000 click writes a second; drift       |
+| Tables plus a key-value redirect copy | Each query gets a shape that fits it              | Two systems; every edit and takedown must reach both           |
 
 </TradeoffTable>
+
+**When not to leave tables.** If your queries look up by several fields, join, or need constraints across rows, start
+with one relational database and add indexes. Move a path to another store when its access pattern is simple and its
+load outgrows the database.
+
+## Common mistakes
+
+- **Picking the database before listing the queries.** The hot query should pick the shape.
+- **Embedding an unbounded list.** The document grows toward the size cap and draws every write.
+- **Trusting "schemaless".** The app still has a schema, and readers must handle old and new records.
+- **Denormalizing a hot value with no repair plan.** A copied click count drifts when one write fails.
+- **Forgetting a copy on delete.** A takedown that leaves the key-value entry keeps redirecting.
+
+<KeyTakeaways>
+
+- List every query, the key it knows, and its rate before picking storage. The hot query picks the shape.
+- A query without the key a shape is organized by needs a secondary index or a full scan.
+- Each NoSQL family makes one access pattern cheap, and tables cover lookups by many fields.
+- Every extra copy speeds one read, adds work to every write, and can drift.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-Links can expire, and in the seed 42 data **9 links expire today**. Add a nightly cleanup job that finds them and stops
-them from redirecting.
+**Closing rubric: add one access pattern.** Name the key the query knows, what each shape reads today, the cheapest
+path to add, and every copy to delete.
 
-1. With the three shapes exactly as the widget stores them, how does each one find today's expiring links?
-2. What would you add to each shape so the job reads only those 9 links?
-3. What must the job do so that no expired link keeps redirecting?
+Links can expire, and in the seed 42 data **9 links expire today**. A nightly job must stop them from redirecting.
+
+1. As the widget stores them, how does each shape find today's expiring links?
+2. What would you add so the job reads only those 9 links?
+3. What must the job delete?
 
 <div slot="answer">
 
-1. **All three scan.** No table index covers `expires_at`, so Tables read all 3,000 link rows. Documents open all 300
-   documents, since expiry sits inside each links array. Key-value pages through all 3,300 keys.
-2. **Tables:** add `CREATE INDEX links_expiring ON links (expires_at) WHERE expires_at IS NOT NULL;` and the job reads 9
-   index entries and 9 rows. **Documents:** add an index on `links.expires_at`; each deletion still updates the
-   owner's document (a `$pull` from its links array). **Key-value:** let the store do it with a time to live (Redis
-   `EXPIRE`, DynamoDB TTL) set from `expires_at` at create time, or keep a bucket key such as `expires:2024-06-01` that
-   lists the codes expiring that day.
-3. **Delete every copy.** Tables are the source of truth, so delete there, then remove the key-value redirect entry.
-   TTL deletes can lag (DynamoDB may take days), so the redirect should still check `expires_at` on every read and
-   answer 410 Gone when it has passed.
+1. **All three scan,** since nothing indexes `expires_at`: 3,000 link rows, 300 documents, or 3,300 keys.
+2. **Tables:** `CREATE INDEX links_expiring ON links (expires_at) WHERE expires_at IS NOT NULL;` reads 9 entries and 9
+   rows. **Documents:** index `links.expires_at`; each delete still updates the owner's document. **Key-value:** a time
+   to live (Redis `EXPIRE`, DynamoDB TTL) set at create time, or a bucket key such as `expires:2024-06-01`.
+3. **Every copy:** the table row, then the key-value entry. TTL deletes can lag (DynamoDB may take days), so the
+   redirect also checks `expires_at` and answers 410 Gone.
 
 </div>
 

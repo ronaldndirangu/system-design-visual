@@ -1,8 +1,20 @@
 ---
 title: What happens when you click a link
 description: Follow one click on a short link through DNS, TCP, TLS, HTTP, and a database lookup, and see why distance beats code speed.
+furtherReading:
+  - title: 'What is DNS? (Cloudflare Learning Center)'
+    url: https://www.cloudflare.com/learning/dns/what-is-dns/
+    note: The recursive resolver, root, TLD, and authoritative servers, walked through one lookup.
+  - title: 'RFC 1034: Domain names, concepts and facilities'
+    url: https://www.rfc-editor.org/rfc/rfc1034
+    note: The original DNS design, including delegation and how resolvers cache answers for their TTL.
+  - title: 'RFC 9110: HTTP Semantics, section 15.4 (Redirection 3xx)'
+    url: https://www.rfc-editor.org/rfc/rfc9110#name-redirection-3xx
+    note: What 301, 302, and the other redirect codes mean, and when caches may store them.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -43,20 +55,56 @@ export const quiz = [
       { text: '301 is deprecated', why: '301 is a standard, widely used status code.' },
     ],
   },
+  {
+    id: 'foundations/what-happens-when-you-click/q4',
+    prompt: 'The shortener promises that 99% of redirects finish under 100 ms, timed in the browser. A person on the same continent (40 ms round trip) clicks a link for the first time, with TLS 1.3 and 7 ms of server and database work. Can that click meet the target?',
+    options: [
+      { text: 'No: it takes about 157 ms before any code gets faster', correct: true, why: 'DNS (30 ms) plus TCP, TLS, and the request and response (40 ms each) plus 7 ms of work is 157 ms. A repeat click with cached DNS and an open connection takes 47 ms, so the SLO depends on how many clicks are first clicks.' },
+      { text: 'Yes: the code only takes 7 ms', why: 'The DNS lookup and three round trips already pass 100 ms.' },
+      { text: 'Yes, once the database gets faster', why: 'The database takes 5 ms. Even at zero, the network alone needs 150 ms.' },
+      { text: 'Only with TLS 1.2', why: 'TLS 1.2 adds a round trip, which makes the first click about 197 ms.' },
+    ],
+  },
 ];
+
+export const recall = [
+  {
+    id: 'foundations/what-happens-when-you-click/recall-1',
+    prompt: 'The shortener promises that 99% of redirects finish under 100 ms. Which number tells you whether it keeps that promise?',
+    options: [
+      { text: 'The share of redirects that finish under 100 ms over the window', correct: true, why: 'That share is the SLI the SLO counts. Below 99%, the promise is broken.' },
+      { text: 'The average redirect time', why: 'An average hides the tail. A 35 ms mean can sit next to a slowest 1% that averages 171 ms.' },
+      { text: 'The fastest redirect of the day', why: 'The fastest request says nothing about the slow ones.' },
+      { text: 'The number of servers running', why: 'The count does not measure what users waited.' },
+    ],
+  },
+  {
+    id: 'foundations/what-happens-when-you-click/recall-2',
+    prompt: 'The load balancer times each redirect for the SLI. Which part of a person\'s wait does that timer miss?',
+    options: [
+      { text: 'The DNS lookup, the handshakes, and the trips to and from the load balancer', correct: true, why: 'The timer starts when the request arrives and stops when the response leaves, so the user\'s side of the network stays invisible.' },
+      { text: 'The database lookup', why: 'The database sits behind the load balancer, so its time falls inside the timer.' },
+      { text: 'The app code', why: 'The app servers sit behind the load balancer too.' },
+      { text: 'Nothing, since it sees every request', why: 'It sees each request only after it arrives.' },
+    ],
+  },
+];
+
+<Recall questions={recall} />
 
 <Objectives>
 
 - Trace one click through DNS, TCP, TLS, HTTP, and a database lookup.
 - Explain a round trip time (RTT) and why distance often matters more than code speed.
 - Name two ways to skip steps entirely: a cached DNS answer and a reused connection.
+- Explain how DNS caching and the TTL decide how fast an address change reaches users.
 
 </Objectives>
 
 ## The failure: fast code, slow links
 
-The team's dashboards say the redirect handler takes 2 ms. Yet people in Sydney complain that `sho.rt` links feel slow,
-and the server sits in Virginia.
+The team's dashboards say the redirect handler takes 2 ms. Yet people in Sydney complain that `sho.rt` links feel slow.
+The server sits on the US West Coast, about 12,000 km away, and a round trip between the two takes about 150 ms.
 
 <Predict
   client:visible
@@ -92,28 +140,94 @@ HTTP/1.1 302 Found
 Location: https://example.com/a/very/long/article-url
 ```
 
+A round trip time (RTT) is how long a message takes to reach the server and come back. A first click pays for the DNS
+lookup plus three round trips, so the formula is DNS + 3 × RTT + server work. A repeat click on an open connection
+with a cached address pays one round trip plus the work.
+
 <Analogy>
 
 Think of calling a shop. You look up its number (DNS), dial and wait for someone to pick up (TCP), agree to speak in a
 private code (TLS), and finally ask your question (HTTP). The clerk may check the back room (database). If the shop is
 abroad, every pause on the line takes longer, no matter how quickly the clerk answers.
 
+The analogy breaks in two places: a phone number lasts for years while a DNS answer expires after its TTL, and a
+browser keeps the line open after a call so the next request skips the dialing.
+
 </Analogy>
 
-## Try it
+## Try it: follow one click
 
 Press Play to watch the click in slow motion, then change the distance and turn on the shortcuts.
 
 <RequestJourneyWidget client:visible />
 
-What to look for:
+What to notice:
 
 - **Distance multiplies.** Each handshake costs a full round trip, so a far server pays the distance several times.
-- **Shortcuts remove whole steps.** A cached DNS answer skips the lookup. A reused connection skips both handshakes, which
-  is why browsers keep connections open.
+  Pick Across an ocean: the first click takes 487 ms, and 99% of it is spent on the network.
+- **Shortcuts remove whole steps.** A cached DNS answer skips the lookup. A reused connection skips both handshakes,
+  which is why browsers keep connections open. Turn both on across the ocean and the redirect drops to 157 ms.
 - **TLS 1.3 saves a round trip** over TLS 1.2 on every new connection.
 
-## Latency numbers worth remembering
+## Inside the first click
+
+### How DNS finds the server
+
+The DNS lookup in the widget is one fixed cost, 30 ms. Behind it sits a chain of caches and servers, and the lookup
+stops at the first one that knows the answer. Here is a lookup for `sho.rt` that misses every cache.
+
+1. **Browser cache.** If the browser looked up `sho.rt` moments ago, it reuses that answer and the lookup costs
+   nothing.
+2. **Operating system.** On a miss, the browser asks the operating system, which keeps a cache shared by every app on
+   the machine.
+3. **Recursive resolver.** Next comes a resolver run by the ISP or a service such as 1.1.1.1. It caches answers for
+   many people.
+4. **Root server.** With nothing cached, the resolver starts at the top. A root server names the servers for `.rt`.
+   Resolvers keep that list for days, so this step is rare.
+5. **TLD servers.** The `.rt` servers (for a real name, the `.com` servers) name the authoritative servers for
+   `sho.rt`, which the domain owner controls.
+6. **Authoritative server.** It answers: `sho.rt` is `203.0.113.7`, TTL 3600. The resolver, the operating system and
+   the browser each keep that answer for up to 3,600 seconds.
+
+Each answer carries a time to live (TTL) in seconds, and every cache keeps it until the TTL runs out. That makes most
+lookups cheap, and it means a changed record reaches people only as their caches expire.
+
+<Predict
+  client:visible
+  id="foundations/what-happens-when-you-click/predict-2"
+  question="sho.rt has a 1-hour TTL. You point it at a new IP address. When do all users see the new address?"
+  options={['Immediately', 'Within about an hour for most people', 'After exactly 24 hours', 'Only after each person restarts the browser']}
+  answer={1}
+>
+
+**Within about an hour for most people.** Each cache keeps the old answer until its TTL runs out, and a copy fetched one
+second before your change lives the full hour. Some resolvers and clients hold answers longer than the TTL, so a few
+stragglers take longer still.
+
+</Predict>
+
+### TTL versus failover time
+
+A long TTL makes first clicks faster, since more lookups end in a cache. It also slows every move: if the server behind
+`203.0.113.7` dies and you point `sho.rt` elsewhere, browsers keep sending clicks to the dead address until their caches
+expire, up to a day with a one-day TTL.
+
+So most sites keep the DNS answer stable and fail over behind it. A load balancer or
+[reverse proxy](../../scaling/load-balancing/#reverse-proxies) holds the public address and forwards each request to a
+healthy server. It drops a dead server after a few failed health checks, usually within seconds, and DNS never changes.
+For a planned DNS move, lower the TTL to a minute or so at least one old TTL ahead, switch, then raise it again.
+
+### Why distance costs time
+
+Light in fiber covers about 200,000 km per second, two thirds of its speed in a vacuum. A round trip crosses the
+distance twice, so every 1,000 km between browser and server adds about 10 ms of RTT. No code change beats that floor.
+
+Sydney to the US West Coast is about 12,000 km: a floor near 120 ms, and real paths of about 140 to 160 ms. Sydney to
+Virginia is about 15,700 km, a floor near 157 ms, yet real paths run 200 ms or more because cables do not follow great
+circles and every router on the way adds queueing.
+
+<details>
+<summary>Go deeper: latency numbers worth knowing</summary>
 
 These rough figures explain most performance surprises. Learn the order of magnitude of each.
 
@@ -125,19 +239,44 @@ These rough figures explain most performance surprises. Learn the order of magni
 | Round trip within one continent         | 40 ms      | 400,000×                    |
 | Round trip across an ocean              | 150 ms     | 1,500,000×                  |
 
+</details>
+
 ## Trade-offs
 
 <TradeoffTable title="Choices that shape a click">
 
-| Choice                         | What it buys                                   | What it costs                                        |
-| ------------------------------ | ---------------------------------------------- | ---------------------------------------------------- |
-| Long DNS TTL (hours)           | Fewer lookups, faster first clicks             | Slow to move traffic away from a broken server       |
-| 301 Moved Permanently          | Browsers cache it and skip your server         | No click counts, and you can never change the target |
-| 302 Found                      | Every click reaches you to count and update    | One round trip on every click                        |
-| Keep connections open          | Later requests skip TCP and TLS                | Each open connection holds server memory             |
-| Servers near users             | Shorter round trips for every step             | More places to deploy, monitor, and keep in sync     |
+| Choice                | What it buys                                | What it costs                                                                                                                                    |
+| --------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Long DNS TTL (hours)  | Fewer lookups, faster first clicks          | Slow to move traffic away from a broken server                                                                                                   |
+| 301 Moved Permanently | Browsers cache it and skip your server      | Browsers may keep it a long time (unless Cache-Control sets a max-age), so repeat clicks skip you, counts run low, and a new target reaches only browsers without the cached copy |
+| 302 Found             | Every click reaches you to count and update | One round trip on every click                                                                                                                    |
+| Keep connections open | Later requests skip TCP and TLS             | Each open connection holds server memory                                                                                                         |
+| Servers near users    | Shorter round trips for every step          | More places to deploy, monitor, and keep in sync                                                                                                 |
 
 </TradeoffTable>
+
+When not to use them: skip a second region while most users sit within 40 ms of one server, since little is left to
+save. Keep 301 for permanent moves, such as an old domain pointing at a new one. Skip a long TTL on any name you may
+need to move in a hurry.
+
+## Common mistakes
+
+- **Tuning code to fix distance.** Halving a 2 ms handler saves 1 ms of a 487 ms first click. Measure where the time
+  goes before you optimize.
+- **Timing only at the server.** The [SLO lesson](../../thinking/slos/) times redirects at the load balancer, which
+  never sees DNS, the handshakes, or the trip. Measure in the browser too before you call a link fast.
+- **Changing DNS with a long TTL.** A one-day TTL strands people on the old server for up to a day. Lower it first.
+- **Opening a new connection per request.** Each one pays TCP and TLS again, two extra round trips every time.
+
+<KeyTakeaways>
+
+- A first click pays for DNS plus three round trips (TCP, TLS 1.3, and the request), so distance sets the floor.
+- Every 1,000 km adds about 10 ms of round trip in fiber; only moving servers closer shortens it.
+- DNS answers live in several caches for their TTL, which speeds up lookups and slows down address changes.
+- Cached DNS and reused connections skip whole steps: a repeat click costs one round trip plus the work.
+- A 302 keeps every click visible to you; a 301 trades counts and control for speed.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
@@ -146,14 +285,23 @@ These rough figures explain most performance surprises. Learn the order of magni
 Half of your users live in Europe and half in Australia. The only server runs in Frankfurt. Without changing any code,
 name two changes that make links faster for the Australian half, and estimate the saving for a first click.
 
+**A strong answer:**
+
+1. Starts from a realistic Australia to Frankfurt round trip and applies DNS + 3 × RTT + server work.
+2. Names one change that shortens the distance and one that removes round trips.
+3. Names the cost of each change.
+
 <div slot="answer">
 
-- **Run a second copy in Australia** and let DNS send each person to the nearest one. The round trip drops from about
-  150 ms to about 10 ms, so a first click falls from roughly 490 ms to roughly 70 ms. Both copies need the same link
-  data, which the [replication lesson](../../scaling/read-replicas/) covers.
-- **Keep connections open** (HTTP keep-alive, HTTP/2). Repeat clicks skip TCP and TLS, saving two round trips, about
-  300 ms from Australia.
-- **Use TLS 1.3** if the server still runs 1.2. That removes one round trip from every new connection.
+- **Start from the real number.** Sydney to Frankfurt is about 16,500 km, a floor near 165 ms; real paths run about 250
+  to 300 ms. At 280 ms a first click costs 30 ms of DNS, three round trips (840 ms), and 7 ms of work: about 877 ms,
+  or 790 to 940 ms across the range.
+- **Run a second copy in Australia**, with DNS sending each person to the nearest one. At a 10 ms round trip a first
+  click takes about 67 ms, a saving of about 800 ms. Both copies need the same link data, which the
+  [replication lesson](../../scaling/read-replicas/) covers.
+- **Keep connections open** (HTTP keep-alive, HTTP/2). Repeat clicks skip TCP and TLS, two round trips, about 500 to
+  600 ms. Each open connection costs server memory.
+- **Use TLS 1.3** if the server still runs 1.2. That removes one round trip, 250 to 300 ms, from every new connection.
 
 </div>
 

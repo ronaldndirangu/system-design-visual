@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  HOT_THRESHOLD,
   HotKeyRun,
   homeNode,
   hotKeyScenarios,
@@ -7,7 +8,9 @@ import {
   linkCode,
   NODE_CAPACITY,
   nodeRate,
+  QUEUE_LIMIT,
   summarizeLane,
+  TICK_SECONDS,
   TOP_LINK,
 } from '../../src/lib/models/accessPatterns';
 
@@ -86,11 +89,64 @@ describe('HotKeyRun', () => {
 });
 
 describe('pinned illustrative numbers (seed 42, quoted in the lesson)', () => {
+  it('keeps the toy constants and scenario setup the story quotes', () => {
+    expect(NODE_CAPACITY).toBe(150);
+    expect(QUEUE_LIMIT).toBe(30);
+    expect(HOT_THRESHOLD).toBe(50);
+    for (const scenario of Object.values(hotKeyScenarios)) {
+      expect(scenario.changeAt * TICK_SECONDS).toBeCloseTo(3);
+      expect(scenario.before).toEqual({ rate: 40, topShare: 0.05 });
+      expect(scenario.after.rate).toBe(400);
+    }
+    expect(hotKeyScenarios.busy.after.topShare).toBe(0.05);
+    expect(hotKeyScenarios.viral.after.topShare).toBe(0.6);
+    expect(hotKeyScenarios.viral.nodes).toBe(4);
+    expect(hotKeyScenarios['viral-8'].nodes).toBe(8);
+    const { rate, topShare } = hotKeyScenarios.viral.after;
+    const hotRate = rate * topShare;
+    const coldPerNode = (rate - hotRate) / 4;
+    expect(NODE_CAPACITY * 4).toBe(600);
+    expect(hotRate).toBe(240);
+    expect(hotRate).toBeGreaterThan(NODE_CAPACITY);
+    expect(coldPerNode).toBe(40);
+    expect(hotRate + coldPerNode).toBe(280);
+    expect(hotRate / 4).toBe(60);
+  });
+
   it('busy evening: even traffic fits, so both lanes tie', () => {
     const run = finish(new HotKeyRun(hotKeyScenarios.busy));
     const [hash, copies] = run.lanes.map(summarizeLane);
     expect(hash).toEqual(copies);
     expect(hash).toMatchObject({ arrived: 6831, rejected: 0, peakLoad: 86, extraCopies: 0 });
+    for (const node of run.lanes[0].nodes) {
+      expect(Math.round(nodeRate(node))).toBeGreaterThanOrEqual(90);
+      expect(Math.round(nodeRate(node))).toBeLessThanOrEqual(115);
+    }
+  });
+
+  it('viral link: the story numbers for share, idle nodes, tier use and detection', () => {
+    const run = new HotKeyRun(hotKeyScenarios.viral);
+    for (let tick = 0; tick < 30; tick += 1) run.step();
+    const before = run.pattern().topShare;
+    expect(before).toBeGreaterThan(0.04);
+    expect(before).toBeLessThan(0.07);
+    finish(run);
+    const [hashLane, copiesLane] = run.lanes;
+    expect(run.topHome + 1).toBe(2);
+    let tierRate = 0;
+    for (const node of hashLane.nodes) {
+      tierRate += nodeRate(node);
+      if (node.id === run.topHome) continue;
+      expect(Math.round(nodeRate(node))).toBeGreaterThanOrEqual(40);
+      expect(Math.round(nodeRate(node))).toBeLessThanOrEqual(44);
+    }
+    expect(tierRate / (NODE_CAPACITY * 4)).toBeLessThan(0.7);
+    for (const node of copiesLane.nodes) {
+      expect(Math.round(nodeRate(node))).toBeGreaterThanOrEqual(100);
+      expect(Math.round(nodeRate(node))).toBeLessThanOrEqual(110);
+    }
+    expect(hashLane.firstRejectTick).toBe(33);
+    expect(copiesLane.firstRejectTick).toBe(33);
   });
 
   it('viral link: the hash only node overflows while copies spread the load', () => {
@@ -125,6 +181,12 @@ describe('pinned illustrative numbers (seed 42, quoted in the lesson)', () => {
     const hot = hashLane.nodes[run.topHome];
     if (!hot) throw new Error('missing hot node');
     expect(nodeRate(hot)).toBeGreaterThan(NODE_CAPACITY * 1.7);
+    expect(Math.round(nodeRate(hot))).toBe(270);
+    for (const node of hashLane.nodes) {
+      if (node.id === run.topHome) continue;
+      expect(Math.round(nodeRate(node))).toBeGreaterThanOrEqual(16);
+      expect(Math.round(nodeRate(node))).toBeLessThanOrEqual(28);
+    }
     expect(summarizeLane(hashLane)).toMatchObject({ rejected: 1724, peakLoad: 190 });
     expect(summarizeLane(copiesLane)).toMatchObject({ rejected: 2, peakLoad: 62, extraCopies: 7 });
   });
