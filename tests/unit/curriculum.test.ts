@@ -127,4 +127,33 @@ describe('curriculum', () => {
     expect(runningExampleFor('case-studies/chat')).toBeUndefined();
     expect(runningExampleFor('practice/timed-round')).toBeUndefined();
   });
+
+  const cases = findModule('case-studies')?.lessons ?? [];
+
+  it('keeps the only Scaling finisher short and intermediate', () => {
+    const scaling = cases.filter((lesson) => lesson.bestAfter === 'scaling');
+    expect(scaling.map((lesson) => lesson.id)).toEqual(['case-studies/shortener-at-scale']);
+    expect(scaling[0]?.difficulty).toBe(2);
+    expect(scaling[0]?.minutes).toBeLessThanOrEqual(25);
+  });
+
+  it('opens the Scaling and Reliability finishers with a sho.rt case built on that module or earlier', () => {
+    const expected = {
+      scaling: 'case-studies/shortener-at-scale',
+      reliability: 'case-studies/shortener-bad-day',
+    };
+    for (const [moduleId, caseId] of Object.entries(expected)) {
+      const first = cases.find((lesson) => lesson.bestAfter === moduleId);
+      expect(first?.id, moduleId).toBe(caseId);
+      const limit = findModule(moduleId)?.number ?? 0;
+      for (const prerequisite of first?.buildsOn ?? []) {
+        expect(findModuleForLesson(prerequisite)?.number, prerequisite).toBeLessThanOrEqual(limit);
+      }
+    }
+  });
+
+  it('places the Search case after sharding', () => {
+    const search = findLesson('case-studies/search');
+    expect(findModule(search?.bestAfter ?? '')?.number).toBeGreaterThan(findModule('scaling')?.number ?? 0);
+  });
 });
