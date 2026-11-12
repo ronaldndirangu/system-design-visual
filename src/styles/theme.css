@@ -73,6 +73,8 @@
   --sdv-shard-7: var(--sdv-queue);
 
   --sdv-shadow-overlay: 0 12px 32px rgb(0 0 0 / 0.35);
+  /* Cards sit flat on the page; only real overlays use --sdv-shadow-overlay. */
+  --sdv-shadow-card: none;
 
   /* Type */
   --sdv-font-sans: "Inter Variable", "Inter Fallback", system-ui, sans-serif;
@@ -139,8 +141,7 @@
   --sdv-surface-raised: var(--sdv-surface-2);
   --sdv-border: var(--sdv-border-strong);
   --sdv-radius: var(--sdv-radius-lg);
-  /* Cards sit flat on the page; only real overlays use --sdv-shadow-overlay. */
-  --sdv-shadow: none;
+  --sdv-shadow: var(--sdv-shadow-card);
 
   /* Starlight mapping */
   --sl-color-accent-low: var(--sdv-accent-subtle);
