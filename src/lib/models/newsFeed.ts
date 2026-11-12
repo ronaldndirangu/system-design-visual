@@ -40,6 +40,7 @@ export type FeedScenarioId =
   | 'celebrity'
   | 'more-followers'
   | 'double-fleet'
+  | 'small-read-tier'
   | 'no-celebrity'
   | 'evening-peak'
   | 'double-reads'
@@ -69,8 +70,8 @@ export interface FeedScenario {
   /** Feed loads that arrive per tick outside the peak. */
   loadsPerTick: number;
   peak: { loadsPerTick: number; fromSeconds: number; toSeconds: number } | null;
-  /** Lookups the read tier serves per tick, or null when feed loads never queue. */
-  readsPerTick: number | null;
+  /** Lookups the read tier serves per tick. */
+  readsPerTick: number;
   seconds: number;
   lanes: [LaneConfig, LaneConfig];
 }
@@ -89,12 +90,12 @@ export const feedScenarios: Record<FeedScenarioId, FeedScenario> = {
     id: 'celebrity',
     duel: 'celebrity',
     label: 'Celebrity posts',
-    diff: 'Baseline: 60 ordinary posts over 24 s, each author with 20 to 80 followers. The fanout fleet runs 500 feed writes per second. At 3 s a celebrity with 5,000 followers posts. Feed loads arrive at 40 per second.',
+    diff: 'Baseline: 60 ordinary posts over 24 s, each author with 20 to 80 followers. The fanout fleet runs 500 feed writes per second. At 3 s a celebrity with 5,000 followers posts. Feed loads arrive at 40 per second, and the read tier serves 80 lookups per second.',
     writesPerTick: 50,
     celebrity: { followers: 5_000, atSeconds: 3 },
     loadsPerTick: 4,
     peak: null,
-    readsPerTick: null,
+    readsPerTick: 8,
     seconds: 30,
     lanes: celebrityLanes,
   },
@@ -107,7 +108,7 @@ export const feedScenarios: Record<FeedScenarioId, FeedScenario> = {
     celebrity: { followers: 10_000, atSeconds: 3 },
     loadsPerTick: 4,
     peak: null,
-    readsPerTick: null,
+    readsPerTick: 8,
     seconds: 30,
     lanes: celebrityLanes,
   },
@@ -120,7 +121,20 @@ export const feedScenarios: Record<FeedScenarioId, FeedScenario> = {
     celebrity: { followers: 5_000, atSeconds: 3 },
     loadsPerTick: 4,
     peak: null,
-    readsPerTick: null,
+    readsPerTick: 8,
+    seconds: 30,
+    lanes: celebrityLanes,
+  },
+  'small-read-tier': {
+    id: 'small-read-tier',
+    duel: 'celebrity',
+    label: 'Read tier sized for push',
+    diff: 'Read tier: 80 to 40 lookups per second, exactly what fan out on write needs.',
+    writesPerTick: 50,
+    celebrity: { followers: 5_000, atSeconds: 3 },
+    loadsPerTick: 4,
+    peak: null,
+    readsPerTick: 4,
     seconds: 30,
     lanes: celebrityLanes,
   },
@@ -133,7 +147,7 @@ export const feedScenarios: Record<FeedScenarioId, FeedScenario> = {
     celebrity: null,
     loadsPerTick: 4,
     peak: null,
-    readsPerTick: null,
+    readsPerTick: 8,
     seconds: 30,
     lanes: celebrityLanes,
   },
@@ -179,7 +193,7 @@ export const feedScenarios: Record<FeedScenarioId, FeedScenario> = {
 };
 
 export const duelScenarioIds: Record<FeedDuelId, FeedScenarioId[]> = {
-  celebrity: ['celebrity', 'more-followers', 'double-fleet', 'no-celebrity'],
+  celebrity: ['celebrity', 'more-followers', 'double-fleet', 'small-read-tier', 'no-celebrity'],
   reads: ['evening-peak', 'double-reads', 'no-peak'],
 };
 
@@ -272,7 +286,10 @@ interface LaneState {
   feedWrites: number;
   /** Celebrity followers whose feeds hold the post, in follower order. */
   celebrityWritten: number;
-  /** The tick boundary from which every celebrity follower can see the post, or -1. */
+  /**
+   * The tick boundary from which the post is available to every celebrity follower, or -1. A
+   * follower still sees it only when the read tier returns their next feed load.
+   */
   celebrityDoneTick: number;
   /** Feed loads waiting for the read tier, oldest first. */
   readQueue: number[];
@@ -282,6 +299,8 @@ interface LaneState {
   lookups: number;
   /** Feed loads by celebrity followers, after the post, that did not show it. */
   missedCelebrity: number;
+  /** Feed loads by celebrity followers, after the post, returned within the read target with the post in them. */
+  returnedCelebrity: number;
   series: number[];
   firstMiss: boolean;
   firstSlow: boolean;
@@ -320,6 +339,7 @@ function emptyLane(loads: number): LaneState {
     servedAt: Array.from({ length: loads }, () => -1),
     lookups: 0,
     missedCelebrity: 0,
+    returnedCelebrity: 0,
     series: [],
     firstMiss: false,
     firstSlow: false,
@@ -506,7 +526,7 @@ export class FeedDuel {
     const start = this.loadStart[tick] ?? 0;
     const end = this.loadStart[tick + 1] ?? start;
     for (let id = start; id < end; id += 1) s.readQueue.push(id);
-    let lookups = this.scenario.readsPerTick ?? Number.POSITIVE_INFINITY;
+    let lookups = this.scenario.readsPerTick;
     while (s.readQueue.length > 0) {
       const load = this.loads[s.readQueue[0] ?? -1];
       if (!load) break;
@@ -522,8 +542,10 @@ export class FeedDuel {
       s.servedAt[load.id] = tick;
       s.lookups += cost;
       const posted = this.celebrityTick >= 0 && tick >= this.celebrityTick;
-      if (posted && load.reader < followers && !pullsAuthor(mode, followers)) {
-        if (load.reader >= s.celebrityWritten) s.missedCelebrity += 1;
+      if (posted && load.reader < followers) {
+        const shown = pullsAuthor(mode, followers) || load.reader < s.celebrityWritten;
+        if (!shown) s.missedCelebrity += 1;
+        else if (tick - load.arrival <= READ_TARGET_TICKS) s.returnedCelebrity += 1;
       }
     }
     const head = this.loads[s.readQueue[0] ?? -1];
@@ -574,6 +596,9 @@ export class FeedDuel {
       if (this.celebrityTick >= 0) {
         text += ` Feed loads that missed the celebrity post: ${name(a)} ${sa.missedCelebrity}, ${name(b)} ${sb.missedCelebrity}.`;
       }
+      if (sa.slowLoads + sb.slowLoads > 0) {
+        text += ` Feed loads that waited more than ${READ_TARGET_SECONDS} s: ${name(a)} ${sa.slowLoads}, ${name(b)} ${sb.slowLoads}.`;
+      }
     } else {
       text = `Run ends. Feed loads that waited more than ${READ_TARGET_SECONDS} s: ${name(a)} ${sa.slowLoads}, ${name(b)} ${sb.slowLoads}.`;
     }
@@ -603,7 +628,10 @@ export interface FeedSummary {
   feedWrites: number;
   writesWaiting: number;
   celebrityWritten: number;
-  /** From the celebrity post to the moment every follower can see it, or -1 before then. */
+  /**
+   * From the celebrity post to the moment it is available to every follower, or -1 before then. A
+   * follower sees it only when the read tier returns their next feed load.
+   */
   celebrityReachSeconds: number;
   loads: number;
   served: number;
@@ -613,6 +641,8 @@ export interface FeedSummary {
   averageLoadWaitSeconds: number;
   lookups: number;
   missedCelebrity: number;
+  /** Feed loads by celebrity followers, after the post, that showed it within the read target. */
+  returnedCelebrity: number;
 }
 
 const round1 = (value: number) => Math.round(value * 10) / 10;
@@ -673,6 +703,7 @@ export function summarize(lane: FeedLane, duel: FeedDuel): FeedSummary {
     averageLoadWaitSeconds: served === 0 ? 0 : round1((waitTicks / served) * TICK_SECONDS),
     lookups: s.lookups,
     missedCelebrity: s.missedCelebrity,
+    returnedCelebrity: s.returnedCelebrity,
   };
 }
 
