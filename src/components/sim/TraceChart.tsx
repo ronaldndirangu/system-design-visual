@@ -175,7 +175,7 @@ export function TraceChart({ title, series, length, tickSeconds, markers, minMax
               }}
               aria-expanded={open}
               aria-controls={listId}
-              aria-label={`Events ${first} to ${last}`}
+              aria-label={`${label.text}, events ${first} to ${last}`}
               onClick={() => setOpenGroup(open ? null : first)}
             >
               {label.text}
