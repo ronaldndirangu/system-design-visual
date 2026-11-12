@@ -270,12 +270,11 @@ Two details make effectively once work in a real system:
   the effect: insert one row per click id, let a unique key reject a repeat, and compute the count from those rows. A
   store that cannot write the effect and the id in one atomic step cannot give effectively once.
 
-The list of seen ids grows forever unless you trim it, and every store in the path deletes data on its own clock: the
-log after its retention period, the [dead-letter queue](../event-driven-design/) after its own, and the seen ids after
-their trim. Pick one **recovery horizon**, the age of the oldest event you promise to redeliver or replay, such as 7
-days. Keep the log and the dead-letter queue for at least that long, and keep seen ids at least as long as either, so a
-replayed click still finds its id. Then alert on consumer lag well before it nears retention, for example at half of
-it. A consumer that falls a full retention period behind never reads the events the log deleted.
+The list of seen ids grows forever unless you trim it, and each store deletes on its own clock: the log after its
+retention, the [dead-letter queue](../event-driven-design/) after its own, and the seen ids after their trim. Pick one
+**recovery horizon**, the age of the oldest event you promise to replay, such as 7 days. Keep the log and the
+dead-letter queue that long, and keep seen ids at least as long as either. Alert when consumer lag reaches half of
+retention: a consumer a full retention period behind never reads the events the log deleted.
 
 You will often read about **exactly once delivery**. No network protocol delivers a message exactly once in general:
 the sender cannot tell a lost message from a lost acknowledgment, so it either retries (at least once) or gives up (at
