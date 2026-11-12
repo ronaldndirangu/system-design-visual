@@ -3,13 +3,18 @@
  * version so old data migrates on read instead of crashing the page.
  */
 export const PROGRESS_STORAGE_KEY = 'sdv:progress';
-export const PROGRESS_VERSION = 2;
+export const PROGRESS_VERSION = 3;
 const CHANGE_EVENT = 'sdv:progress-change';
 const PROBE_KEY = 'sdv:probe';
 
 export interface QuizResult {
   score: number;
   total: number;
+  /**
+   * Fingerprint of the question set the attempt answered. Scores saved before
+   * version 3 have none and show as an earlier result.
+   */
+  set?: string;
 }
 
 export interface LessonProgress {
@@ -59,8 +64,10 @@ function parseLesson(value: unknown): LessonProgress | null {
   if (!isRecord(value)) return null;
   const lesson: LessonProgress = {};
   if (typeof value.completedAt === 'string') lesson.completedAt = value.completedAt;
-  if (isResult(value.quizBest))
-    lesson.quizBest = { score: value.quizBest.score, total: value.quizBest.total };
+  if (isResult(value.quizBest)) {
+    const { score, total, set } = value.quizBest;
+    lesson.quizBest = typeof set === 'string' ? { score, total, set } : { score, total };
+  }
   if (Array.isArray(value.missed)) lesson.missed = value.missed.filter((id) => typeof id === 'string');
   return Object.keys(lesson).length > 0 ? lesson : null;
 }
@@ -74,14 +81,15 @@ function migrateV1(completed: Record<string, unknown>): ProgressData {
   return data;
 }
 
-/** Accepts anything from storage and always returns valid version 2 data. */
+/** Accepts anything from storage and always returns valid current version data. */
 export function parseProgress(raw: string | null): ProgressData {
   if (!raw) return emptyProgress();
   try {
     const value: unknown = JSON.parse(raw);
     if (!isRecord(value)) return emptyProgress();
     if (value.version === 1) return isRecord(value.completed) ? migrateV1(value.completed) : emptyProgress();
-    if (value.version !== PROGRESS_VERSION || !isRecord(value.lessons)) return emptyProgress();
+    if ((value.version !== 2 && value.version !== PROGRESS_VERSION) || !isRecord(value.lessons))
+      return emptyProgress();
     const data = emptyProgress();
     for (const [id, entry] of Object.entries(value.lessons)) {
       const lesson = isSafeId(id) ? parseLesson(entry) : null;
@@ -195,17 +203,43 @@ export function setComplete(id: string, complete: boolean, now = new Date()): vo
   write(withLesson(data, id, lesson));
 }
 
+export interface FingerprintQuestion {
+  id: string;
+  prompt: string;
+  options: readonly { text: string; correct?: boolean }[];
+}
+
+/** FNV-1a over ids, prompts, choices, and answers. Explanation edits keep the same fingerprint. */
+export function questionSetFingerprint(questions: readonly FingerprintQuestion[]): string {
+  const text = JSON.stringify(
+    questions.map((q) => [q.id, q.prompt, q.options.map((o) => [o.text, Boolean(o.correct)])]),
+  );
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(36);
+}
+
 /**
- * Saves a full quiz attempt. The best score is kept per question count, so a
- * changed quiz starts a fresh best. Missed ids always reflect the latest attempt.
+ * Saves a full quiz attempt. The best score is kept per question set
+ * fingerprint, so a changed quiz starts a fresh best. Missed ids always reflect
+ * the latest attempt.
  */
-export function recordQuiz(id: string, score: number, total: number, missed: readonly string[]): void {
-  const result = { score, total };
+export function recordQuiz(
+  id: string,
+  score: number,
+  total: number,
+  missed: readonly string[],
+  set: string,
+): void {
+  const result: QuizResult = { score, total, set };
   if (!isSafeId(id) || !isResult(result)) return;
   const data = readProgress();
   const lesson = { ...lessonProgress(data, id) };
   const best = lesson.quizBest;
-  if (!best || best.total !== total || score > best.score) lesson.quizBest = result;
+  if (!best || best.set !== set || best.total !== total || score > best.score) lesson.quizBest = result;
   lesson.missed = [...missed];
   write(withLesson(data, id, lesson));
 }
@@ -236,10 +270,10 @@ export function exportProgress(): string {
   return `${JSON.stringify(readProgress(), null, 2)}\n`;
 }
 
-export type ImportResult = { ok: true; lessons: number } | { ok: false; error: string };
+export type ParsedImport = { ok: true; data: ProgressData } | { ok: false; error: string };
 
-/** Replaces progress with an exported file. Accepts version 1 and version 2 exports. */
-export function importProgress(text: string): ImportResult {
+/** Reads an exported file without saving it. Accepts exports from every schema version. */
+export function parseImport(text: string): ParsedImport {
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -247,11 +281,63 @@ export function importProgress(text: string): ImportResult {
     return { ok: false, error: 'That file is not valid JSON.' };
   }
   const v1 = isRecord(value) && value.version === 1 && isRecord(value.completed);
-  const v2 = isRecord(value) && value.version === PROGRESS_VERSION && isRecord(value.lessons);
-  if (!v1 && !v2) return { ok: false, error: 'That file is not a progress export from this course.' };
-  const data = parseProgress(text);
-  write(data);
-  return { ok: true, lessons: Object.keys(data.lessons).length };
+  const later =
+    isRecord(value) && (value.version === 2 || value.version === PROGRESS_VERSION) && isRecord(value.lessons);
+  if (!v1 && !later) return { ok: false, error: 'That file is not a progress export from this course.' };
+  return { ok: true, data: parseProgress(text) };
+}
+
+export interface ProgressSummary {
+  completed: number;
+  quizScores: number;
+}
+
+export function summarizeProgress(data: ProgressData): ProgressSummary {
+  const lessons = Object.values(data.lessons);
+  return {
+    completed: lessons.filter((lesson) => lesson.completedAt).length,
+    quizScores: lessons.filter((lesson) => lesson.quizBest).length,
+  };
+}
+
+/** A fingerprinted score beats a legacy one; within one question set the higher score wins. */
+function betterResult(current?: QuizResult, incoming?: QuizResult): QuizResult | undefined {
+  if (!current || !incoming) return current ?? incoming;
+  if (current.set !== incoming.set) return current.set === undefined && incoming.set ? incoming : current;
+  return incoming.score > current.score ? incoming : current;
+}
+
+/** Keeps every completion record, the earlier completion date, and the better quiz best per lesson. */
+export function mergeProgress(current: ProgressData, incoming: ProgressData): ProgressData {
+  const lessons = { ...current.lessons };
+  for (const [id, theirs] of Object.entries(incoming.lessons)) {
+    const ours = lessonProgress(current, id);
+    const merged: LessonProgress = {};
+    const dates = [ours.completedAt, theirs.completedAt].filter((date): date is string => Boolean(date));
+    if (dates.length > 0) merged.completedAt = dates.sort()[0];
+    const quizBest = betterResult(ours.quizBest, theirs.quizBest);
+    if (quizBest) merged.quizBest = quizBest;
+    const missed = quizBest && quizBest === theirs.quizBest ? theirs.missed : (ours.missed ?? theirs.missed);
+    if (missed) merged.missed = [...missed];
+    lessons[id] = merged;
+  }
+  const last = current.last ?? incoming.last;
+  return last === undefined ? { ...current, lessons } : { ...current, lessons, last };
+}
+
+export type ImportMode = 'merge' | 'replace';
+export type ImportResult = { ok: true; lessons: number } | { ok: false; error: string };
+
+/** Saves imported progress, merged into or replacing what this browser holds. */
+export function applyImport(data: ProgressData, mode: ImportMode): number {
+  const next = mode === 'merge' ? mergeProgress(readProgress(), data) : data;
+  write(next);
+  return Object.keys(next.lessons).length;
+}
+
+export function importProgress(text: string, mode: ImportMode): ImportResult {
+  const parsed = parseImport(text);
+  return parsed.ok ? { ok: true, lessons: applyImport(parsed.data, mode) } : parsed;
 }
 
 export function resetProgress(): void {
