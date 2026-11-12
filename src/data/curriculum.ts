@@ -487,7 +487,7 @@ const modules: ModuleInput[] = [
     number: 6,
     title: 'Case studies',
     summary:
-      'Fourteen products. The two sho.rt cases put a finished module under load, and the other twelve each turn on one constraint that dominates the design. Start each one as soon as you finish the module it builds on. Beginner route: Shortener at scale and Shortener bad day, then News feed and Notifications, then Ticketing, Payments and Chat, then Video streaming, Search, Ride sharing, Metrics and Collaborative editor. File sync and Key-value store are extra cases off the route.',
+      'Fourteen products. The two sho.rt cases put a finished module under load, and the other twelve each turn on one constraint that dominates the design. Start each one as soon as you finish the module it builds on. Beginner route: Shortener at scale and Shortener bad day, then News feed and Notifications, then Ticketing, Payments and Chat, then Video streaming, Search, Ride sharing, Metrics and Collaborative editor. The beginner route is an order. Open the next case only after the Best after module on its card. File sync and Key-value store are extra cases off the route.',
     example: 'A different system per lesson',
     sharedExample: false,
     lessons: [

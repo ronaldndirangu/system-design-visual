@@ -8,6 +8,7 @@ import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
@@ -342,6 +343,16 @@ for an edge hit.
 | More edge locations          | Shorter distance for more people                        | Each edge sees less traffic, so it warms up slower and hits less    |
 
 </TradeoffTable>
+
+<KeyTakeaways>
+
+- Distance sets a floor: light in fiber covers about 200 km per millisecond one way, and a fresh click from far away pays three long round trips.
+- A pull CDN answers from an edge near each person, fills the edge on a miss, and drops copies when their TTL ends or a purge clears them.
+- `s-maxage` lets edges reuse a redirect while `max-age=0` keeps browsers asking, and versioned file names let static assets keep a one-year TTL.
+- Each edge warms up alone, and an origin shield cuts the requests that reach the origin while barely changing latency.
+- Clicks answered at the edge never reach the origin's counter, so count them from edge logs or keep counted redirects out of the edge cache.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 

@@ -21,11 +21,13 @@ export const topicGroups: TopicGroup[] = [
         focus:
           'How you size the traffic, mint short codes that never collide, and serve hot redirects from a cache.',
         lessons: [
-          'practice/capstone',
+          'case-studies/shortener-at-scale',
+          'case-studies/shortener-bad-day',
           'thinking/requirements-and-estimates',
           'foundations/unique-ids',
           'scaling/caching',
           'scaling/sharding',
+          'practice/capstone',
         ],
       },
       {
@@ -152,6 +154,7 @@ export const topicGroups: TopicGroup[] = [
         focus:
           'How you place keys on a hash ring, tune N, R, and W so reads and writes overlap, and repair replicas after a failure.',
         lessons: [
+          'case-studies/kv-store',
           'distributed-data/quorums',
           'scaling/consistent-hashing',
           'foundations/storage-engines',
@@ -199,7 +202,7 @@ export const topicGroups: TopicGroup[] = [
         focus:
           'How you upload only the changed chunks, catch conflicting edits with a base version, and let an offline device catch up from its cursor.',
         lessons: [
-          'practice/timed-round',
+          'case-studies/file-sync',
           'scaling/object-storage',
           'foundations/transactions',
           'foundations/real-time',
