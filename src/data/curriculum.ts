@@ -498,7 +498,13 @@ const modules: ModuleInput[] = [
           'Put sho.rt through a viral link, a dead app server, and a new region, and size each fix with Module 2 numbers.',
         minutes: 21,
         difficulty: 2,
-        buildsOn: ['scaling/load-balancing', 'scaling/caching', 'scaling/cdn', 'scaling/read-replicas', 'scaling/sharding'],
+        buildsOn: [
+          'scaling/load-balancing',
+          'scaling/caching',
+          'scaling/cdn',
+          'scaling/read-replicas',
+          'scaling/sharding',
+        ],
         bestAfter: 'scaling',
       },
       {
@@ -583,7 +589,12 @@ const modules: ModuleInput[] = [
           'Keep a news index fresh, give each ranking signal its own clock, then add typeahead as an extension.',
         minutes: 50,
         difficulty: 3,
-        buildsOn: ['foundations/indexes', 'scaling/sharding', 'scaling/caching', 'reliability/queues-and-backpressure'],
+        buildsOn: [
+          'foundations/indexes',
+          'scaling/sharding',
+          'scaling/caching',
+          'reliability/queues-and-backpressure',
+        ],
         bestAfter: 'async',
       },
       {
