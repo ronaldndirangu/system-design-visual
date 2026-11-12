@@ -468,6 +468,36 @@ body {
 @media (pointer: coarse) {
   :root {
     --sdv-target: 2.75rem;
+    --sl-menu-button-size: var(--sdv-target);
+  }
+
+  .site-title,
+  site-search button[data-open-modal],
+  .social-icons a,
+  .meta a,
+  .sl-link-button,
+  .sl-anchor-link,
+  mobile-starlight-toc nav a,
+  #starlight__sidebar a,
+  #starlight__sidebar summary {
+    align-items: center;
+    min-block-size: var(--sdv-target);
+  }
+  site-search button[data-open-modal],
+  .social-icons a,
+  .sl-anchor-link {
+    display: inline-flex;
+    justify-content: center;
+    min-inline-size: var(--sdv-target);
+  }
+  .sl-link-button,
+  .meta a {
+    display: inline-flex;
+  }
+  mobile-starlight-toc nav a,
+  #starlight__sidebar a {
+    display: flex;
+    gap: 0.5em;
   }
 }
 
