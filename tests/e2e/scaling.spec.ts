@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const duelName = 'Simulation: Same clicks, with and without a CDN';
 
-test('/scaling/cdn/ sits between caching and read replicas', async ({ page }) => {
+test('/scaling/cdn/ sits between caching and object storage', async ({ page }) => {
   await page.goto('scaling/caching/');
   await page.locator('a[rel="next"]').click();
   await expect(page).toHaveURL(/\/scaling\/cdn\/$/);
@@ -11,9 +11,13 @@ test('/scaling/cdn/ sits between caching and read replicas', async ({ page }) =>
   await expect(page.locator('.sdv-arc svg[role="img"]')).toHaveAttribute('aria-label', /CDN edge/);
 
   await page.locator('a[rel="next"]').click();
+  await expect(page).toHaveURL(/\/scaling\/object-storage\/$/);
+  await page.locator('a[rel="next"]').click();
   await expect(page).toHaveURL(/\/scaling\/read-replicas\/$/);
   await expect(page.locator('.sdv-arc__stages [aria-current="step"]')).toContainText('Read replicas');
 
+  await page.locator('a[rel="prev"]').click();
+  await expect(page).toHaveURL(/\/scaling\/object-storage\/$/);
   await page.locator('a[rel="prev"]').click();
   await expect(page).toHaveURL(/\/scaling\/cdn\/$/);
   await page.locator('a[rel="prev"]').click();
