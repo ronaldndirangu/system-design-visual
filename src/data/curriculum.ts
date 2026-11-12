@@ -430,7 +430,7 @@ const modules: ModuleInput[] = [
         summary: 'Tune N, R, and W, and watch reads and writes survive node loss.',
         minutes: 25,
         difficulty: 2,
-        buildsOn: ['distributed-data/cap-and-pacelc', 'scaling/sharding'],
+        buildsOn: ['distributed-data/cap-and-pacelc', 'scaling/sharding', 'scaling/consistent-hashing'],
         example: 'Shopping cart',
       },
       {
