@@ -20,16 +20,42 @@ function sameOverflow(a: Overflow, b: Overflow) {
  * only while the content is wider than the box, takes keyboard focus, fades the
  * edges that hide more content and shows a "see more" cue until the first scroll.
  * Server markup stays focusable because overflow is unknown until hydration.
+ * For an SVG child it also publishes the rendered scale (screen px per viewBox
+ * unit) as `--sdv-dscale` and through `onScale`, so text can counter-scale.
  */
-export function DiagramScroll({ label, children }: { label: string; children: ReactNode }) {
+export function DiagramScroll({
+  label,
+  children,
+  onScale,
+}: {
+  label: string;
+  children: ReactNode;
+  onScale?: (scale: number) => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState<Overflow>(UNMEASURED);
   const [scrolled, setScrolled] = useState(false);
+  const onScaleRef = useRef(onScale);
+  onScaleRef.current = onScale;
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    let lastScale = 0;
+    const measureScale = () => {
+      const svg = el.firstElementChild;
+      if (!(svg instanceof SVGSVGElement)) return;
+      const viewWidth = svg.viewBox.baseVal?.width;
+      const shown = svg.getBoundingClientRect().width;
+      if (!viewWidth || !shown) return;
+      const scale = Math.floor(Math.min(1, shown / viewWidth) * 100) / 100;
+      if (scale === lastScale) return;
+      lastScale = scale;
+      el.style.setProperty('--sdv-dscale', String(scale));
+      onScaleRef.current?.(scale);
+    };
     const measure = () => {
+      measureScale();
       const max = el.scrollWidth - el.clientWidth;
       const left = Math.abs(el.scrollLeft);
       const overflowing = max > 1;

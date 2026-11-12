@@ -123,12 +123,14 @@ test.describe('side by side lanes', () => {
 async function svgTextOutsideScroller(page: Page) {
   return page.locator('.sdv-scroll-x').evaluateAll((scrollers) =>
     scrollers.flatMap((scroller) => {
-      const box = scroller.getBoundingClientRect();
+      // Diagrams below their width floor scroll sideways, so text must sit inside the scrollable extent.
+      const left = scroller.getBoundingClientRect().left - scroller.scrollLeft;
+      const right = left + scroller.scrollWidth;
       return Array.from(scroller.querySelectorAll('svg text'))
         .filter((text) => {
           const rect = text.getBoundingClientRect();
           if (rect.width === 0 && rect.height === 0) return false;
-          return rect.left < box.left - 1 || rect.right > box.right + 1;
+          return rect.left < left - 1 || rect.right > right + 1;
         })
         .map((text) => text.textContent?.trim() ?? '');
     }),

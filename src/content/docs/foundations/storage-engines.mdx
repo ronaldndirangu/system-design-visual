@@ -269,7 +269,7 @@ After the log, engines split into two families:
 - **LSM-tree engines** (RocksDB, LevelDB, Cassandra, ScyllaDB) never update a file in place. They collect writes in
   memory, write them out as new sorted files, and merge files in the background. LSM stands for log-structured merge.
 
-<StepDiagram client:visible title="One write through an LSM tree" nodes={nodes} edges={edges} steps={steps} height={300} />
+<StepDiagram client:visible title="One write through an LSM tree" layout="stack" nodes={nodes} edges={edges} steps={steps} height={300} />
 
 <Analogy>
 
