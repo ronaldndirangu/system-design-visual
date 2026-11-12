@@ -73,6 +73,10 @@ export const PAIRS = [
   { fg: '#ffffff', bg: 'accent', min: TEXT },
   { fg: '#ffffff', bg: 'accent-hover', min: TEXT },
   ...['surface-1', 'surface-2', 'sunken'].map((bg) => ({ fg: 'border-control', bg, min: NON_TEXT })),
+  ...['client', 'server', 'lb', 'cache', 'db', 'queue', 'edge-kind', 'model'].flatMap((fg) =>
+    ['bg', 'surface-1', 'sunken'].map((bg) => ({ fg, bg, min: TEXT })),
+  ),
+  ...['ok', 'warn', 'bad'].map((bg) => ({ fg: 'ink-on-status', bg, min: NON_TEXT })),
 ];
 
 /**

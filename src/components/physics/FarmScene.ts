@@ -387,14 +387,23 @@ export class FarmScene implements Scene {
       const x = carrier.x0 + (carrier.x1 - carrier.x0) * ease;
       const y = carrier.y0 + (carrier.y1 - carrier.y0) * ease - Math.sin(Math.PI * p) * 14;
       const bad = carrier.kind !== 'queued';
-      drawBall(ctx, x, y, RADIUS, bad ? 'cross' : 'filled', bad ? palette.bad : palette.request, 0.9);
+      drawBall(
+        ctx,
+        x,
+        y,
+        RADIUS,
+        bad ? 'cross' : 'filled',
+        bad ? palette.bad : palette.request,
+        0.9,
+        palette.ink,
+      );
     }
 
     for (const ball of this.balls) {
       const { x, y } = ball.body.position;
       if (ball.kind === 'queued') drawBall(ctx, x, y, RADIUS, 'filled', palette.request);
       else if (ball.kind === 'served') drawBall(ctx, x, y, RADIUS, 'ring', palette.ok);
-      else drawBall(ctx, x, y, RADIUS, 'cross', palette.bad);
+      else drawBall(ctx, x, y, RADIUS, 'cross', palette.bad, 1, palette.ink);
     }
 
     for (const bucket of buckets) this.drawBucketLabels(bucket);

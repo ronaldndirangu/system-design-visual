@@ -65,10 +65,10 @@ const CAT_GHOST = 0x4;
 const blankView: QueueLaneView = { label: '', detail: '', queued: 0, limit: null, limitLabel: '', busy: 0 };
 
 /**
- * Physics picture of a QueueDuel: two lanes, each a waiting line (cyan
+ * Physics picture of a QueueDuel: two lanes, each a waiting line (slate
  * bucket) above five workers. The model decides every outcome; this scene
  * only turns each tick into balls. Waiting requests pile up in the bucket,
- * requests a worker starts leave under the workers as rings (amber with a
+ * requests a worker starts leave under the workers as rings (orange with a
  * slash when the answer will arrive after the client gave up), and requests
  * turned away spill over the rim as crosses. One ball stands for
  * `ballValue` requests.
@@ -77,11 +77,9 @@ export class QueueScene implements Scene {
   private readonly M: Matter;
   private readonly engine: MatterNamespace.Engine;
   private readonly ctx: CanvasRenderingContext2D;
-  private readonly canvas: HTMLCanvasElement;
   private width: number;
   private height: number;
   private palette: Palette;
-  private queueColor: string;
   private lanes: Lane[];
   private balls: Ball[] = [];
   private carriers: Carrier[] = [];
@@ -96,11 +94,9 @@ export class QueueScene implements Scene {
   ) {
     this.M = context.Matter;
     this.ctx = context.ctx;
-    this.canvas = context.canvas;
     this.width = context.width;
     this.height = context.height;
     this.palette = context.palette;
-    this.queueColor = this.readQueueColor();
     this.engine = this.M.Engine.create({ enableSleeping: false });
     this.engine.gravity.y = 1;
     this.lanes = [this.createLane(0), this.createLane(1)];
@@ -130,7 +126,6 @@ export class QueueScene implements Scene {
 
   setPalette(palette: Palette): void {
     this.palette = palette;
-    this.queueColor = this.readQueueColor();
   }
 
   clear(): void {
@@ -177,10 +172,6 @@ export class QueueScene implements Scene {
       for (const lane of this.lanes) this.reconcile(lane);
     }
     this.draw();
-  }
-
-  private readQueueColor(): string {
-    return getComputedStyle(this.canvas).getPropertyValue('--sdv-queue').trim() || '#22d3ee';
   }
 
   private laneX(index: number): number {
@@ -406,7 +397,16 @@ export class QueueScene implements Scene {
       const x = carrier.x0 + (carrier.x1 - carrier.x0) * ease;
       const y = carrier.y0 + (carrier.y1 - carrier.y0) * ease - Math.sin(Math.PI * p) * 10;
       const bad = carrier.kind === 'rejected';
-      drawBall(ctx, x, y, RADIUS, bad ? 'cross' : 'filled', bad ? palette.bad : palette.request, 0.9);
+      drawBall(
+        ctx,
+        x,
+        y,
+        RADIUS,
+        bad ? 'cross' : 'filled',
+        bad ? palette.bad : palette.request,
+        0.9,
+        palette.ink,
+      );
     }
 
     for (const ball of this.balls) {
@@ -414,7 +414,7 @@ export class QueueScene implements Scene {
       if (ball.kind === 'queued') drawBall(ctx, x, y, RADIUS, 'filled', palette.request);
       else if (ball.kind === 'served') drawBall(ctx, x, y, RADIUS, 'ring', palette.ok);
       else if (ball.kind === 'late') this.drawLate(x, y);
-      else drawBall(ctx, x, y, RADIUS, 'cross', palette.bad);
+      else drawBall(ctx, x, y, RADIUS, 'cross', palette.bad, 1, palette.ink);
     }
 
     for (const lane of this.lanes) this.drawLabels(lane);
@@ -474,7 +474,7 @@ export class QueueScene implements Scene {
     const left = lane.cx - INNER_WIDTH / 2 - WALL / 2;
     const right = lane.cx + INNER_WIDTH / 2 + WALL / 2;
     const bottom = FLOOR_Y + WALL / 2;
-    ctx.strokeStyle = this.queueColor;
+    ctx.strokeStyle = palette.queue;
     ctx.lineWidth = WALL;
     ctx.lineCap = 'round';
     ctx.beginPath();

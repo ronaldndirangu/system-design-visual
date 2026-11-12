@@ -1,4 +1,4 @@
-/* Schema evolution widget: the click topic and the dead-letter queue are queues (cyan), the consumer is a server (violet). Outcome cells use a pattern per outcome, and payload diffs mark added and removed fields with a sign and a word. */
+/* Schema evolution widget: the click topic and the dead-letter queue are queues (slate), the consumer is a server (violet). Outcome cells use a pattern per outcome, and payload diffs mark added and removed fields with a sign and a word. */
 
 .sdv-schema__payloads {
   display: grid;
