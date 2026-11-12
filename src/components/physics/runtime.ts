@@ -1,5 +1,5 @@
 import type MatterNamespace from 'matter-js';
-import { type RefObject, useEffect, useRef, useState } from 'react';
+import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { type Palette, readPalette } from './drawing';
 
 export { drawBall, hexagon, type Palette, readPalette } from './drawing';
@@ -8,16 +8,24 @@ export type Matter = typeof MatterNamespace;
 
 let matterPromise: Promise<Matter> | undefined;
 
-/** Matter.js loads only when a physics view mounts. */
-export function loadMatter(): Promise<Matter> {
-  matterPromise ??= import('matter-js').then((mod) => mod.default);
+/** Matter.js loads only when a physics view mounts. A failed load is forgotten so Retry can try again. */
+export function loadMatter(
+  load: () => Promise<{ default: Matter }> = () => import('matter-js'),
+): Promise<Matter> {
+  matterPromise ??= load().then(
+    (mod) => mod.default,
+    (reason: unknown) => {
+      matterPromise = undefined;
+      throw reason;
+    },
+  );
   return matterPromise;
 }
 
 export interface Scene {
   resize(width: number, height: number): void;
   setPalette(palette: Palette): void;
-  /** Advance physics by dtMs and draw one frame. */
+  /** Advance physics by dtMs and draw one frame. `frame(0)` only repaints. */
   frame(dtMs: number): void;
   destroy(): void;
 }
@@ -31,6 +39,57 @@ export interface SceneContext {
   palette: Palette;
 }
 
+/** Longest slice of time one `frame` call simulates, so a slow display frame or a fast speed stays stable. */
+export const MAX_FRAME_MS = 50;
+
+/** Milliseconds of physics one display frame should advance, or 0 when the picture must hold still. */
+export function loopDelta(
+  elapsedMs: number,
+  state: { visible: boolean; hidden: boolean; paused: boolean; speed: number },
+): number {
+  if (!state.visible || state.hidden || state.paused) return 0;
+  return Math.min(Math.max(elapsedMs, 0), MAX_FRAME_MS) * state.speed;
+}
+
+/** Advances a scene by `ms` in slices no longer than `chunkMs`. */
+export function advanceScene(scene: Pick<Scene, 'frame'>, ms: number, chunkMs = MAX_FRAME_MS): void {
+  let left = ms;
+  while (left > 0) {
+    const dt = Math.min(left, chunkMs);
+    scene.frame(dt);
+    left -= dt;
+  }
+}
+
+export type PhysicsStatus = 'off' | 'loading' | 'ready' | 'failed';
+
+export function physicsStatus(state: { enabled: boolean; error: boolean; ready: boolean }): PhysicsStatus {
+  if (!state.enabled) return 'off';
+  if (state.error) return 'failed';
+  return state.ready ? 'ready' : 'loading';
+}
+
+export interface PhysicsSceneOptions {
+  enabled?: boolean;
+  /** Holds the engine still: no stepping, no spawning, only repaints. */
+  paused?: boolean;
+  /** Multiplies simulated time, matching the playback speed. */
+  speed?: number;
+}
+
+export interface PhysicsSceneHandle<T extends Scene> {
+  canvasRef: RefObject<HTMLCanvasElement | null>;
+  scene: T | null;
+  error: boolean;
+  status: PhysicsStatus;
+  /** Loads Matter.js and builds the scene again after a failure. */
+  retry: () => void;
+  /** Advances the scene by `ms` of simulated time, even while paused. */
+  advance: (ms: number) => void;
+  /** Redraws the current state without advancing it. */
+  repaint: () => void;
+}
+
 /**
  * Mounts a physics scene on a canvas: lazy loads Matter.js, matches the
  * canvas to its box and pixel ratio, follows the light or dark theme, and
@@ -38,17 +97,22 @@ export interface SceneContext {
  */
 export function usePhysicsScene<T extends Scene>(
   factory: (context: SceneContext) => T,
-  options: { enabled?: boolean; paused?: boolean } = {},
-): { canvasRef: RefObject<HTMLCanvasElement | null>; scene: T | null; error: boolean } {
-  const { enabled = true, paused = false } = options;
+  options: PhysicsSceneOptions = {},
+): PhysicsSceneHandle<T> {
+  const { enabled = true, paused = false, speed = 1 } = options;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [scene, setScene] = useState<T | null>(null);
   const [error, setError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const factoryRef = useRef(factory);
   factoryRef.current = factory;
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  const speedRef = useRef(speed);
+  speedRef.current = speed;
+  const sceneRef = useRef<T | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: attempt is the retry trigger
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!enabled || !canvas) return;
@@ -77,19 +141,22 @@ export function usePhysicsScene<T extends Scene>(
 
         const size = measure();
         current = factoryRef.current({ Matter, ctx, canvas, ...size, palette: readPalette(canvas) });
+        sceneRef.current = current;
+        current.frame(0);
         setScene(current);
 
+        // Resizing the canvas wipes it, so redraw the current state right away.
         const resizeObserver = new ResizeObserver(() => {
           const next = measure();
           current?.resize(next.width, next.height);
+          current?.frame(0);
         });
         resizeObserver.observe(canvas);
         cleanups.push(() => resizeObserver.disconnect());
 
         const themeObserver = new MutationObserver(() => {
           current?.setPalette(readPalette(canvas));
-          // A paused loop draws nothing, so repaint the frozen frame in the new colors.
-          if (pausedRef.current) current?.frame(0);
+          current?.frame(0);
         });
         themeObserver.observe(document.documentElement, {
           attributes: true,
@@ -106,10 +173,14 @@ export function usePhysicsScene<T extends Scene>(
         let last = performance.now();
         const loop = (now: number) => {
           frame = requestAnimationFrame(loop);
-          const dt = Math.min(now - last, 50);
+          const ms = loopDelta(now - last, {
+            visible,
+            hidden: document.hidden,
+            paused: pausedRef.current,
+            speed: speedRef.current,
+          });
           last = now;
-          if (!visible || document.hidden || pausedRef.current) return;
-          current?.frame(dt);
+          if (current) advanceScene(current, ms);
         };
         frame = requestAnimationFrame(loop);
       })
@@ -122,11 +193,22 @@ export function usePhysicsScene<T extends Scene>(
       cancelAnimationFrame(frame);
       for (const cleanup of cleanups) cleanup();
       current?.destroy();
+      sceneRef.current = null;
       setScene(null);
     };
-  }, [enabled]);
+  }, [enabled, attempt]);
 
-  return { canvasRef, scene, error };
+  const retry = useCallback(() => {
+    setError(false);
+    setAttempt((value) => value + 1);
+  }, []);
+  const advance = useCallback((ms: number) => {
+    if (sceneRef.current) advanceScene(sceneRef.current, ms);
+  }, []);
+  const repaint = useCallback(() => sceneRef.current?.frame(0), []);
+
+  const status = physicsStatus({ enabled, error, ready: scene !== null });
+  return { canvasRef, scene, error, status, retry, advance, repaint };
 }
 
 /** Fixed-step physics so the motion looks the same at 60 Hz and 144 Hz. */

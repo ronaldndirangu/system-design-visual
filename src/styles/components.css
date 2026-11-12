@@ -1970,6 +1970,18 @@ button[data-tone="bad"] {
   gap: 0.75rem 1.5rem;
   justify-content: space-between;
 }
+.sdv-physics__fallback {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+.sdv-physics__fallback:empty {
+  display: none;
+}
+.sdv-physics__fallback p {
+  margin: 0;
+}
 
 /* ---------- Cache ---------- */
 
