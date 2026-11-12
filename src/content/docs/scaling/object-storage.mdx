@@ -11,7 +11,7 @@ import Quiz from '../../../components/lesson/Quiz';
 export const quiz = [
   {
     id: 'scaling/object-storage/q1',
-    prompt: 'Users upload 2 GB videos through your API servers, which forward the bytes to the bucket. Uploads time out and API memory spikes. What fixes the design?',
+    prompt: 'sho.rt users upload custom link previews, up to 20 MB, through the API servers, which forward the bytes to the bucket. Uploads time out and API memory spikes. What fixes the design?',
     options: [
       { text: 'Give the API servers more memory', why: 'Every upload still crosses your servers twice, and the next spike needs still more memory.' },
       {
@@ -19,8 +19,8 @@ export const quiz = [
         correct: true,
         why: 'Right. The API only signs the request, and the bucket takes the bytes. Multipart lets a failed part retry alone.',
       },
-      { text: 'Store the videos in the database as blobs', why: 'That moves the same bytes into a system built for small rows, and it bloats backups and replicas.' },
-      { text: 'Compress the videos on the API server first', why: 'Video is already compressed, and the bytes still pass through your servers.' },
+      { text: 'Store the images in the links table as blobs', why: 'That moves the same bytes into a system built for small rows, and it bloats backups and replicas.' },
+      { text: 'Compress the images on the API server first', why: 'PNG and JPEG are already compressed, and the bytes still pass through your servers.' },
     ],
   },
   {
@@ -59,13 +59,13 @@ export const quiz = [
 
 ## Buckets and keys
 
-Object storage, such as Amazon S3, Azure Blob Storage, or Google Cloud Storage, keeps files called objects in buckets.
-You address each object by a key such as `exports/2025/03/report.csv`, and you read, write, or delete it whole. You
-cannot edit byte 500 in place. That limit lets the service spread trillions of objects across thousands of disks and
-serve them through a [CDN](../cdn/).
+Each sho.rt link has a 200 KB preview and a QR image, 400 TB in all. As database blobs, they would slow backups.
 
-A database row stores the key and metadata such as size and owner. The bytes stay in the bucket, so the database stays
-small and its backups stay fast.
+Object storage, such as Amazon S3, Azure Blob Storage, or Google Cloud Storage, keeps files called objects in buckets.
+You address each object by a key such as `previews/bATJ4g.png` and read, write, or delete it whole. That limit lets the
+service spread trillions of objects across thousands of disks and serve them through a [CDN](../cdn/).
+
+The links row keeps only the key and metadata, so the database stays small.
 
 ## Uploads that skip your servers
 
@@ -89,7 +89,7 @@ one object. A part that fails retries alone.
 
 ### Closing the loop
 
-The API signs a URL and never sees the upload finish. Four pieces close the loop:
+The API signs a URL and never sees the upload finish. Four steps close the loop:
 
 1. **Pending row first.** The API writes a `pending` row before it signs the URL.
 2. **Confirm, then verify.** A confirm call or object-created event marks the row `ready` once a worker
@@ -97,8 +97,7 @@ The API signs a URL and never sees the upload finish. Four pieces close the loop
 3. **Sweeper.** A nightly job deletes stale pending rows and orphaned objects.
 4. **Abort stale multipart uploads.** A lifecycle rule aborts them after 7 days.
 
-Serve user files from a separate domain, such as `usercontent.example.com`, so uploaded HTML cannot run
-scripts on your main site.
+Serve user files from a separate domain, such as `usercontent.example.com`, so uploaded HTML cannot script your site.
 
 <details>
 <summary>Go deeper: capping upload size, POST versus PUT</summary>

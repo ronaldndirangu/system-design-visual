@@ -1,6 +1,7 @@
 import { m } from 'motion/react';
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { findModule } from '../../data/curriculum';
+import { coreLessons } from '../../data/coursePath';
+import { findModule, findModuleForLesson } from '../../data/curriculum';
 import { checklistSteps, practicePrompts, rubricLevels } from '../../data/practicePrompts';
 import {
   drawPromptIndex,
@@ -35,6 +36,7 @@ import {
   saveRound,
   subscribePractice,
 } from '../../lib/practiceProgress';
+import { isComplete, type ProgressData, readProgress, subscribeProgress } from '../../lib/progress';
 import { Segmented, Toggle } from '../sim/controls';
 import { MotionRoot } from '../sim/MotionRoot';
 import { ScenarioChips } from '../sim/ScenarioChips';
@@ -59,7 +61,27 @@ function promptTitle(id: string): string {
 
 function moduleLabel(id: string): string {
   const module = findModule(id);
-  return module ? `${module.number}. ${module.title}` : id;
+  return module ? `module ${module.number}, ${module.title}` : id;
+}
+
+function moduleNumber(id: string): number {
+  return findModule(id)?.number ?? Number.POSITIVE_INFINITY;
+}
+
+function moduleDone(progress: ProgressData, id: string): boolean {
+  const lessons = coreLessons.filter((lesson) => findModuleForLesson(lesson.id)?.id === id);
+  return lessons.length > 0 && lessons.every((lesson) => isComplete(progress, lesson.id));
+}
+
+/** Prompts whose module is done, or the earliest module's prompts while none is done. */
+function preferredPrompts(progress: ProgressData | null): number[] {
+  const indexes = practicePrompts.map((_, index) => index);
+  const ready = progress
+    ? indexes.filter((index) => moduleDone(progress, practicePrompts[index]?.bestAfter ?? ''))
+    : [];
+  if (ready.length > 0) return ready;
+  const earliest = Math.min(...practicePrompts.map((prompt) => moduleNumber(prompt.bestAfter)));
+  return indexes.filter((index) => moduleNumber(practicePrompts[index]?.bestAfter ?? '') === earliest);
 }
 
 function reportLabel(report: StepReport): string {
@@ -96,6 +118,8 @@ export default function TimedRoundWidget() {
   const [confirmingClear, setConfirmingClear] = useState(false);
   const practice = useSyncExternalStore(subscribePractice, readPractice, () => null);
   const persistent = useSyncExternalStore(subscribePractice, isPracticePersistent, () => true);
+  const progress = useSyncExternalStore(subscribeProgress, readProgress, () => null);
+  const preferred = useMemo(() => preferredPrompts(progress), [progress]);
   const savedWhere = persistent
     ? 'Saved on this device only.'
     : 'Saved for this tab only, because your browser blocked storage.';
@@ -177,7 +201,7 @@ export default function TimedRoundWidget() {
   }
 
   function drawPrompt() {
-    setPromptIndex((index) => drawPromptIndex(drawSeed, practicePrompts.length, index));
+    setPromptIndex((index) => drawPromptIndex(drawSeed, practicePrompts.length, index, preferred));
     setDrawSeed((seed) => seed + 1);
   }
 
@@ -340,10 +364,12 @@ export default function TimedRoundWidget() {
         <ScenarioChips
           label="Prompt"
           value={prompt?.id ?? 'url-shortener'}
-          options={practicePrompts.map((option) => ({
+          options={practicePrompts.map((option, index) => ({
             value: option.id,
             label: option.title,
-            diff: `${option.scale}. Best after ${moduleLabel(option.bestAfter)}`,
+            diff: `${option.scale}. Best after ${moduleLabel(option.bestAfter)}${
+              progress && !preferred.includes(index) ? '. Later on your path' : ''
+            }`,
           }))}
           onChange={(id) =>
             setPromptIndex(

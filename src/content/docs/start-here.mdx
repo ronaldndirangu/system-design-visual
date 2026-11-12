@@ -6,6 +6,9 @@ description: What you will learn, how each lesson is built, and how to get the m
 import ContinueLesson from '../../components/lesson/ContinueLesson.astro';
 import ProgressReset from '../../components/lesson/ProgressReset';
 import StudyPlans from '../../components/lesson/StudyPlans.astro';
+import { LinkButton } from '@astrojs/starlight/components';
+import { firstLesson } from '../../data/coursePath';
+import { lessonHref } from '../../lib/paths';
 
 System design is the craft of choosing components (servers, caches, databases, queues) and wiring them together so a product
 stays fast and correct as more people use it. This course teaches it by letting you **watch systems fail** and then fix them
@@ -21,20 +24,23 @@ You need basic programming knowledge. You do not need any cloud account, and not
 
 ## How each lesson is built
 
-Every lesson follows the same seven beats, so you always know where you are.
+Every lesson follows the same beats, so you always know where you are.
 
-1. **Objectives.** A short list of what you can do by the end.
-2. **The failure.** The system breaks in a specific way. You predict what happens before the answer appears.
-3. **The idea.** A step by step diagram and an everyday analogy introduce the fix.
-4. **The simulation.** A live model you can play, pause, step, and reset. Every result also appears as a table of numbers,
+1. **Recall.** When a lesson builds on earlier ones, it opens with a few questions on what you already learned, with links
+   back if an answer feels shaky.
+2. **Objectives.** A short list of what you can do by the end.
+3. **The failure.** The system breaks in a specific way. You predict what happens before the answer appears.
+4. **The idea.** A step by step diagram and an everyday analogy introduce the fix.
+5. **The simulation.** A live model you can play, pause, step, and reset. Every result also appears as a table of numbers,
    so you can read it with a screen reader or with motion turned off.
-5. **The trade-offs.** No fix is free. A table lists what you gain and what you pay.
-6. **The quiz.** Each wrong answer comes with an explanation of why it is wrong.
-7. **The challenge.** A short design problem that applies the idea somewhere new, with one possible answer to compare.
+6. **The trade-offs.** No fix is free. A table lists what you gain and what you pay.
+7. **The quiz.** Each wrong answer comes with an explanation of why it is wrong.
+8. **The challenge.** A short design problem that applies the idea somewhere new, with one possible answer to compare.
 
-A lesson takes 20 to 25 minutes. Split it into two sittings if you like: read up to the simulation, then come back for the
-quiz and challenge. A few topics are **quick cards** instead: five-minute reference pages, such as the design checklist,
-that end with a short quiz.
+Pages range from 7-minute cards to the hour-long capstone, and the course map shows the time for each one. A standard lesson
+takes 20 to 30 minutes. Split it into two sittings if you like: read up to the simulation, then come back for the quiz and
+challenge. **Quick cards** take 7 to 11 minutes: short reference pages, such as the design checklist, that end with a
+short quiz. Case studies take 20 to 50 minutes.
 
 ## One running example
 
@@ -74,4 +80,11 @@ this device and nobody else can see it. Export it to a file to keep a copy or mo
 - Open the [course map](../curriculum/) to see every module.
 - Learn the [visual language](../visual-language/) used in every diagram.
 - Keep the [reference sheet](../reference/) open for latency numbers, sizes, and availability math.
-- Or jump straight into the [first lesson](../thinking/requirements-and-estimates/).
+
+{firstLesson && (
+  <p class="not-content">
+    <LinkButton href={lessonHref(firstLesson.id)} icon="right-arrow">
+      Start learning: {firstLesson.title}
+    </LinkButton>
+  </p>
+)}
