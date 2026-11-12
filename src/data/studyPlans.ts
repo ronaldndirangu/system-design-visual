@@ -73,7 +73,6 @@ export const studyPlans: StudyPlan[] = [
           'reliability/queues-and-backpressure',
           'reliability/idempotency',
           'reliability/retries',
-          'distributed-data/consistency-models',
           'case-studies/news-feed',
           'practice/timed-round',
         ],

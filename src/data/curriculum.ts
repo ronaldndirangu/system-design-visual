@@ -447,7 +447,7 @@ const modules: ModuleInput[] = [
         id: 'case-studies/news-feed',
         title: 'News feed',
         summary: 'Fan out on write or on read, and handle the celebrity whose post reaches millions.',
-        minutes: 36,
+        minutes: 30,
         difficulty: 2,
         buildsOn: ['scaling/caching', 'scaling/sharding', 'reliability/queues-and-backpressure'],
         bestAfter: 'reliability',
