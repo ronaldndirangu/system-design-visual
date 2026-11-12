@@ -1,0 +1,469 @@
+---
+title: Backups and recovery
+description: A migration deletes every order at 15:40, and the replicas copy the delete within a second. Compare full backups, incrementals, and snapshot plus log replay against a one hour RPO and a four hour RTO, then put the orders back without losing new ones.
+furtherReading:
+  - title: Continuous archiving and point-in-time recovery (PostgreSQL documentation)
+    url: https://www.postgresql.org/docs/current/continuous-archiving.html
+    note: How a base backup plus archived write-ahead log restores a database to any chosen moment.
+  - title: 'Data integrity: what you read is what you wrote (Google SRE book, chapter 26)'
+    url: https://sre.google/sre-book/data-integrity/
+    note: Why teams should design for restores first, with layered defenses against deletes and corruption.
+  - title: Postmortem of database outage of January 31 (GitLab, 2017)
+    url: https://about.gitlab.com/blog/2017/02/10/postmortem-of-database-outage-of-january-31/
+    note: An accidental delete on a primary, several backup methods that failed silently, and a restore from a six hour old copy.
+---
+
+import Recall from '../../../components/lesson/Recall.astro';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import BackupRestoreWidget from '../../../components/widgets/BackupRestoreWidget';
+
+export const nodes = [
+  { id: 'app', kind: 'server', x: 110, y: 60, label: 'Shop app', sublabel: 'places orders' },
+  { id: 'primary', kind: 'database', x: 330, y: 60, label: 'Primary', sublabel: 'orders' },
+  { id: 'replica', kind: 'database', x: 550, y: 60, label: 'Replica', sublabel: 'half a second behind' },
+  { id: 'store', kind: 'database', x: 330, y: 260, label: 'Backup bucket', sublabel: 'snapshots, log' },
+  { id: 'side', kind: 'database', x: 550, y: 260, label: 'Side copy', sublabel: 'restored to 15:39' },
+];
+
+export const edges = [
+  { from: 'app', to: 'primary' },
+  { from: 'primary', to: 'replica' },
+  { from: 'primary', to: 'store' },
+  { from: 'store', to: 'side' },
+  { from: 'side', to: 'primary' },
+];
+
+export const steps = [
+  {
+    title: 'Orders flow, and the log ships every minute',
+    text: 'The shop writes orders to the primary. The replica gets each change within a second, and the primary ships its log to the backup bucket every minute. A full snapshot lands there each midnight.',
+    nodes: ['app', 'primary', 'replica', 'store'],
+    flows: ['app>primary', 'primary>replica', 'primary>store'],
+  },
+  {
+    title: 'The delete lands at 15:40',
+    text: 'A migration runs DELETE FROM orders. The replica applies it half a second later, and the archived log records it like any other write.',
+    nodes: ['primary', 'replica', 'store'],
+    flows: ['primary>replica', 'primary>store'],
+  },
+  {
+    title: 'Load the snapshot into a side copy',
+    text: 'The primary keeps taking new orders. A fresh database loads last midnight’s snapshot: 1 TB at 500 GB per hour takes 2 hours.',
+    nodes: ['store', 'side'],
+    flows: ['store>side'],
+  },
+  {
+    title: 'Replay the log up to 15:39',
+    text: 'Replaying 15 h 40 min of log at ten times real speed takes 94 minutes. Replay stops at the last transaction before the delete.',
+    nodes: ['store', 'side'],
+    flows: ['store>side'],
+  },
+  {
+    title: 'Copy the lost rows back',
+    text: 'A script copies the deleted rows into the primary. Orders placed after 15:40 stay put.',
+    nodes: ['side', 'primary'],
+    flows: ['side>primary'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'reliability/backups-and-recovery/recall-1',
+    prompt: 'Your manager asks how many orders the shop took in the last 15 minutes, compared with yesterday. Which signal answers fastest?',
+    options: [
+      {
+        text: 'A metric, such as an orders placed counter',
+        correct: true,
+        why: 'Metrics aggregate counts over time and compare periods in one query.',
+      },
+      {
+        text: 'Traces of recent checkout requests',
+        why: 'Traces show where one request spent its time. Counting orders across sampled traces is slow and incomplete.',
+      },
+      {
+        text: 'Logs from the checkout service',
+        why: 'You would scan and count every line. A metric already holds the count.',
+      },
+      {
+        text: 'The CPU graph of the database',
+        why: 'CPU shows how busy the machine is, which says nothing about orders.',
+      },
+    ],
+  },
+  {
+    id: 'reliability/backups-and-recovery/recall-2',
+    prompt: 'The primary crashes. With asynchronous replication, replica A trails by 0.2 s and replica B by 2 s. Which do you promote?',
+    options: [
+      {
+        text: 'A, losing the last 0.2 s of writes',
+        correct: true,
+        why: 'The replica with the highest applied log position holds the most acknowledged writes.',
+      },
+      {
+        text: 'B, because it has had more time to settle',
+        why: 'Lag means B misses more writes: 2 s of them.',
+      },
+      {
+        text: 'Either, because asynchronous replication loses nothing',
+        why: 'The primary acknowledged writes before replicas stored them, so the failover loses the tail that never left it.',
+      },
+      {
+        text: 'A, losing nothing',
+        why: 'Writes from the last 0.2 s exist only on the dead primary.',
+      },
+    ],
+  },
+];
+
+export const quiz = [
+  {
+    id: 'reliability/backups-and-recovery/q1',
+    prompt: 'The orders database has two replicas in two zones. Why can none of them undo an accidental DELETE FROM orders?',
+    options: [
+      {
+        text: 'They apply the delete within a second, like any other write',
+        correct: true,
+        why: 'Replication copies mistakes too. Only a copy from before the delete brings the rows back.',
+      },
+      {
+        text: 'Replicas only serve reads',
+        why: 'Replicas hold a full copy of the data, and the delete with it.',
+      },
+      {
+        text: 'Replicas in other zones lag by hours',
+        why: 'Zone replicas trail by well under a second, so the delete arrives almost at once.',
+      },
+      {
+        text: 'Promoting a replica erases its data',
+        why: 'Promotion keeps the data, which no longer holds the orders.',
+      },
+    ],
+  },
+  {
+    id: 'reliability/backups-and-recovery/q2',
+    prompt: 'Orders have an RPO of 1 hour and an RTO of 4 hours. Which restore meets both?',
+    options: [
+      {
+        text: 'Lose 40 minutes of orders, writable again after 2 h 45 min',
+        correct: true,
+        why: 'Both fit: 40 minutes is inside the RPO, and 2 h 45 min inside the RTO.',
+      },
+      {
+        text: 'Lose nothing, writable again after 7 h 58 min',
+        why: 'Nearly 8 hours to get the orders back blows the 4 hour RTO.',
+      },
+      {
+        text: 'Lose 15 h 40 min of orders, writable again after 2 h',
+        why: 'Losing most of a day of orders breaks the 1 hour RPO.',
+      },
+      {
+        text: 'Lose 50 minutes of orders, writable again after 5 h',
+        why: 'Five hours misses the RTO.',
+      },
+    ],
+  },
+  {
+    id: 'reliability/backups-and-recovery/q3',
+    prompt: 'The nightly backup job has reported success every night for a year. What does that prove?',
+    options: [
+      {
+        text: 'Only that the job wrote a file',
+        correct: true,
+        why: 'Jobs can write empty or corrupt files and still exit cleanly. Only a timed restore proves a backup works.',
+      },
+      {
+        text: 'That a restore will fit the RTO',
+        why: 'Nothing measured restore time, or whether the file loads at all.',
+      },
+      {
+        text: 'That the backup matches the live data',
+        why: 'Nothing compared them. Row counts or checksums after a restore would.',
+      },
+      {
+        text: 'Nothing, because backup jobs never fail',
+        why: 'They fail often: full disks, expired credentials, version mismatches.',
+      },
+    ],
+  },
+  {
+    id: 'reliability/backups-and-recovery/q4',
+    prompt: 'You restore a side copy to 15:39. Since the 15:40 delete, customers placed 300 new orders on the live primary. How do you bring the deleted orders back?',
+    options: [
+      {
+        text: 'Copy the deleted rows from the side copy into the live primary',
+        correct: true,
+        why: 'The old orders return and the 300 new ones stay. Skip rows already present, so the script can rerun.',
+      },
+      {
+        text: 'Point the shop at the side copy',
+        why: 'The side copy stops at 15:39, so the 300 new orders vanish.',
+      },
+      {
+        text: 'Rewind the live primary to 15:39',
+        why: 'Rewinding throws away the 300 new orders.',
+      },
+      {
+        text: 'Replay the whole log on the side copy, then switch to it',
+        why: 'Replay past 15:40 applies the delete again.',
+      },
+    ],
+  },
+];
+
+<Recall questions={recall} />
+
+<Objectives>
+
+- Explain why replicas cannot undo a bad write, and what a backup must hold to undo one.
+- Compare full backups, incremental backups, and a snapshot plus log replay on data lost, restore time, and storage.
+- Set an RPO and an RTO for a dataset, and pick a backup schedule that fits both.
+- Restore to a side copy and put back only the damaged rows, keeping writes made after the mistake.
+- Plan a restore drill that proves a backup works.
+
+</Objectives>
+
+## The failure: a migration deletes the orders
+
+The shop from [observability](../observability/) keeps its orders in one 1 TB database with two
+[read replicas](../../scaling/read-replicas/). At midnight, a job copies the whole database to a bucket.
+
+At 15:40, a migration meant for a test table runs against production and deletes every order row. Checkout keeps
+working, but the history page shows nothing older than 15:40.
+
+<Predict
+  client:visible
+  id="reliability/backups-and-recovery/predict-1"
+  question="The replicas trail the primary by half a second. At 15:41 someone notices the empty history pages. What is the newest copy of the deleted orders the team can get back?"
+  options={[
+    'Either replica, which held them half a second ago',
+    'The replica with the most lag',
+    'Last midnight’s backup, losing every order from 00:00 to 15:40',
+    'None, because nothing can undo a committed delete',
+  ]}
+  answer={2}
+>
+
+**Last midnight's backup.** Both replicas applied the delete half a second after the primary did. Replication copies
+mistakes as faithfully as good writes. The midnight copy is the newest one from before the delete, so the team loses
+15 hours and 40 minutes of orders.
+
+</Predict>
+
+Replicas, RAID, and extra zones protect against hardware failure. Bad writes from migrations, buggy deploys, scripts
+run against the wrong database, and attackers need a copy from before the write: a **backup**.
+
+## Backups are copies in time
+
+Three designs cover almost every database.
+
+- **Full backup.** A complete copy on a schedule. A restore loads one file, but every copy costs 1 TB.
+- **Incremental backup.** Only what changed since the previous backup, about 5 GB an hour here. A restore loads the
+  last full backup, then applies each incremental in order. One missing or corrupt link breaks everything after it.
+- **Snapshot plus log replay.** The database writes each change to its write-ahead log first, as in
+  [storage engines](../../foundations/storage-engines/). Archive that log every minute and keep a snapshot of the data
+  files. A restore loads the snapshot, then replays the log up to any moment you choose. This is
+  **point-in-time recovery**, or PITR.
+
+Replay skips the waiting on clients and locks, so it runs faster than the original writes; this lesson assumes ten
+times faster. The further the target lies from the snapshot, the longer replay runs.
+
+<details>
+<summary>Go deeper: logical and physical backups</summary>
+
+A **logical** backup, such as `pg_dump` or `mysqldump`, writes SQL or rows. It restores into a different version or
+even a different engine, and you can pull one table out of it. Loading it rebuilds every index, so it restores slowly.
+A **physical** backup copies the data files and log, as `pg_basebackup` or a disk snapshot does. It restores fast, but
+only into the same engine version. Large systems keep physical backups for recovery and take logical dumps for
+portability and single-table restores.
+
+Copying data files while the database runs gives a torn copy, with some pages from before a write and some from after.
+Use the database's own backup tool, or a snapshot taken together with the log that makes it consistent.
+
+</details>
+
+<Analogy>
+
+A replica is a second pen tied to the first: whatever you write, including a line through a page, it writes too. A
+snapshot is a photocopy of the notebook from last midnight. The archived log is a journal of every stroke since. To
+recover a page someone scribbled over at 15:40, you take the photocopy and redraw every stroke from the journal up to
+15:39.
+
+</Analogy>
+
+## RPO and RTO are budgets
+
+- **Recovery point objective (RPO):** how much recent data you may lose, measured in time.
+- **Recovery time objective (RTO):** how long until the service works again. Here, that means until the deleted orders
+  are back in the primary.
+
+Like an [SLO](../../thinking/slos/), each is a promise the business agrees to. Orders here get an RPO of 1 hour and an
+RTO of 4 hours. Click analytics could accept a day for both, because raw logs can rebuild it.
+
+Backup cadence sets the RPO: with full backups at midnight, a delete at 15:40 loses 15 h 40 min. The RTO is bytes to
+load divided by load speed, plus replay time. At 500 GB per hour, 1 TB takes 2 hours to load. The widget starts the
+clock when the restore starts; a real incident adds the time to notice and decide.
+
+<StepDiagram client:visible title="Point-in-time recovery into a side copy" nodes={nodes} edges={edges} steps={steps} height={320} />
+
+## Try it
+
+Each row is one backup design for the 1 TB orders database. Pick a scenario, then switch the snapshot cadence.
+
+<BackupRestoreWidget client:visible />
+
+What to look for:
+
+- **Afternoon delete.** Full backups lose 15 h 40 min. Hourly incrementals lose 40 minutes. Snapshot plus log loses
+  nothing and takes 3 h 34 min.
+- **Ten times the data.** Loading 10 TB takes 20 hours, so every design misses the RTO. No cadence fixes that.
+- **Latest backup is corrupt.** Every design wastes 2 hours on a bad base. Full backups fall back a day, and the
+  incrementals chained on the bad base go with it. Log replay still reaches 15:40, in 7 h 58 min.
+- **Backup bytes per day.** Snapshots every 6 hours quadruple storage, while the log costs 192 GB.
+
+<Predict
+  client:visible
+  id="reliability/backups-and-recovery/predict-2"
+  question="With daily snapshots, snapshot plus log meets both budgets for the 15:40 delete. Now the same delete lands at 23:50, ten minutes before the nightly snapshot. What happens to that design?"
+  options={[
+    'It still meets both budgets',
+    'It loses 50 minutes of orders',
+    'It loses nothing but takes 4 h 23 min, past the 4 hour RTO',
+    'It falls back to the snapshot from the night before',
+  ]}
+  answer={2}
+>
+
+**It misses the RTO.** It loses nothing, but replaying 23 h 50 min of log takes 143 minutes on top of the 2 hour load.
+Snapshots every 6 hours cap replay, and the same restore drops to 2 h 35 min. Snapshot cadence sets the worst case RTO,
+and the log sets the RPO.
+
+</Predict>
+
+<details>
+<summary>Go deeper: snapshots that cost less than a full copy</summary>
+
+The widget charges a full terabyte per snapshot. Cloud disk snapshots store only the blocks that changed since the
+previous snapshot, so a 6 hour cadence costs far less in practice. Some also restore lazily: the new disk is usable in
+minutes and fetches blocks on first read, which shortens the RTO but makes the first hours slow. Measure both in a
+drill before you count on them.
+
+</details>
+
+## A backup you never restored is a hope
+
+The corrupt scenario is the common one. In 2017, an engineer at GitLab.com deleted the primary database's data
+directory by mistake. The team found its regular dumps had been failing silently, and the alert emails never arrived.
+They restored from a staging copy about six hours old.
+
+A restore drill proves a backup on a schedule:
+
+1. Restore the latest backup into a fresh database, using the runbook and the on-call people.
+2. Time each stage (fetch, load, replay) and compare the total with the RTO.
+3. Compare row counts and checksums of key tables with the source at the same log position.
+4. Alert when a drill fails or runs past the RTO.
+
+Many teams automate a small drill daily and run a full one by hand each quarter.
+
+<details>
+<summary>Go deeper: where to keep the copies</summary>
+
+The classic **3-2-1 rule** says three copies of the data, on two kinds of storage, with one copy off site. Backups
+usually live in [object storage](../../scaling/object-storage/), which is cheap per byte and spans zones. Put at least
+one copy in another region and another account, with object lock so nobody can delete it early. An attacker or a buggy
+cleanup script holding the database's credentials should be unable to erase its backups. Encrypt them too: a backup
+holds every customer record.
+
+</details>
+
+## After the restore: put the right rows back
+
+If the team notices at 16:10, the shop has taken 30 minutes of new orders since the delete. A restore has two shapes.
+
+- **Rewind.** Restore the database itself to 15:39. Every order placed after the delete disappears, so this suits
+  only a total loss, such as dead disks.
+- **Restore aside and copy back.** Restore into a side copy, as in the diagram, and copy only the damaged rows into
+  the live primary. New orders survive.
+
+Write the copy script with inserts that skip rows already present, as in [idempotency](../idempotency/), because it
+will fail halfway at least once.
+
+<details>
+<summary>Go deeper: more copy-back traps, and the delayed replica</summary>
+
+- **Colliding keys.** If the database reuses IDs, a restored order can clash with a new one. IDs that never repeat, as
+  in [unique IDs](../../foundations/unique-ids/), avoid that.
+- **Related rows.** If the delete cascaded into order lines and payments, restore those tables in the same pass, in
+  foreign key order.
+- **Everything downstream.** Caches, search indexes, and analytics saw the delete too. Rebuild them from the restored
+  rows.
+
+Some teams keep a **delayed replica** that applies changes an hour late. Stop it within the hour, roll it forward to
+15:39, and it becomes a side copy in minutes.
+
+</details>
+
+## Trade-offs
+
+<TradeoffTable title="Ways to recover from a bad write">
+
+| Choice                           | What it buys                                       | What it costs                                                  |
+| -------------------------------- | -------------------------------------------------- | -------------------------------------------------------------- |
+| Daily full backups               | Simple restore, one file to load                   | Up to a day of lost writes                                     |
+| Full plus hourly incrementals    | Loss of under an hour, small extra storage         | A long chain to apply, and one bad link strands the rest       |
+| Snapshot plus archived log       | Restore to any moment, about a minute of loss      | Replay time grows with the gap since the last snapshot         |
+| More frequent snapshots          | Shorter replay, better worst case RTO              | More storage and more load on the database while copying       |
+| Delayed replica                  | A side copy ready in minutes for recent mistakes   | A whole extra database, useless once the delay window passes   |
+| Off site, locked copies          | Survives a lost region, attackers, and bad scripts | Slower restore from far away, and more to pay for              |
+| Scheduled restore drills         | Proof that backups load, and a measured RTO        | Machine time and engineer time on every drill                  |
+
+</TradeoffTable>
+
+## Common mistakes
+
+- Counting replicas, RAID, or extra zones as backups. They copy the bad write too.
+- Trusting a backup job's exit code without restoring its output.
+- Keeping backups under the same account and credentials as the database.
+- Rewinding the live primary, which throws away every write since the mistake.
+- Setting one RPO and RTO for every dataset.
+
+<KeyTakeaways>
+
+- Replicas copy mistakes within a second. Only a copy from before the mistake can undo it.
+- The RPO bounds how much recent data you lose, and the RTO bounds how long until the service works again. Set both per dataset.
+- A snapshot plus archived log restores to any moment. Snapshot often enough that replay fits inside the RTO.
+- Restore into a side copy and copy back only the damaged rows, so writes made after the mistake survive.
+- A backup counts only after a timed restore succeeds. Drill on a schedule and alert on failures.
+
+</KeyTakeaways>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+The orders database grows to 10 TB, and restores still load at 500 GB per hour. The business tightens orders to an RPO
+of 5 minutes and an RTO of 1 hour.
+
+1. Why can no single restore of this database meet the new RTO?
+2. Propose a design that meets both budgets for an accidental delete like the one at 15:40.
+3. What drill would prove it, and how often would you run it?
+
+<div slot="answer">
+
+- **Loading alone takes 20 hours.** 10,000 GB ÷ 500 GB per hour, before any replay. Snapshot cadence cannot fix bytes
+  to load.
+- **Restore less data at a time.** Split orders into about 32 shards of roughly 310 GB, as in
+  [sharding](../../scaling/sharding/). Restored in parallel, each loads in about 37 minutes, leaving room for replay
+  with hourly snapshots. Archive the log every minute for the RPO, and keep a delayed replica per shard as a fast path.
+- **Drill per shard.** Daily, restore one random shard, time it, compare checksums, and alert past 45 minutes.
+  Quarterly, restore all shards at once to prove storage and network carry the combined load.
+
+</div>
+
+</Challenge>
