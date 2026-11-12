@@ -17,12 +17,5 @@
   "reliability/retries",
   "reliability/rate-limiting",
   "reliability/circuit-breakers",
-  "reliability/observability",
-  "ai-systems/evaluation-and-budgets",
-  "ai-systems/gateway",
-  "ai-systems/retrieval",
-  "ai-systems/llm-serving",
-  "ai-systems/agents",
-  "ai-systems/recommendations",
-  "ai-systems/support-assistant"
+  "reliability/observability"
 ]
