@@ -35,6 +35,8 @@ export interface Lesson {
   format?: LessonFormat;
   /** Id of the module a learner should finish first. Lets case studies interleave with the core path. */
   bestAfter?: string;
+  /** Elective deep dive. The course path and Next skip it, and the map labels it "Optional deep dive". */
+  optional?: boolean;
 }
 
 export interface CourseModule {
@@ -180,6 +182,7 @@ const modules: ModuleInput[] = [
           'Follow a write through the log, B-trees, and LSM trees, and see what each engine pays for speed.',
         minutes: 22,
         difficulty: 2,
+        optional: true,
         buildsOn: ['foundations/indexes', 'foundations/transactions'],
       },
       {
@@ -259,7 +262,7 @@ const modules: ModuleInput[] = [
           'Copy the database to serve more reads and survive a failover, and handle the lag that copying creates.',
         minutes: 23,
         difficulty: 2,
-        buildsOn: ['scaling/caching', 'scaling/cdn'],
+        buildsOn: ['scaling/caching', 'scaling/cdn', 'foundations/storage-engines'],
       },
       {
         id: 'scaling/sharding',
@@ -468,7 +471,7 @@ const modules: ModuleInput[] = [
         summary: 'Coordinate a multi-step business process with compensating steps instead of a global lock.',
         minutes: 25,
         difficulty: 3,
-        buildsOn: ['foundations/transactions', 'async/event-driven-design'],
+        buildsOn: ['foundations/transactions', 'reliability/idempotency', 'async/event-driven-design'],
         example: 'Shopping cart checkout',
       },
       {
@@ -487,7 +490,7 @@ const modules: ModuleInput[] = [
     number: 6,
     title: 'Case studies',
     summary:
-      'Fourteen products. The two sho.rt cases put a finished module under load, and the other twelve each turn on one constraint that dominates the design. Start each one as soon as you finish the module it builds on. Beginner route: Shortener at scale and Shortener bad day, then News feed and Notifications, then Ticketing, Payments and Chat, then Video streaming, Search, Ride sharing, Metrics and Collaborative editor. File sync and Key-value store are extra cases off the route.',
+      'Fourteen products. The two sho.rt cases put a finished module under load, and the other twelve each turn on one constraint that dominates the design. Start each one as soon as you finish the module it builds on. Beginner route: Shortener at scale and Shortener bad day, then News feed and Notifications, then Ticketing, Payments and Chat, then Video streaming, Search, Ride sharing, Metrics and Collaborative editor. The beginner route is an order. Open the next case only after the Best after module on its card. File sync and Key-value store are extra cases off the route.',
     example: 'A different system per lesson',
     sharedExample: false,
     lessons: [
@@ -579,7 +582,12 @@ const modules: ModuleInput[] = [
           'Store large files in object storage, upload them in parts, transcode a bitrate ladder, and pay for bandwidth wisely.',
         minutes: 30,
         difficulty: 3,
-        buildsOn: ['scaling/cdn', 'reliability/idempotency', 'reliability/queues-and-backpressure'],
+        buildsOn: [
+          'scaling/cdn',
+          'scaling/object-storage',
+          'reliability/idempotency',
+          'reliability/queues-and-backpressure',
+        ],
         bestAfter: 'reliability',
       },
       {
@@ -705,6 +713,7 @@ const modules: ModuleInput[] = [
         summary: 'Narrow millions of items to a handful with candidate generation, then ranking.',
         minutes: 28,
         difficulty: 2,
+        optional: true,
         buildsOn: ['ai-systems/retrieval', 'ai-systems/evaluation-and-budgets'],
       },
       {
@@ -714,7 +723,12 @@ const modules: ModuleInput[] = [
           'Design a multi-tenant assistant with citations, an abstention path, one approved action, and a fixed budget.',
         minutes: 24,
         difficulty: 3,
-        buildsOn: ['ai-systems/retrieval', 'ai-systems/gateway', 'ai-systems/agents'],
+        buildsOn: [
+          'ai-systems/retrieval',
+          'ai-systems/gateway',
+          'ai-systems/llm-serving',
+          'ai-systems/agents',
+        ],
       },
     ],
   },

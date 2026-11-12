@@ -1,20 +1,22 @@
 ---
 import Default from '@astrojs/starlight/components/MarkdownContent.astro';
-import { allLessons, findLesson } from '../../data/curriculum';
+import { pathNeighbours } from '../../data/coursePath';
+import { findLesson } from '../../data/curriculum';
 import { lessonHref } from '../../lib/paths';
+import ApplyItNow from '../lesson/ApplyItNow.astro';
 import FurtherReading from '../lesson/FurtherReading.astro';
 import LessonComplete from '../lesson/LessonComplete';
 
 const { id, entry } = Astro.locals.starlightRoute;
 const lesson = findLesson(id);
-const index = allLessons.findIndex((candidate) => candidate.id === lesson?.id);
-const next = index >= 0 ? allLessons[index + 1] : undefined;
+const next = lesson ? pathNeighbours(lesson.id)?.next : undefined;
 const sources = entry.data.furtherReading ?? [];
 ---
 
 <Default><slot /></Default>
 {lesson && <span hidden data-lesson-id={lesson.id} />}
 {lesson && <FurtherReading sources={sources} />}
+{lesson && <ApplyItNow lessonId={lesson.id} />}
 {
   lesson && (
     <LessonComplete

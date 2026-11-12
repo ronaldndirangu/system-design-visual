@@ -387,6 +387,7 @@ main section.sdv-sim[id] {
 
 .sdv-callout,
 .sdv-reading,
+.sdv-apply,
 .sdv-predict,
 .sdv-quiz,
 .sdv-complete,
@@ -508,6 +509,48 @@ main section.sdv-sim[id] {
   text-underline-offset: 0.2em;
 }
 .sdv-reading__note {
+  color: var(--sdv-text-3);
+  display: block;
+  font-size: var(--sdv-text-sm);
+  line-height: var(--sdv-leading-ui);
+}
+
+.sdv-apply {
+  background: var(--sdv-surface-2);
+  border: 1px solid var(--sdv-border-subtle);
+  border-radius: var(--sdv-radius-md);
+  padding: var(--sdv-space-5);
+}
+.sdv-apply__title {
+  color: var(--sdv-text-1);
+  font-size: var(--sdv-text-lg);
+  font-weight: var(--sdv-weight-heading);
+  letter-spacing: var(--sdv-tracking-heading);
+  line-height: var(--sdv-leading-heading);
+  margin: 0 0 var(--sdv-space-2);
+}
+.sdv-apply__intro,
+.sdv-apply__next {
+  color: var(--sdv-text-2);
+  margin: 0 0 var(--sdv-space-3);
+}
+.sdv-apply__next {
+  margin: var(--sdv-space-4) 0 0;
+}
+.sdv-apply__list {
+  display: grid;
+  gap: var(--sdv-space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-apply a {
+  color: var(--sdv-accent-text);
+  font-weight: var(--sdv-weight-ui);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.sdv-apply__meta {
   color: var(--sdv-text-3);
   display: block;
   font-size: var(--sdv-text-sm);

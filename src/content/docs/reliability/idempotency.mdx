@@ -8,6 +8,7 @@ import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
@@ -363,6 +364,16 @@ event ID and skip IDs already seen. The lesson [Delivery semantics and the outbo
 | Naturally idempotent operation          | No store at all: "set to X" is safe to repeat                  | Many operations, such as charging a card, cannot be phrased that way                         |
 
 </TradeoffTable>
+
+<KeyTakeaways>
+
+- A client that hears no answer cannot tell a lost request from a lost receipt or a slow payment, so a retry must be safe.
+- The client creates one idempotency key per intent and sends it on every attempt, and the server returns the saved result for a key it knows.
+- Claim the key atomically before doing the work, so a duplicate that arrives mid request gets 409 Conflict instead of running twice.
+- An expired claim only lets recovery start: pass the same key to the payment provider and fence the receipt save with a token.
+- Scope keys to a user, keep them longer than any retry can arrive, and size the store as requests per second × lifetime.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
