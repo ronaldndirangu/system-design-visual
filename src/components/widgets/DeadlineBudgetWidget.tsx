@@ -72,7 +72,7 @@ export default function DeadlineBudgetWidget({ initialQueryMs = 2500, initialMod
           label: 'Client result',
           value: plan.clientAnswered
             ? `Redirect at ${plan.clientDoneMs} ms`
-            : `504 at ${plan.clientDoneMs} ms`,
+            : `Client deadline exceeded at ${plan.clientDoneMs} ms`,
           tone: plan.clientAnswered ? 'ok' : 'warn',
         },
         {

@@ -1,11 +1,26 @@
 ---
 title: Queues and backpressure
 description: Watch a viral sho.rt link bury the server under a line it can never finish, then fix it with a bounded queue, a fast 503, and load shedding by expected wait.
+furtherReading:
+  - title: Using load shedding to avoid overload (Amazon Builders' Library)
+    url: https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/
+    note: How Amazon services reject excess work early so the requests they accept still finish in time.
+  - title: Avoiding insurmountable queue backlogs (Amazon Builders' Library)
+    url: https://aws.amazon.com/builders-library/avoiding-insurmountable-queue-backlogs/
+    note: Why a queue that falls behind can stay behind for hours, and how to bound, shed, and measure backlog age.
+  - title: 'Handling overload (Google SRE book, chapter 21)'
+    url: https://sre.google/sre-book/handling-overload/
+    note: Per-request cost estimates, criticality, and graceful rejection when a service runs out of capacity.
+  - title: 'RFC 8289: Controlled Delay Active Queue Management'
+    url: https://www.rfc-editor.org/rfc/rfc8289
+    note: CoDel, the router algorithm that drops packets when they sit in a queue longer than a target time.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
@@ -24,39 +39,62 @@ export const edges = [
 export const steps = [
   {
     title: 'Requests join the line',
-    text: 'Visitors click sho.rt links at 40 per second. Each request joins the waiting line, and the next free worker takes it from the front.',
+    text: 'Visitors click sho.rt links at 40 per second. Each request waits in line until a worker is free.',
     nodes: ['client', 'queue'],
     flows: ['client>queue'],
   },
   {
     title: 'Workers drain the line',
-    text: 'Five workers each finish a redirect in about 100 ms, so together they drain about 50 requests per second. At 40 per second the line stays short, and the average wait is about 20 ms.',
+    text: 'Five workers each finish a redirect in about 100 ms, so they drain about 50 per second. At 40 per second the line stays short.',
     nodes: ['queue', 'server'],
     flows: ['queue>server'],
   },
   {
     title: 'A short burst fills the line',
-    text: 'For one second, 90 requests arrive. Workers still drain only 50, so about 40 extra requests wait in line. When the burst ends, the workers catch up and the line empties.',
+    text: 'For one second, 90 requests arrive and 50 leave, so about 40 wait. Then the line empties.',
     nodes: ['client', 'queue', 'server'],
     flows: ['client>queue', 'queue>server'],
   },
   {
     title: 'Traffic stays high',
-    text: 'A viral link holds traffic at 75 per second. The line grows by 25 requests every second and never drains. Each new request waits behind everyone already in line.',
+    text: 'A viral link holds traffic at 75 per second. The line grows by 25 every second and never drains.',
     nodes: ['client', 'queue'],
     flows: ['client>queue'],
   },
   {
     title: 'The line is full, so the server pushes back',
-    text: 'A bounded line stops at 40. The next request gets 503 Service Unavailable with a Retry-After header at once, while its visitor can still retry or see a friendly error.',
+    text: 'A bounded line stops at 40. The next request gets 503 with Retry-After at once, while its visitor can still act.',
     nodes: ['client', 'queue'],
     flows: ['queue>client'],
   },
   {
-    title: 'Every admitted request still has time',
-    text: '40 requests drained at 50 per second is a 0.8 s wait, just under the 1 s that visitors wait. The requests the line accepts get answered while someone still wants them.',
+    title: 'Admitted requests still have time',
+    text: '40 requests drained at 50 per second wait 0.8 s, just under the 1 s that visitors wait.',
     nodes: ['queue', 'server'],
     flows: ['queue>server'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'reliability/queues-and-backpressure/recall-1',
+    prompt: 'Each redirect calls click analytics with a 2 s timeout, at 1,000 redirects per second and 200 workers. Analytics hangs. Why do redirects fail?',
+    options: [
+      { text: 'Analytics returns errors, and redirects pass them on', why: 'A hung service returns nothing. Waiting does the damage.' },
+      { text: 'The 2 s timeout cancels the redirects', why: 'It ends the analytics call, too late to help.' },
+      { text: 'Redirects need the click count to find the long URL', why: 'A redirect needs only the long URL.' },
+      { text: 'By Little\'s law, 2,000 calls wait at once, ten times the workers', correct: true, why: '1,000 per second × 2 s = 2,000 stuck calls, so every worker hangs.' },
+    ],
+  },
+  {
+    id: 'reliability/queues-and-backpressure/recall-2',
+    prompt: 'A visitor gives up after 1 s, yet the server and database keep working for 3 s more. What stops every hop when the visitor leaves?',
+    options: [
+      { text: 'A longer timeout on each hop', why: 'That keeps the work running even longer.' },
+      { text: 'Retrying the database query', why: 'A retry adds work for a visitor who already left.' },
+      { text: 'Passing the remaining deadline along and cancelling when it runs out', correct: true, why: 'Every hop knows the time left and stops together.' },
+      { text: 'A bigger database connection pool', why: 'More connections let more abandoned queries run.' },
+    ],
   },
 ];
 
@@ -65,61 +103,64 @@ export const quiz = [
     id: 'reliability/queues-and-backpressure/q1',
     prompt: 'During a long traffic spike, all 5 sho.rt workers stay 100% busy, yet almost every visitor sees a timeout. What explains it?',
     options: [
-      { text: 'The workers slowed down under load', why: 'Each redirect still takes about 100 ms. The workers finish just as many requests per second as before; the requests simply waited too long first.' },
-      { text: 'An unbounded line makes each request wait longer than its visitor will', correct: true, why: 'The workers stay busy finishing requests from the back of a long line. By the time a request reaches a worker, its visitor already gave up, so the answer is wasted.' },
-      { text: 'The load balancer drops requests during spikes', why: 'Nothing here drops requests. The unbounded line accepts every one; that is the problem.' },
-      { text: 'The server runs out of workers, so new requests get 503', why: 'An unbounded line never sends 503. It accepts everything and answers late, which is worse for the visitor than a fast 503.' },
+      { text: 'The workers slowed down under load', why: 'Each redirect still takes about 100 ms. Requests waited too long first.' },
+      { text: 'An unbounded line makes each request wait longer than its visitor will', correct: true, why: 'A worker reaches each request after its visitor gave up.' },
+      { text: 'The load balancer drops requests during spikes', why: 'Nothing drops requests. The line accepts every one.' },
+      { text: 'The server runs out of workers, so new requests get 503', why: 'An unbounded line never sends 503. It answers late.' },
     ],
   },
   {
     id: 'reliability/queues-and-backpressure/q2',
-    prompt: 'A queue admits 200 requests per second, and each request waits 0.5 s in line on average. By Little\'s law, how many requests wait in line on average?',
+    prompt: 'A queue admits 200 requests per second, and each waits 0.5 s on average. By Little\'s law, how many wait in line on average?',
     options: [
-      { text: '100', correct: true, why: 'L = λ × W = 200 per second × 0.5 s = 100 requests.' },
-      { text: '400', why: 'That divides the rate by the wait. Little\'s law multiplies them: L = λ × W.' },
-      { text: '0.0025', why: 'That divides the wait by the rate. The units do not work out to a number of requests.' },
-      { text: 'It depends on how the arrivals are spread out', why: 'Little\'s law holds for averages over a long stretch of time, whatever the arrival pattern or service order.' },
+      { text: '100', correct: true, why: 'L = λ × W = 200 per second × 0.5 s = 100.' },
+      { text: '400', why: 'That divides the rate by the wait.' },
+      { text: '0.0025', why: 'That divides the wait by the rate.' },
+      { text: 'It depends on how the arrivals are spread out', why: 'The law holds for long-run averages of any arrival pattern.' },
     ],
   },
   {
     id: 'reliability/queues-and-backpressure/q3',
-    prompt: 'Clients give up after 2 s. Workers drain 100 requests per second, and each request needs about 0.2 s of work after it leaves the line. Which line limit keeps admitted requests in time?',
+    prompt: 'Clients give up after 2 s. Workers drain 100 requests per second, and each needs 0.2 s of work after leaving the line. Which line limit keeps admitted requests in time?',
     options: [
-      { text: 'About 180', correct: true, why: 'A request at the back of a full line waits limit ÷ drain rate, then needs its own work time. 100 per second × (2 s minus 0.2 s) = 180.' },
-      { text: 'About 200', why: '200 ÷ 100 per second is a 2 s wait, and the 0.2 s of work comes on top, so the last requests in line finish after their clients gave up.' },
-      { text: 'About 20', why: 'A line of 20 drains in 0.2 s. It keeps waits very short, yet it turns away bursts that a longer line could absorb in time.' },
-      { text: 'No limit, so no request is ever rejected', why: 'With no limit, a long overload makes the wait grow past 2 s, and every answer after that arrives too late.' },
+      { text: 'About 180', correct: true, why: 'The last request waits limit ÷ 100 per second, then works 0.2 s: 100 × 1.8 s = 180.' },
+      { text: 'About 200', why: 'That is a 2 s wait plus 0.2 s of work, so the last requests finish late.' },
+      { text: 'About 20', why: 'It turns away bursts that a longer line could absorb in time.' },
+      { text: 'No limit, so no request is ever rejected', why: 'In a long overload the wait passes 2 s, and every later answer is late.' },
     ],
   },
   {
     id: 'reliability/queues-and-backpressure/q4',
     prompt: 'Redirects suddenly take twice as long. Why does a 600 ms wait budget answer more visitors in time than a fixed line limit of 40?',
     options: [
-      { text: 'A full line now holds twice as much waiting time, and only the wait budget notices', correct: true, why: 'A line limit counts requests. When each takes twice as long, 40 requests mean 1.6 s of waiting. A wait budget estimates time, so it turns requests away before they would be late.' },
-      { text: 'The wait budget admits more requests', why: 'It admits fewer. In this toy model with seed 42, it turns away 143 requests against 114 for the line limit, yet answers 201 more in time.' },
-      { text: 'The wait budget makes each redirect faster', why: 'Each redirect takes the same time in both lanes. The budget only changes which requests wait.' },
-      { text: 'A line limit never rejects anything', why: 'A line limit rejects every request that arrives while the line is full. It just does not react to slower work until the line fills.' },
+      { text: 'A full line now holds twice as much waiting time, and only the wait budget notices', correct: true, why: 'A line of 40 now means 1.6 s of waiting. A wait budget estimates time, so it turns away most requests that would finish late.' },
+      { text: 'The wait budget admits more requests', why: 'It admits fewer. With seed 42 it turns away 143 requests against 114, yet answers 201 more in time.' },
+      { text: 'The wait budget makes each redirect faster', why: 'Redirects take the same time in both lanes.' },
+      { text: 'A line limit never rejects anything', why: 'It rejects arrivals while full. It just reacts late to slower work.' },
     ],
   },
 ];
 
+<Recall questions={recall} />
+
 <Objectives>
 
-- Explain how a queue absorbs a short burst, and why a line with no limit fails almost every request during a long one.
-- Use Little's law to connect line length, arrival rate, and wait time, and size a queue from the client's deadline.
-- Push back on callers with a fast 503 and Retry-After when the line is full.
-- Shed load by expected wait so the server keeps its promises when it slows down, and name what that costs.
+- Explain why a short line absorbs bursts and an unbounded line fails almost everyone in a long overload.
+- Size a queue from the client's deadline with Little's law.
+- Push back with a fast 503 and Retry-After.
+- Shed load by expected wait, and recheck the budget at pickup.
+- Keep a slow consumer off the request path with a bounded buffer.
 
 </Objectives>
 
 ## The failure: a link goes viral
 
-The sho.rt server has 5 workers, and each redirect takes about 100 ms of work, so it can answer about 50 redirects per
-second. On a normal day, 40 arrive each second. Visitors give up after 1 s. Then a celebrity shares a sho.rt link, and
-for 12 s traffic jumps to 75 requests per second, half again what the server can handle.
+The sho.rt server has 5 workers, and each redirect takes about 100 ms, so it answers about 50 redirects per second. On
+a normal day, 40 arrive each second, and visitors give up after 1 s. Then a celebrity shares a sho.rt link, and for 12 s
+traffic jumps to 75 requests per second.
 
-Two copies of the server get the exact same requests. One keeps every request in a line with no limit. The other caps
-the line at 40 and turns away anything that arrives while it is full.
+Two copies of the server get the same requests. One keeps every request in a line with no limit. The other caps the
+line at 40 and turns away anything that arrives while it is full.
 
 <Predict
   client:visible
@@ -134,10 +175,44 @@ the line at 40 and turns away anything that arrives while it is full.
 >
 
 **The line of 40, by a wide margin.** In this toy model with seed 42, the unbounded line answers 265 of 1,222 requests
-in time and 691 too late, after their visitors gave up. The line of 40 turns 268 away with a 503 and answers 946 in
-time. Both servers keep all 5 workers busy. The unbounded one spends its workers on answers nobody reads.
+in time and 691 too late. The line of 40 turns 268 away with a 503 and answers 946 in time. Both keep all 5 workers
+busy; the unbounded one spends them on answers nobody reads.
 
 </Predict>
+
+## Why a line with no limit fails everyone
+
+When requests arrive faster than workers finish them, the extras wait in a **queue** until a worker is free. Trouble
+starts when arrivals stay above the service rate: 75 arrive and 50 leave, so the line grows by 25 each second, to about
+300 after 12 s.
+
+That line takes 6 s to clear, and visitors give up after 1 s. The workers stay 100% busy, so CPU graphs look healthy,
+while **goodput**, the answers that arrive while someone still wants them, collapses. At 20 s the unbounded server still
+holds 266 requests that will all finish late.
+
+<StepDiagram client:visible title="A waiting line, step by step" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy>
+
+A popular restaurant keeps a waitlist. On a wild night, a host who writes down every name promises tables in three hours
+to guests who leave in twenty minutes, and the kitchen cooks for empty tables. A good host says "We are full, come back
+at eight." That honest no is **backpressure**.
+
+</Analogy>
+
+The analogy breaks because guests see the crowd and leave on their own. A request cannot see the line, and an abandoned
+one still holds its place until a worker reaches it, so the server has to decide for it.
+
+### Little's law: a line is a wait
+
+**Little's law** says the average number of requests in a line, L, equals the rate they enter, λ, times the average
+time each spends there, W: **L = λ × W**. It holds for long-run averages of any arrival pattern.
+
+So a line limit is a promise about time. The last request in a full line waits limit ÷ drain rate, then
+needs its own work, and that sum must fit the client's deadline. sho.rt drains about 50 per second, its slowest
+redirect takes 140 ms, and visitors wait 1 s: 50 × (1 s minus 0.14 s) ≈ 43, so the limit is 40.
+
+## Try it: same traffic, two waiting lines
 
 <BackpressureWidget
   client:visible
@@ -147,54 +222,12 @@ time. Both servers keep all 5 workers busy. The unbounded one spends its workers
   instructions="Press Play and watch the unbounded line grow. Then pick Steady traffic: below capacity, the two lines behave identically."
 />
 
-## Why a line with no limit fails everyone
+1. Play **Viral link** and watch the Little's law rows: λ × W matches L throughout.
+2. Pick **Steady traffic** and press **Skip to the end**. Both lanes answer the same 800 requests, so a limit costs
+   nothing below capacity.
 
-When requests arrive faster than workers finish them, the extra ones wait in a **queue**. A queue is useful: it holds a
-request for a moment so a worker can take it the instant one is free. Trouble starts when arrivals stay above the
-service rate. Then the line grows by the difference every second: 75 arrive and 50 leave, so 25 more requests wait each
-second, about 300 after 12 s. This run peaks at 308.
-
-Every new request waits behind the whole line. A line of 300 drained at 50 per second takes 6 s to clear, and the
-visitor gave up after 1 s. The workers stay 100% busy, so CPU graphs and throughput look healthy. What collapses is
-**goodput**: answers that arrive while someone still wants them. The damage also outlasts the spike. At 20 s, 4 s after
-traffic falls back, the unbounded server still holds 266 requests, and each will finish long after its visitor left.
-
-<StepDiagram client:visible title="A waiting line, step by step" nodes={nodes} edges={edges} steps={steps} height={300} />
-
-<Analogy>
-
-A popular restaurant keeps a waitlist. On a normal evening, a short list absorbs the rush: guests wait ten minutes and
-get a table. On a wild night, a host who writes down every name promises tables in three hours to guests who will leave
-in twenty minutes, and the kitchen ends up cooking for empty tables. A good host says "We are full, please come back at
-eight" once the wait passes what guests will tolerate. That honest no is **backpressure**.
-
-</Analogy>
-
-## Little's law: a line is a wait
-
-**Little's law** says that the average number of requests in a line, L, equals the rate at which they enter, λ, times
-the average time each one spends there, W:
-
-**L = λ × W**
-
-It holds for averages over any long stretch of time, whatever the arrival pattern or the order of service. Over a
-finite run it holds exactly when W counts only the time spent in line during the run, so a request still waiting at
-the end counts its wait so far. In the unbounded viral run with seed 42, measured over the whole 20 s run, the line
-averages L = 152.4 requests, λ = 61.1 requests enter it per second, and each spends W = 2.495 s in line on average:
-61.1 × 2.495 ≈ 152.4. The requests still in line at 20 s keep waiting after the run stops, so their full waits run
-longer than this W shows. The last rows of the simulation table recompute all three live.
-
-The law turns a line limit into a promise about time. A request at the back of a full line waits about limit ÷ drain
-rate, then needs its own work. Size the limit so that sum stays under the client's deadline:
-
-- sho.rt drains about 50 requests per second, the slowest redirect takes 140 ms, and visitors wait 1 s.
-- 50 per second × (1 s minus 0.14 s) ≈ 43, so a limit of 40 keeps nearly every admitted request in time.
-- In the viral run, the line of 40 answers just 1 request late, at 12.3 s, when several slow redirects line up.
-
-A limit costs nothing while traffic stays below capacity. Pick **Steady traffic** in the simulation above: both lanes
-answer the same 800 requests in time, and neither line ever holds more than 7.
-
-## Why have a line at all?
+<details>
+<summary>Go deeper: why have a line at all</summary>
 
 The server could skip the line: when all 5 workers are busy, reject the request at once. Then nobody ever waits, and no
 answer is ever late.
@@ -225,36 +258,37 @@ server with no line rejects 187 of 866 requests: 51 during the burst second, 13 
   instructions="Press Play. The chart shows requests turned away per second. Watch the No queue lane before the burst starts, too."
 />
 
-A short line smooths out both kinds of bunching: the random kind every second, and a burst that lasts a moment. It
-cannot fix traffic that stays above capacity. Only fewer requests or more workers can do that.
+Pause before 4 s: the **No queue** lane already turns requests away, with traffic below capacity. A short line smooths
+out both kinds of bunching, the random kind every second and a burst that lasts a moment. It cannot fix traffic that
+stays above capacity. Only fewer requests or more workers can do that.
+
+In the viral run, Little's law also checks out exactly over the whole 20 s: the unbounded line averages L = 152.4
+requests, λ = 61.1 enter per second, and each spends W = 2.495 s in line during the run. Requests still waiting at 20 s
+count only their wait so far.
+
+To see the same runs as bars and counts, turn off **Physics animation** in either simulation.
+
+</details>
 
 ## Push back when the line is full
 
 When the bounded line fills, the server answers the next request at once with **503 Service Unavailable** and a
-**Retry-After** header. That fast no costs microseconds and no worker. The visitor sees an error while still looking at
-the screen, and a calling service can try another server or show a fallback.
+**Retry-After** header. That fast no costs no worker and reaches the visitor in time to act. A calling service can try
+another server or show a fallback.
 
-This is **backpressure**: a component that cannot keep up tells whoever sends it work to slow down. It shows up at
-every layer:
-
-- TCP flow control stops a sender when the receiver's buffer fills.
-- A bounded channel in Go blocks the producer until a consumer takes an item.
-- Reactive streams let a consumer request a fixed number of items at a time.
-
-A 503 only helps if callers respect it. Clients that retry instantly turn one rejected request into a stream of them.
-The lessons [Retries with backoff and jitter](../retries/), [Rate limiting](../rate-limiting/), and [Circuit breakers](../circuit-breakers/) each handle a part of
-that problem.
+This is **backpressure**: a component that cannot keep up tells its senders to slow down. A 503 only helps if callers
+respect it, since clients that retry instantly multiply the load. [Retries with backoff and jitter](../retries/),
+[Rate limiting](../rate-limiting/), and [Circuit breakers](../circuit-breakers/) each handle part of that.
 
 ## Shed load before the server tips over
 
-A full line is a late signal. A line limit counts requests, and the wait each request adds depends on how fast the
-workers run. Suppose the link database slows down from 4 s to 14 s, and every redirect takes twice as long. The server
-now drains about 25 requests per second, so a full line of 40 means 1.6 s of waiting: longer than any visitor waits.
+A full line is a late signal. A limit counts requests, yet the wait each one adds depends on how fast workers run.
+Suppose the link database slows from 4 s to 14 s, and every redirect takes twice as long. Workers drain about 25 per
+second, so a full line of 40 means 1.6 s of waiting.
 
-**Load shedding by wait** watches time directly. The server keeps a running average of recent work time, estimates how
-long a new request would wait (line length × average work ÷ 5 workers), and rejects the request if that estimate passes
-a budget, here 600 ms. It also drops any request from the line whose visitor already gave up, so no worker spends time
-on it.
+**Load shedding by wait** watches time instead. The server averages recent work times, estimates a new request's wait
+(line length × average work ÷ 5 workers), and rejects it if the estimate passes a budget, here 600 ms. It also drops
+requests whose visitors gave up.
 
 <Predict
   client:visible
@@ -269,9 +303,9 @@ on it.
   answer={1}
 >
 
-**It turns away more requests, yet answers more in time.** In this toy model with seed 42, the line of 40 answers 456
-requests in time, 230 late, and rejects 114. The wait budget answers 657 in time, none late, and rejects 143. It turns
-away 29 more visitors and serves 201 more, because the line of 40 spent its workers on 230 answers that nobody read.
+**It turns away more requests, yet answers more in time.** With seed 42, the line of 40 answers 456 in time, 230 late,
+and rejects 114. The wait budget answers 657 in time, none late, and rejects 143: 29 more rejections and 201 more
+answers in time.
 
 </Predict>
 
@@ -282,79 +316,97 @@ away 29 more visitors and serves 201 more, because the line of 40 spent its work
   instructions="Press Play. Every redirect takes twice as long from 4 s to 14 s. Compare the late answers in each lane."
 />
 
-Shedding is a trade. It rejects more requests than the line alone, and it depends on a good estimate of work time. In
-return, every request it admits gets a useful answer, and the server never spends its workers on visitors who already
-left. Network routers use the same idea under the name **CoDel** (controlled delay): they drop packets when packets keep
-sitting in a queue longer than a target time.
+Watch the **Answered late** row. The line of 40 starts answering late at 6.6 s.
 
-Real servers also choose **what** to shed. sho.rt would drop analytics work and link previews long before it drops a
-redirect, and it never sheds the health checks its load balancer uses to decide whether it is alive.
+### A wait budget reduces late work
+
+Seed 42 ends with no late answers, yet the budget is no guarantee: across other seeds of this model, about 1 run in 10
+still answers a few requests late. The estimate uses recent work times, so it lags when the backend slows, and a
+request admitted on an old, fast average can still finish late. Two checks close most of that gap:
+
+- **Check the budget again at pickup.** When a worker takes a request, compare the time left before the visitor's
+  deadline with the expected work, and drop the request if it cannot finish.
+- **Cancel cooperatively.** When the visitor gives up, mark the request cancelled. The worker checks the mark between
+  steps and stops, as in [Timeouts and cancellation](../timeouts/).
+
+<details>
+<summary>Go deeper: CoDel and what to shed</summary>
+
+Network routers use the same idea as **CoDel** (controlled delay, RFC 8289): drop packets that keep sitting in a queue
+longer than a target time. TCP flow control, bounded channels in Go, and reactive streams apply backpressure the same
+way inside networks and programs.
+
+Real servers also choose **what** to shed. sho.rt drops analytics work and link previews long before a redirect, and
+never sheds the health checks its load balancer uses.
+
+</details>
 
 ## The click analytics buffer
 
-Every redirect also produces a click event for analytics. The [Timeouts and cancellation](../timeouts/) challenge moved
-that work off the critical path into a local buffer. That buffer is a queue too, and the same rules apply. When the
-analytics service falls behind, the buffer fills, and you must pick one of three behaviors:
+Every redirect also produces a click event. The [Timeouts and cancellation](../timeouts/) challenge moved analytics off
+the critical path, and the rest of this course keeps that design: each redirect writes its click into a small **bounded
+buffer** in memory and answers at once. A separate **uploader** drains the buffer in batches to click ingest, so a slow
+analytics service never blocks a redirect.
 
-- **Block the producer.** The redirect waits for buffer space. Backpressure reaches the visitor, so a slow analytics
-  service slows redirects again. Wrong for clicks, right for work that must never be lost, such as payments.
-- **Drop or sample.** Discard events once the buffer is full, or keep 1 in 10 and scale the counts. Redirects stay fast,
-  and the click counts lose some precision. Count every dropped event in a metric so the loss stays visible.
-- **Spill to a durable log.** Write events to disk or to a log such as Kafka that holds days of data, and let consumers
-  catch up later. Nothing is lost, at the cost of storage, another system to run, and reports that run late.
+The buffer is a queue too, so it needs a rule for when it fills:
 
-For sho.rt, redirects never block on analytics. Each server keeps a small bounded buffer that ships events to a durable
-log, and if the buffer still fills, it drops events and counts the drops.
+- **Block the producer.** The redirect waits for space. On the redirect path this is a deliberately unsafe design:
+  slow analytics stalls every visitor. Keep it for work that must never be lost, such as payments.
+- **Drop or sample.** Discard events when full, or keep 1 in 10 and scale the counts. Count every drop.
+- **Spill to a durable log.** Write events to disk or Kafka for consumers to catch up, at the cost of another system.
 
-## Try it: break things on purpose
-
-1. In the first simulation, play **Viral link** and watch the Little's law rows at the bottom of the table. λ × W
-   matches L at every moment of the run.
-2. Pick **Steady traffic** and press **Skip to the end**. Both lanes answer the same 800 requests: below capacity, the
-   line limit never comes into play.
-3. In the burst simulation, pause before 4 s. The **No queue** lane is already turning requests away, with traffic
-   below capacity.
-4. In the slow redirects simulation, watch the **Answered late** row. The line of 40 starts answering late at 6.6 s,
-   while the wait budget never does.
-5. Turn off **Physics animation** to see the same runs as bars and counts.
+sho.rt drops and counts at each redirect server, and ingest writes to a durable log. The uploader still calls ingest
+over the network, and a failing ingest service can tie it up. [Circuit breakers](../circuit-breakers/) puts a breaker
+on that call.
 
 ## Trade-offs
 
 <TradeoffTable title="How long to let requests wait">
 
-| Choice                      | What it buys                                                | What it costs                                                                   |
-| --------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| No queue                    | No request ever waits or answers late                       | Random bunching rejects many requests, even below capacity                      |
-| Unbounded queue             | Never rejects a request                                     | In a long overload, waits and memory grow without limit and most answers are late |
-| Queue sized from deadline   | Absorbs bursts, and admitted requests finish in time        | Rejects requests while full; the right size shifts when work slows down          |
-| Fast 503 with Retry-After   | A cheap, early no that callers can act on                   | Callers must handle it, and instant retries add load                            |
-| Shed by expected wait       | Keeps waits under budget even when the server slows down    | Rejects more requests, and needs a good estimate of work time                   |
-| Block the producer          | Never loses work                                            | Slowness spreads upstream to whoever produces the work                          |
+| Choice                    | What it buys                                     | What it costs                                              |
+| ------------------------- | ------------------------------------------------ | ---------------------------------------------------------- |
+| No queue                  | Nothing waits or answers late                    | Random bunching rejects requests, even below capacity      |
+| Unbounded queue           | Never rejects a request                          | In a long overload, memory grows and most answers are late |
+| Queue sized from deadline | Absorbs bursts; admitted requests finish in time | Rejects while full; the right size shifts when work slows  |
+| Fast 503 with Retry-After | A cheap, early no                                | Callers must handle it; instant retries add load           |
+| Shed by expected wait     | Cuts late answers when the server slows          | Rejects more, and its estimate lags a slowdown             |
+| Block the producer        | Never loses work                                 | Slowness spreads upstream; unsafe on the redirect path     |
 
 </TradeoffTable>
+
+## Common mistakes
+
+- **An unbounded queue.** It hides overload until memory runs out.
+- **Sizing the line by memory.** Size it from the client's deadline.
+- **Trusting the admission estimate alone.** Recheck at pickup and cancel when the caller leaves.
+- **Blocking requests on a slow consumer.** Bound the buffer, then drop and count or spill to a log.
+- **Retrying a 503 instantly.** Honor Retry-After and back off.
+
+<KeyTakeaways>
+
+- A short line absorbs bursts; an unbounded line turns a long overload into late answers for almost everyone.
+- Little's law ties line length to wait: limit ÷ drain rate plus the work must fit the deadline.
+- A fast 503 with Retry-After is backpressure callers can act on.
+- Shedding by expected wait reduces late work; recheck at pickup and cancel when the caller leaves.
+- Redirects write clicks to a bounded buffer that an uploader drains, so slow analytics never blocks a redirect.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-The sho.rt click ingest service receives 2,000 click events per second and writes them in batches to the analytics
-database, which can absorb 2,500 per second. During a nightly backup, the database absorbs only 1,000 per second for
-30 minutes. Each event takes about 200 bytes. What happens to an unbounded in-memory buffer during the backup, how long
-does recovery take, and what would you build instead?
+sho.rt click ingest receives 2,000 events per second and writes batches to the analytics database, which absorbs 2,500
+per second. A nightly backup cuts that to 1,000 per second for 30 minutes. Each event is about 200 bytes. What happens
+to an unbounded in-memory buffer, how long does recovery take, and what would you build instead?
 
 <div slot="answer">
 
-- The backlog grows by 1,000 events per second (2,000 arrive, 1,000 leave). After 30 minutes it holds **1.8 million
-  events, about 360 MB** in memory. A crash or restart loses all of it, and a longer slowdown runs the process out of
-  memory.
-- After the backup, the backlog drains at 500 per second (2,500 leave, 2,000 arrive), so clearing 1.8 million events
-  takes **an hour**. Every report in that hour runs behind.
-- Clicks do not need an answer within 1 s; they need to survive. **Spill to a durable log** sized for a few hours:
-  2,000 events per second × 200 bytes × 3 hours ≈ 4.3 GB.
-- Keep each redirect server's local buffer **bounded**, never block redirects on it, and **drop and count** events if
-  it fills.
-- Alert on the **age of the oldest unprocessed event**. That is the analytics version of wait time, and it shows the
-  backlog long before memory does.
+- The backlog grows 1,000 per second, to **1.8 million events, about 360 MB** after 30 minutes. A crash loses it all.
+- It then drains at 500 per second (2,500 out, 2,000 in), so recovery takes **an hour**.
+- **Spill to a durable log** sized for a few hours: 2,000 per second × 200 bytes × 3 hours ≈ 4.3 GB.
+- Keep each redirect server's buffer **bounded**, and **drop and count** when it fills.
+- Alert on the **age of the oldest unprocessed event**. It shows the backlog before memory does.
 
 </div>
 
