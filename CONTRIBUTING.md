@@ -272,8 +272,9 @@ pnpm test:e2e
 
 The browser tests open every ready lesson, hydrate every widget, fail on console errors or broken links, and run axe in
 both light and dark color schemes. For a quick local subset, set `E2E_MODE=pr` and list the pages in `E2E_PAGES`, for
-example `E2E_PAGES=scaling/caching/`; `node scripts/e2e-scope.ts` prints the pages your branch changes. Pull requests
-run `pnpm verify` only. CI runs the full browser sweep on `main` when a push changes code or config, and every night.
+example `E2E_PAGES=scaling/caching/`; `node scripts/e2e-scope.ts` prints the pages your branch changes. CI runs the
+full browser sweep, in three shards, on pull requests and `main` pushes that change code or config, and every night.
+Content-only pull requests run `pnpm verify` only.
 Also try the lesson with the keyboard only, in dark and light themes, at phone width, and with reduced motion turned
 on in your operating system.
 

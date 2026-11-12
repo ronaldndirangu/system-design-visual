@@ -43,11 +43,10 @@ jobs:
           retention-days: 1
           include-hidden-files: true
 
-  # Browser tests never block a pull request or a deploy. They run on main when a push touches code, config, or the
-  # tests themselves, and every night against the full site. Content-only pushes skip them.
+  # Browser tests run on pull requests and main pushes that touch code, config, or the tests themselves, so a layout
+  # regression blocks the pull request before it reaches main. Content-only changes skip them. Nightly runs cover all.
   playwright-version:
     name: Resolve Playwright version
-    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -58,18 +57,24 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      # A pull request checks out its merge commit, whose first parent is the current base.
       - id: paths
         env:
           EVENT: ${{ github.event_name }}
           BEFORE: ${{ github.event.before }}
         run: |
           code='^(src/(components|lib|styles|layouts|pages)/|tests/e2e/|playwright\.config|astro\.config|package\.json|pnpm-lock\.yaml|\.github/workflows/)'
-          if [ "$EVENT" != "push" ] || ! changed="$(git diff --name-only "$BEFORE" HEAD 2>/dev/null)"; then
+          case "$EVENT" in
+            push) base="$BEFORE" ;;
+            pull_request) base="HEAD^1" ;;
+            *) base="" ;;
+          esac
+          if [ -z "$base" ] || ! changed="$(git diff --name-only "$base" HEAD 2>/dev/null)"; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           elif printf '%s\n' "$changed" | grep -qE "$code"; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Content-only push: skipping browser tests."
+            echo "Content-only change: skipping browser tests."
             echo "run=false" >> "$GITHUB_OUTPUT"
           fi
       - id: lockfile
@@ -83,12 +88,17 @@ jobs:
 
   # The official image ships Chromium and its system libraries, so this job never calls apt.
   # Its tag follows the lockfile, which keeps the browser build matched to @playwright/test.
+  # Three shards split the suite so a run takes a few minutes; a failing shard leaves the others running.
   e2e:
-    name: Browser smoke and accessibility tests
+    name: Browser tests (shard ${{ matrix.shard }} of 3)
     needs: [verify, playwright-version]
     if: ${{ needs.playwright-version.outputs.run == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     container:
       image: mcr.microsoft.com/playwright:v${{ needs.playwright-version.outputs.version }}-noble
       options: --user 1001 --ipc=host
@@ -106,16 +116,16 @@ jobs:
         with:
           name: dist
           path: dist
-      - run: pnpm test:e2e
+      - run: pnpm test:e2e --shard=${{ matrix.shard }}/3
       - if: ${{ failure() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: playwright-report/
           retention-days: 7
 
   # Publishes the dist/ that verify built, so a commit that fails lint, type checks, unit tests, or the build never
-  # deploys. Browser tests run alongside and report regressions without holding back content.
+  # deploys. On main, browser tests run alongside and report regressions without holding back content.
   deploy:
     name: Deploy to GitHub Pages
     needs: [verify]
