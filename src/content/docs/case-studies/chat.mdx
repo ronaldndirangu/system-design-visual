@@ -1,9 +1,24 @@
 ---
 title: Chat
 description: Deliver every message in order per conversation and resync phones that drop offline. Watch parallel push workers scramble a group chat and a tunnel swallow messages, then fix both with sequence numbers, heartbeats, and cursor catch-up.
+furtherReading:
+  - title: 'Real-time messaging'
+    url: https://slack.engineering/real-time-messaging/
+    note: How Slack routes each channel to one channel server by consistent hashing, and keeps sockets on separate gateway servers.
+  - title: 'How Discord stores billions of messages'
+    url: https://discord.com/blog/how-discord-stores-billions-of-messages
+    note: A message table keyed by channel, time bucket, and a sortable message ID, so loading a channel is one range scan.
+  - title: 'How to do distributed locking'
+    url: https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html
+    note: Why a paused process can still hold an expired lease, and how a fencing token stops its late writes.
+  - title: 'RFC 6455: The WebSocket Protocol'
+    url: https://www.rfc-editor.org/rfc/rfc6455
+    note: The protocol behind chat sockets, including the ping and pong frames that keep a quiet connection alive.
 ---
 
 import { Steps } from '@astrojs/starlight/components';
+import Recall from '../../../components/lesson/Recall.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -165,15 +180,63 @@ export const quiz = [
   },
 ];
 
+export const recall = [
+  {
+    id: 'case-studies/chat/recall-1',
+    prompt: 'Live dashboards on quiet links drop their connection after exactly 60 s of silence, while busy ones stay up. What fixes it?',
+    options: [
+      {
+        text: 'Send a small heartbeat every 15 to 30 s, so a proxy idle timeout never sees a silent connection',
+        correct: true,
+        why: 'Silence is the trigger: a proxy or load balancer closes connections that stay quiet for 60 s. A ping or comment line resets its timer.',
+      },
+      {
+        text: 'Switch to a faster server',
+        why: 'Busy streams on the same server survive. The server is fine; something in the middle closes idle connections.',
+      },
+      {
+        text: 'Reconnect every 60 s on a timer',
+        why: 'That hides the drop behind a reconnect storm and still loses whatever arrives during each gap.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/chat/recall-2',
+    prompt: 'A consumer saves its offset every 5 s. It crashes 3 s after its last save. What happens to the events it handled in those 3 s?',
+    options: [
+      {
+        text: 'The new owner reads them again from the saved offset, so consumers must handle duplicates',
+        correct: true,
+        why: 'The log only knows the last saved offset. Everything after it is replayed, and the consumer drops what it already applied.',
+      },
+      {
+        text: 'They are lost, because the consumer never saved them',
+        why: 'The events stay in the log. Only the bookmark is behind, so the new owner reads them a second time.',
+      },
+      {
+        text: 'The log skips them, because they were already read once',
+        why: 'The log does not track reads. It replays from whatever offset the group saved.',
+      },
+    ],
+  },
+];
+
+<Recall questions={recall} />
+
 <Objectives>
 
 - Explain why parallel delivery paths scramble a conversation, and fix the order with per-conversation sequence numbers and a reorder buffer.
 - Weigh the delay that ordering costs, whether it comes from a buffer or a single path.
+- Number messages safely: allocate and append in one transaction, fence a stale owner with an epoch, and ack only after commit.
+- Recover a gap with a gap timer and a replay from the log.
 - Explain how a socket can die silently, and how heartbeats detect it.
 - Sync a phone that dropped offline with a cursor into a per-conversation message log.
 - Contrast chat with notifications.
 
 </Objectives>
+
+**Route:** Intermediate, case 5 of 10 on the beginner route through Module 6. Next on the route:
+[Video streaming](../video-streaming/).
 
 ## The failure: the answer above the question
 
@@ -209,7 +272,9 @@ are the hard part.
 The chat service gives each message a **sequence number** within its conversation, so the order exists in one place. The
 phone shows messages in sequence order and holds back any that arrive early, in a **reorder buffer**. Heartbeats detect
 sockets that died silently. When a phone reconnects, it sends a **cursor**, the sequence number of the last message it
-showed, and the server replays everything after it from the **message log**.
+showed, and the server replays everything after it from the **message log**. One server owns each conversation and
+picks its numbers. The [Time, leases, and fencing](../../distributed-data/time-leases-fencing/) lesson shows how a new
+owner takes over without a paused one writing duplicates.
 
 <StepDiagram client:visible title="A chat message, step by step" nodes={nodes} edges={edges} steps={steps} height={290} />
 
@@ -245,8 +310,9 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
 
 4. **Data model.** A `messages` table keyed by `(conversation_id, sequence)`, with the sender, the client message ID
    (unique per sender, to drop resends), the text, and the time. A `members` table holds each member of a conversation
-   with the highest sequence they have read. Each device keeps its own cursor per conversation. Shard the log by
-   conversation ID (see [sharding](../../scaling/sharding/)), so one conversation's counter lives on one shard.
+   with the highest sequence they have read. A `conversations` table holds each conversation's last sequence and the
+   epoch of the server that owns it. Each device keeps its own cursor per conversation. Shard by conversation ID (see
+   [sharding](../../scaling/sharding/)), so one conversation's counter and log live on one shard.
 
 5. **High-level design.** Gateways hold sockets and know nothing about chats. The chat service numbers messages, writes
    them to the log, and publishes them. Push workers read the topic and route each message to the gateways that hold its
@@ -255,8 +321,8 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
    sockets, server-sent events, and long polling, and the [Logs and pub/sub](../../async/logs-and-pubsub/) lesson covers the topic in the middle.
 
 6. **Deep dive: order and gaps.** This is where the design breaks first, and both simulations below live here. Parallel
-   push workers reorder messages, and a socket that died silently swallows them. Sequence numbers fix the first. Cursors
-   fix the second.
+   push workers reorder messages, and a socket that died silently swallows them. Sequence numbers fix the first, as
+   long as the server never hands out a number without storing its message. Cursors fix the second.
 
 7. **Trade-offs.** One push path or many, the heartbeat interval, and server-side queues or a replayable log. The table at
    the end of this page lays them out.
@@ -278,9 +344,50 @@ What to look for:
 - **More stalls.** At 35% stalled, the arrival-order phone shows **46** out of order. The buffer still shows none, and
   holds back more.
 - **One worker per chat.** Route each conversation through a single worker, and nothing can overtake. Both lanes show
-  **0** out of order with the same **0.8 s** average delay. The single path pays in head-of-line blocking: one stall
-  delays every message behind it. Order costs about the same delay either way, so most chat systems pin each
-  conversation to one partition and keep a small reorder buffer on the phone for the races that remain.
+  **0** out of order with the same **0.8 s** average delay. The single path blocks in transit: one stall delays every
+  message queued behind it on that worker. The buffer blocks on screen: the other workers keep moving, yet the phone
+  shows nothing past a gap until the gap fills. Ordered display pays in waiting either way, so most chat systems pin
+  each conversation to one partition and keep a small reorder buffer on the phone for the races that remain.
+
+This buffer waits as long as the gap lasts, because in the simulation every late message does arrive. A real phone
+cannot assume that, so it also runs a gap timer; the failure walkthrough below shows why.
+
+## Number messages safely
+
+The reorder buffer trusts one promise from the server: every sequence number it hands out belongs to a message in the
+log. Break that promise and every phone in the conversation waits for a message that does not exist.
+
+The obvious shortcut breaks it. Take the next number from a separate counter (an `INCR` in a cache), then write the
+message to the log. A crash between the two steps burns sequence 42 with nothing stored under it, and a send retried
+after the crash takes a fresh number, so the same text can appear twice. Instead, allocate and append in one
+[transaction](../../foundations/transactions/) on the conversation's shard:
+
+```sql
+WITH next AS (
+  UPDATE conversations
+     SET last_sequence = last_sequence + 1
+   WHERE id = 'c-981' AND owner_epoch = 7
+  RETURNING last_sequence
+)
+INSERT INTO messages (conversation_id, sequence, sender_id, client_message_id, text)
+SELECT 'c-981', last_sequence, 'ana', 'm-5521', 'Thai or pizza?' FROM next;
+```
+
+Three rules make this safe:
+
+- **Both writes or neither.** The counter moves only if the message lands. A crash rolls back both, so the log never
+  holds a number without its message.
+- **A unique key catches resends.** `(conversation_id, sender_id, client_message_id)` is unique. A resend violates it,
+  the whole statement rolls back, counter included, and the service answers with the sequence already stored.
+- **Ack after commit.** The server sends `ack {sequence}` only once the commit returns, then publishes the message to
+  the topic. An earlier ack would let a crash erase a message the sender already saw as delivered.
+
+One chat server owns each conversation at a time, so it numbers and publishes messages in order to one partition. If
+the owner stalls, say in a long garbage-collection pause, a coordinator hands the conversation to another server and
+raises `owner_epoch` from 7 to 8 (the [Raft](../../distributed-data/raft/) lesson shows how a group agrees on such a
+handover). When the old owner resumes, its update still says `owner_epoch = 7`, matches 0 rows, and inserts nothing.
+The epoch works as a **fencing token**, the same guard the [idempotency](../../reliability/idempotency/) lesson uses
+when a paused server wakes after its lease ran out.
 
 ## Heartbeats and silent disconnects
 
@@ -318,6 +425,54 @@ offline, and a phone or laptop of any age can resync with one question. A device
 messages needs a full resync. When a gateway restarts, its 100,000 phones reconnect at once and all ask for catch-up, so
 phones wait a random moment before reconnecting. The [Retries with backoff and jitter](../../reliability/retries/) lesson covers that spread.
 
+<details>
+<summary>Go deeper: one person, two devices</summary>
+
+Mia reads a long conversation on her phone during a week away, while her laptop sleeps. When the laptop wakes, it must
+show every message in order with unread badges that match the phone, and the server keeps no per-device queues. Store
+each conversation once, and let each device carry its own cursors.
+
+- **One log per conversation:** messages live in `messages`, keyed by `(conversation_id, sequence)`, with no copy per
+  device. Keep them as long as a device may stay away, say 30 days, and fall back to a full resync after that.
+- **A cursor per device per conversation:** the laptop remembers the last sequence it showed in each conversation. On
+  wake it asks for everything after each cursor, newest conversations first, 100 messages a page, and shows them in
+  sequence order.
+- **Read state as a number:** `members.read_up_to` stores the highest sequence Mia has read. The phone raises it as she
+  reads, and the laptop fetches it on wake, so unread counts are the difference between the latest sequence and
+  `read_up_to`. A higher value always wins, so two devices can never move it backwards.
+- **Wake the laptop gently:** while the laptop sleeps, a notification at most nudges it. Once awake it opens a socket and
+  syncs, with a random delay so a fleet of laptops waking at 9:00 does not reconnect at the same instant.
+
+</details>
+
+## Failure walkthrough: the owner crashes before it publishes
+
+Chen's phone has shown Ana's group up to message 41. Ana sends the restaurant address, and the server that owns the
+conversation crashes a moment later. Here is what each guard does.
+
+1. **0 s: 42 commits, then the owner dies.** The address commits as 42 in one transaction, and Ana's phone gets
+   `ack {42}`. The owner crashes before it publishes 42 to the topic, so the log holds 42 and no push worker ever sees
+   it.
+2. **5 s: a new owner takes over at epoch 8.** The old owner's lease runs out, and the coordinator hands the
+   conversation to another server with `owner_epoch` 8. The new owner cannot tell whether 42 reached the topic, so it
+   republishes the newest messages it inherits, here 42. Sends during the handover got no ack, so phones resend them
+   with the same client message IDs. Ben's reply commits as 43 and goes out to the topic.
+3. **5.3 s: Chen's phone holds 43 and starts a gap timer.** The republished 42 meets a stalled push worker, so 43 lands
+   first. The buffer holds it and starts a 2 s timer. Transport keeps moving: 44 and 45 arrive and wait behind the gap
+   too.
+4. **7.3 s: the timer fires, and the log fills the gap.** The phone calls
+   `GET /conversations/{id}/messages?after=41`, and the server replays 42 through 45. The phone keeps one copy of each
+   sequence and shows all four in order, address first. When the stalled copy of 42 lands later, the phone drops it.
+
+Each guard covers one gap. The single transaction means the log never holds a number without its message, so the replay
+always finds 42. Ack after commit means Ana's phone marks 42 as sent only once the log holds it. If the old owner was
+only paused, the epoch stops it when it wakes: its update matches 0 rows. The republish covers a quiet conversation,
+where no later message would expose the gap. The gap timer bounds the wait: transport progress stays independent while
+ordered display waits for gaps, for 2 s at most before the phone asks the log. Set the timer a little above a normal
+race. In the busy-group run no message waited longer than 1.7 s, and a timer that fires on a plain race costs one extra
+read, since the phone drops duplicates by sequence. The simulation's buffer has no timer: every late message in it does
+arrive, so it simply waits for the late copy.
+
 ## Chat versus notifications
 
 [Notifications](../notifications/) is the other half of this pair. Both deliver short messages to people's devices, and
@@ -338,39 +493,64 @@ phone then opens its socket and catches up with its cursor.
 
 <TradeoffTable title="Designing a chat service">
 
-| Choice                               | What it buys                                              | What it costs                                                   |
-| ------------------------------------ | --------------------------------------------------------- | --------------------------------------------------------------- |
-| One push path per conversation       | Order with no work on the phone                           | One stall delays every message behind it                        |
-| Parallel paths and a reorder buffer  | No head-of-line blocking between messages                 | The phone holds messages, and must ask for gaps after a wait    |
-| Short heartbeat timeout              | Dead sockets found within seconds                         | Battery, radio wakeups, and heartbeat load on every gateway     |
-| Long heartbeat timeout               | Cheap, quiet connections                                  | A longer window of pushes into dead sockets                     |
-| Queue on the server per device       | Simple push on reconnect                                  | Storage per device, and anything pushed into a dead socket is gone |
-| Per-conversation log and cursors     | Any device resyncs, and lost pushes come back             | Each device tracks cursors, and mass reconnects spike reads     |
+| Choice                                 | What it buys                                             | What it costs                                                        |
+| -------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------- |
+| One push path per conversation         | Order with no work on the phone                          | One stall delays every message behind it                             |
+| Parallel paths and a reorder buffer    | Independent transport progress: a stall slows one worker | Ordered display still waits for gaps, so the phone needs a gap timer |
+| Counter and message in one transaction | A sequence number never exists without its message       | Every send locks the conversation row, which caps a hot group        |
+| Short heartbeat timeout                | Dead sockets found within seconds                        | Battery, radio wakeups, and heartbeat load on every gateway          |
+| Long heartbeat timeout                 | Cheap, quiet connections                                 | A longer window of pushes into dead sockets                          |
+| Queue on the server per device         | Simple push on reconnect                                 | Storage per device, and anything pushed into a dead socket is gone   |
+| Per-conversation log and cursors       | Any device resyncs, and lost pushes come back            | Each device tracks cursors, and mass reconnects spike reads          |
 
 </TradeoffTable>
+
+<KeyTakeaways>
+
+- The server numbers each conversation, and every phone sorts by that number. Phone clocks and arrival order cannot
+  settle who spoke first.
+- Parallel push paths keep transport progress independent, while ordered display still waits for gaps. A gap timer
+  bounds that wait by asking the log for the missing numbers.
+- Allocate the sequence and append the message in one transaction, fence a stale owner with an epoch, and ack only
+  after commit, so no number ever exists without its message.
+- Heartbeats find a dead socket only after a window of lost pushes. A cursor per device into the conversation log
+  recovers every message from that window.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-Mia uses chat on her phone and her laptop. She reads a long conversation on the phone during a week away, while the
-laptop sleeps. Design the sync so that when the laptop wakes, it shows every message in order, its unread badges match
-the phone, and the server keeps no per-device queues.
+**Closing rubric: grow one dimension tenfold.** Keep the estimates from the design checklist (50 million daily users,
+40 messages each, a 3× peak of 69,444 messages per second, 20 million open sockets, and 200 gateways of 100,000 sockets
+each). Suppose each gateway pushes at most 5,000 messages per second, and raise the readers per message from 5 to 50.
+
+1. Which part hits its limit first, and by how much?
+2. What do you change, and what does the change cost?
+3. A gateway machine dies at the new peak. Its phones notice within 30 s, when heartbeats stop, and reconnect with
+   jitter over the next 30 s. How many messages do they replay, and what load does that put on the log?
 
 <div slot="answer">
 
-**Store conversations once, and let each device carry its own cursors.**
+**The gateways' push budget breaks first.**
 
-- **One log per conversation:** messages live in `messages`, keyed by `(conversation_id, sequence)`, with no copy per
-  device. Keep them as long as a device may stay away, say 30 days, and fall back to a full resync after that.
-- **A cursor per device per conversation:** the laptop remembers the last sequence it showed in each conversation. On
-  wake it asks for everything after each cursor, newest conversations first, 100 messages a page, and shows them in
-  sequence order.
-- **Read state as a number:** `members.read_up_to` stores the highest sequence Mia has read. The phone raises it as she
-  reads, and the laptop fetches it on wake, so unread counts are the difference between the latest sequence and
-  `read_up_to`. A higher value always wins, so two devices can never move it backwards.
-- **Wake the laptop gently:** while the laptop sleeps, a notification at most nudges it. Once awake it opens a socket and
-  syncs, with a random delay so a fleet of laptops waking at 9:00 does not reconnect at the same instant.
+- **The new numbers.** Messages stay at 69,444 per second at peak, and the log still grows about 400 GB a day,
+  because a group message is stored once. Sockets and heartbeats stay the same. Deliveries grow tenfold, to about
+  3,472,222 per second: about 17,361 per gateway, 3.5 times the 5,000 a gateway can push. Today each gateway pushes
+  about 1,736. Presence lookups grow tenfold with the deliveries.
+- **The change.** Two options, often combined. Grow the fleet to about 868 gateways, which keeps 20% headroom over the
+  peak and costs 4.3 times the machines, each holding only about 23,000 sockets. Or push full messages only to readers
+  who have the conversation open, and notify the rest only on mentions. If 1 in 10 readers has it open, pushes drop to
+  about 347,222 per second, 1,736 per gateway. The cost: the presence map tracks which conversation each phone shows,
+  unread badges on the conversation list lag until the app refreshes them, and opening a conversation costs a catch-up
+  read.
+- **The crash.** Each user now receives about 2,000 messages a day (40 × 50), about 0.07 per second at the 3× peak.
+  Over a gap of up to 60 s, each of the 100,000 phones misses at most about 4 messages: about 416,667 in all. Spread
+  over 30 s, that is about 3,333 reconnects and catch-up calls per second, reading about 13,889 messages per second,
+  a fifth of the 69,444 writes the log already takes. The 199 surviving gateways gain about 503 sockets each. Without
+  jitter, all 100,000 calls land within a second. Nothing is lost, because the log keeps every message and each cursor
+  says where to start.
 
 </div>
 

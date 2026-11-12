@@ -1,11 +1,23 @@
 ---
 title: CAP and PACELC
 description: One shopping cart lives in two datacenters. See what a cut link forces you to choose, why “pick any two of three” misleads, and what distance costs you when the link works.
+furtherReading:
+  - title: "Brewer's Conjecture and the Feasibility of Consistent, Available, Partition-Tolerant Web Services"
+    url: https://groups.csail.mit.edu/tds/papers/Gilbert/Brewer2.pdf
+    note: Gilbert and Lynch's 2002 proof of the CAP theorem.
+  - title: "CAP Twelve Years Later: How the Rules Have Changed"
+    url: https://www.infoq.com/articles/cap-twelve-years-later-how-the-rules-have-changed/
+    note: Brewer on why "two of three" misleads and how to recover after a partition.
+  - title: Consistency Tradeoffs in Modern Distributed Database System Design
+    url: https://www.cs.umd.edu/~abadi/papers/abadi-pacelc.pdf
+    note: Abadi's 2012 paper that introduces PACELC and the latency trade-off.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
@@ -28,33 +40,56 @@ export const edges = [
 export const steps = [
   {
     title: 'One cart, two datacenters',
-    text: 'The phone talks to West and the laptop talks to East, because each is nearby. A change made on one side crosses the link so both sides hold the same cart.',
+    text: 'Each device talks to its nearby datacenter. Every change crosses the link, so both sides hold the same cart.',
     nodes: ['phone', 'west', 'east', 'laptop'],
     flows: ['phone>west', 'west>east', 'laptop>east'],
   },
   {
     title: 'The link is cut',
-    text: 'Both datacenters stay up and both devices still reach their nearest one. Only the link between West and East is down, so neither side can hear the other.',
+    text: 'Both datacenters stay up and reachable. Only the link is down, so neither side hears the other.',
     nodes: ['west', 'east'],
     flows: [],
   },
   {
     title: 'Choice one: refuse',
-    text: 'The phone taps Add book. West cannot check with East, so it waits, gives up, and refuses. The two copies never disagree, and the phone gets an error.',
+    text: 'The phone taps Add book. West cannot check with East, so it times out and refuses. The copies never disagree, and the phone gets an error.',
     nodes: ['phone', 'west'],
     flows: ['phone>west'],
   },
   {
     title: 'Choice two: accept',
-    text: 'West adds the book and answers at once. East never hears about it, so the laptop reads a cart without the book. Both devices get answers, and the copies drift apart.',
+    text: 'West adds the book and answers at once. East never hears, so the laptop reads a cart without the book. Both devices get answers, and the copies drift apart.',
     nodes: ['phone', 'west', 'laptop', 'east'],
     flows: ['phone>west', 'laptop>east'],
   },
   {
     title: 'The link heals',
-    text: 'The sides swap what they missed. After a refusal there is nothing to fix. After accepting, each side holds a version the other never saw, and a merge rule must combine them.',
+    text: 'The sides swap what they missed. After a refusal nothing needs fixing. After accepting, each side holds a version the other never saw, and a merge rule must combine them.',
     nodes: ['west', 'east'],
     flows: ['west>east', 'east>west'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'distributed-data/cap-and-pacelc/recall-1',
+    prompt: 'Ana sends a message, and her next read comes from a replica that lacks it. Which session promise rules this out?',
+    options: [
+      { text: 'Read your writes', correct: true, why: 'A read shows every write this session made earlier, including Ana’s message.' },
+      { text: 'Monotonic reads', why: 'It stops reads going backwards. Ana never read her message, so it allows this.' },
+      { text: 'Monotonic writes', why: 'It orders this session’s writes. It says nothing about reads.' },
+      { text: 'Eventual consistency', why: 'It only promises agreement once writes stop.' },
+    ],
+  },
+  {
+    id: 'distributed-data/cap-and-pacelc/recall-2',
+    prompt: 'A partition splits the replicas, and each phone sticks to one replica. Which is the strongest promise that still answers on both sides?',
+    options: [
+      { text: 'Linearizable', why: 'It needs one agreed order of writes, so the minority side must refuse.' },
+      { text: 'Causal', correct: true, why: 'A sticky phone finds every write it depends on at its own replica, so both sides keep answering.' },
+      { text: 'Sequential', why: 'It also needs one agreed order of writes, so a cut-off side cannot accept them.' },
+      { text: 'Monotonic reads', why: 'It answers on both sides too, but causal promises more.' },
+    ],
   },
 ];
 
@@ -65,20 +100,20 @@ export const quiz = [
     options: [
       {
         text: 'Pick any two of consistency, availability, and partition tolerance.',
-        why: 'This is the popular misreading. You do not get to pick partitions: links fail whether you plan for them or not. A design that “drops P” just has no plan for the moment a link fails. The real choice comes only while a partition lasts.',
+        why: 'The popular misreading. Links fail anyway, so you cannot drop P. The real choice comes only during a partition.',
       },
       {
         text: 'While a partition separates the replicas, each side must either refuse some requests or answer with data the other side may have changed.',
         correct: true,
-        why: 'Right. During a partition you choose between consistency (refuse or wait) and availability (answer from the local copy). When the network works, CAP asks nothing of you, and PACELC covers that case.',
+        why: 'Right. During a partition you choose consistency (refuse or wait) or availability (answer locally). PACELC covers the time the network works.',
       },
       {
         text: 'A distributed database can never be consistent.',
-        why: 'It can. While the link works, both lanes reach the same cart. Even during the cut, the refuse lane shows 0 out-of-date reads in the run. It pays with refusals instead.',
+        why: 'It can. Even during the cut, the refuse lane shows 0 out-of-date reads. It pays with refusals instead.',
       },
       {
         text: 'A partition always loses data.',
-        why: 'The refuse lane loses no confirmed change: it refuses 8 phone taps, and those taps never happened. What a partition costs depends on the rule. The accept lane keeps every tap but serves out-of-date reads, and its weak merge undoes one confirmed remove.',
+        why: 'The refuse lane’s 8 refused taps never happened, so it loses no confirmed change. The accept lane keeps every tap, but its weak merge undoes one remove.',
       },
     ],
   },
@@ -89,19 +124,19 @@ export const quiz = [
       {
         text: 'Every phone tap crosses the link to East and back before West answers.',
         correct: true,
-        why: 'Right. East holds the only copy, so each phone tap pays a round trip: 85 ms on a 40 ms link and 245 ms on a 120 ms link. This is the else branch of PACELC: with no partition, you still trade latency for consistency.',
+        why: 'Right. East holds the only copy, so each phone tap pays a round trip: 85 ms on a 40 ms link, 245 ms on a 120 ms link. That is the else branch of PACELC.',
       },
       {
         text: 'West waits for its 300 ms timeout on every tap.',
-        why: 'The timeout fires only when East never answers. With the link up, East always answers, and the refuse lane refuses nothing in the No cut scenario.',
+        why: 'The timeout fires only when East never answers. With the link up, East always answers.',
       },
       {
         text: 'The accept lane skips writing the change to East.',
-        why: 'The accept lane sends every change across the link too. It answers before the change arrives, which is why a read on the other side can still miss it.',
+        why: 'The accept lane sends every change across too. It just answers before the change arrives.',
       },
       {
         text: 'The phone sends more taps than the laptop.',
-        why: 'Both lanes replay the same taps from the same devices. The difference comes only from where each lane answers.',
+        why: 'Both lanes replay the same taps. Only where each lane answers differs.',
       },
     ],
   },
@@ -112,19 +147,19 @@ export const quiz = [
       {
         text: 'The merge keeps every item found in either version, and nothing records that the phone removed the scarf.',
         correct: true,
-        why: 'Right. East’s version still holds the scarf, and a union merge cannot tell “never added” from “removed”. Recording removals, for example with tombstones or an observed-remove set, lets the merge keep the scarf out.',
+        why: 'Right. East’s version still holds the scarf, and a union cannot tell “never added” from “removed”. Tombstones or an observed-remove set record removals.',
       },
       {
         text: 'The cut link lost the phone’s remove, and the merge never saw it.',
-        why: 'The merge does see it: West’s version without the scarf reaches East at 4.54 s. The union rule still keeps the scarf because East’s version has it.',
+        why: 'The merge does see West’s version without the scarf at 4.54 s. The union keeps the scarf because East’s version has it.',
       },
       {
         text: 'Refusing taps during the cut caused it.',
-        why: 'The refuse lane never brings an item back. It keeps one copy, so it never has two versions to merge.',
+        why: 'The refuse lane keeps one copy, so it never has two versions to merge.',
       },
       {
         text: 'Nothing; keeping the newest whole cart would fix it with no downside.',
-        why: 'Keeping one whole cart, often called last writer wins, throws away every change in the losing version. A shopper’s adds from one device would vanish without a word.',
+        why: 'Keeping one whole cart (last writer wins) throws away every change in the losing version.',
       },
     ],
   },
@@ -135,42 +170,43 @@ export const quiz = [
       {
         text: 'Selling the last unit in stock',
         correct: true,
-        why: 'Right. If both sides accept, two shoppers can buy one unit, and no merge can undo a shipped box or a second charge. Refusing on the cut-off side costs one retry.',
+        why: 'Right. If both sides accept, two shoppers can buy one unit, and no merge can undo a shipped box.',
       },
       {
         text: 'Adding an item to the cart',
-        why: 'A refused add loses a sale, while an accepted add at worst leaves an extra item to sort out at checkout. Amazon’s Dynamo paper describes exactly this choice for its shopping cart.',
+        why: 'A refused add loses a sale, while an accepted add at worst leaves an extra item to sort out at checkout.',
       },
       {
         text: 'Posting a chat message',
-        why: 'A chat message can wait a few seconds to reach the other side, and readers can still see it in causal order once it does. Refusing it during a cut only makes the chat look broken.',
+        why: 'A message can arrive a few seconds late and still show in causal order.',
       },
       {
         text: 'Showing product reviews',
-        why: 'A review page that misses the newest review for a few seconds harms nobody, so it should answer from the nearest copy.',
+        why: 'Missing the newest review for a few seconds harms nobody, so answer from the nearest copy.',
       },
     ],
   },
 ];
 
+<Recall questions={recall} />
+
 <Objectives>
 
 - Explain the choice a network partition forces: refuse some requests or answer with data that may be out of date.
 - Explain why “pick any two of consistency, availability, and partition tolerance” misleads.
-- Use PACELC to name the cost the rest of the time: waiting for a far copy or reading a stale near one.
-- Recognize merge anomalies, such as a removed item that comes back.
-- Choose per feature, and mix both choices inside one product.
+- Use PACELC to name the cost when the network works: waiting for a far copy or reading a stale near one.
+- Choose per operation, and spot merge anomalies such as a removed item that comes back.
 
 </Objectives>
 
 ## The failure: a cart on both sides of a cut
 
-An online store keeps each shopping cart in two datacenters, West and East, so every shopper gets a nearby answer and
-the store survives the loss of a building. Sam shops on a phone near West and on a laptop near East. Every change crosses
-the link between the datacenters, about 40 ms each way, so both copies of the cart stay the same.
+An online store keeps each shopping cart in two datacenters, West and East, for nearby answers and to survive losing a
+building. Sam shops on a phone near West and a laptop near East. Every change crosses the link between them, about
+40 ms each way, so both copies match.
 
-Then a fiber gets cut between the two buildings. Both datacenters keep running, and both of Sam’s devices still reach
-the nearest one. Only West and East can no longer talk. Sam taps **Add book** on the phone.
+Then a fiber between the buildings gets cut. Both datacenters keep running, and each device still reaches its nearest
+one. Only West and East can no longer talk. Sam taps **Add book** on the phone.
 
 <Predict
   client:visible
@@ -184,9 +220,19 @@ the nearest one. Only West and East can no longer talk. Sam taps **Add book** on
   answer={1}
 >
 
-**Refuse, or accept and let the copies disagree.** West has no way to tell East about the book. If it accepts, the
-laptop’s next read at East misses the book. If it refuses, the two copies stay identical, and the phone gets an error.
-No rule avoids both, and no faster server or smarter code changes that while the link is down.
+<div slot="figure">
+
+| Part              | State                  |
+| ----------------- | ---------------------- |
+| West datacenter   | Up, reaches the phone  |
+| East datacenter   | Up, reaches the laptop |
+| West to East link | Cut                    |
+| Phone             | Taps Add book          |
+
+</div>
+
+**Refuse, or accept and let the copies disagree.** If West accepts, the laptop’s next read at East misses the book. If
+it refuses, the copies stay identical and the phone gets an error. No faster server avoids both while the link is down.
 
 </Predict>
 
@@ -196,61 +242,59 @@ The CAP theorem names three properties of a replicated system:
 
 - **Consistency:** every read sees the latest confirmed write, as if one copy existed. This is the linearizable promise
   from [consistency models](../consistency-models/).
-- **Availability:** every request that reaches a working server gets a real answer instead of an error.
+- **Availability:** every request to a working server gets a real answer instead of an error.
 - **Partition tolerance:** the system keeps working when the network splits the servers into groups that cannot talk.
 
-You often hear CAP as “pick any two of three”. **That reading is false.** Partitions are not optional: cables get cut,
-switches fail, and a long pause looks the same as a dead link. A system spread over two buildings will meet a partition
-whether it planned for one or not. What CAP says is narrower: **while a partition lasts**, each side must either refuse
-some requests and stay consistent, or answer them all and risk serving data the other side has changed. When the
-network works, CAP asks nothing of you.
+You often hear CAP as “pick any two of three”. **That reading is false.** Cables get cut and switches fail, so a
+system spread over two buildings will meet a partition whether it planned for one or not. CAP says something narrower:
+**while a partition lasts**, each side must either refuse some requests and stay consistent, or answer them all and
+risk serving data the other side has changed. When the network works, CAP asks nothing of you.
 
 <StepDiagram client:visible title="What a cut link forces West to choose" nodes={nodes} edges={edges} steps={steps} height={300} />
 
 <Analogy>
 
-Two branches of a shop share one stock list and keep it in sync by phone. One day the phone line goes dead. A customer
-at the north branch asks for the last lamp. The clerk can say “Sorry, I cannot check with the south branch, come back
-later”, or sell the lamp and hope the south branch did not sell it too. When the line comes back, the clerks compare
-notes. If both sold the lamp, someone gets an apology. Even on a normal day, the careful clerk who calls the other
-branch before every sale serves customers more slowly than the clerk who trusts the local list.
+Two branches of a shop share one stock list and sync it by phone. The line goes dead, and a customer at the north
+branch asks for the last lamp. The clerk can say “I cannot check with the south branch, come back later”, or sell the
+lamp and hope the south branch did not. Even on a normal day, the clerk who calls before every sale serves customers
+more slowly.
+
+Where it breaks: clerks can settle a double sale by talking later, while servers need a merge rule written in advance
+and cannot tell a dead line from a slow one.
 
 </Analogy>
 
 ## PACELC: the cost the rest of the time
 
-Partitions are rare. Most of the time the link works, and CAP says nothing about that time. PACELC fills the gap: **if
-there is a Partition, choose Availability or Consistency; Else, choose Latency or Consistency.** A system that keeps one
-agreed copy pays for it on every request, because a reader far from that copy waits for a round trip. A system that
-answers from the nearest copy stays fast, and a reader sometimes sees a change late.
+Partitions are rare, and CAP says nothing about the rest of the time. PACELC fills the gap: **if there is a Partition,
+choose Availability or Consistency; Else, choose Latency or Consistency.** A system with one agreed copy makes every
+far reader wait for a round trip. A system that answers from the nearest copy stays fast, and a
+reader sometimes sees a change late.
 
 So a design gets two labels. The refuse lane in the simulation below is **PC/EC**: it refuses during the cut and waits
 for East the rest of the time. The accept lane is **PA/EL**: it answers locally in both cases.
 
-## Try it
+## Try it: cut the link, then move the datacenters apart
 
-Pick a scenario, then press **Play**. Both lanes replay the same 28 taps from the same phone and laptop over 6 seconds,
-so every difference comes from the rule the datacenters follow. In the **refuse** lane, East holds the only copy of the
-cart, and West passes each phone tap to East. In the **accept** lane, each side keeps a copy, answers at once, and sends
-each change across the link. All numbers come from this toy model with a fixed seed and are illustrative.
+Pick a scenario and press **Play**. Both lanes replay the same 28 taps over 6 seconds. In the **refuse** lane, East
+holds the only copy, and West passes each phone tap to East. In the **accept** lane, each side keeps a copy, answers at
+once, and sends each change across the link. All numbers come from this toy model with a fixed seed.
 
 <CapWidget client:visible />
 
 What to look for with **Link cut for 3 s** (the link is down from 1.5 s to 4.5 s):
 
-- The refuse lane refuses 8 phone taps, each after a 300 ms wait, and shows 0 out-of-date reads. The laptop keeps
-  working through East the whole time. Once the link returns, the phone’s add lamp at 4.71 s goes through in 85 ms.
-- The accept lane answers all 28 taps in 5 ms, and 7 reads come back out of date. At 1.79 s the laptop sees a cart with
-  only the scarf, without the book the phone added at 1.54 s. At 4.45 s the phone sees only the mug and the book,
-  without the tea, pen, jam, and soap the laptop added.
-- At 4.54 s both sides merge two versions, and **the scarf comes back**, though the phone removed it at 3.99 s. The
-  laptop removes it again at 5.05 s, and both sides end with the same cart.
+- The refuse lane refuses 8 phone taps, each after a 300 ms wait, and shows 0 out-of-date reads. Once the link
+  returns, the phone’s add lamp at 4.71 s takes 85 ms.
+- The accept lane answers all 28 taps in 5 ms, and 7 reads come back out of date. At 1.79 s the laptop sees only the
+  scarf, without the book the phone added at 1.54 s.
+- At 4.54 s both sides merge, and **the scarf comes back**, though the phone removed it at 3.99 s. The laptop removes
+  it again at 5.05 s.
 
-Then switch to **No cut**. Nothing is refused, yet the refuse lane’s average wait is 42 ms against 5 ms in the accept
-lane, because every phone tap crosses to East and back. With **Far apart, no cut** the link takes 120 ms each way, and
-the refuse lane’s average climbs to 116 ms while the accept lane stays at 5 ms. That gap is the else branch of PACELC.
-The accept lane pays in the calm too: in both scenarios, the phone at 4.45 s reads a cart without the soap the laptop
-added at 4.43 s.
+Then switch to **No cut**. Nothing is refused, yet the refuse lane averages 42 ms against 5 ms, because every phone tap
+crosses to East and back. With **Far apart, no cut** (120 ms each way), the refuse lane climbs to 116 ms while the
+accept lane stays at 5 ms: the else branch of PACELC. The accept lane still serves a stale read in the calm: at 4.45 s
+the phone misses the soap the laptop added at 4.43 s.
 
 ## Conflicts need only overlap
 
@@ -266,68 +310,96 @@ added at 4.43 s.
   answer={1}
 >
 
-**It comes back at 0.30 s.** The phone’s version has the jam and the mug. The laptop’s version has neither. Neither
-saw the other, so East keeps both and merges them, and the union puts the mug back. No partition is needed: two edits
-that land within one link delay of each other conflict just like edits on both sides of a cut. With the 40 ms link in
-**No cut**, the jam reaches East at 0.223 s, 5 ms before the laptop’s tap, and nothing comes back. A partition only
+**It comes back at 0.30 s.** Neither version saw the other, so East merges them, and the union puts the mug back.
+Edits that land within one link delay of each other conflict just like edits across a cut. With the 40 ms link in
+**No cut**, the jam reaches East at 0.223 s, before the laptop’s tap, and nothing comes back. A partition only
 stretches the window from milliseconds to seconds.
 
 </Predict>
 
 ## What real systems do
 
-The widget is a toy, and real systems differ from it in a few important ways:
+The widget is a toy. Here East holds the only copy, so losing East loses the cart. Real PC systems replicate each write
+to a majority of servers and elect a leader, as in [Raft](../raft/). During a partition the majority side keeps
+working, and only the minority side refuses. Real PA systems merge with rules that record removals, so a removed item
+stays removed.
 
-- **A consistent system keeps more than one copy.** Here East holds the only copy, so losing East loses the cart. Real
-  PC systems replicate each write to a majority of servers and elect a leader, as in [Raft](../raft/). During a
-  partition the majority side keeps working, and only the minority side refuses.
-- **Merges need more than a union.** The accept lane keeps both versions and merges them with a union, so a removed
-  item can come back. Amazon’s Dynamo paper reports exactly this for its shopping cart, and accepts it because a lost
-  add costs more than a resurrected item. Better merges record removals: a tombstone marks an item as removed, and an
-  observed-remove set, a kind of CRDT (conflict-free replicated data type), tags every add with a unique ID. A remove
-  deletes only the add tags it has seen, so an add made on the other side during the cut survives the merge. Every
-  replica reaches the same answer, and a deliberate concurrent add wins.
-- **Many systems sit between the lanes.** [Quorums](../quorums/) let you choose how many copies each read and write
-  must reach, which slides a store between PA/EL and PC/EC per request. [Read replicas](../../scaling/read-replicas/)
-  are PA/EL for reads: they answer locally and lag behind the primary.
-- **Availability in CAP is strict.** It means every working server answers every request. A system that answers 99.99%
-  of requests can still choose consistency during a partition, so “CP” does not mean “often down”.
+<details>
+<summary>Go deeper: merges that remember removals</summary>
+
+The accept lane merges with a union, so a removed item can come back. Amazon’s Dynamo paper reports exactly this for its
+shopping cart, and accepts it because a lost add costs more than a resurrected item. A tombstone marks an item as
+removed. An observed-remove set, a kind of CRDT (conflict-free replicated data type), tags every add with a unique ID,
+and a remove deletes only the add tags it has seen. An add made on the other side during the cut survives the merge,
+every replica reaches the same answer, and a deliberate concurrent add wins.
+
+</details>
+
+<details>
+<summary>Go deeper: systems between the lanes, and strict availability</summary>
+
+[Quorums](../quorums/) let you choose how many copies each read and write must reach, which slides a store between
+PA/EL and PC/EC per request. [Read replicas](../../scaling/read-replicas/) are PA/EL for reads: they answer locally and
+lag behind the primary.
+
+Availability in CAP is strict: every working server answers every request. A system that answers 99.99% of requests
+can still choose consistency during a partition, so “CP” does not mean “often down”.
+
+</details>
 
 ## Trade-offs
 
 <TradeoffTable title="During a partition, and the rest of the time">
 
-| Choice                                 | What it buys                                                                         | What it costs                                                                                                   |
-| -------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| Refuse during a partition (PC)         | No out-of-date reads and no versions to merge; the copies never disagree.             | The cut-off side errors or waits: 8 of 28 taps refused in the run, each after 300 ms.                            |
-| Accept during a partition (PA)         | Every tap answered in 5 ms on both sides, for as long as the cut lasts.               | Out-of-date reads (7 in the run) and conflicting versions; a weak merge brings a removed scarf back.             |
-| Wait for the far copy when calm (EC)   | One agreed cart; a read never misses a confirmed change.                              | Every far request pays a round trip: 85 ms per phone tap on a 40 ms link, 245 ms on a 120 ms link.               |
-| Answer locally when calm (EL)          | 5 ms answers at any distance.                                                         | Replication lag still causes stale reads, and edits within one link delay of each other still conflict.          |
+| Choice                               | What it buys                                        | What it costs                                                                         |
+| ------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Refuse during a partition (PC)       | No out-of-date reads and no versions to merge.      | The cut-off side errors or waits: 8 of 28 taps refused in the run, each after 300 ms.  |
+| Accept during a partition (PA)       | Every tap answered in 5 ms on both sides.           | Out-of-date reads (7 in the run) and conflicting versions; a weak merge undoes a remove. |
+| Wait for the far copy when calm (EC) | One agreed cart; no read misses a confirmed change. | Each far request pays a round trip: 85 ms on a 40 ms link, 245 ms on a 120 ms link.    |
+| Answer locally when calm (EL)        | 5 ms answers at any distance.                       | Replication lag still causes stale reads, and edits within one link delay still conflict. |
 
 </TradeoffTable>
+
+Skip the second datacenter when one region meets your latency and survival needs, since one copy never faces this
+choice. Skip the accept lane for anything a merge cannot undo, such as stock counts and payments.
+
+## Common mistakes
+
+- **Treating partition tolerance as optional.** Links fail whether you plan for it or not, so “pick any two” only
+  hides the choice until the first cut.
+- **Labeling a whole system CP or AP.** One product can accept cart adds and refuse checkout.
+- **Merging with a plain union or last writer wins.** A union brings removed items back, and last writer wins drops
+  the losing version’s changes.
+- **Forgetting the cost when the network works.** One agreed copy charges every far request a round trip.
+- **Assuming conflicts need a partition.** Edits within one link delay of each other conflict too.
+
+<KeyTakeaways>
+
+- During a partition, each side must refuse some requests or answer with possibly stale data.
+- PACELC covers the rest of the time: one agreed copy costs a round trip, and a near copy can be stale.
+- Accepting on both sides needs a merge rule that records removals.
+- Choose per operation: accept where a merge can fix the result, refuse where it cannot.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-Your store runs in West and East. For each feature, choose PA or PC for a partition and EL or EC for the rest of the
-time: the shopping cart, chat between shoppers and support, checkout (taking payment and selling the last unit in
-stock), and the order history page.
+Your store runs in West and East. For each feature, choose PA or PC during a partition and EL or EC otherwise: the
+shopping cart, support chat, checkout (payment and the last unit in stock), and the order history page.
 
 <div slot="answer">
 
-- **Shopping cart: PA/EL.** A refused add loses a sale. Accept adds on both sides, store the cart as an observed-remove
-  set so a remove deletes every add it saw, and settle any leftovers when the shopper checks out.
-- **Chat: PA/EL, with causal order.** A message sent during a cut shows up on the other side when the link heals. Use
-  causal consistency within a conversation so a reply never appears before its question, and show a “sending” mark
-  until the far side confirms.
-- **Checkout: PC/EC.** Selling the last unit twice or charging a card twice cannot be merged away. Send checkout to a
-  majority-replicated store, show “try again” on the minority side during a cut, and pay the round trip on this one
-  path.
-- **Order history: PA/EL, plus read your writes.** A history page that lags a few seconds is fine, but a shopper who
-  just ordered must see that order, so read it from the side that took it.
-- **The pattern:** CAP and PACELC apply per operation. One product mixes both choices, and the strong ones stay on the
-  few paths that need them.
+- **Shopping cart: PA/EL.** A refused add loses a sale. Accept adds on both sides and merge with a rule that records
+  removals, such as an observed-remove set.
+- **Chat: PA/EL, with causal order.** A message sent during a cut arrives when the link heals, and causal order keeps
+  a reply after its question.
+- **Checkout: PC/EC.** A double sale or double charge cannot be merged away. Use a majority-replicated store, show
+  “try again” on the minority side, and pay the round trip on this one path.
+- **Order history: PA/EL, plus read your writes.** A page that lags a few seconds is fine, but a shopper must see the
+  order they just placed.
+- **The pattern:** CAP and PACELC apply per operation, and strong choices stay on the few paths that need them.
 
 </div>
 

@@ -1,8 +1,24 @@
 ---
 title: Video streaming
 description: Store large videos in object storage, upload them in resumable parts, transcode them into a bitrate ladder, and stream them adaptively without overpaying for bandwidth.
+furtherReading:
+  - title: 'RFC 8216: HTTP Live Streaming'
+    url: https://www.rfc-editor.org/rfc/rfc8216
+    note: Defines the multivariant (master) playlist that lists renditions and the media playlists that list segments.
+  - title: HLS Authoring Specification for Apple Devices
+    url: https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices
+    note: Apple's rules for ladders, segment durations, and keyframes aligned across variants.
+  - title: Checking object integrity in Amazon S3
+    url: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
+    note: How S3 verifies checksums such as SHA-256 and CRC32C on each part and on the whole object.
+  - title: 'SVE: Distributed Video Processing at Facebook Scale (SOSP 2017)'
+    url: https://www.cs.princeton.edu/~wlloyd/papers/sve-sosp17.pdf
+    note: Splits uploads at GOP boundaries and encodes the pieces in parallel to cut the time to publish.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
+import Callout from '../../../components/lesson/Callout.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -38,37 +54,43 @@ export const edges = [
 export const steps = [
   {
     title: 'Start an upload',
-    text: "The creator's app asks the API server to start an upload for a 2 GB file. The server writes a video row with status uploading, opens a multipart upload, and returns an upload id and a part plan.",
+    text: 'The API server writes a video row marked uploading and opens a multipart upload.',
     nodes: ['uploader', 'api', 'meta'],
     flows: ['uploader>api', 'api>meta'],
   },
   {
     title: 'Parts go straight to storage',
-    text: 'For each part, the app gets a pre-signed URL and sends the bytes directly to object storage, several parts at a time. A failed part is retried on its own. The API server never carries video bytes.',
+    text: 'The app sends each part and its SHA-256 to a pre-signed URL. Storage rejects a mismatch.',
     nodes: ['uploader', 'store'],
     flows: ['uploader>store'],
   },
   {
-    title: 'Complete, then queue',
-    text: 'The app sends the list of parts it uploaded. Object storage joins them into one source object, the server marks the video processing, and it puts a transcode job on the queue.',
-    nodes: ['uploader', 'api', 'meta', 'queue'],
-    flows: ['uploader>api', 'api>meta', 'api>queue'],
+    title: 'Complete in one transaction',
+    text: 'Storage joins the parts. One transaction marks the video processing and writes an outbox row.',
+    nodes: ['uploader', 'api', 'meta'],
+    flows: ['uploader>api', 'api>meta'],
+  },
+  {
+    title: 'Publish the job',
+    text: 'A relay puts unsent outbox rows on the queue and marks each sent once the queue confirms.',
+    nodes: ['api', 'meta', 'queue'],
+    flows: ['api>queue', 'api>meta'],
   },
   {
     title: 'Transcode in parallel',
-    text: 'Workers take tasks from the queue. Each one reads its slice of the source, encodes it at one rung with a keyframe at every segment boundary, and writes the segments back to object storage.',
+    text: 'Workers encode chunks that start at keyframes, with keyframes aligned across every rung.',
     nodes: ['queue', 'workers', 'store'],
     flows: ['queue>workers', 'workers>store'],
   },
   {
-    title: 'Mark it ready',
-    text: 'When every rung has its segments and playlist, a worker writes the master manifest and flips the video row to ready. A retried task rewrites the same keys, so a duplicate does no harm.',
+    title: 'Go live with 360p and 720p',
+    text: 'Each finished rung gets a media playlist. Once 360p and 720p are ready, the master playlist goes live.',
     nodes: ['workers', 'store', 'meta'],
     flows: ['workers>store', 'workers>meta'],
   },
   {
     title: 'A viewer presses play',
-    text: "The viewer's player gets the manifest URL from the API, then fetches the manifest and one segment at a time from a nearby CDN edge. On a miss, the edge pulls the segment from object storage once and keeps it for the next viewer.",
+    text: 'The player fetches the master playlist, a media playlist, then segments from a nearby CDN edge.',
     nodes: ['store', 'cdn', 'viewer'],
     flows: ['store>cdn', 'cdn>viewer'],
   },
@@ -81,20 +103,20 @@ export const quiz = [
     options: [
       {
         text: 'Keyframes make every rung smaller',
-        why: 'A keyframe is a full picture, the largest kind of frame, so extra keyframes make files bigger. Their placement is about switching.',
+        why: 'A keyframe is the largest kind of frame.',
       },
       {
         text: 'So the player can switch rungs between any two segments without frames it never downloaded',
         correct: true,
-        why: 'Segment 12 at 360p starts at the same instant, with a full picture, as segment 12 at 1080p. The player can mix rungs segment by segment.',
+        why: 'Segment 12 starts at the same instant with a full picture in every rung.',
       },
       {
         text: 'So the CDN can cache segments for longer',
-        why: 'Long cache lifetimes come from segments being immutable, whatever their keyframes look like.',
+        why: 'Cache lifetimes come from immutable segments.',
       },
       {
         text: 'So a dropped upload can resume from the last keyframe',
-        why: 'Uploads resume by part number on raw bytes. Keyframes belong to the encodes, which exist only after the upload completes.',
+        why: 'Uploads resume by part number, before any encode exists.',
       },
     ],
   },
@@ -105,19 +127,19 @@ export const quiz = [
       {
         text: 'So the video bytes go straight to object storage and skip the API servers',
         correct: true,
-        why: 'The server signs a short-lived URL that allows one action on one part. The heavy bytes never pass through it, so the API fleet stays small.',
+        why: 'The signed URL allows one action on one part, so the bytes skip the server.',
       },
       {
         text: 'Because object storage rejects any file larger than one part',
-        why: 'Splitting into parts serves resuming and parallelism. Pre-signing decides who carries the bytes.',
+        why: 'Parts serve resuming. Pre-signing decides who carries the bytes.',
       },
       {
         text: 'To encrypt the video in transit',
-        why: 'TLS encrypts the transfer either way. The signature grants permission for one action until it expires.',
+        why: 'TLS encrypts the transfer either way.',
       },
       {
         text: 'So the API server can transcode each part as it arrives',
-        why: 'With a pre-signed URL the API server never sees the bytes. Transcoding starts after the upload completes, reading from object storage.',
+        why: 'Transcoding starts after the upload completes.',
       },
     ],
   },
@@ -127,20 +149,20 @@ export const quiz = [
     options: [
       {
         text: 'The CDN hit ratio rose from 85% to 95%',
-        why: 'A higher hit ratio moves bytes from the origin to the edges, which lowers the bill in this model.',
+        why: 'A higher hit ratio lowers the bill.',
       },
       {
         text: 'Players started picking higher rungs, so the average delivered bitrate went up',
         correct: true,
-        why: 'Delivered bytes are views × minutes × bitrate. A higher average bitrate raises every byte served, at the edge and at the origin.',
+        why: 'Delivered bytes are views × minutes × bitrate.',
       },
       {
         text: 'The transcode queue grew longer',
-        why: 'A longer queue delays when new videos go live. It does not change how many bytes viewers pull.',
+        why: 'A longer queue delays new videos and serves no extra bytes.',
       },
       {
         text: 'The metadata database gained a read replica',
-        why: 'Metadata rows are tiny. Segment bytes make up almost all of the egress.',
+        why: 'Metadata rows are tiny next to segments.',
       },
     ],
   },
@@ -150,51 +172,99 @@ export const quiz = [
     options: [
       {
         text: 'On a train that passes through tunnels',
-        why: "That's where it helps most: in the toy model it cuts stalls from 3 to 1.",
+        why: 'It helps most there, cutting stalls from 3 to 1.',
       },
       {
         text: "On a steady home connection well above the top rung's bitrate",
         correct: true,
-        why: 'Both players stream smoothly there. Fixed 1080p even averages a slightly higher bitrate, because the adaptive player starts on the lowest rung.',
+        why: 'Both players stream smoothly, and fixed 1080p averages a higher bitrate.',
       },
       {
         text: 'On a crowded link that never reaches 5 Mbps',
-        why: 'There fixed 1080p stalls 11 times in the toy model, while the adaptive player settles on 480p and never stalls.',
+        why: 'Fixed 1080p stalls 11 times there. The adaptive player never stalls.',
       },
       {
         text: 'At startup',
-        why: 'Startup is where the ladder shines: a small first segment puts a picture on screen sooner.',
+        why: 'A small first segment puts a picture on screen sooner.',
       },
     ],
   },
 ];
 
-This case study builds on the **Reliability** module, especially Retries with backoff and jitter, Idempotency, and
-Queues and backpressure. In [Caching](../../scaling/caching/), you kept popular answers close to the people asking for
-them. Here the answers are enormous. One video weighs gigabytes, every viewer pulls megabits per second for as long as
-they watch, and the network between you and each viewer changes from one second to the next. You will store those bytes
-in object storage, move them with uploads that survive a dropped connection, encode them into a ladder of sizes, and let
-each player pick the size its network can carry right now.
+export const recall = [
+  {
+    id: 'case-studies/video-streaming/recall-1',
+    prompt: 'A CDN edge caches a video segment for a week and never serves a stale copy. Why is that safe?',
+    options: [
+      {
+        text: 'The segment is immutable: new content gets a new key and a new URL',
+        correct: true,
+        why: 'Bytes that never change behind a URL cannot go stale.',
+      },
+      {
+        text: 'The edge revalidates with the origin on every request',
+        why: 'That adds an origin round trip to every request.',
+      },
+      {
+        text: 'The edge deletes anything older than a day',
+        why: 'A short expiry still serves stale bytes until then.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/video-streaming/recall-2',
+    prompt: 'A queue redelivers a task after its worker crashed halfway. What makes running it twice harmless?',
+    options: [
+      {
+        text: 'The task writes to a key derived from its input, so a rerun writes identical bytes',
+        correct: true,
+        why: 'The second write replaces identical bytes.',
+      },
+      {
+        text: 'The queue guarantees exactly-once delivery',
+        why: 'Queues deliver at least once.',
+      },
+      {
+        text: 'The worker skips any task older than a minute',
+        why: 'That loses unfinished work.',
+      },
+    ],
+  },
+];
+
+<Recall questions={recall} />
+
+<Callout variant="note" title="Key idea">
+
+Keep video bytes in object storage behind a CDN and the facts about them in a small database. Upload in resumable,
+checksummed parts, transcode at keyframes into a ladder aligned across every rung, and go live once 360p and 720p are
+ready. The player then picks a rung for each segment to match its network.
+
+</Callout>
+
+This case study builds on [CDNs](../../scaling/cdn/), [Idempotency](../../reliability/idempotency/), and
+[Queues and backpressure](../../reliability/queues-and-backpressure/). Here one video weighs gigabytes, and every viewer
+pulls megabits per second over a changing network.
 
 <Objectives>
 
-- Explain why object storage holds the video bytes while a database holds the records that point at them.
-- Compare one upload request with a multipart, resumable upload when the connection keeps dropping.
-- Trace how an adaptive player picks a rung from a bitrate ladder, and why that prevents stalls on a shaky network.
-- Estimate the monthly egress bill, and show how the CDN hit ratio and the ladder itself change it.
+- Explain why object storage holds the bytes and a database holds the facts.
+- Explain why uploads go in resumable, checksummed parts.
+- Trace how an adaptive player picks a rung from a bitrate ladder.
+- Split a transcode at keyframes and publish once a minimum playable set is ready.
+- Keep a transcode job from getting lost when the API server crashes.
+- Estimate the monthly egress bill and how a CDN changes it.
 
 </Objectives>
 
+**Route:** Advanced, case 6 of 10 on the beginner route through Module 6. Next on the route:
+[Search](../search/).
+
 ## The failure: a train, three tunnels, one fixed file
 
-A commuter starts a long video on the train. The app serves it as one fixed 1080p encode at 5 Mbps. In the open, the phone
-gets about 5 to 8 Mbps, enough to stay ahead. Then the train enters a tunnel and the connection falls to about 1 Mbps.
-Three tunnels lie along the first 90 s of the ride, at 20 to 30 s, 46 to 58 s, and 72 to 82 s.
-
-The player keeps a **buffer**: video it has downloaded but not yet shown. While the network outruns the bitrate, the
-buffer grows. When the network falls behind, playback drains the buffer, and when the buffer hits zero the picture
-freezes behind a spinner. That freeze is a **stall**, and the time spent frozen is **rebuffering**. Viewers hate it more
-than a blurry picture.
+A commuter starts a video on the train, served as one fixed 1080p encode at 5 Mbps. In the open the phone gets 5 to 8
+Mbps, and in each of three tunnels in the first 90 s it gets about 1 Mbps. The player keeps a **buffer** of downloaded
+video. When the buffer empties, the picture freezes: that is a **stall**, and the frozen time is **rebuffering**.
 
 <Predict
   client:visible
@@ -209,107 +279,88 @@ than a blurry picture.
   answer={2}
 >
 
-**Three times, once per tunnel.** A 1080p segment holds 4 s × 5 Mbps = 20 Mb of video. At 1 Mbps it takes 20 s to
-arrive, so the buffer gains 0.2 s of video for every second of wall time while playback spends a full second. Whatever
-the player saved up in the open runs out partway through every tunnel. In the toy model, the fixed player stalls at 27,
-57, and 80 s, for 9 s of rebuffering in total. The widget further down replays this exact duel.
+**Three times, once per tunnel.** A 4 s segment at 5 Mbps is 20 Mb, which takes 20 s at 1 Mbps, so the buffer drains in
+every tunnel. The toy model stalls at 27, 57, and 80 s, 9 s in total. The widget below replays this duel.
 
 </Predict>
 
-## The constraint: bytes
-
-Most designs in this course count requests. Video counts bytes, and the bandwidth to move them decides every major
-choice:
-
-- **Upload.** A large file over a consumer connection often fails partway. The upload has to pick up where it stopped.
-- **Storage.** Every minute of video exists as one source file plus several encodes. Storage grows every day.
-- **Playback.** The player must keep its buffer ahead of the playhead on a network it cannot control: a carrier, a
-  café router, a train.
-- **Egress.** Every byte sent to a viewer costs money. At scale, the delivery bill can dwarf the cost of storing the
-  video.
-
-The rest of this lesson walks the [design checklist](../../thinking/design-checklist/).
-
 ## Requirements
+
+Video counts bytes more than requests. The rest of this lesson walks the
+[design checklist](../../thinking/design-checklist/).
 
 **Functional**
 
-- Creators upload videos of up to a few gigabytes from a phone or a browser.
-- An upload survives a dropped connection or an app restart without starting over.
-- Each upload becomes a ladder of resolutions and bitrates, and the video goes live when it is ready.
-- Viewers press play and see a picture quickly, on any network from fiber to a moving train.
-- The player adjusts quality to the network without the viewer touching a setting.
+- Creators upload videos of a few gigabytes, and an upload survives a dropped connection without starting over.
+- Each upload becomes a ladder of rungs, and the video goes live once a minimum playable set (360p and 720p) is ready.
+- The player adapts quality to the network on its own.
 
-**Non-functional** (illustrative targets)
-
-- First frame within about 2 s on a decent connection.
-- Stalls rare enough that viewers spend well under 1% of watch time rebuffering.
-- A completed upload is never lost.
-- A typical upload is ready to watch within minutes.
-- Delivery cost per view stays flat or falls as views grow.
+**Non-functional** (illustrative): first frame within about 2 s, rebuffering under 1% of watch time, no completed
+upload lost, and a video ready within minutes.
 
 ## Estimates
 
-These numbers are illustrative. Suppose creators upload 50,000 videos a day, 8 minutes each, recorded at 10 Mbps. The
-ladder has five rungs, from 240p at 0.4 Mbps to 1080p at 5 Mbps. At peak, 1 million people watch at once, at an average
-of 3 Mbps.
+Suppose creators upload 50,000 videos a day, 8 minutes each at 10 Mbps. The ladder has five rungs, from 240p at 0.4
+Mbps to 1080p at 5 Mbps. At peak, 1 million people watch at 3 Mbps on average.
 
-| Quantity                                            | Illustrative value                           |
-| --------------------------------------------------- | -------------------------------------------- |
-| Source file per upload (8 min × 60 s × 10 Mbps ÷ 8) | 600 MB                                       |
-| Uploads per day (50,000 × 600 MB)                   | 30 TB, about 2.78 Gbps averaged over the day |
-| Ladder bitrates summed (0.4 + 0.8 + 1.4 + 2.8 + 5)  | 10.4 Mbps                                    |
-| Ladder storage per minute of video (10.4 × 60 ÷ 8)  | 78 MB                                        |
-| Minutes uploaded per day (50,000 × 8)               | 400,000                                      |
-| Ladder storage per day (400,000 × 78 MB)            | 31.2 TB                                      |
-| New storage per day (sources plus ladder)           | 61.2 TB                                      |
-| New storage per year (61.2 TB × 365)                | about 22.3 PB                                |
-| Peak egress (1 million viewers × 3 Mbps)            | 3,000 Gbps                                   |
-| Peak egress ÷ average upload rate                   | about 1,080×                                 |
+| Quantity (illustrative)                           | Value                        |
+| ------------------------------------------------- | ---------------------------- |
+| Source per upload (8 min × 60 s × 10 Mbps ÷ 8)    | 600 MB                       |
+| Sources per day (50,000 × 600 MB)                 | 30 TB, about 2.78 Gbps       |
+| Ladder bitrates summed (0.4 + 0.8 + 1.4 + 2.8 + 5) | 10.4 Mbps, 78 MB per minute |
+| Ladder per day (400,000 minutes × 78 MB)          | 31.2 TB                      |
+| New storage per day, per year                     | 61.2 TB, about 22.3 PB       |
+| Peak egress (1 million × 3 Mbps)                  | 3,000 Gbps                   |
 
-Two things stand out. First, the ladder weighs about as much as the sources: 31.2 TB of encodes on top of 30 TB of
-uploads every day, and none of it goes away on its own. Cheap storage per gigabyte matters more here than fast storage.
-Second, the traffic is lopsided. Peak egress is about 1,080 times the average upload rate. Uploads are a storage and
-processing problem; playback is a bandwidth problem, and bandwidth is where the money goes.
+Storage grows forever, so cheap gigabytes matter. Peak egress is about 1,080 times the upload rate, so bandwidth
+dominates the bill.
 
 ## API
 
 ```text
 POST /videos  {title, sizeBytes}
      returns { videoId, uploadId, partSize, parts }
-POST /videos/{videoId}/parts/{n}/url
+POST /videos/{videoId}/parts/{n}/url  {sha256}
      returns { url, expiresAt }
-PUT  {url}  (one part's bytes, sent straight to object storage)
+PUT  {url}  (one part's bytes and its SHA-256, sent straight to object storage)
      returns { etag }
 GET  /videos/{videoId}/parts
-     returns [ { n, etag } ] for every part that arrived
-POST /videos/{videoId}/complete  {parts: [ { n, etag } ]}
+     returns [ { n, etag, sha256 } ] for every part that arrived
+POST /videos/{videoId}/complete  {parts: [ { n, etag, sha256 } ]}
      returns 202 Accepted
 GET  /videos/{videoId}
-     returns { status, manifestUrl }
+     returns { status, masterUrl }
 
 GET  {cdn}/videos/{videoId}/master.m3u8
-     returns the master manifest: one playlist per rung
+     returns the master (multivariant) playlist: one entry per ready rung
+GET  {cdn}/videos/{videoId}/720p/playlist.m3u8
+     returns the 720p media playlist: every segment URL with its duration
 GET  {cdn}/videos/{videoId}/720p/seg_00012.ts
      returns 4 s of video at 720p
 ```
 
-The status moves from uploading to processing to ready, or to failed. The API server never touches video bytes. It hands
-out pre-signed URLs, reports which parts arrived, and queues the transcode once the client calls complete. The complete
-call carries the part list so the server can check every part before processing starts, and a client that calls it
-twice after a timeout must not start two transcodes. The [Idempotency](../../reliability/idempotency/) lesson covers that guarantee, and the [APIs and
-contracts](../../foundations/apis/) lesson covers how to evolve endpoints like these.
+The API server never touches video bytes. Storage's ETag is an opaque name for a stored part, and for a multipart
+object it is no MD5 of the bytes. Integrity needs an explicit checksum: the server signs each part's SHA-256 into its
+URL, and storage rejects bytes that do not match. Complete moves the video to processing and writes an outbox row for
+the transcode job in one transaction. A retried complete gets the same 202 and no second job, as in
+[Idempotency](../../reliability/idempotency/).
 
 ## Data model
 
-| Table        | Key                | Holds                                                        |
-| ------------ | ------------------ | ------------------------------------------------------------ |
-| `videos`     | `video_id`         | Owner, title, status, duration, source key, manifest key     |
-| `uploads`    | `upload_id`        | Video id, part size, parts received with their ETags, expiry |
-| `renditions` | `(video_id, rung)` | Resolution, bitrate, playlist key, segment count, status     |
+| Table        | Key                | Holds                                                                  |
+| ------------ | ------------------ | ---------------------------------------------------------------------- |
+| `videos`     | `video_id`         | Owner, title, status, duration, source key, master playlist key        |
+| `uploads`    | `upload_id`        | Video id, part size, parts received with their ETags and SHA-256s      |
+| `renditions` | `(video_id, rung)` | Resolution, bitrate, media playlist key, status: pending, encoding, ready |
+| `outbox`     | `id`               | Video id, the owed transcode job, and whether the relay sent it        |
 
-These rows are small, and they hold facts about the video. The video itself lives in object storage under keys like
-these:
+The video bytes live in object storage, which is cheap per gigabyte and answers no queries, so "which videos belong to
+this creator?" goes to the database. [Data modeling](../../foundations/data-modeling/) compares these stores.
+
+<details>
+<summary>Go deeper: object storage keys, and how object storage differs from a database</summary>
+
+The video lives in object storage under keys like these:
 
 ```text
 sources/{videoId}/original.mp4
@@ -317,8 +368,6 @@ videos/{videoId}/master.m3u8
 videos/{videoId}/720p/playlist.m3u8
 videos/{videoId}/720p/seg_00012.ts
 ```
-
-**Object storage** is a different kind of store from the databases in earlier lessons:
 
 - **Buckets and keys.** A bucket is a named container, and a key is a path-like string inside it. You `PUT` an object
   under a key and `GET` it back by that key. The slashes are only part of the name; there are no folders, rows, or
@@ -328,23 +377,23 @@ videos/{videoId}/720p/seg_00012.ts
 - **Cheap and durable per gigabyte.** The service either copies each object to several disks or splits it with erasure
   coding into fragments plus parity, spread across machines, so a dead disk or a dead machine loses nothing. A terabyte
   here costs far less than a terabyte on database disks.
-- **Slow per request, with no queries.** Each request carries far more latency than a lookup in a well-indexed database,
-  and you cannot ask "which videos belong to this creator?" That question goes to the metadata database.
-- **New content, new key.** Because objects never change, a new encode gets new keys. A cache can keep a segment for as
-  long as it likes and never serve a stale copy.
+- **Slow per request, with no queries.** Each request carries far more latency than a lookup in a well-indexed
+  database, and listing keys by prefix is the closest thing to a query.
+- **One key that changes.** Segments and media playlists never change once written. The master playlist is the
+  exception: it is rewritten whole as rungs join, so it gets a short cache lifetime.
 
-The [Data modeling and storage choice](../../foundations/data-modeling/) lesson compares these stores in depth. The rule of thumb for this design: put the
-bytes in object storage and the facts about the bytes in a database.
+</details>
 
 ## High-level design
 
-The design has two paths that meet at object storage. The write path takes bytes in: the creator's app uploads parts
-straight to object storage, and a queue of transcode jobs turns each upload into a ladder of segments. The read path
-sends bytes out: a viewer's player fetches a manifest and then segments, mostly from CDN edges near the viewer. The API
-server and the metadata database sit to the side and handle small requests about the video, never the video itself.
-Step through one upload and one view:
+Two paths meet at object storage. The write path uploads parts and transcodes them into a ladder. The read path serves
+playlists and segments from CDN edges. The API server and the database handle only small requests. Step through one
+upload and one view:
 
 <StepDiagram client:visible title="Upload, transcode, and play one video" nodes={nodes} edges={edges} steps={steps} height={360} />
+
+<details>
+<summary>Go deeper: an analogy for the whole design</summary>
 
 <Analogy title="A publisher, a warehouse, and bookshops">
 
@@ -357,12 +406,13 @@ one edition, while a video player can switch editions every chapter.
 
 </Analogy>
 
+</details>
+
 ## Deep dive: adaptive bitrate playback
 
 ### Segments and the ladder
 
-The transcoder cuts each video into short **segments**, 4 s each in this lesson's model, and encodes every segment at
-every rung of a **bitrate ladder**:
+The transcoder cuts each video into 4 s **segments** and encodes each one at every rung of a **bitrate ladder**:
 
 | Rung  | Bitrate (illustrative) | Bits per 4 s segment |
 | ----- | ---------------------- | -------------------- |
@@ -372,23 +422,34 @@ every rung of a **bitrate ladder**:
 | 720p  | 2.8 Mbps               | 11.2 Mb              |
 | 1080p | 5 Mbps                 | 20 Mb                |
 
-A **manifest** lists the rungs and the URL of every segment at every rung. HLS calls it a playlist (`.m3u8`), and DASH
-calls it an MPD. The player fetches the manifest first, then fetches segments one at a time over plain HTTP, choosing a
-rung for each. Plain HTTP matters: every segment is an ordinary file that any CDN can cache.
+HLS uses two kinds of playlist (`.m3u8`). The **master playlist** (RFC 8216 calls it multivariant) lists the rungs,
+each with a bitrate and the URL of its media playlist. Each **media playlist** lists one rung's segments and their
+durations. The player fetches the master playlist, then one media playlist, then segments over plain HTTP, so any CDN
+can cache them.
 
-### Why segment boundaries line up
+Every segment starts with a **keyframe**, a full picture, at the same timestamps in every rung, so the player can switch
+rungs between any two segments.
 
-Most frames in compressed video store only what changed since earlier frames. A **keyframe** stores a full picture that
-needs nothing before it. The encoder places a keyframe at the start of every segment, at the same timestamps in every
-rung, so segment 12 at 360p covers exactly the same 4 s as segment 12 at 1080p and opens with a full picture. That
-alignment lets the player switch rungs between any two segments: it can play segment 11 at 1080p and segment 12 at
-360p, and the picture just gets softer. Without aligned keyframes, a switch would need frames from a rung the player
-never downloaded.
+### Try it
 
-### The buffer race
+Lane A always fetches 1080p. Lane B fetches the highest rung at or below 0.8 times its measured throughput. Press Play
+on the train and watch each buffer bar as a tunnel hits.
 
-Playback drains the buffer at one second of video per second. Downloads refill it at a rate set by the network and the
-rung. Take the tunnel's 1 Mbps:
+<AdaptiveBitrateWidget
+  client:visible
+  initial="tunnels"
+/>
+
+Fixed 1080p stalls in every tunnel. The adaptive player starts at 0.5 s, stalls once for 2 s, and rides out the other
+tunnels on lower rungs.
+
+<details>
+<summary>Go deeper: the buffer race, the adaptive rule, DASH, and what the duel shows</summary>
+
+DASH describes the same two levels in one MPD file.
+
+**The buffer race.** Playback drains the buffer at one second of video per second. Downloads refill it at a rate set by
+the network and the rung. Take the tunnel's 1 Mbps:
 
 - A 1080p segment is 4 s × 5 Mbps = 20 Mb. It takes 20 s to arrive, so the buffer gains 0.2 s of video per second of
   wall time while playback spends 1 s. The buffer shrinks every second.
@@ -398,9 +459,7 @@ rung. Take the tunnel's 1 Mbps:
 When the buffer reaches zero, playback stalls until enough video arrives to resume. In the toy model, playback starts or
 resumes once 4 s (one segment) is buffered, and the player stops fetching once 20 s is buffered.
 
-### A simple adaptive rule
-
-The adaptive player in this lesson follows a deliberately simple rule:
+**A simple adaptive rule.** Lane B follows a deliberately simple rule:
 
 ```text
 for each segment:
@@ -426,17 +485,7 @@ Real players are more refined. Buffer-based algorithms such as BOLA choose rungs
 and hybrid algorithms blend measured throughput with buffer level and look ahead. Real players also avoid switching too
 often, because a picture that keeps changing sharpness annoys viewers. The toy rule is enough to show the core idea.
 
-### Try it
-
-Both lanes watch the first 90 s of the same long video over the same bandwidth trace. Lane A always fetches 1080p.
-Lane B follows the rule above. Start with the train, press Play, and watch each buffer bar as a tunnel hits.
-
-<AdaptiveBitrateWidget
-  client:visible
-  initial="tunnels"
-/>
-
-What to look for:
+**What to look for in the widget:**
 
 - **Fixed 1080p stalls in every tunnel.** It stalls at 27, 57, and 80 s: three stalls and 9 s of rebuffering. In 90 s
   it shows only 78 s of video.
@@ -457,46 +506,47 @@ What to look for:
   38.5 s of rebuffering, and shows only 44.5 s of video. The adaptive player starts at 1 s, fetches every segment after
   the first at 480p, and never stalls.
 
+</details>
+
 ## Deep dive: uploads that survive a dropped connection
 
 A creator uploads a 2 GB video from a phone on a shaky connection. With one long `PUT`, a drop throws away everything
-sent so far, and the upload starts again from byte zero. On a connection that drops every few minutes, a big file may
-never finish at all.
+sent so far.
 
 ### Multipart upload
 
-Multipart upload splits the file into numbered parts and sends each part as its own request:
+1. **Initiate.** The API server opens a multipart upload and returns the upload id with a part plan.
+2. **Upload parts.** The client sends each part and its SHA-256 to a **pre-signed URL**, a storage URL the server signs
+   for one action until it expires. Storage rejects a mismatch.
+3. **Complete.** The client sends the part list. Storage joins the parts, and the server records the transcode job.
 
-1. **Initiate.** The client asks the API server to start an upload. The server opens a multipart upload in object
-   storage and returns the upload id with a part plan.
-2. **Upload parts.** For each part, the client gets a pre-signed URL and sends the part straight to object storage.
-   Several parts travel at once, which also uses a fast connection better than one stream. Each successful part
-   returns an ETag, a fingerprint of its bytes.
-3. **Complete.** The client sends the list of part numbers and ETags. Object storage joins the parts into one object,
-   and the API server queues the transcode.
-
-When the connection drops, only the parts in flight fail. The client asks which parts arrived and retries only the
-missing ones. If the app restarts, it resumes from the same list. Retries should wait a little longer each time and add
-random jitter, so that thousands of phones coming back online after an outage do not all retry in the same instant. The
-[Retries with backoff and jitter](../../reliability/retries/) lesson covers that pattern. Object storage also needs a cleanup rule that deletes parts
-of uploads nobody completed, or abandoned parts pile up and cost money forever.
-
-### Pre-signed URLs
-
-A **pre-signed URL** is a storage URL with a signature attached. The API server creates it with its own credentials. It
-allows one specific action, such as "upload part 7 of this upload", and expires after a short time. The client uses it
-directly, so the video bytes travel from the phone to object storage without passing through the API servers. Those
-servers stay small and cheap: they answer tiny JSON requests while object storage, built for bulk bytes, takes the heavy
-traffic.
+After a drop, the client asks which parts arrived and retries only the missing ones, with
+[backoff and jitter](../../reliability/retries/).
 
 ### Try it
 
-Change the number of connection drops and the part size. In this toy, a 2,000 MB file uploads with 4 parts in flight at
-once, and each drop cuts every transfer in flight halfway through.
+Change the number of drops and the part size. Each drop cuts every transfer in flight halfway through.
 
 <ResumableUploadWidget client:visible />
 
-What to look for:
+With 3 drops and 100 MB parts, one request sends 5,000 MB to deliver 2,000 MB, while multipart sends 2,600 MB.
+
+<details>
+<summary>Go deeper: pre-signed URLs, cleanup, whole-object checksums, and what the widget shows</summary>
+
+**Cleanup.** A lifecycle rule in object storage deletes the parts of uploads nobody completed, or abandoned parts pile
+up and cost money forever.
+
+**Pre-signed URLs.** The API server creates each URL with its own credentials, so the video bytes travel from the phone
+to object storage without passing through the API servers. Those servers stay small and cheap: they answer tiny JSON
+requests while object storage, built for bulk bytes, takes the heavy traffic. When the server signs the part's SHA-256
+into the URL, the client must send that exact checksum with the bytes.
+
+**Whole-object checksums.** After complete, S3 also stores a checksum for the assembled object: a checksum of the part
+checksums, or for CRC algorithms a full-object checksum. The server can compare it with the part list the client hashed
+before it records the transcode job.
+
+**What to look for in the widget:**
 
 - **One drop costs a single request half the file.** With 3 drops, one request sends 5,000 MB to deliver 2,000 MB:
   3,000 MB wasted across 4 attempts. With 5 drops it sends 7,000 MB.
@@ -508,62 +558,90 @@ What to look for:
   each drop wastes as much as it does for one request.
 - **With no drops, both send exactly 2,000 MB.** Multipart only adds requests: 22 against 1.
 
+</details>
+
 ## Deep dive: transcoding into a ladder
 
-When the client calls complete, the API server marks the video processing and puts a job on the transcode queue.
-Encoding is slow and CPU heavy, so it runs on its own fleet of workers, far from the request path. A creator waits
-minutes for the video to go live; nobody waits on an HTTP request for it.
+Encoding is slow and CPU heavy, so it runs on its own worker fleet. An 8 minute upload has 120 segments of 4 s, and
+five rungs make 600 segment encodes.
 
-### Split, encode, and stitch
+### Split at keyframes, encode in parallel
 
-- **Split.** A worker probes the source for its length and resolution and plans the work as many small, independent
-  tasks. With 4 s segments, an 8 minute upload has 8 × 60 ÷ 4 = 120 segments, and five rungs make 600 segment encodes.
-  Real pipelines group segments into longer chunks per task, but the shape is the same.
-- **Encode in parallel.** Many workers each take a task, read their slice of the source with a ranged read, encode it
-  at one rung with a keyframe forced at every segment boundary, and write the segments to object storage.
-- **Stitch.** When every task for a rung finishes, a worker writes that rung's playlist. When every rung is done, it
-  writes the master manifest and marks the video ready in the metadata database.
+Most frames store only changes since earlier frames and cannot be decoded alone, so the split follows keyframes:
 
-Parallelism is the point. One long encode becomes hundreds of short ones, so a long upload finishes in about the time
-of its slowest chunk plus the overhead of splitting and stitching.
+- **Chunk at random-access points.** A planner reads the source's keyframe index and cuts chunks on segment boundaries.
+- **Decode pre-roll, then trim.** Each worker starts decoding at the last keyframe before its chunk and drops the
+  frames before its start.
+- **Align keyframes.** Every output segment is one closed GOP (a group of pictures that references nothing outside
+  itself) opening with a keyframe at 0, 4, 8 s, in every rung.
+- **Minimum playable set first.** 360p and 720p tasks go on a high-priority lane.
+
+### Publish each rung on its own
+
+1. When a rung's last segment lands, the worker writes its media playlist and marks its `renditions` row ready.
+2. It rebuilds the master playlist from the ready rows, under the same key.
+3. Once 360p and 720p are ready, the video goes live. Other rungs join the master playlist as they finish.
+
+Segments and media playlists never change, so the CDN caches them for a long time. The master playlist gets a short
+cache lifetime, a minute or less.
 
 ### Retries without duplicates
 
-Workers crash and tasks time out, so the queue redelivers tasks. A redelivered task must be safe to run twice, and
-deterministic keys make it safe: the task for segment 12 at 720p always writes `videos/{videoId}/720p/seg_00012.ts`.
-Running it twice writes the same object twice, and the second write replaces the first with identical bytes. The step
-that marks the video ready checks the current status first, so a duplicate "all done" message changes nothing. The
-[Idempotency](../../reliability/idempotency/) lesson covers this pattern in depth.
+The queue redelivers tasks after crashes. Segment 12 at 720p always goes to `videos/{videoId}/720p/seg_00012.ts`, so a
+rerun writes identical bytes, and publishing skips rungs already ready.
+[Queues and backpressure](../../reliability/queues-and-backpressure/) covers adding workers when uploads spike.
 
-When uploads spike, the queue grows and the workers keep their pace. The [Queues and backpressure](../../reliability/queues-and-backpressure/) lesson covers how to
-watch queue depth, add workers, and decide what to delay when the queue keeps growing. Here a sensible priority is to
-encode the lower rungs before the top ones, so a new video can go live early at modest quality.
+<details>
+<summary>Go deeper: mezzanine files, lazy top rungs, racing publishers, and audio</summary>
 
-### Encode the top rungs lazily
+- **Wall time.** Split across workers, a long upload finishes in about the time of its slowest chunk plus planning and
+  publishing.
+- **Mezzanine files.** Some pipelines first rewrite the source as a mezzanine file of closed GOPs with a keyframe every
+  4 s, so every chunk starts cleanly with no pre-roll.
+- **Late rungs and open players.** A player reads the master playlist when playback starts, so a viewer who pressed
+  play before 1080p arrived stays on the lower rungs until the next play.
+- **Encode the top rungs lazily.** Most uploads get few views. Encoding every upload at 1080p spends compute and storage
+  on video almost nobody watches at 1080p. Some platforms encode the lower rungs up front and encode 1080p only once a
+  video starts drawing views. The cost is a short window when a fresh hit plays without 1080p.
+- **Two rungs can finish at once.** Two workers each read the ready rows and write the master playlist, and the write
+  that lands last can drop the rung the other just added. Serialize the rebuilds, for example by holding a lock on the
+  video row while reading the ready rungs and writing the master playlist, so the last write lists every ready rung.
+- **Audio goes in one pass.** Audio encoders such as AAC add a short run of priming samples at the start of every
+  encode, so stitching audio chunks leaves small gaps or clicks at the seams. Pipelines usually encode the audio track
+  once, end to end, and serve it alongside every video rung.
 
-Most uploads get few views. Encoding every upload at 1080p spends compute and storage on video almost nobody watches at
-1080p. Some platforms encode the low rungs up front and encode the top rungs only once a video starts drawing views. The
-cost is a short window when a fresh hit plays at lower quality.
+</details>
+
+## Failure walkthrough: the API server crashes between commit and publish
+
+A creator's complete call commits at 14:00:00, and the API server crashes at 14:00:00.1. Had the server committed and
+then enqueued as a second step, video 4417 would sit in processing forever with no job. With the outbox, the job row
+committed in the same transaction as the status change.
+
+1. **The relay restarts.** It reads unsent outbox rows and finds video 4417.
+2. **It publishes again.** The queue may now hold two copies. The relay marks the row sent only after the queue
+   confirms, so delivery is [at least once](../../async/delivery-semantics/).
+3. **The workers absorb the duplicate.** Reruns write the same keys, and the publish step checks each rung's status.
+4. **The creator sees the video late.** The delay equals the relay's downtime. No upload is lost.
+
+Change data capture (CDC), which tails the database's commit log, gives the same guarantee with no outbox table.
 
 ## Deep dive: paying for egress
 
-Every byte that leaves the cloud toward a viewer is **egress**, billed per gigabyte. In this design playback dwarfs all
-other traffic, so the egress bill is the number to watch.
-
-Without a CDN, every segment comes from object storage at the origin, and every byte pays origin egress prices. With a
-CDN, viewers fetch segments from edge servers near them. The edge keeps popular segments in its cache. On a miss, it
-pulls the segment from the origin once and serves it to everyone nearby who asks next. Video segments suit a CDN
-perfectly: they are immutable, identical for every viewer, and requested again and again for popular videos. The [CDNs](../../scaling/cdn/)
-lesson covers edge placement and routing, and [Caching](../../scaling/caching/) covers hit ratios and eviction.
+Every byte sent toward a viewer is **egress**, billed per gigabyte. With a [CDN](../../scaling/cdn/), an edge pulls a
+segment from the origin once and serves it to everyone nearby. Immutable segments suit
+[caching](../../scaling/caching/) perfectly.
 
 ### Try it
 
-The calculator uses round illustrative prices: $0.05 per GB from the origin and $0.02 per GB from the CDN. Real prices
-vary by provider, region, and volume, and large platforms negotiate their own.
+The calculator uses round illustrative prices: $0.05 per GB from the origin and $0.02 per GB from the CDN.
 
 <EgressCostWidget client:visible />
 
-What to look for:
+With the defaults, 10M views of 6 minutes at 720p, a 90% hit ratio cuts the monthly bill from $63,000 to $31,500.
+
+<details>
+<summary>Go deeper: what the calculator shows, and the long tail</summary>
 
 - **The defaults: 10M views × 6 minutes at 720p.** At 2.8 Mbps that delivers 1.26 PB a month. With a 90% hit ratio, the
   origin serves only 126 TB. The bill falls from $63,000 without a CDN to $31,500 with one: 1,260,000 GB × $0.02 =
@@ -573,40 +651,43 @@ What to look for:
 - **The hit ratio decides whether the CDN pays.** Drag it down. At 40% the CDN breaks even. At 20% it costs more than
   serving from the origin alone, because you pay the CDN for every byte and the origin for every miss.
 - **At 0%, the origin sends every byte the viewers get,** and the CDN only adds its own charge on top.
+- **Real prices** vary by provider, region, and volume, and large platforms negotiate their own.
 
-### The long tail
-
-Views on a video platform follow a long tail. A small set of popular videos draws most of the views, while millions of
-old or niche videos get a few views each. Popular segments stay hot in every edge. A rarely watched video misses at the
-edge almost every time, so its bytes come from the origin. The hit ratio is a property of the catalog and the audience,
-and platforms push it up in three ways. They keep long cache lifetimes on immutable segments. They pre-warm edges with
-a video they expect to spread. And they add a regional cache tier between the edges and the origin, so a miss at many
-edges becomes a single origin fetch.
+**The long tail.** Views on a video platform follow a long tail. A small set of popular videos draws most of the views,
+while millions of old or niche videos get a few views each. Popular segments stay hot in every edge. A rarely watched
+video misses at the edge almost every time, so its bytes come from the origin. The hit ratio is a property of the
+catalog and the audience, and platforms push it up in three ways. They keep long cache lifetimes on immutable segments.
+They pre-warm edges with a video they expect to spread. And they add a regional cache tier between the edges and the
+origin, so a miss at many edges becomes a single origin fetch.
 
 The player controls the other half of the bill. The top rung, the encoder's efficiency (newer codecs reach similar
 quality in fewer bits), and the safety margin in the adaptive rule all set the average delivered bitrate.
 
-## Trade-offs
+</details>
 
-Every choice here trades bytes against something else: storage, compute, quality, or complexity.
+## Trade-offs
 
 <TradeoffTable title="Choices for storing and delivering video">
 
-| Design                                | What it buys                                       | What it costs                                             |
-| ------------------------------------- | -------------------------------------------------- | --------------------------------------------------------- |
-| One fixed 1080p file                  | One encode, top quality on fast networks           | Stalls whenever bandwidth dips below 5 Mbps               |
-| Adaptive bitrate ladder (this lesson) | Few stalls on shaky networks, fast startup         | Five encodes per video, about twice the encoded bytes     |
-| Lazy top rungs                        | Less compute and storage for rarely watched videos | New hits play at lower quality until the top rungs finish |
-| Origin only                           | No CDN contract to manage                          | Origin prices on every byte; distant viewers wait longer  |
-| Origin plus CDN                       | Cheaper bytes near viewers at high hit ratios      | Costs more than origin only when the hit ratio is low     |
-| One upload request                    | Simplest client and server                         | Every drop restarts the upload from zero                  |
-| Multipart, resumable upload           | Retries only failed parts; parts move in parallel  | Part bookkeeping, more requests, cleanup of stale uploads |
+| Design                                | What it buys                                   | What it costs                                         |
+| ------------------------------------- | ---------------------------------------------- | ----------------------------------------------------- |
+| One fixed 1080p file                  | One encode, top quality on fast networks       | Stalls whenever bandwidth dips below 5 Mbps           |
+| Adaptive bitrate ladder (this lesson) | Few stalls, fast startup                       | Five encodes per video, about twice the stored bytes  |
+| Go live at 360p and 720p              | Live after two of five rungs                   | A changing master playlist with a short cache lifetime |
+| Outbox for the transcode job          | No video stuck in processing after a crash     | A relay, and duplicate jobs to absorb                 |
 
 </TradeoffTable>
 
-## Honest simplifications
+<details>
+<summary>Go deeper: more trade-offs, and what this lesson's model leaves out</summary>
 
-This lesson's model is a toy. Here is what it leaves out:
+| Design             | What it buys                                       | What it costs                                            |
+| ------------------ | -------------------------------------------------- | -------------------------------------------------------- |
+| Origin plus CDN    | Cheaper bytes near viewers at high hit ratios      | Costs more than origin only at low hit ratios            |
+| Multipart upload   | Retries only failed parts                          | Part bookkeeping, more requests, cleanup                 |
+| Lazy top rungs     | Less compute and storage for rarely watched videos | New hits play without 1080p until it finishes            |
+| Origin only        | No CDN contract to manage                          | Origin prices on every byte; distant viewers wait longer |
+| One upload request | Simplest client and server                         | Every drop restarts the upload from zero                 |
 
 - **Scripted bandwidth.** Real networks change in bursts, and throughput also depends on latency, TCP behavior, and
   other apps sharing the phone.
@@ -616,42 +697,57 @@ This lesson's model is a toy. Here is what it leaves out:
   often they switch.
 - **A 90 s window.** The duel follows the first 90 s of a longer video, so a player may end the run with segments still
   in its buffer. Near the real end of a video, players stop fetching once the last segment lands.
-- **Instant startup once a segment lands.** Real startup also waits on DNS, TLS, the manifest fetch, and the decoder.
-- **No codecs, audio, captions, or DRM.** Real platforms encode several codecs, carry separate audio and caption
-  tracks, and protect paid content with DRM.
+- **Instant startup once a segment lands.** Real startup also waits on DNS, TLS, the playlist fetches, and the decoder.
+- **No codecs, captions, or DRM.** Real platforms encode several codecs, carry separate caption tracks, and protect paid
+  content with DRM.
+- **Equal segment encodes.** A 1080p segment takes far more CPU to encode than a 240p one, so real fleets plan
+  capacity in compute time per rung.
 - **Tidy upload drops.** Each drop lands halfway through every transfer in flight. Real drops land anywhere, and real
   clients also handle expired URLs and uploads that never complete.
 - **Round prices.** Real egress pricing has tiers, regions, and negotiated rates.
 - **Video on demand only.** Live streaming encodes in real time and keeps segments short to cut delay, which changes
   most of the trade-offs above.
 
-## Check yourself
+</details>
+
+<KeyTakeaways>
+
+- Put the bytes in object storage behind a CDN and the facts in a database. Upload in parts, each verified by an
+  explicit checksum.
+- Align keyframes across every rung. The master playlist lists rungs, each media playlist lists segments, and the player
+  picks a rung per segment.
+- Split transcodes at keyframes with pre-roll, go live at 360p and 720p, and add later rungs as they finish.
+- Record the transcode job in the status change's transaction, through an outbox or CDC, and make tasks safe to repeat.
+- Egress scales with views × minutes × bitrate, and the CDN hit ratio decides how much the origin pays.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-You run video for a lecture platform. Instructors upload about 2,000 lectures a day, 45 minutes each, recorded at
-10 Mbps, and every lecture gets this lesson's five-rung ladder. At peak, 50,000 students watch at once at an average of
-2 Mbps. Each month brings about 5 million views of 20 minutes each, averaging 480p (1.4 Mbps), and the CDN serves 70% of
-the bytes from its edges. Estimate the daily storage growth, the peak egress, and the monthly delivery bill at this
-lesson's illustrative prices. Then name the first changes you would make to cut the cost.
+**Closing rubric: grow one dimension tenfold.** Keep this lesson's estimates (600 segment encodes per upload, 10.4 Mbps
+summed ladder, 3,000 Gbps peak egress), and suppose the transcode fleet runs 500 encodes per second. Raise uploads from
+50,000 to 500,000 a day.
+
+1. Which part hits its limit first, and by how much?
+2. What do you change, and what does it cost?
+3. The outbox relay goes down for 600 s. How big is the backlog, and how long does catch-up take?
 
 <div slot="answer">
 
-- **Sources:** 45 min × 60 s × 10 Mbps ÷ 8 = **3,375 MB** per lecture, so 2,000 uploads add **6.75 TB/day**.
-- **Ladder:** 2,000 × 45 = 90,000 minutes a day, × 78 MB per minute = **7.02 TB/day**, for **13.77 TB/day** in total.
-- **Peak egress:** 50,000 × 2 Mbps = **100 Gbps**.
-- **Delivery:** 5,000,000 × 20 min × 60 s × 1.4 Mbps ÷ 8 = **1.05 PB** a month. At a 70% hit ratio the origin serves
-  **315 TB**.
-- **Bill:** without a CDN, 1,050,000 GB × $0.05 = **$52,500**. With one, 1,050,000 GB × $0.02 + 315,000 GB × $0.05 =
-  $21,000 + $15,750 = **$36,750**, a 30% cut.
-- **First changes:**
-  - Raise the hit ratio. Segments are immutable, so give them long cache lifetimes, and pre-warm edges before a
-    course starts. At a 90% hit ratio the bill falls to **$26,250**.
-  - Cap the ladder lower. Lectures are slides and a talking head, which look fine at modest bitrates.
-  - Encode the top rungs lazily, only for lectures that draw views.
-  - Move sources to a colder, cheaper storage class once the encodes exist.
+**The transcode fleet breaks first.**
+
+- **The numbers.** 500,000 × 600 = 300 million encodes a day, about 3,472 per second, nearly 7 times today's 500. The
+  queue grows by about 2,972 per second. Storage grows to 300 TB of sources plus 312 TB of ladder, 612 TB a day or
+  about 223 PB a year. Peak egress stays at 3,000 Gbps.
+- **The change.** Grow the fleet to about 4,500 encodes per second (30% headroom), 9 times today's machines. Encoding
+  1080p lazily removes 120 of 600 encodes per upload and saves 312 TB × 5 ÷ 10.4 = 150 TB a day, at the cost of new
+  hits playing without 1080p for a while.
+- **The crash.** At about 5.8 uploads per second, 600 s leaves about 3,472 outbox rows owing about 2.08 million
+  encodes. With about 1,028 encodes per second to spare, the backlog clears in about 2,027 s, roughly 34 minutes. The
+  360p and 720p tasks drain first at about 3,111 per second, so every delayed video goes live within about 270 s.
+  Duplicate jobs rewrite the same keys.
 
 </div>
 

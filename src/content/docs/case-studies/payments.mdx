@@ -1,9 +1,21 @@
 ---
 title: Payments
 description: Move money exactly once and reconcile with the bank. Watch a timeout and a blind retry charge shoppers twice, then fix it with idempotency keys, a double-entry ledger, and reconciliation.
+furtherReading:
+  - title: 'Designing robust and predictable APIs with idempotency'
+    url: https://stripe.com/blog/idempotency
+    note: How Stripe uses idempotency keys so clients can retry a charge after a network failure without paying twice.
+  - title: 'Implementing Stripe-like idempotency keys in Postgres'
+    url: https://brandur.org/idempotency-keys
+    note: A worked key store with recovery points, locking, and a completer for requests that die midway.
+  - title: 'Accounting for developers, part I'
+    url: https://www.moderntreasury.com/journal/accounting-for-developers-part-i
+    note: Debits, credits, and why a payment ledger records every movement as balanced, append-only entries.
 ---
 
 import { Steps } from '@astrojs/starlight/components';
+import Recall from '../../../components/lesson/Recall.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -161,15 +173,63 @@ export const quiz = [
   },
 ];
 
+export const recall = [
+  {
+    id: 'case-studies/payments/recall-1',
+    prompt: 'A request with idempotency key k1 is still running when a retry with k1 arrives. What should the server do?',
+    options: [
+      {
+        text: 'Claim the key before the work starts, so the retry finds the claim and gets 409 until the first request ends',
+        correct: true,
+        why: 'The claim is one insert that only one request can win. The retry learns the work is in progress and asks again later, when the stored response is ready.',
+      },
+      {
+        text: 'Check whether the key exists, then insert it and do the work',
+        why: 'Both requests can check before either inserts, so both see no key and both do the work.',
+      },
+      {
+        text: 'Do the work again, since the response will be the same',
+        why: 'The response may match, and the work still runs twice. For a charge, that is a second payment.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/payments/recall-2',
+    prompt:
+      'A consumer counts a batch of clicks, then commits its offset. It crashes after counting and before the commit. What happens after it restarts?',
+    options: [
+      {
+        text: 'It reads the batch again and counts it twice, unless it skips click ids it already recorded',
+        correct: true,
+        why: 'Delivery is at least once. An idempotent consumer stores the ids it processed with the count and skips repeats. A payment service drops repeated bank webhooks by event ID the same way.',
+      },
+      {
+        text: 'The batch is lost',
+        why: 'A loss needs the commit to happen before the count. Here the committed offset still points before the batch.',
+      },
+      {
+        text: 'The broker drops the duplicates',
+        why: 'The broker redelivers from the last committed offset. It cannot know the consumer already counted the batch.',
+      },
+    ],
+  },
+];
+
+<Recall questions={recall} />
+
 <Objectives>
 
 - Explain why a timeout leaves a payment's outcome unknown, and why a blind retry can charge a shopper twice.
 - Make retries safe with an idempotency key that both the payment service and the bank honor.
 - Record money in an append-only, double-entry ledger where every payment balances.
 - Keep a payment's outcome unknown until the bank reports a final state, and reconcile the ledger with the bank's files.
+- Key each refund and reserve its amount, so a repeated click never refunds twice or past the payment.
 - Contrast how payments and flash-sale ticketing fail.
 
 </Objectives>
+
+**Route:** Intermediate, case 4 of 10 on the beginner route through Module 6. Next on the route:
+[Chat](../chat/).
 
 ## The failure: one order, two charges
 
@@ -241,7 +301,7 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
 4. **Data model.** A `payments` table holds the key (unique), the amount, the status, and the bank's reference. A
    `ledger_entries` table is append-only: each row names a payment, an account, a direction (debit or credit), and an
    amount in cents. Balances are sums of entries. An `idempotency_keys` table stores each key with a hash of the request
-   and the response to replay.
+   and the response to replay. A `refunds` table holds each refund with its own key, amount, and status.
 
 5. **High-level design.** The checkout page calls the payment service, which writes to the ledger database and calls the
    bank. Bank webhooks and status lookups by key move a pending payment to its final state. A separate reconciler runs on
@@ -331,6 +391,78 @@ A payment that spans several services (reserve stock, charge the card, book ship
 earlier steps when a later one fails. The [Sagas](../../distributed-data/sagas/) lesson covers that, and [Delivery semantics and the outbox](../../async/delivery-semantics/) covers sending
 the "payment succeeded" event exactly when the ledger commits.
 
+## Refunds without double counting
+
+A refund moves money back to the shopper, and it fails the same way a charge does. A support agent clicks Refund $40 on
+a $100 payment. The request times out, so the agent clicks again. An hour later a second agent refunds $70 on the same
+payment. Each click should refund once, and the shopper should never get back more than $100.
+
+One counter on the payment looks like enough:
+`UPDATE payments SET refunded = refunded + 4000 WHERE id = 64 AND refunded + 4000 <= amount`. It stops the $70 refund,
+and it cannot tell a repeat from a new refund. The agent's second click runs the same statement, so the counter records
+$80 while the bank sent back $40. A later, legitimate $30 refund then gets refused. The counter also moves before the
+bank answers, so a declined refund still counts against the payment.
+
+Give each refund its own row and key instead, and reserve its amount in the transaction that creates the row.
+
+- **One key per intended refund.** The refund form creates the key when it opens, so a second click on the same form
+  sends the same key. A new refund opens a new form with a new key.
+- **Claim and reserve together.** One transaction inserts the refund and reserves its amount on the payment:
+
+  ```sql
+  BEGIN;
+  INSERT INTO refunds (payment_id, refund_key, amount, status)
+  VALUES (64, 'rf_8c2e', 4000, 'pending')
+  ON CONFLICT (payment_id, refund_key) DO NOTHING
+  RETURNING id;
+  UPDATE payments SET refund_reserved = refund_reserved + 4000
+  WHERE id = 64 AND refund_reserved + 4000 <= amount;
+  COMMIT;
+  ```
+
+  If the insert returns no row, the click is a repeat: the service skips the update and returns the refund it already
+  stored. If the update changes zero rows, the refund would pass the payment's amount: the service rolls back, which
+  removes the new refund row too, and returns `422`. The $70 refund ends there, since $40 reserved plus $70 is more than
+  $100. Two refunds racing on one payment queue on the payment row, and the second checks the condition against the
+  first one's total. This is the conditional write that stops [ticketing](../ticketing/) from selling a seat twice.
+- **Three states.** A refund starts `pending`. After the commit, the service asks the bank to refund $40 and passes the
+  refund's id as the bank's idempotency key, so every retry of this refund reaches the same refund at the bank.
+- **Settle once, with the entries.** When the bank confirms, one transaction runs
+  `UPDATE refunds SET status = 'succeeded' WHERE id = 9 AND status = 'pending'` and writes the two reversing entries,
+  like entries 3 and 4 in the ledger table above. A repeated webhook or a second status lookup changes zero rows, so the
+  service skips the entries, and a unique constraint on the refund and the account rejects them if a bug tries anyway.
+- **Release on a final failure.** A final decline marks the refund `failed` and subtracts its 4000 cents from
+  `refund_reserved` in the same transaction, so that money can be refunded later. A timeout is no answer: the refund
+  stays pending, keeps its reservation, and settles through a webhook, a status lookup by key, or the settlement file,
+  the same path a payment takes.
+
+Reserving before the bank call errs on the safe side. While a refund is pending, a new refund sees less room than the
+payment may end up having, and never more.
+
+## Failure walkthrough: the service crashes after the bank charges
+
+At 14:00:00 Leo pays $40 for order 8812, and his checkout page sends key `pay_5f1a`. The payment service sends the
+charge to the bank and dies before the reply arrives. Four parts of the design keep the money and the books in step.
+
+1. **The intent is on disk before the bank call.** The service commits payment 72 as pending, which claims `pay_5f1a`
+   with a 30 s lease. Then it asks the bank to charge $40 with the same key. The bank charges the card at 14:00:01, and
+   the service process crashes before the reply reaches it. The bank holds $40, and the ledger has a pending payment
+   with no entries.
+2. **The retry waits out the claim, then takes it over.** Leo's page retries at 14:00:05 and gets `409`, because the
+   dead process still holds the lease. At 14:00:30 the lease lapses, and the next retry takes over the claim with a new
+   fencing token (the [Idempotency](../../reliability/idempotency/) lesson covers expired claims). It asks the bank
+   again with `pay_5f1a`. The bank answers from its key store with the charge from 14:00:01 and moves no money.
+3. **One transaction settles the payment.** The two ledger entries and
+   `UPDATE payments SET status = 'succeeded' WHERE id = 72 AND status = 'pending'` commit together. A late webhook for
+   the same charge changes zero rows, so the service writes no second pair. If the first process had only paused and
+   wakes up with the bank's reply, its update also changes zero rows.
+4. **Without a retry, the checker settles it.** Had Leo closed the tab, nobody would retry. At 14:05 the status checker
+   finds payment 72 still pending, asks the bank by key, hears "succeeded", and runs the same transaction as step 3.
+   The next morning the settlement file lists the $40 charge, and the reconciler ticks it off.
+
+Each guard covers one gap. Without the pending row, nothing tells the checker to ask. With a fresh key on the retry, Leo
+pays twice. With the entries outside the status update's transaction, a second confirmation books $40 twice.
+
 ## Payments versus ticketing
 
 [Flash-sale ticketing](../ticketing/) is the other half of this pair. Both protect something scarce, and they fail in
@@ -363,28 +495,51 @@ attempt learns the first answer.
 
 </TradeoffTable>
 
+<KeyTakeaways>
+
+- A timeout means the outcome is unknown. Retry with the same key, and keep the payment pending until the bank gives a
+  final answer.
+- The idempotency key names the purchase, and the bank honors it, so every retry gets the first attempt's answer and
+  moves no more money.
+- Write the pending intent before calling the bank, then settle it from evidence: webhooks, status lookups by key, and
+  the settlement file.
+- The ledger is double entry and append only. A refund is its own keyed record that reserves its amount before any
+  money moves, and it settles with its reversing entries in one transaction.
+
+</KeyTakeaways>
+
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-A support agent clicks Refund $40 on a $100 payment. The request times out, so the agent clicks again. An hour later a
-second agent refunds $70 on the same payment. Design the refund path so each click refunds once and the shopper never
-gets back more than $100.
+**Closing rubric: grow one dimension tenfold.** Keep the estimates from the design checklist (a 5× peak, 2 ledger
+entries of 200 bytes per payment, and keys kept for a day at 100 bytes). Suppose the ledger database sustains 10,000
+writes per second, and each payment costs about 5 row writes: the key, the pending payment, its status update, and 2
+entries. Raise payments from 10 million to 100 million a day.
+
+1. What are the new peak payment rate, the ledger write rate, and the daily storage?
+2. What do you change, and what does the change cost?
+3. For 60 s at the new peak, every bank call times out. What happens to those payments, and how long does cleanup take?
 
 <div slot="answer">
 
-**Treat a refund as a new payment in the other direction, with the same guards.**
+**The ledger database runs out of writes first.**
 
-- **Key every refund:** the Refund button creates one key per refund the agent intends. The second click reuses it, so
-  the bank returns the first refund and sends no more money.
-- **Guard the total with a conditional write:**
-  `UPDATE payments SET refunded = refunded + 4000 WHERE id = ? AND refunded + 4000 <= amount`. Zero rows changed means
-  the refund would exceed the payment. The $70 refund changes zero rows, since $40 plus $70 is more than $100. This is
-  the same check that stops [ticketing](../ticketing/) from selling a seat twice.
-- **Record it in the ledger:** write a new pair of entries that reverses $40, and leave the original entries alone.
-- **Reconcile refunds too:** a refund whose every attempt timed out stays unknown until a webhook or a status lookup by
-  its key reports a final state. The settlement file later confirms the money, and a missing line proves nothing.
+- **The new numbers.** 100 million payments a day average about 1,157 per second, and the 5× peak is about 5,787. At 5
+  row writes each, the peak needs about 28,935 writes per second, 2.9 times what the database sustains. Today's peak
+  is about 2,895. Entries grow to 200 million a day, about 40 GB a day and 14.6 TB a year. A day of keys takes about
+  10 GB.
+- **The change.** [Shard](../../scaling/sharding/) the ledger database by idempotency key across 4 databases, about
+  7,234 writes per second each. A payment's key, row, refunds, and entries live on one shard, so each settlement stays
+  one local transaction, and the payment id encodes its shard so refunds and lookups find it. The cost: a merchant's
+  balance now sums entries from 4 shards, and adding a fifth shard later means moving rows.
+- **The crash.** In 60 s at 5,787 per second, about 347,222 payments time out. Blind retries, 3 attempts each, would
+  send about 17,361 calls per second into a struggling bank. A [retry budget](../../reliability/retries/) of 10%
+  allows about 579 retries per second, and the rest stay pending, so shoppers see "pending" and nobody pays twice.
+  Once the bank recovers, webhooks settle most of them, and a status checker at 1,000 lookups per second clears the
+  whole backlog in about 6 minutes.
 
 </div>
 
 </Challenge>
+

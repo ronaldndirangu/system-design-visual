@@ -153,7 +153,48 @@ describe('news feed duel', () => {
         expect(sum.published).toBe(POSTS);
         expect(sum.queued).toBe(0);
         expect(sum.writesWaiting).toBe(0);
-        expect(sum.waiting).toBe(0);
+        if (id !== 'small-read-tier') expect(sum.waiting).toBe(0);
+      }
+    }
+  });
+
+  it('never spends more lookups in a tick than the read tier serves', () => {
+    for (const id of allIds) {
+      const duel = new FeedDuel(feedScenarios[id], 42);
+      const work = (lane: (typeof duel.lanes)[number]) => lane.state.lookups + lane.state.headLookups;
+      let before = duel.lanes.map(work);
+      while (!duel.done) {
+        duel.step();
+        const after = duel.lanes.map(work);
+        for (const index of [0, 1]) {
+          expect((after[index] ?? 0) - (before[index] ?? 0)).toBeLessThanOrEqual(
+            feedScenarios[id].readsPerTick,
+          );
+        }
+        before = after;
+      }
+    }
+  });
+
+  it('slows hybrid feed loads when the read tier only fits fan out on write', () => {
+    for (const seed of seeds) {
+      const { a, b } = finished('small-read-tier', seed);
+      expect(b.missed).toBe(0);
+      expect(b.celebrityReachSeconds).toBe(0);
+      expect(a.slowLoads).toBe(0);
+      expect(b.slowLoads).toBeGreaterThan(0);
+      expect(b.waiting).toBeGreaterThan(0);
+      expect(b.returnedCelebrity).toBeLessThan(a.returnedCelebrity);
+    }
+  });
+
+  it('counts each celebrity follower load after the post at most once as shown or missed', () => {
+    for (const seed of seeds) {
+      for (const id of duelScenarioIds.celebrity) {
+        const { a, b } = finished(id, seed);
+        for (const sum of [a, b]) {
+          expect(sum.returnedCelebrity + sum.missedCelebrity).toBeLessThanOrEqual(sum.served);
+        }
       }
     }
   });
@@ -170,6 +211,7 @@ describe('news feed duel', () => {
         expect(a.celebrityReachSeconds).toBeGreaterThan(FRESH_SECONDS);
         expect(a.feedWrites - b.feedWrites).toBe(feedScenarios[id].celebrity?.followers);
         expect(b.lookups).toBeGreaterThan(a.lookups);
+        expect([a.slowLoads, b.slowLoads]).toEqual([0, 0]);
       }
     }
   });
@@ -205,6 +247,12 @@ describe('news feed duel', () => {
     expect([celebrity.a.missedCelebrity, celebrity.b.missedCelebrity]).toEqual([45, 0]);
     expect([celebrity.a.feedWrites, celebrity.b.feedWrites]).toEqual([7_974, 2_974]);
     expect([celebrity.a.lookups, celebrity.b.lookups]).toEqual([1_200, 1_520]);
+    expect([celebrity.a.returnedCelebrity, celebrity.b.returnedCelebrity]).toEqual([247, 292]);
+
+    const small = finished('small-read-tier');
+    expect([small.a.slowLoads, small.b.slowLoads]).toEqual([0, 996]);
+    expect([small.b.averageLoadWaitSeconds, small.b.waiting]).toEqual([3, 248]);
+    expect([small.a.returnedCelebrity, small.b.returnedCelebrity]).toEqual([247, 17]);
 
     const more = finished('more-followers');
     expect([more.a.missed, more.a.celebrityReachSeconds, more.a.missedCelebrity]).toEqual([53, 20, 193]);

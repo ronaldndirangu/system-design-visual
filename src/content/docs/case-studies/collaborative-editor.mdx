@@ -1,8 +1,23 @@
 ---
 title: Collaborative editor
 description: Merge concurrent edits so every copy of a shared document converges, using character ids, tombstones, and causal buffering.
+furtherReading:
+  - title: 'Conflict-free Replicated Data Types (Shapiro, Preguiça, Baquero, Zawirski, 2011)'
+    url: https://inria.hal.science/inria-00609399
+    note: The paper that names CRDTs and shows that copies converge when concurrent ops commute and arrive in causal order.
+  - title: Interleaving anomalies in collaborative text editors (Kleppmann et al., 2019)
+    url: https://martin.kleppmann.com/papers/interleaving-papoc19.pdf
+    note: Why two runs typed at the same spot can interleave, the problem behind this lesson's Interleaving note.
+  - title: Yjs documentation
+    url: https://docs.yjs.dev/
+    note: A production sequence CRDT that stores runs of typed characters as items and syncs over WebSocket providers.
+  - title: "What's different about the new Google Docs: conflict resolution (Google Drive blog)"
+    url: https://drive.googleblog.com/2010/09/whats-different-about-new-google-docs_22.html
+    note: Operational transformation with a central server, the main alternative to a CRDT.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -36,13 +51,13 @@ export const steps = [
   },
   {
     title: 'The op goes to the relay',
-    text: 'Her editor sends one small op over a WebSocket: insert s, id a4, right after a3. It names the left neighbor, never an index.',
+    text: 'Her editor sends one small op over a WebSocket: insert s, id a4, right after a3. It names the left neighbor, never an index, and carries an opId so a resend can be spotted.',
     nodes: ['ada', 'relay'],
     flows: ['ada>relay'],
   },
   {
     title: 'The relay logs it',
-    text: 'The relay stamps the op with the next sequence number for this document, appends it to the op log, and acks Ada. The edit is now durable.',
+    text: 'The relay checks that it has not logged this opId before, stamps the op with the next sequence number for this document, appends it to the op log, and acks Ada. The edit is now durable.',
     nodes: ['relay', 'log'],
     flows: ['relay>log'],
   },
@@ -167,9 +182,53 @@ export const quiz = [
   },
 ];
 
-This case study builds on the **Distributed data** module, especially Consistency models. In
+export const recall = [
+  {
+    id: 'case-studies/collaborative-editor/recall-1',
+    prompt: 'Two people edit one document, and both sides send small updates several times a second that the other side should see within about 200 ms. Which transport fits best?',
+    options: [
+      {
+        text: 'A WebSocket',
+        correct: true,
+        why: 'One long-lived connection carries messages both ways with little delay. Shared editing is the textbook case for it.',
+      },
+      {
+        text: 'Polling every few seconds',
+        why: 'Each remote edit waits for the next poll, so it arrives seconds late, and most polls come back empty.',
+      },
+      {
+        text: 'Server-sent events alone',
+        why: 'Server-sent events flow from server to browser only, so every keystroke would still need its own request upward.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/collaborative-editor/recall-2',
+    prompt: 'Under causal consistency, Ben’s reply reaches a replica before the question it answers. What does that replica do?',
+    options: [
+      {
+        text: 'It holds the reply until the question arrives',
+        correct: true,
+        why: 'Causal consistency keeps every effect after its cause. A reader of that replica never sees an answer above a missing question.',
+      },
+      {
+        text: 'It shows the reply at once and the question whenever it lands',
+        why: 'Eventual consistency allows that, and a reader then sees a reply with no question above it.',
+      },
+      {
+        text: 'It forwards every read to the primary',
+        why: 'Sending everything to one leader gives linearizable reads and costs a trip to that leader on every request. Causal consistency lets each replica answer locally.',
+      },
+    ],
+  },
+];
+
+This case study builds on the **Distributed data** module, especially
+[Consistency models](../../distributed-data/consistency-models/). In
 [Read replicas](../../scaling/read-replicas/), one primary took every write and the replicas copied it. Here every copy
 takes writes at the same time, and the copies must still end up identical.
+
+<Recall questions={recall} />
 
 <Objectives>
 
@@ -177,9 +236,13 @@ takes writes at the same time, and the copies must still end up identical.
 - Name every character with an id and every insert with its left neighbor, so an op lands in the same place on every
   copy.
 - Use tombstones and causal buffering to apply deletes and early ops safely.
+- Give every op an `opId`, so a resent op, a delete included, lands once.
 - Weigh this CRDT against operational transformation and locking.
 
 </Objectives>
+
+**Route:** Advanced, case 10 of 10 on the beginner route through Module 6, and the last case on the route. Next, test
+the whole method in a [design review](../../practice/design-review/).
 
 ## The failure: two people, one word
 
@@ -262,29 +325,44 @@ store a run of typed characters as one item with one starting id, which shrinks 
 GET  /docs/{docId}
      returns { snapshot, uptoSeq, opsAfter: [...] }
 
-WS   /docs/{docId}/live?after={seq}
-     server to client   { type: "hello", site: "b" }
-     client to server   { type: "insert", id: "b3", origin: "a2", char: "y" }
-     client to server   { type: "delete", target: "a3" }
-     server to client   { type: "op", seq: 1042, op: {...} }     to every other editor
-     server to client   { type: "ack", id: "b3", seq: 1042 }     to the sender
+WS   /docs/{docId}/live?after={seq}&site={site}
+  server to client
+     { type: "hello", site: "b" }
+  client to server
+     { opId: "b:3", type: "insert",
+       id: "b3", origin: "a2", char: "y" }
+     { opId: "b:4", type: "delete", target: "a3" }
+  server to client, to every other editor
+     { type: "op", seq: 1042, op: {...} }
+  server to client, to the sender
+     { type: "ack", opId: "b:3", seq: 1042 }
 ```
 
-The server hands each editor a site letter when it joins. An insert names its own id and its origin, the character to
-its left (an origin of `null` means the start of the document). A delete names its target. Neither op mentions an
-index. The live channel is a WebSocket; the [Real-time transport](../../foundations/real-time/) lesson compares it with polling and server-sent events.
+The server hands each editor a site letter on its first join. The editor presents the same letter on every reconnect,
+so its ids keep counting from where they stopped. An insert names its own id and its origin, the character to its left
+(an origin of `null` means the start of the document). A delete names its target. Neither op mentions an index.
+
+Every op also carries an `opId`: the site letter plus the editor's own op counter, so `b:4` is the fourth op Ben's
+editor sent. The `opId` exists for dedup and stays separate from the character ids. An insert's `id` could serve as a
+dedup key, but a delete has no id of its own. Its `target` names someone else's character, and Ada and Ben can both
+delete a3. The relay acks each op by its `opId`, so the sender knows exactly which ops landed.
+
+The live channel is a WebSocket; the [Real-time transport](../../foundations/real-time/) lesson compares it with
+polling and server-sent events.
 
 ## Data model
 
 | Table     | Key                  | Holds                                                                              |
 | --------- | -------------------- | ---------------------------------------------------------------------------------- |
 | documents | `doc_id`             | Title, owner, latest sequence number                                               |
-| ops       | `(doc_id, seq)`      | Each op as sent, with a unique `(doc_id, site, counter)` so a resent op lands once |
+| ops       | `(doc_id, seq)`      | Each op as sent, with a unique `(doc_id, op_id)` so a resent op lands once         |
 | snapshots | `(doc_id, upto_seq)` | The full character list, with ids, origins, and tombstones                         |
-| sites     | `(doc_id, site)`     | Which session owns each site letter, and the last counter it used                  |
+| sites     | `(doc_id, site)`     | Which session owns each site letter, and the last id and op counter it used        |
 
-Every id is unique by construction, so a client that reconnects can resend anything the relay never acked: the unique
-key turns a duplicate into a no-op. The [Idempotency](../../reliability/idempotency/) lesson covers this pattern in depth.
+Every op carries an `opId`, deletes included, so a client that reconnects can resend anything the relay never acked.
+The unique `(doc_id, op_id)` key turns a duplicate into a re-ack instead of a second log entry. The
+[Idempotency](../../reliability/idempotency/) lesson covers this pattern in depth, and the failure walkthrough below
+traces one lost ack.
 
 ## High-level design
 
@@ -385,7 +463,7 @@ which Ben's copy has not seen yet.
 >
 
 **Hold the ! until the s arrives.** The op says "after a4", and Ben's copy has no a4 yet. A guess can put the ! ahead of
-the s, and later ops never move a character once it is placed. So Ben's editor parks the op in a small buffer. When a4
+the s, and no later op moves a character once a copy places it. So Ben's editor parks the op in a small buffer. When a4
 arrives, the editor places the s and retries the buffer, which now succeeds. A delete waits the same way until its
 target exists. This is **causal buffering**: apply an op only after everything it depends on. Dropping the op or
 reloading the document also recovers, at the cost of a round trip for every reordered op.
@@ -418,6 +496,35 @@ What to look for:
   then places the s and the ! together on step 6.
 - **Same ops, different texts.** The index lane ends with "chats!" on Ada's copy and "chast!" on Ben's: the s landed at
   index 3 of "chat!", which on Ben's copy sits between the a and the t.
+
+## Failure walkthrough: the ack for a delete gets lost
+
+Back to "cast", now under the CRDT design. The relay has logged Ada's four inserts, a1 to a4, as seq 1 to 4 with opIds
+a:1 to a:4. At 10:00:00.000 Ada deletes the s, and her editor sends `{ opId: "a:5", type: "delete", target: "a3" }`.
+The relay logs it as seq 5, forwards it to Ben, and sends the ack at about 10:00:00.040. Her laptop switched from Wi-Fi
+to cellular at 10:00:00.030, so the socket is already gone and the ack never arrives. Her editor cannot tell whether
+the relay logged the delete, so it keeps a:5 in its unacked buffer. At 10:00:01, while she is offline, Ben types his o
+after the c, and the relay logs it as seq 6.
+
+Without an `opId`, the resent delete becomes seq 7 and reaches Ben a second time. His copy absorbs it, because a3 is
+already a tombstone, yet the log now holds a phantom op that every catch-up and every snapshot build replays. An op
+without that built-in protection, such as a future "toggle bold", would apply twice and undo itself.
+
+With the `opId`, the resend lands once:
+
+1. **Ada's editor reconnects** at about 10:00:02 with `after=4&site=a`: the last sequence number it saw and its old
+   site letter. It resends everything in its unacked buffer, which is a:5.
+2. **The relay finds the duplicate.** Its lookup on `(doc_id, op_id)` finds a:5, already logged as seq 5. The relay
+   replies `{ type: "ack", opId: "a:5", seq: 5 }` and neither logs nor forwards the op again.
+3. **Ada's editor clears a:5.** The ack carries the original sequence number, so her editor records seq 5 as its own
+   op, already applied.
+4. **The relay replays what she missed.** The ops after seq 4 are seq 5 and seq 6. Her editor skips seq 5, its own
+   delete, and places Ben's o after the c. Both copies read "coat", and the log holds the delete once.
+
+If the relay crashed before logging a:5, the lookup in step 2 finds nothing, and the resend logs as a fresh op. Either
+way, the delete lands once. Resending until acked gives [at-least-once delivery](../../async/delivery-semantics/), and
+the unique key on the log makes the effect happen once, the same pairing the
+[Idempotency](../../reliability/idempotency/) lesson builds with request keys.
 
 ## Trade-offs
 
@@ -459,28 +566,71 @@ This lesson's model is a toy. Here is what it leaves out:
 - **Two copies and short words.** The widget runs two copies so you can read every tile. The unit tests also check 300
   seeded random sessions across two and three copies, and every one converges.
 
+<details>
+<summary>Go deeper: a class of 20 editing one outline</summary>
+
+A class of 20 students edits one shared outline during a lecture, each typing about 5 ops per second at peak. By the end
+of term the outline shows 20,000 characters, and students have deleted 60,000 more along the way. Use this lesson's
+illustrative numbers.
+
+- **Relay load.** Relay in: 20 × 5 = **100 ops per second**. Relay out: each op goes to the 19 other students, so
+  100 × 19 = **1,900 ops per second**.
+- **CRDT state.** (20,000 + 60,000) characters × 18 bytes = **1,440,000 bytes, about 1.44 MB**, against **20 KB** of
+  visible text. That is **72×** the text.
+- **First changes.** Store each run of typed characters as one item, and batch outgoing ops into one message per short
+  window. Collect a tombstone once it is causally stable: every student has seen the delete, and every op that could
+  still name the character has reached everyone. The relay already numbers every op, so it can track the last number
+  each student has acknowledged. A student who stays offline past the cut reloads from a snapshot before sending again.
+  If many classes edit at once, shard relays by doc id.
+
+</details>
+
 ## Check yourself
+
+<KeyTakeaways>
+
+- Ops that name an index diverge as soon as two edits cross. Give every character an id and every insert its left
+  neighbor, and an op lands in the same place on every copy.
+- A delete leaves a tombstone, so later ops still find their anchor. An op whose anchor has not arrived waits in a
+  buffer until it does.
+- Every op carries an `opId`, deletes included. Editors resend until the relay acks, and the unique `(doc_id, op_id)`
+  key turns a resend into a re-ack, so each op lands once.
+- A CRDT merges ops in any causal order and pays with an id and an origin on every character, plus tombstones that
+  grow. OT keeps ops compact and needs a central server plus transform functions that are hard to get right.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-A class of 20 students edits one shared outline during a lecture, each typing about 5 ops per second at peak. By the end
-of term the outline shows 20,000 characters, and students have deleted 60,000 more along the way. Using this lesson's
-illustrative numbers, how many ops per second does the relay receive and send at peak? How big is the CRDT state,
-compared with the plain text? What would you change first?
+**Closing rubric: grow one dimension tenfold.** Keep the estimates from this lesson (5 ops per second per typist, 18
+bytes per character, and 50 KB of visible text held in 900 KB of CRDT state, or 1.8 MB with 50 KB of tombstones), and
+raise one document's editors from 10 to 100.
+
+1. Which part hits its limit first, and by how much?
+2. What do you change, and what does the change cost?
+3. The relay for that document crashes and restarts. What does each editor keep, and how does every copy catch up?
 
 <div slot="answer">
 
-- Relay in: 20 × 5 = **100 ops per second**. Relay out: each op goes to the 19 other students, so 100 × 19 = **1,900
-  ops per second**.
-- CRDT state: (20,000 + 60,000) characters × 18 bytes = **1,440,000 bytes, about 1.44 MB**, against **20 KB** of
-  visible text. That is **72×** the text.
-- First changes: store each run of typed characters as one item, and batch outgoing ops into one message per short
-  window. Collect a tombstone once it is causally stable: every student has seen the delete, and every op that could
-  still name the character has reached everyone. The relay already numbers every op, so it can track the last number
-  each student has acknowledged. A student who stays offline past the cut reloads from a snapshot before sending again.
-  If many classes edit at once, shard relays by doc id.
+**The relay's fan-out breaks first.**
+
+- **The new numbers.** Ops in grow tenfold, from 50 to 500 per second. Ops out grow 110×, from 450 to 49,500 per
+  second, because each op now goes to 99 editors instead of 9. The CRDT state stays at 900 KB to 1.8 MB, since more
+  editors do not lengthen the text. Yet 100 newcomers joining at the start of a meeting pull up to 180 MB of snapshots
+  at once.
+- **The change.** Batch on the relay: send each editor one message per 50 ms window with every op from that window.
+  That is 100 × 20 = 2,000 messages per second instead of 49,500, carrying the same ops. Give the hot document its own
+  relay, because every editor of one document must meet on one relay and sharding cannot split it. Serve snapshots
+  from a cache or CDN in front of the relay. The cost: up to 50 ms of extra delay, still inside the 200 ms target, and
+  a relay sized for one document that sits mostly idle once the meeting ends.
+- **The crash.** The relay acks an op only after the op log holds it, so every acked op survives. Each editor keeps
+  its own copy, its typing, and its unacked buffer. Each one reconnects, with a random delay so 100 sockets do not
+  arrive in the same instant, and sends `after=` its last seen sequence number and `site=` its letter. It resends every
+  unacked op; the relay re-acks any opId it logged before the crash and logs the rest fresh. Then the relay replays
+  the ops each editor missed. Every copy converges, and nobody's edit disappears. Remote edits pause only for the
+  restart.
 
 </div>
 

@@ -17,7 +17,7 @@ export const quiz = [
     id: 'practice/design-review/q1',
     prompt: 'Checkout writes the order row, then publishes OrderPlaced to the broker in a second call. The process crashes between the two calls. What breaks, and what fixes it?',
     options: [
-      { text: 'The order exists and no event ever goes out. Write the event to an outbox table in the same transaction, and let a relay publish it', correct: true, why: 'The order row and the outbox row commit together or not at all. A relay reads the outbox and publishes until the broker confirms, so a crash can delay the event and can never lose it.' },
+      { text: 'The order exists and no event ever goes out. Write the event to an outbox table in the same transaction, and let a relay publish it', correct: true, why: 'The order row and the outbox row commit together or not at all, so the durable outbox always records the owed event. A relay publishes each row at least once and marks it sent after the broker confirms. A crash can delay the event or publish it twice, so consumers drop duplicates by event id.' },
       { text: 'Retry the publish call a few times', why: 'The process that would retry has crashed. Nothing remembers that the event is still owed, which is exactly what the outbox row records.' },
       { text: 'Publish the event first, then write the order row', why: 'That moves the gap without closing it. A crash now leaves an event for an order that never saved, and downstream services act on a ghost.' },
       { text: 'Move the broker to a bigger machine', why: 'Broker capacity has nothing to do with it. The gap sits between two separate writes, and any crash inside that gap splits them.' },
