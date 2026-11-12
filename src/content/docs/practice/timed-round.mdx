@@ -3,6 +3,7 @@ title: Timed design round
 description: Design a whole system against a clock with the seven step checklist, then score yourself and compare with a reference outline.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import { Steps } from '@astrojs/starlight/components';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
@@ -11,6 +12,19 @@ import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import TimedRoundWidget from '../../../components/widgets/TimedRoundWidget';
+
+export const recall = [
+  {
+    id: 'practice/timed-round/recall-1',
+    prompt: 'The brief says the shortener creates 1 million new links a day. Which rough figure belongs in the Estimates step?',
+    options: [
+      { text: 'About 1,200 writes a second', why: 'That is 100 times too high. 1 million ÷ 86,400 seconds is about 12 writes a second.' },
+      { text: 'About 42,000 writes a second', why: 'Dividing by 24 gives writes per hour. Divide by the 86,400 seconds in a day instead.' },
+      { text: 'Too few to matter, so skip the number', why: 'The rough figure sets the read to write ratio, and that ratio points the deep dive.' },
+      { text: 'About 12 writes a second, so writes are light', correct: true, why: '1 million ÷ 86,400 ≈ 12. With many clicks per link, reads dominate the load.' },
+    ],
+  },
+];
 
 export const quiz = [
   {
@@ -54,6 +68,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

@@ -1,0 +1,125 @@
+---
+title: 'Checkpoint 5: Distributed data'
+description: Ten questions on consistency, CAP and PACELC, quorums, fencing, Raft, multi-region, sagas, and CQRS, plus two from earlier modules. Score 70% to pass.
+---
+
+import Checkpoint from '../../../components/review/Checkpoint';
+
+export const quiz = [
+  {
+    id: 'checkpoint/distributed-data/q1',
+    prompt: 'A social app shows a like count on every post and checks the password hash at sign in. Both read from replicas. Which promise should each read get?',
+    options: [
+      { text: 'Linearizable reads for both, so every screen agrees', why: 'That makes every like count pay the strongest promise’s wait. A count that lags by a second harms no one.' },
+      { text: 'Eventual for the like count, linearizable for the password check', correct: true, why: 'Pick the weakest promise that keeps each feature correct. A stale count is harmless, and a stale hash could accept an old password right after a reset.' },
+      { text: 'Eventual for both, since replicas catch up within seconds', why: 'A replica a few seconds behind could still hold the old hash after a reset. Sign in needs the latest write.' },
+      { text: 'Read your writes for both, scoped to each session', why: 'That only shows a user their own writes from the same session. A reset made on another device can still be missing.' },
+    ],
+  },
+  {
+    id: 'checkpoint/distributed-data/q2',
+    prompt: 'Two datacenters sit 60 ms apart by round trip, and partitions between them are rare. Every write waits for both copies. What does PACELC say the design pays?',
+    options: [
+      { text: 'Nothing, since the trade only applies during a partition', why: 'That is CAP alone. PACELC adds the else branch: with no partition, you still choose latency or consistency.' },
+      { text: 'Lost writes whenever one datacenter runs slow', why: 'A write that waits for the slow side gets slower, and it still lands. Lost writes come from copies made after the reply.' },
+      { text: 'Stale reads during normal operation', why: 'Waiting for both copies keeps them in step, so reads stay fresh. Stale reads are the price of choosing latency.' },
+      { text: 'About 60 ms on every write, even with no partition', correct: true, why: 'Else, choose latency or consistency. This design chose consistency, so each write pays the round trip to the far copy every day.' },
+    ],
+  },
+  {
+    id: 'checkpoint/distributed-data/q3',
+    prompt: 'A key lives on A, B, and C with N = 3, R = 2, and W = 2. B and C are down, so a sloppy quorum stores the write on A and on stand-in E. B and C return, and before any handoff or repair, a read asks B and C. What does it get?',
+    options: [
+      { text: 'The old value, because the read and the write share no node', correct: true, why: 'The write counted A and E, and E sits outside the preference list. B and C never saw it, so the read misses it until hinted handoff or repair runs.' },
+      { text: 'The new value, because R + W > N guarantees overlap', why: 'That overlap holds only among the key’s own replicas. Counting a stand-in trades the overlap for availability.' },
+      { text: 'An error, because the quorum detects the missing write', why: 'B and C both reply, so the read meets R = 2. Nothing tells them a newer value sits on A and E.' },
+      { text: 'Both values, returned as siblings for the client to merge', why: 'Siblings appear when the replicas asked hold concurrent versions. B and C hold the same old version.' },
+    ],
+  },
+  {
+    id: 'checkpoint/distributed-data/q4',
+    prompt: 'A team uses a Redis lock with a timeout and no fencing token. For which job is that safe enough?',
+    options: [
+      { text: 'Charging each customer’s monthly bill', why: 'A holder that pauses past its timeout can wake and charge again. Money needs a token that the payment store checks.' },
+      { text: 'Assigning seats for a sold out concert', why: 'A stale holder could give one seat to two buyers. The seat store must reject its late writes by token.' },
+      { text: 'Rebuilding a search cache once an hour', correct: true, why: 'A rare double run rebuilds the same cache twice and wastes time, nothing more. Locks with no token suit only that kind of work.' },
+      { text: 'Appending messages to a chat conversation', why: 'A paused owner can wake and append out of order after a new owner took over. The log needs a token check.' },
+    ],
+  },
+  {
+    id: 'checkpoint/distributed-data/q5',
+    prompt: 'A network split leaves the old Raft leader with a minority of nodes. It keeps answering reads from its own log. What goes wrong, and what is the fix?',
+    options: [
+      { text: 'Nothing, since a leader’s log holds every committed entry', why: 'The majority side may have elected a new leader and committed new writes. The old leader cannot see them.' },
+      { text: 'Its writes commit twice, so add idempotency keys', why: 'A leader cut off from a majority cannot commit any write. The danger sits in its reads.' },
+      { text: 'Its log gets lost, so take snapshots more often', why: 'Its log stays safe on disk. The problem is that it no longer knows whether it still leads.' },
+      { text: 'Its reads can be stale, so confirm a majority (ReadIndex) or hold a lease first', correct: true, why: 'A deposed leader still believes it leads. ReadIndex checks with a majority before answering, and a lease bounds how long it may skip that check.' },
+    ],
+  },
+  {
+    id: 'checkpoint/distributed-data/q6',
+    ordered: true,
+    prompt: 'You run 4 regions that split traffic evenly, and you must survive losing any one of them. What is the highest steady utilization each region can run at?',
+    options: [
+      { text: '25%', why: 'That leaves room to lose three of the four regions. Surviving one loss allows 3 ÷ 4 = 75%.' },
+      { text: '50%', why: 'That is the rule for 2 regions, where one survivor takes everything. With 4, each survivor takes only a third more.' },
+      { text: '75%', correct: true, why: 'With N regions, run each at no more than (N−1)/N. After a loss, each survivor carries 75% × 4 ÷ 3 = 100%.' },
+      { text: '90%', why: 'After a loss, each survivor would need 90% × 4 ÷ 3 = 120% of its capacity. The overflow fails.' },
+    ],
+  },
+  {
+    id: 'checkpoint/distributed-data/q7',
+    prompt: 'An order saga failed at shipping, and its refund compensation keeps failing because the payment provider is down. What should the saga do?',
+    options: [
+      { text: 'Skip the refund and mark the order as cancelled', why: 'The customer stays charged for an order that no longer exists. A compensation must finish.' },
+      { text: 'Keep retrying with the same idempotency key, and alert a person', correct: true, why: 'A compensation never gives up. The same key makes every retry safe, and a person steps in if it keeps failing.' },
+      { text: 'Retry with a fresh key each time until one succeeds', why: 'A refund that went through but lost its reply would run again under a new key. The customer could be refunded twice.' },
+      { text: 'Roll back the earlier steps in one database transaction', why: 'Each step already committed in its own service. A saga has no cross-service transaction, which is why it needs compensations.' },
+    ],
+  },
+  {
+    id: 'checkpoint/distributed-data/q8',
+    prompt: 'An event sourced bank account has 10 years of transactions, and folding them before each command takes too long. What fixes the load time?',
+    options: [
+      { text: 'Check each command against the read model', why: 'The read model trails the writes, so a check against it can approve an overdraft. Commands need the current state.' },
+      { text: 'Delete events older than a year to shorten the log', why: 'The log is the source of truth. Deleting events loses the history and the ability to replay projections.' },
+      { text: 'Add projection workers so events fold faster', why: 'Projection workers build read models. They never touch how the write side loads an account before a command.' },
+      { text: 'Store a snapshot of the folded state and fold only newer events', correct: true, why: 'Loading starts at the snapshot’s position and replays a handful of events. The snapshot can be rebuilt from the log at any time.' },
+    ],
+  },
+  {
+    id: 'checkpoint/distributed-data/q9',
+    prompt: 'A payment server keeps idempotency keys for 1 hour. A phone loses signal mid purchase and retries the same request, with the same key, 3 hours later. What happens?',
+    options: [
+      { text: 'The server returns the stored receipt from the first try', why: 'The key expired after 1 hour, so no receipt remains to return.' },
+      { text: 'The server rejects the retry as a duplicate', why: 'Spotting a duplicate needs the stored key, and it is gone. The server has nothing to compare against.' },
+      { text: 'The retry looks new, so the customer may be charged twice', correct: true, why: 'Once a key expires, a late retry runs again. The Idempotency lesson says to keep keys longer than any retry can arrive.' },
+      { text: 'The card network blocks it, since cards dedupe on their own', why: 'The card network never sees your key. The guard lives in your server’s dedupe store.' },
+    ],
+  },
+  {
+    id: 'checkpoint/distributed-data/q10',
+    prompt: 'On a consistent hash ring, one key takes 40% of all reads and overloads its shard. A teammate proposes more virtual nodes per shard. Will that help?',
+    options: [
+      { text: 'No, so add copies of the key or salt it across shards', correct: true, why: 'Every placement sends one key to one owner. The Consistent hashing lesson notes that hot keys still need copies or salting.' },
+      { text: 'Yes, because more virtual nodes spread the load evenly', why: 'Virtual nodes even out how many keys each shard owns. That one key still hashes to one shard, with all of its 40%.' },
+      { text: 'Yes, once each shard has at least 256 virtual nodes', why: 'The count evens out the ranges each shard owns. The hot key still lands on a single owner.' },
+      { text: 'No, so switch to hash(key) mod N placement', why: 'Mod N also sends each key to one shard, and it moves most keys whenever the count changes.' },
+    ],
+  },
+];
+
+Answer every question, then check your score. You need 7 of 10 to pass. A pass marks the module checkpoint complete on this device.
+
+Missed one? The explanation names the idea, and the module’s lessons cover it in depth:
+
+- [Consistency models](../../distributed-data/consistency-models/)
+- [CAP and PACELC](../../distributed-data/cap-and-pacelc/)
+- [Quorums on a replicated ring](../../distributed-data/quorums/)
+- [Time, leases, and fencing](../../distributed-data/time-leases-fencing/)
+- [Consensus with Raft](../../distributed-data/raft/)
+- [Multi-region systems](../../distributed-data/multi-region/)
+- [Sagas](../../distributed-data/sagas/)
+- [CQRS and event sourcing](../../distributed-data/cqrs/)
+
+<Checkpoint client:load moduleId="distributed-data" questions={quiz} />

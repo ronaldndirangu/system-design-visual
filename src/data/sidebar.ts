@@ -7,7 +7,7 @@ type SidebarItem =
 
 /**
  * The sidebar mirrors the curriculum: one group per module listing every
- * lesson. `slug` items make the build fail if a lesson has no page.
+ * lesson, then its checkpoint. `slug` items make the build fail if a page is missing.
  */
 export function buildSidebar(): SidebarItem[] {
   const start: SidebarItem = {
@@ -20,12 +20,32 @@ export function buildSidebar(): SidebarItem[] {
     ],
   };
 
+  const review: SidebarItem = {
+    label: 'Review and reference',
+    items: [
+      { slug: 'review', label: 'Review queue' },
+      { slug: 'glossary', label: 'Glossary' },
+      { slug: 'topics', label: 'Interview topics' },
+      {
+        label: 'Cheat sheets',
+        collapsed: true,
+        items: curriculum.map((module) => ({
+          slug: `cheat-sheets/${module.id}`,
+          label: `${module.number}. ${module.title}`,
+        })),
+      },
+    ],
+  };
+
   const modules = curriculum.map(
     (module): SidebarItem => ({
       label: `${module.number}. ${module.title}`,
-      items: module.lessons.map((lesson) => ({ slug: lesson.id, label: lesson.title })),
+      items: [
+        ...module.lessons.map((lesson) => ({ slug: lesson.id, label: lesson.title })),
+        { slug: `checkpoints/${module.id}`, label: 'Module checkpoint' },
+      ],
     }),
   );
 
-  return [start, ...modules];
+  return [start, review, ...modules];
 }

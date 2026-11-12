@@ -1,0 +1,18 @@
+---
+title: Review queue
+description: Spaced review of the quiz and checkpoint questions you have already answered, scheduled 1, 3, 7, and 21 days apart.
+tableOfContents: false
+---
+
+import ReviewQueue from '../../components/review/ReviewQueue';
+
+You forget most of a lesson within a week unless you pull it back out of memory. This queue brings back questions from
+the lessons and checkpoints you have finished, spaced so each review lands just before you would forget.
+
+Each question moves through four boxes. A right answer moves it up one box, so it waits longer before it returns: 1 day,
+then 3, then 7, then 21. A wrong answer sends it back to the first box, and you see it again tomorrow. A session holds
+up to 20 questions, so a daily review takes about 10 minutes.
+
+Your schedule lives in this browser alongside your lesson progress. Nothing leaves your device.
+
+<ReviewQueue client:load />

@@ -1,0 +1,128 @@
+---
+title: 'Checkpoint 3: Reliability'
+description: Ten questions on timeouts, queues, idempotency, retries, rate limits, circuit breakers, observability, and backups. Score 70% to pass.
+---
+
+import Checkpoint from '../../../components/review/Checkpoint';
+
+export const quiz = [
+  {
+    id: 'checkpoint/reliability/q1',
+    prompt: 'sho.rt serves 1,000 redirects a second with 200 workers. Before it answers, each redirect calls the click analytics service with a 2 s timeout. Analytics starts to hang. Which change keeps redirects fast?',
+    options: [
+      { text: 'Raise the analytics timeout to 10 s', why: 'Each hung call now holds a worker for 10 s. By Little’s law that means 10,000 waiting calls for 200 workers.' },
+      { text: 'Retry each failed analytics call once', why: 'A retry adds a second 2 s wait on the same hung service. Each redirect holds its worker twice as long.' },
+      { text: 'Send the click to analytics off the request path', correct: true, why: 'The redirect no longer waits on analytics at all. A hang delays the click counts and leaves redirects alone.' },
+      { text: 'Grow the pool to 1,000 workers', why: 'Little’s law gives 1,000 a second × 2 s = 2,000 waiting calls. The larger pool still fills.' },
+    ],
+  },
+  {
+    id: 'checkpoint/reliability/q2',
+    prompt: 'The analytics store is down for 20 minutes while clicks arrive at 600 a second, and a queue holds them. When the store returns, the consumer handles 1,000 a second while new clicks keep arriving at 600. About how long until the backlog clears?',
+    ordered: true,
+    options: [
+      { text: '12 minutes', why: 'That divides the 720,000 backlog by 1,000 a second. New clicks keep arriving, so the backlog shrinks by only 400 a second.' },
+      { text: '20 minutes', why: 'Catch-up matches the outage only when the consumer runs at twice the arrival rate. Here it runs at 1,000 against 600.' },
+      { text: '30 minutes', correct: true, why: 'The backlog holds 600 × 1,200 s = 720,000 clicks and shrinks by 400 a second (1,000 out, 600 in). That takes 1,800 s.' },
+      { text: '50 minutes', why: 'That adds the 20 minutes of outage. Counted from the store’s return, catch-up takes 30 minutes.' },
+    ],
+  },
+  {
+    id: 'checkpoint/reliability/q3',
+    prompt: 'A client retries POST /payments with the same Idempotency-Key, but a bug changed the amount from $20 to $25. The server stored a hash of the first request body, and that request finished. What should the server answer?',
+    options: [
+      { text: 'The saved response from the $20 charge', why: 'Replaying hides the bug, and the client believes it charged $25. A body that differs from the stored hash points to a client error.' },
+      { text: 'A 422 error for a key reused with a new body', correct: true, why: 'The hash mismatch shows the key came back with a different request. Rejecting it charges nothing and surfaces the bug at once.' },
+      { text: 'A new $25 charge, since the body changed', why: 'Then a key no longer guarantees one charge per intent. The customer could pay twice for one purchase.' },
+      { text: 'A 409 asking the client to wait and retry', why: 'A 409 fits a request with the same key that is still in progress. This one finished, so waiting will never help.' },
+    ],
+  },
+  {
+    id: 'checkpoint/reliability/q4',
+    prompt: 'The gateway makes up to 2 attempts, the API behind it makes up to 3, and the database client inside the API makes up to 3. The database is down. How many database calls can one user request cause?',
+    ordered: true,
+    options: [
+      { text: '3', why: 'That counts only the database client’s own attempts. Each layer above repeats the whole stack below it.' },
+      { text: '8', why: 'That adds the attempts: 2 + 3 + 3. Nested retries multiply.' },
+      { text: '18', correct: true, why: 'Each layer repeats the layer below: 2 × 3 × 3 = 18. Retry at one layer, the one that owns the deadline.' },
+      { text: '27', why: 'That assumes 3 attempts at every layer. The gateway makes only 2, so the total is 2 × 3 × 3.' },
+    ],
+  },
+  {
+    id: 'checkpoint/reliability/q5',
+    prompt: 'The edge limits each IP address to 100 requests a minute. A customer’s 400 staff use the dashboard from one office, behind a single NAT address. What happens on a busy morning?',
+    options: [
+      { text: 'Many get 429s, since all 400 share one 100 a minute limit', correct: true, why: 'The edge sees one address for the whole office. Limit by API key or account at the gateway, and keep the IP limit loose to catch abuse.' },
+      { text: 'Each person gets 100 a minute, since their sessions differ', why: 'An IP limit counts by address alone. It never sees who sits behind the NAT.' },
+      { text: 'Excess requests wait in line and arrive slowly, with no errors', why: 'The limiter answers excess requests with 429 at once. Holding them in line would tie up the connections it protects.' },
+      { text: 'The first 100 people get in, and the rest stay blocked all day', why: 'The limit refills every minute, so access returns in bursts. Anyone can get a 429 once that minute’s 100 run out.' },
+    ],
+  },
+  {
+    id: 'checkpoint/reliability/q6',
+    prompt: 'An app server has 16 workers. The recommendations service slows to 10 s a call, and soon all 16 workers wait on it. Checkout never calls recommendations, yet it stalls too. The breaker stays closed, since every call still succeeds. Which change protects checkout?',
+    options: [
+      { text: 'Retry recommendation calls with backoff', why: 'The calls succeed slowly, so retries never fire. Retrying would only add more slow calls.' },
+      { text: 'Lower the breaker’s failure threshold', why: 'No call fails, so the failure rate stays at 0% under any threshold. The workers still fill with slow calls.' },
+      { text: 'Add 16 more workers to the pool', why: 'Slow calls keep arriving at the same rate and fill the new workers within seconds. Checkout stalls again.' },
+      { text: 'Cap recommendation calls at 4 workers', correct: true, why: 'That bulkhead lets only 4 workers wait on recommendations. The other 12 keep serving checkout.' },
+    ],
+  },
+  {
+    id: 'checkpoint/reliability/q7',
+    prompt: 'A trace shows api.checkout lasting 640 ms. At 20 ms it starts inventory.reserve (200 ms) and payments.charge (600 ms) in parallel, then finishes 20 ms after the slower one returns. Which change shortens checkout the most?',
+    options: [
+      { text: 'Halve inventory.reserve to 100 ms', why: 'Inventory already finishes 400 ms before payments, and checkout still waits on payments. The change saves 0 ms.' },
+      { text: 'Halve payments.charge to 300 ms', correct: true, why: 'Payments sits on the critical path, the longest chain of waiting. Checkout drops to about 340 ms.' },
+      { text: 'Remove the work api.checkout does itself', why: 'Its self time is only 40 ms, the 20 ms before and after the calls. Payments holds 600 ms.' },
+      { text: 'Run inventory.reserve after payments.charge', why: 'Running them in a row puts the 200 ms on the critical path. Checkout grows to about 840 ms.' },
+    ],
+  },
+  {
+    id: 'checkpoint/reliability/q8',
+    prompt: 'A delayed replica applies each change 1 hour after the primary. A bad DELETE runs at 15:40, and someone notices at 17:00. Can the delayed replica bring the rows back?',
+    options: [
+      { text: 'Yes, stop it now and roll it forward to 15:39', why: 'By 17:00 it has applied changes up to 16:00, past the delete. A replica only moves forward.' },
+      { text: 'Yes, since delayed replicas skip DELETE statements', why: 'A delayed replica applies every change, just late. It holds what the primary held 1 hour ago.' },
+      { text: 'No, since it applied the delete at 16:40', correct: true, why: 'The delay buys 1 hour to react, and 80 minutes passed. Restore the snapshot and replay the log to 15:39 instead.' },
+      { text: 'No, since a replica never serves as a recovery copy', why: 'Stopped before 16:40, it would still hold the rows. Catching a mistake inside the delay is its whole purpose.' },
+    ],
+  },
+  {
+    id: 'checkpoint/reliability/q9',
+    prompt: 'Six servers sit behind the load balancer, two in each of three zones, all at 60% CPU. One zone goes down. About how busy are the survivors?',
+    ordered: true,
+    options: [
+      { text: '60%', why: 'The same total work now lands on fewer servers. Each survivor picks up a share of the lost two.' },
+      { text: '72%', why: 'That spreads the load over 5 servers, as if one crashed. A zone outage takes both of its servers.' },
+      { text: '90%', correct: true, why: 'The total is 6 × 60% = 360% of one server, now split across 4. The load-balancing lesson sizes pools so survivors keep headroom after a loss like this.' },
+      { text: '120%', why: 'That doubles the load, as if half the servers failed. Losing 2 of 6 raises each survivor’s share by half.' },
+    ],
+  },
+  {
+    id: 'checkpoint/reliability/q10',
+    prompt: 'sho.rt promises 99.9% availability over each 30 days. A full database restore takes 4 hours, and the site is down the whole time. How many 30-day error budgets does one restore spend?',
+    ordered: true,
+    options: [
+      { text: 'About 0.6', why: 'That uses a 99% budget of 7.2 hours. At 99.9% the budget is 10 times smaller.' },
+      { text: 'About 1', why: 'The budget is 43.2 minutes, and the restore lasts 240. One restore spends several windows’ worth.' },
+      { text: 'About 5.6', correct: true, why: '0.1% of 43,200 minutes is 43.2 minutes, and 240 ÷ 43.2 ≈ 5.6. The SLOs lesson shows how budgets turn a target into minutes.' },
+      { text: 'About 56', why: 'That uses a 99.99% budget of 4.32 minutes. At 99.9% the budget is 43.2 minutes.' },
+    ],
+  },
+];
+
+Answer every question, then check your score. You need 7 of 10 to pass. A pass marks the module checkpoint complete on this device.
+
+Missed one? The explanation names the idea, and the module’s lessons cover it in depth:
+
+- [Timeouts and cancellation](../../reliability/timeouts/)
+- [Queues and backpressure](../../reliability/queues-and-backpressure/)
+- [Idempotency](../../reliability/idempotency/)
+- [Retries with backoff and jitter](../../reliability/retries/)
+- [Rate limiting](../../reliability/rate-limiting/)
+- [Circuit breakers](../../reliability/circuit-breakers/)
+- [Observability](../../reliability/observability/)
+- [Backups and recovery](../../reliability/backups-and-recovery/)
+
+<Checkpoint client:load moduleId="reliability" questions={quiz} />

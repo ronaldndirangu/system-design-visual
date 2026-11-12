@@ -32,11 +32,11 @@ export function emptyProgress(): ProgressData {
   return { version: PROGRESS_VERSION, lessons: {} };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isCount(value: unknown): value is number {
+export function isCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
@@ -51,7 +51,7 @@ function isResult(value: unknown): value is QuizResult {
 }
 
 /** JSON keys that would reach Object.prototype through plain object assignment. */
-function isSafeId(id: string): boolean {
+export function isSafeId(id: string): boolean {
   return id !== '__proto__' && id !== 'constructor' && id !== 'prototype';
 }
 

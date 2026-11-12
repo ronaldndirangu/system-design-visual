@@ -32,6 +32,7 @@ import BalancerDuelWidget from '../../../components/widgets/BalancerDuelWidget';
 export const recall = [
   {
     id: 'scaling/load-balancing/recall-1',
+    ordered: true,
     prompt: 'Peak traffic is 1,400 requests a second and one server handles 500. How many servers does the 70% rule call for?',
     options: [
       { text: '3', why: 'Three servers would each run about 93% busy, and waits explode near 100%.' },

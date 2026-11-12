@@ -3,6 +3,7 @@ title: Review a design
 description: Find the anti-patterns seeded in a flash sale design, pick a fix for each, then replay the sale to see which parts break and which hold.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import { Steps } from '@astrojs/starlight/components';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
@@ -11,6 +12,29 @@ import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import DesignReviewWidget from '../../../components/widgets/DesignReviewWidget';
+
+export const recall = [
+  {
+    id: 'practice/design-review/recall-1',
+    prompt: 'A design picks a 301 redirect for short links. Which note states the trade-off the way the checklist asks?',
+    options: [
+      { text: 'A 301 is the standard permanent redirect, so it is the obvious choice for links', why: 'It names no rejected alternative and no cost, so it records a choice without a trade-off.' },
+      { text: 'Browsers cache a 301, so repeat clicks skip us and go uncounted; a 302 sees every click', correct: true, why: 'A trade-off names the rejected alternative and the cost. A 302 keeps every click visible at the cost of more traffic.' },
+      { text: 'A 301 and a 302 both send the user to the long URL, so either one works fine', why: 'They differ in caching, and caching decides whether repeat clicks get counted.' },
+      { text: 'A 301 is faster for users, and we can always switch to a 302 later on', why: 'It names a benefit with no cost and misses the lost click counts.' },
+    ],
+  },
+  {
+    id: 'practice/design-review/recall-2',
+    prompt: 'A deep dive turns up a new query: owners want to list their links by creation date. What should change?',
+    options: [
+      { text: 'Nothing, since the deep dive comes after the data model', why: 'The steps loop. A late finding sends you back to the step it affects.' },
+      { text: 'Only the API, by adding a new endpoint', why: 'An endpoint needs a store that can answer it, and a table keyed by short code cannot list links by owner.' },
+      { text: 'The data model, so a key or index serves the new query', correct: true, why: 'A new query changes the data model. Going back to an earlier step means the design process is working.' },
+      { text: 'The requirements, since the design no longer fits them', why: 'The requirements still hold. The finding changes how you store and read the data.' },
+    ],
+  },
+];
 
 export const quiz = [
   {
@@ -54,6 +78,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

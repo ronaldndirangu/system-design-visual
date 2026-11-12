@@ -117,7 +117,7 @@ export default function Quiz({
   );
 }
 
-function QuizItem({
+export function QuizItem({
   question,
   number,
   missedBefore,

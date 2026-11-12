@@ -66,6 +66,7 @@ export const steps = [
 export const recall = [
   {
     id: 'thinking/access-patterns/recall-1',
+    ordered: true,
     prompt: 'The shortener gets 1 million new links a day, each clicked about 100 times. About how many reads a second is that?',
     options: [
       { text: 'About 12', why: 'That is the write rate, 1,000,000 ÷ 86,400. Each link is then read about 100 times.' },

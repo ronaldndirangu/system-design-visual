@@ -1,0 +1,120 @@
+---
+title: 'Checkpoint 8: Practice'
+description: Ten questions on timed design rounds, design reviews, and the sho.rt capstone, plus two from earlier modules. Score 70% to pass.
+---
+
+import Checkpoint from '../../../components/review/Checkpoint';
+
+export const quiz = [
+  {
+    id: 'checkpoint/practice/q1',
+    prompt: 'In three timed rounds, your deep dive is marked Not reached each time, and your estimates ran about 6 minutes over. What should you practice first?',
+    options: [
+      { text: 'Deep dives on their own, since that step scored zero', why: 'The deep dive never started, so its score says nothing about your deep dive skill. The time went in the step before it.' },
+      { text: 'Rough estimates with a stated assumption, since the time went there', correct: true, why: 'A step marked Not reached points at the step before it. Running over on early steps usually means chasing precision, and a rough figure with its assumption is enough.' },
+      { text: 'Exact estimates, so the deep dive starts from better numbers', why: 'Exact figures are what cost the 6 minutes. The deep dive needs the number that grows fastest, and a rough estimate already shows it.' },
+      { text: 'Rounds with a longer clock, since the design needs more time', why: 'An interview keeps its clock. Moving minutes out of the estimates gives the deep dive its time inside the same round.' },
+    ],
+  },
+  {
+    id: 'checkpoint/practice/q2',
+    prompt: 'Your estimates show redirects at 35,000/s and growing fastest, link creation at about 120/s, and dashboard views at a few per second. Your deep dive covered dashboard login and scored low. Where should it have gone?',
+    options: [
+      { text: 'Link creation, since writes are always the harder path', why: 'At about 120/s, writes are a small load here. The deep dive belongs where the numbers point, and they point at redirects.' },
+      { text: 'Login, since a security flaw carries the most risk', why: 'Login matters, and nothing in these estimates puts it under strain. The deep dive goes where the fastest growing number breaks the design.' },
+      { text: 'Whichever part the reference outline dives into', why: 'The outline shows one sound answer. Your deep dive should follow from your own estimates, and here they point at redirects.' },
+      { text: 'The redirect path, since that number grows fastest', correct: true, why: 'Ask which number grows fastest, then dig into the part that number breaks. At 35,000/s and climbing, the redirect path is where this design fails first.' },
+    ],
+  },
+  {
+    id: 'checkpoint/practice/q3',
+    prompt: 'Your choices in timed rounds are sound, yet the trade-offs step scores low every time. What should you add to that step?',
+    options: [
+      { text: 'For each box, the option you passed over and what your choice costs', correct: true, why: 'A trade-off has two sides. Naming the alternative and the cost shows you chose with the price in view.' },
+      { text: 'More boxes, so the design covers every feature', why: 'More boxes give more choices to defend, each still missing its alternative. The step scores how you justify the choices you made.' },
+      { text: 'The reasons each choice is the best one available', why: 'Listing only the benefits is the gap. Every choice costs something, and the step asks you to say what.' },
+      { text: 'A second deep dive in the time the trade-offs would take', why: 'Skipping the step leaves it at zero. The fix is short: one alternative and one cost for each box.' },
+    ],
+  },
+  {
+    id: 'checkpoint/practice/q4',
+    prompt: 'In a design review, every order goes through one database server with no standby. The team proposes a machine with twice the cores and memory. What do you say?',
+    options: [
+      { text: 'Approve it, since twice the capacity covers the sale', why: 'The flaw here is the lone server. A bigger machine still stops on a hardware fault or a bad deploy, and every order stops with it.' },
+      { text: 'Shard the orders across 8 database servers instead', why: 'Each shard is still one server with no standby. Now 8 boxes can fail, and each failure stops a share of the orders.' },
+      { text: 'It buys time, so add a standby with automatic failover', correct: true, why: 'A bigger machine buys time without removing the single point of failure. Ask what happens when this box stops: a standby that takes over is the fix.' },
+      { text: 'Put a read cache in front of the database', why: 'A cache helps reads, and placing an order is a write. Orders still stop when the box stops.' },
+    ],
+  },
+  {
+    id: 'checkpoint/practice/q5',
+    prompt: 'A teammate flags a CDN that caches product images for a year under content-hashed names as a stale cache risk. How do you judge the flag?',
+    options: [
+      { text: 'Agree, and cap the cache lifetime at 5 minutes', why: 'A short lifetime sends far more requests to the origin and fixes nothing, since a hashed name never serves an old image.' },
+      { text: 'A false alarm, since a changed image gets a new name', correct: true, why: 'A new image gets a new hash and a new URL, so a cached copy never goes stale. False alarms cost the team time on a part that holds.' },
+      { text: 'Agree, and purge the CDN on every deploy', why: 'Changed images already get new names. A purge only forces every unchanged image to load again from the origin.' },
+      { text: 'Agree, since a cache with no expiry is an anti-pattern', why: 'That anti-pattern bites when one key can hold changed data. A hashed name always maps to the same bytes, so the long lifetime is safe.' },
+    ],
+  },
+  {
+    id: 'checkpoint/practice/q6',
+    prompt: 'Checkout calls a fraud check with no timeout. During a sale the fraud check slows to 20 s, and checkout workers fill up waiting on it. Which review question catches this, and what fix follows?',
+    options: [
+      { text: 'What if a call to it slows down? A timeout and a breaker', correct: true, why: 'The fraud check stayed up and answered slowly, holding each worker for 20 s. A timeout inside the checkout budget bounds the wait, and a breaker with a fallback stops calling it while it stays slow.' },
+      { text: 'What if load grows ten times? More checkout servers', why: 'More servers bring more workers, and each one still waits 20 s on the fraud check. The pool fills a little later.' },
+      { text: 'What if it stops? A standby fraud check service', why: 'A standby takes over when the primary is down. Here the fraud check is up and slow, so failover never starts.' },
+      { text: 'What if two writes split? An outbox for fraud checks', why: 'Nothing here writes to two places. The flaw is an unbounded wait on a slow dependency.' },
+    ],
+  },
+  {
+    id: 'checkpoint/practice/q7',
+    ordered: true,
+    prompt: 'Your sho.rt design uses 6 character codes from 62 symbols, about 56.8B in all. After 10 years, 36.5B are taken. About what share of random picks for a new link hit a used code?',
+    options: [
+      { text: 'About 6%', why: 'That would need only about 3.4B codes taken. With 36.5B of 56.8B taken, most picks collide.' },
+      { text: 'About 36%', why: 'That is the share still free: about 20.3B of 56.8B. A pick collides at the share taken.' },
+      { text: 'About 64%', correct: true, why: '36.5B ÷ 56.8B ≈ 64%, so a new link needs about 3 tries. Seven characters give 3.5T codes, about 1% full after 10 years.' },
+      { text: 'About 100%', why: 'Over a third of the codes are still free, so a new link finds one in about 3 tries.' },
+    ],
+  },
+  {
+    id: 'checkpoint/practice/q8',
+    prompt: 'Your sho.rt design runs three regions, each serving about 12,000 redirects/s at peak. Europe goes dark at peak, and new servers take minutes to start. How should you size each region?',
+    options: [
+      { text: 'For its own peak, and let the autoscaler add servers on failover', why: 'The surge arrives within about a minute of GeoDNS moving traffic, faster than new servers start. Redirects fail while they boot.' },
+      { text: 'For its own peak, with a longer GeoDNS TTL to slow the surge', why: 'A longer TTL keeps browsers pointed at the dark region, so more redirects fail. It delays the shift without shrinking it.' },
+      { text: 'For its own peak at a 70% CPU target, which leaves headroom', why: 'Each surviving region takes half of Europe’s load and rises 1.5×, so 70% CPU becomes about 105%.' },
+      { text: 'For half the global peak plus headroom, with the autoscaler floor there', correct: true, why: 'Europe’s 12,000/s splits across the other two, so each rises to about 18,000/s. That capacity must already be running when the surge arrives.' },
+    ],
+  },
+  {
+    id: 'checkpoint/practice/q9',
+    prompt: 'Login codes share a first-in, first-out queue with marketing campaigns, and 28 of 60 codes miss their 5 s deadline when a campaign lands. The team proposes paying for double the SMS send rate. How do you judge it?',
+    options: [
+      { text: 'Approve it, since twice the rate drains the campaign in half the time', why: 'The campaign still sits ahead of the codes, for half as long. In the toy run, double the rate still leaves 5 codes late.' },
+      { text: 'It shrinks the delay, so add a priority lane for codes, drained first', correct: true, why: 'Double the rate still leaves 5 codes late, because codes wait behind the campaign. A lane drained first keeps every code on time at the current rate.' },
+      { text: 'Add retries with backoff, so a late code gets another try', why: 'Nothing failed here. The codes sat behind the campaign, a retry joins the same queue, and a late code is useless anyway.' },
+      { text: 'Extend each code’s lifetime from 5 s to 30 s', why: 'Users still wait on a code buried behind the campaign. The fix belongs in the order of sending.' },
+    ],
+  },
+  {
+    id: 'checkpoint/practice/q10',
+    prompt: 'A shop assistant answers questions from a two-page returns policy that changes about once a quarter. A teammate proposes chunking, embeddings, a vector index, and a reranker. What do you recommend?',
+    options: [
+      { text: 'Skip retrieval and put the whole policy in the prompt', correct: true, why: 'The facts are few and stable enough to fit in the prompt. Retrieval adds indexes, searches, and ways to miss a rule, and buys nothing here.' },
+      { text: 'Hybrid search with RRF, so codes and phrasing both match', why: 'Hybrid search helps a large corpus where exact terms and meaning both matter. Two pages fit in the prompt whole, with no search at all.' },
+      { text: 'Small chunks, so each match stays precise', why: 'Small chunks split rules from their exceptions, and two pages need no splitting. The whole policy fits in the prompt.' },
+      { text: 'A cross-encoder reranker over the top results', why: 'A reranker sharpens the top 20 to 100 results of a large search. Two pages leave nothing to rank, and the model can read them all.' },
+    ],
+  },
+];
+
+Answer every question, then check your score. You need 7 of 10 to pass. A pass marks the module checkpoint complete on this device.
+
+Missed one? The explanation names the idea, and the module’s lessons cover it in depth:
+
+- [Timed design round](../../practice/timed-round/)
+- [Review a design](../../practice/design-review/)
+- [Take sho.rt global](../../practice/capstone/)
+
+<Checkpoint client:load moduleId="practice" questions={quiz} />

@@ -23,11 +23,17 @@ const evaluate = (source: string | undefined) => new Function(`return ${source}`
 
 const quizzes: Question[] = [];
 const predicts: Question[] = [];
+const arrays: [tag: string, name: string][] = [
+  ['<Quiz', 'quiz'],
+  ['<Checkpoint', 'quiz'],
+  ['<Recall', 'recall'],
+];
 for (const file of lessons) {
   const text = readFileSync(file, 'utf8');
-  if (text.includes('<Quiz')) {
-    const block = text.match(/export const quiz = (\[[\s\S]*?\n\]);/);
-    if (!block) throw new Error(`${file} renders <Quiz> without an "export const quiz" array`);
+  const names = new Set(arrays.filter(([tag]) => text.includes(tag)).map(([, name]) => name));
+  for (const name of names) {
+    const block = text.match(new RegExp(`export const ${name} = (\\[[\\s\\S]*?\\n\\]);`));
+    if (!block) throw new Error(`${file} renders questions without an "export const ${name}" array`);
     for (const q of evaluate(block[1]) as {
       id?: string;
       ordered?: boolean;

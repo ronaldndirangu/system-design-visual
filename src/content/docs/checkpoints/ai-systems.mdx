@@ -1,0 +1,125 @@
+---
+title: 'Checkpoint 7: AI systems'
+description: Ten questions on evals, the gateway, retrieval, model serving, agents, and recommendations, plus two from earlier modules. Score 70% to pass.
+---
+
+import Checkpoint from '../../../components/review/Checkpoint';
+
+export const quiz = [
+  {
+    id: 'checkpoint/ai-systems/q1',
+    prompt: 'Small meets the cost and latency budgets, and it declines only 3 of the 6 must decline cases. A teammate proposes dropping those cases from the eval set so Small fits. What do you say?',
+    options: [
+      { text: 'Ship Small, since it meets every budget that remains', why: 'It meets them only because the requirement that protects customers is gone. One leaked address is a privacy incident.' },
+      { text: 'Relax the must decline budget to 3 of 6', why: 'That lets half the harmful requests through. Budgets come before the run so the bar cannot drift toward a favorite.' },
+      { text: 'Keep the cases, and pick a candidate or design that meets every budget', correct: true, why: 'Small fits only because the customer protection is gone. Ship the cheapest candidate that meets all four budgets, or change the design so one does.' },
+      { text: 'Ship Small and watch for leaks after launch', why: 'Monitoring finds each leak after a customer is already harmed. The eval exists to catch it before launch.' },
+    ],
+  },
+  {
+    id: 'checkpoint/ai-systems/q2',
+    ordered: true,
+    prompt: 'The client, the gateway, and the feature each try a failing model call three times. About how many model calls can one bad request become?',
+    options: [
+      { text: '3', why: 'That counts one layer. Each of its tries sets off the full set of tries in the layers below it.' },
+      { text: '9', why: 'That counts two layers. The third multiplies again: 3 × 3 × 3 = 27.' },
+      { text: '27', correct: true, why: 'Each layer multiplies the layer below it: 3 × 3 × 3 = 27 calls, just when the model is struggling. One retry, counted against the quota, caps the extra work.' },
+      { text: '81', why: 'That multiplies in a fourth layer. Three layers give 3 × 3 × 3 = 27.' },
+    ],
+  },
+  {
+    id: 'checkpoint/ai-systems/q3',
+    prompt: 'A help center splits every article into fixed 200-token windows with no overlap. One shipping rule ends a window, and its exception starts the next. The assistant states the rule without the exception. What fixes the chunking?',
+    options: [
+      { text: 'Split on headings, paragraphs, and sentences, with overlapping windows as a fallback', correct: true, why: 'Retrieval can only send what a chunk holds. Structure keeps a rule with its exception, and overlap lets one chunk span any boundary that remains.' },
+      { text: 'Return the top 10 chunks for each question instead of the top 3', why: 'The exception’s window matches the question poorly, so it can still miss the cut. The fix belongs in how the text is split.' },
+      { text: 'Switch to a larger embedding model for search', why: 'Better embeddings rank the same chunks better. No model can send the exception from a chunk that lacks it.' },
+      { text: 'Halve the windows to 100 tokens, still with no overlap', why: 'Smaller windows add more boundaries, and a rule can still end right at one. Without overlap, nothing spans the cut.' },
+    ],
+  },
+  {
+    id: 'checkpoint/ai-systems/q4',
+    ordered: true,
+    prompt: 'A model stores 160 KiB of KV cache per token, and 40 GiB of GPU memory is free after the weights. Requests may run to 8,192 tokens, and most finish near 2,048. With paged blocks, about how many 2,048-token requests fit at once?',
+    options: [
+      { text: '32', why: 'That reserves the full 8,192 tokens for each request, as older servers did. Paged blocks hold only the tokens a request has.' },
+      { text: '64', why: 'That counts keys and values twice. The 160 KiB per token already covers both.' },
+      { text: '128', correct: true, why: '160 KiB × 2,048 = 320 MiB per request, and 40 GiB is 40,960 MiB. 40,960 ÷ 320 = 128.' },
+      { text: '256', why: 'That uses 80 KiB per token, the keys alone. The values take the other half of the 160 KiB.' },
+    ],
+  },
+  {
+    id: 'checkpoint/ai-systems/q5',
+    prompt: 'A support agent gets a generic SQL tool on an admin database account. The system prompt tells it to read only the current customer’s orders. What best limits the harm from a prompt injection?',
+    options: [
+      { text: 'A stronger system prompt that forbids every other query', why: 'Injected text can talk the model past any prompt. The guard has to sit where the model cannot rewrite it.' },
+      { text: 'A narrow read-only order status tool, scoped to the signed-in customer by the tool server', correct: true, why: 'Least privilege caps the blast radius. A misled model can then read only this customer’s orders, because the tool server checks the scope.' },
+      { text: 'A more capable model that resists injection better', why: 'Strong models still follow some injected text. On an admin account, one slip can read or change any row.' },
+      { text: 'A log of every query for a weekly review', why: 'The log shows a leak a week after it happens. It limits nothing at the moment of the call.' },
+    ],
+  },
+  {
+    id: 'checkpoint/ai-systems/q6',
+    prompt: 'A shop ranks 500 candidates, then drops items the customer cannot buy, such as products that do not ship to their region. Many lists fill only 2 of their 5 slots. What fixes it?',
+    options: [
+      { text: 'A more accurate ranking model', why: 'The ranker still fills the top slots with items the filter later drops. The problem is where the filter runs.' },
+      { text: 'More candidates from each source', why: 'Unbuyable items still take the top ranked slots before the filter removes them. The lists stay short.' },
+      { text: 'Fewer slots, so short lists look complete', why: 'That hides the gap and gives up three chances to sell. Buyable items exist further down the ranking.' },
+      { text: 'Filter eligibility before ranking, and keep spares for live checks', correct: true, why: 'Every ranked slot then holds an item the customer can buy. Spares cover anything a live stock check removes.' },
+    ],
+  },
+  {
+    id: 'checkpoint/ai-systems/q7',
+    prompt: 'The support assistant answers a refund question and cites a chunk that search really returned. The chunk covers exchanges and never mentions refunds. Which check catches it?',
+    options: [
+      { text: 'The support check, since the cited text never states the claim', correct: true, why: 'The citation check passes, because search returned the chunk. The support check reads the cited passage, finds no refund claim, and the assistant hands off.' },
+      { text: 'The citation check, since the chunk is the wrong one', why: 'The citation check asks only whether search returned the chunk. It did, so this check passes.' },
+      { text: 'The evidence gate, since the chunk scored too low', why: 'The gate runs before the model and judges match scores. This chunk passed it, and the problem is what the answer claims about it.' },
+      { text: 'No check, since a real citation is enough', why: 'A real citation can still fail to support the answer. That is the gap the support check covers.' },
+    ],
+  },
+  {
+    id: 'checkpoint/ai-systems/q8',
+    prompt: 'At the end of a long shift, a staff reviewer approves a refund for an order that is past the return window. What should happen?',
+    options: [
+      { text: 'The refund runs, since a person outranks the code', why: 'Approval adds a person to the coded check and replaces nothing. No refund runs against the written rules, whatever a tired reviewer says.' },
+      { text: 'The refund runs once, protected by its idempotency key', why: 'The key stops a second refund. It says nothing about whether the first one breaks the rules.' },
+      { text: 'The model rereads the policy and decides', why: 'The model proposes and code decides. Handing it the final call puts the guard back inside the model.' },
+      { text: 'The coded policy check declines it anyway', correct: true, why: 'Money moves only after a coded policy check, a person, and an idempotency key. A person approves only refunds that pass the rules in code.' },
+    ],
+  },
+  {
+    id: 'checkpoint/ai-systems/q9',
+    prompt: 'An API’s p99 latency is 1.8 s, well inside its target. Users still report requests that hang for 30 s, about 1 in 500. Why does p99 miss them, and what shows them?',
+    options: [
+      { text: 'The hangs are rare enough to ignore, since p99 covers 99% of requests', why: 'p99 says nothing about the slowest 1%. Users who hit a 30 s hang still leave.' },
+      { text: '1 in 500 is 0.2%, inside the slowest 1% that p99 ignores, so graph p99.9', correct: true, why: 'A 1 in 500 problem lives above p99, so p99 alone can miss it. At 0.2% of requests, p99.9 lands on the hangs.' },
+      { text: 'The average latency would show the hangs clearly', why: 'A few slow requests blend into thousands of fast ones. The mean moves a little and points nowhere.' },
+      { text: 'p50 would show the hangs, since it tracks typical users', why: 'The median shows the typical request. Hangs hit 0.2% of requests, far above the median.' },
+    ],
+  },
+  {
+    id: 'checkpoint/ai-systems/q10',
+    prompt: 'A saga moves 50 from wallet A to wallet B. Step 1 debits A, and step 2 credits B. A report sums every wallet between the two steps. What does it see?',
+    options: [
+      { text: 'The correct total, since the saga runs as one transaction', why: 'Each saga step commits on its own. Nothing hides step 1 until step 2 lands.' },
+      { text: 'A total 50 too high, since both wallets hold the money', why: 'Step 1 already removed the 50 from A, and B has not received it yet. The sum comes up short.' },
+      { text: 'A total 50 short, since a saga shows its in-between states', correct: true, why: 'A saga commits each step as it goes, so other readers see the in-between states. Readers that need a whole picture must allow for transfers in flight.' },
+      { text: 'An error, since the saga locks both wallets', why: 'A saga holds no locks across its steps. Readers see each step as soon as it commits.' },
+    ],
+  },
+];
+
+Answer every question, then check your score. You need 7 of 10 to pass. A pass marks the module checkpoint complete on this device.
+
+Missed one? The explanation names the idea, and the module’s lessons cover it in depth:
+
+- [Evaluation and budgets](../../ai-systems/evaluation-and-budgets/)
+- [The AI gateway](../../ai-systems/gateway/)
+- [Retrieval](../../ai-systems/retrieval/)
+- [Serving models](../../ai-systems/llm-serving/)
+- [Agents and tools](../../ai-systems/agents/)
+- [Recommendation systems](../../ai-systems/recommendations/)
+- [Capstone: support assistant](../../ai-systems/support-assistant/)
+
+<Checkpoint client:load moduleId="ai-systems" questions={quiz} />

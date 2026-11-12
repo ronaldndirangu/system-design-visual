@@ -1,0 +1,124 @@
+---
+title: 'Checkpoint 0: Thinking in systems'
+description: Ten questions on requirements, estimates, the design checklist, access patterns, hot keys, and SLOs. Score 70% to pass.
+---
+
+import Checkpoint from '../../../components/review/Checkpoint';
+
+export const quiz = [
+  {
+    id: 'checkpoint/thinking/q1',
+    ordered: true,
+    prompt: 'A shortener gets 5 million new links a day, and each link is clicked 50 times on average. About how many redirects a second does it serve on average?',
+    options: [
+      { text: 'About 60', why: 'That is the write rate: 5,000,000 ÷ 86,400 ≈ 58. Multiply by 50 clicks per link to get the reads.' },
+      { text: 'About 3,000', correct: true, why: '5 million a day is about 58 writes a second, and 58 × 50 ≈ 2,900 reads a second. The shortcut “1 million a day is about 12 a second” gets you there fast.' },
+      { text: 'About 30,000', why: 'That is ten times too high. Check the division: 250 million daily clicks ÷ 86,400 seconds is about 2,900.' },
+      { text: 'About 250,000', why: 'That divides 250 million daily clicks by 1,000. A day has about 86,400 seconds, so the rate is far lower.' },
+    ],
+  },
+  {
+    id: 'checkpoint/thinking/q2',
+    ordered: true,
+    prompt: 'Your peak estimate is 14,000 requests a second, and one server handles 2,000 a second. How many servers do you plan for?',
+    options: [
+      { text: '7', why: '14,000 ÷ 2,000 = 7 runs every server at 100%. One spike or one lost server then tips the rest over.' },
+      { text: '10', correct: true, why: 'Keep each server at most 70% busy: 14,000 ÷ (2,000 × 0.7) = 10. The spare 30% absorbs spikes and a lost server.' },
+      { text: '14', why: 'That treats each server as handling 1,000 a second. The 0.7 factor lowers usable capacity to 1,400, which gives 10.' },
+      { text: '20', why: 'Doubling for safety buys far more headroom than the 70% rule asks for. The peak factor already covers the busiest minute.' },
+    ],
+  },
+  {
+    id: 'checkpoint/thinking/q3',
+    prompt: 'The product team adds click analytics to the shortener: every redirect now records a click. What changes most about the load?',
+    options: [
+      { text: 'Reads double, because link owners keep checking their stats', why: 'Owners check stats far less often than people click links. The big change sits on the redirect path itself.' },
+      { text: 'Each link needs twice the storage, and traffic stays the same', why: 'Storage grows, and traffic changes too. Every click used to be a pure read and now also causes a write.' },
+      { text: 'Every click now writes too, so writes grow to match reads', correct: true, why: 'A 100 to 1 read heavy system turns into one with a write per read. That is why analytics was left out of scope at first.' },
+      { text: 'Nothing changes for redirects, since analytics is a separate feature', why: 'The click record comes from the redirect itself. Each redirect now does a write as well as a read.' },
+    ],
+  },
+  {
+    id: 'checkpoint/thinking/q4',
+    prompt: 'You are deep diving on hot keys when a new need appears: owners want to list every link they created. What does the design checklist tell you to do?',
+    options: [
+      { text: 'Finish the trade-offs step first, then start a fresh design', why: 'The checklist loops. A new query belongs in the current design, and waiting until the end only delays it.' },
+      { text: 'Go back to the data model and plan for the new query', correct: true, why: 'A new query changes the data model, so you revisit that step. Looping back means the design is working.' },
+      { text: 'Restart from requirements, since the design has failed', why: 'Revisiting one step is normal and expected. Nothing about a new query means the whole design failed.' },
+      { text: 'Leave it out, since the data model step is already done', why: 'Steps are not locked once done. The checklist runs in order once, then loops when a deep dive finds something new.' },
+    ],
+  },
+  {
+    id: 'checkpoint/thinking/q5',
+    prompt: 'A viral link takes 240 click counter increments a second, all on one key, and its cache node is overloaded. Which fix spreads that write load?',
+    options: [
+      { text: 'Copy the key to every cache node', why: 'Copies spread reads, since any copy can answer. Every increment would have to change every copy, so writes get worse.' },
+      { text: 'Add more cache nodes to the tier', why: 'The key still hashes to one node, so all 240 increments still land there. More nodes only take cold keys away.' },
+      { text: 'Give the counter key a longer TTL', why: 'A TTL controls how long a cached value lives. It does nothing to spread increments across nodes.' },
+      { text: 'Split the counter into parts that land on different nodes', correct: true, why: 'Each click adds to a random part, such as abc123#0 to abc123#7, so the writes spread out. Reading the total means adding up all the parts.' },
+    ],
+  },
+  {
+    id: 'checkpoint/thinking/q6',
+    prompt: 'To ease a hot counter, each app server now counts clicks in memory and adds its total to the shared counter once a second. What do you give up?',
+    options: [
+      { text: 'The count trails by up to a second, and a crash loses the unsent part', correct: true, why: 'Batching trades freshness and a small loss window for far fewer writes. That suits a click count, where a few lost clicks do little harm.' },
+      { text: 'Every read must gather and add up all the counter parts', why: 'That is the cost of splitting a key into parts. Batching keeps one counter and sends fewer writes to it.' },
+      { text: 'A delete must reach every copy of the counter', why: 'That is the cost of copying a hot key to every node. Batching keeps a single shared counter.' },
+      { text: 'Nothing, because the shared counter stays exact at all times', why: 'The shared counter lags the in memory counts by up to a second, and those counts vanish if a server crashes before sending them.' },
+    ],
+  },
+  {
+    id: 'checkpoint/thinking/q7',
+    prompt: 'Traffic grows tenfold, spread evenly over thousands of links with no single favorite. The busiest cache node is near its limit. Does copying hot keys to every node help?',
+    options: [
+      { text: 'Yes, copies always lower the load on the busiest node', why: 'Copies only move load for keys that draw a large share. With no hot key, every node already carries an even share.' },
+      { text: 'No, even growth is a capacity problem, so add nodes for room', correct: true, why: 'With no skew, hashing already spreads the clicks evenly across nodes. More capacity is the lever here.' },
+      { text: 'Yes, as long as the copy threshold is set low enough', why: 'A low threshold copies keys that are not hot, which costs memory and invalidation work without spreading anything new.' },
+      { text: 'No, the fix is a longer TTL so the cache keeps more keys', why: 'The keys are already cached. The question is how much load each node carries, and a TTL does not change that.' },
+    ],
+  },
+  {
+    id: 'checkpoint/thinking/q8',
+    ordered: true,
+    prompt: 'Your SLO window is 30 days, and the error budget is burning at 5x. If that rate holds, when does the budget run out?',
+    options: [
+      { text: 'In about 6 days', correct: true, why: 'At 1x the budget lasts the full 30 days. At 5x it lasts a fifth of that: 30 ÷ 5 = 6 days.' },
+      { text: 'In about 25 days', why: 'That subtracts 5 from 30. Burn rate is a multiplier, so divide the window by it.' },
+      { text: 'In about 30 days', why: 'A budget lasts the whole window only at a burn rate of 1x. At 5x it drains five times as fast.' },
+      { text: 'In about 150 days', why: 'That multiplies the window by the burn rate. A faster burn empties the budget sooner.' },
+    ],
+  },
+  {
+    id: 'checkpoint/thinking/q9',
+    ordered: true,
+    prompt: 'An SLO promises that 99.5% of 4 million monthly requests succeed. A bad deploy fails 10,000 requests. How much of the month’s error budget did it spend?',
+    options: [
+      { text: 'About 0.25%', why: 'That is 10,000 as a share of all 4 million requests. The budget is only the 0.5% the SLO allows to fail.' },
+      { text: 'About 25%', why: 'That assumes a budget of 40,000. 0.5% of 4 million is 20,000.' },
+      { text: 'About 50%', correct: true, why: 'The budget is 0.5% of 4 million, or 20,000 failed requests. 10,000 of 20,000 is half of it.' },
+      { text: 'About 100%', why: 'That assumes a budget of 10,000, which would be a 99.75% SLO. At 99.5% the budget is 20,000.' },
+    ],
+  },
+  {
+    id: 'checkpoint/thinking/q10',
+    prompt: 'An internal tool serves about 100 requests a day, and its daily p99 latency jumps around wildly from one day to the next. What is the most likely reason?',
+    options: [
+      { text: 'The servers average their own p99 values into one number', why: 'Averaging percentiles gives a wrong number, and it would be wrong in a steady way. The swings come from how few samples there are.' },
+      { text: 'Over 100 requests, the p99 is nearly the single slowest request', correct: true, why: 'A p99 needs hundreds of requests to mean anything. With 100 a day, one unlucky request sets the number.' },
+      { text: 'The p99 always swings more than the mean, whatever the traffic', why: 'With thousands of samples a p99 settles down. The wild swings here come from having so few requests.' },
+      { text: 'A 30 day SLO window is too long for a daily number', why: 'The window length sets the budget, and the daily p99 comes from that day’s requests alone. Too few samples make it noisy.' },
+    ],
+  },
+];
+
+Answer every question, then check your score. You need 7 of 10 to pass. A pass marks the module checkpoint complete on this device.
+
+Missed one? The explanation names the idea, and the module’s lessons cover it in depth:
+
+- [Requirements and estimates](../../thinking/requirements-and-estimates/)
+- [The design checklist](../../thinking/design-checklist/)
+- [Access patterns and hot keys](../../thinking/access-patterns/)
+- [SLOs and measurement](../../thinking/slos/)
+
+<Checkpoint client:load moduleId="thinking" questions={quiz} />
