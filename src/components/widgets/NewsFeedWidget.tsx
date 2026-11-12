@@ -56,7 +56,7 @@ const glyphs: Record<TileView, string> = {
 const copy: Record<FeedDuelId, { title: string; instructions: string; chart: string }> = {
   celebrity: {
     title: 'Same posts, two ways to fan out',
-    instructions: `Pick a scenario, then press Play. Both lanes get the same 60 ordinary posts, the same celebrity post, and the same readers, and both share a fanout fleet of the same size. Only the fan-out rule differs: one lane copies every post into every follower's feed, the other skips the copies for any author with more than ${count(CELEBRITY_THRESHOLD)} followers and merges those posts in when a follower loads their feed.`,
+    instructions: `Pick a scenario, then press Play. Both lanes get the same 60 ordinary posts, the same celebrity post, and the same readers, and both share a fanout fleet and a read tier of the same size. Only the fan-out rule differs: one lane copies every post into every follower's feed, the other skips the copies for any author with more than ${count(CELEBRITY_THRESHOLD)} followers and merges those posts in when a follower loads their feed.`,
     chart: 'Feed writes waiting to run',
   },
   reads: {
@@ -91,7 +91,7 @@ function sharedState(duel: FeedDuel, celebrityDuel: boolean): Link {
       return {
         tone: 'ok',
         icon: '✓',
-        text: `Every one of the celebrity's ${count(duel.celebrityFollowers)} followers can see the post in both lanes.`,
+        text: `The celebrity post is available to all ${count(duel.celebrityFollowers)} followers in both lanes. Each follower sees it when the read tier returns their next feed load.`,
       };
     }
     const rate = Math.round(duel.scenario.writesPerTick / duel.tickSeconds);
@@ -227,7 +227,7 @@ function CelebrityMeter({ duel, lane, sum }: { duel: FeedDuel; lane: FeedLane; s
       <Meter
         tone="ok"
         share={1}
-        text={`Celebrity post: stored once, with no feed writes. Each follower's feed load merges it in, so all ${count(followers)} followers see it at once.`}
+        text={`Celebrity post: stored once, with no feed writes. Each follower's feed load merges it in, so all ${count(followers)} followers see it as soon as the read tier returns their next load.`}
       />
     );
   }
@@ -249,19 +249,25 @@ function CelebrityMeter({ duel, lane, sum }: { duel: FeedDuel; lane: FeedLane; s
   );
 }
 
-function ReadMeters({ duel, lane }: { duel: FeedDuel; lane: FeedLane }) {
-  const capacity = Math.round((duel.scenario.readsPerTick ?? 0) / duel.tickSeconds);
+function ReadDemandMeter({ duel, lane }: { duel: FeedDuel; lane: FeedLane }) {
+  const capacity = Math.round(duel.scenario.readsPerTick / duel.tickSeconds);
   const demand = demandPerSecond(lane, duel);
-  const demandTone = demand > capacity ? 'bad' : demand > capacity * 0.75 ? 'warn' : 'ok';
+  const tone = demand > capacity ? 'bad' : demand > capacity * 0.75 ? 'warn' : 'ok';
+  return (
+    <Meter
+      tone={tone}
+      share={capacity === 0 ? 0 : demand / capacity}
+      text={`Lookups asked for in the last second: ${count(demand)} per second. The read tier serves ${count(capacity)}.`}
+    />
+  );
+}
+
+function ReadMeters({ duel, lane }: { duel: FeedDuel; lane: FeedLane }) {
   const wait = oldestLoadWaitSeconds(lane, duel);
   const waitTone = wait > READ_TARGET_SECONDS ? 'bad' : wait > READ_TARGET_SECONDS / 2 ? 'warn' : 'ok';
   return (
     <>
-      <Meter
-        tone={demandTone}
-        share={capacity === 0 ? 0 : demand / capacity}
-        text={`Lookups asked for in the last second: ${count(demand)} per second. The read tier serves ${count(capacity)}.`}
-      />
+      <ReadDemandMeter duel={duel} lane={lane} />
       <ReadQueue duel={duel} lane={lane} />
       <Meter
         tone={waitTone}
@@ -304,10 +310,12 @@ function LanePane({
               queued.
             </p>
             <p>
-              Missed the {FRESH_SECONDS} s target: {sum.missed}.
+              Missed the {FRESH_SECONDS} s target: {sum.missed}. Feed loads that waited more than{' '}
+              {READ_TARGET_SECONDS} s: {count(sum.slowLoads)}.
             </p>
           </div>
           <CelebrityMeter duel={duel} lane={lane} sum={sum} />
+          <ReadDemandMeter duel={duel} lane={lane} />
           <FanoutQueue lane={lane} />
         </>
       ) : (
@@ -392,7 +400,7 @@ export default function NewsFeedWidget({ duel: duelId, title, instructions }: Pr
           better: 'lower',
         },
         {
-          label: 'Celebrity post in every follower feed after',
+          label: 'Celebrity post available to every follower after',
           values: pair((sum) => sum.celebrityReachSeconds),
           format: reachText,
         },
@@ -404,9 +412,27 @@ export default function NewsFeedWidget({ duel: duelId, title, instructions }: Pr
           better: 'lower',
         },
         {
+          label: `Waited more than ${READ_TARGET_SECONDS} s`,
+          values: pair((sum) => sum.slowLoads),
+          format: count,
+          better: 'lower',
+        },
+        {
+          label: 'Average wait for the read tier',
+          values: pair((sum) => sum.averageLoadWaitSeconds),
+          format: secondsText,
+          better: 'lower',
+        },
+        {
           label: 'Feed loads that missed the celebrity post',
           values: pair((sum) => sum.missedCelebrity),
           better: 'lower',
+        },
+        {
+          label: `Feed loads that showed the celebrity post within ${READ_TARGET_SECONDS} s`,
+          values: pair((sum) => sum.returnedCelebrity),
+          format: count,
+          better: 'higher',
         },
       ]
     : [

@@ -1,8 +1,20 @@
 ---
 title: Ride sharing
 description: Index fast-changing driver locations with geohash cells, search the rider's cell and its 8 neighbors, and reserve one driver per ride.
+furtherReading:
+  - title: 'H3: Uber’s Hexagonal Hierarchical Spatial Index'
+    url: https://www.uber.com/blog/h3/
+    note: Why Uber buckets the map into hexagons for dispatch and pricing, with 6 neighbors at fairly even distances.
+  - title: 'H3 documentation: Overview'
+    url: https://h3geo.org/docs/core-library/overview
+    note: How H3 projects an icosahedron onto the sphere, and why every resolution has 12 pentagons.
+  - title: How to do distributed locking (Martin Kleppmann)
+    url: https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html
+    note: Why a lease needs a fencing token, the job the reservation version does in this lesson.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -179,9 +191,54 @@ export const quiz = [
   },
 ];
 
+export const recall = [
+  {
+    id: 'case-studies/ride-sharing/recall-1',
+    prompt:
+      'A link shortener hashes short codes across 8 shards. One link goes viral, and its shard runs out of capacity. What helps that one link most?',
+    options: [
+      {
+        text: 'A cache in front of the shards that answers the hot link',
+        correct: true,
+        why: 'Sharding spreads many keys, and one key still lives on one shard. A cache absorbs the repeated reads of that single key.',
+      },
+      {
+        text: 'Add 8 more shards',
+        why: 'More shards spread more keys. The viral link still hashes to one shard, which still takes every lookup for it.',
+      },
+      {
+        text: 'Switch to consistent hashing',
+        why: 'Consistent hashing limits how many keys move when shards change. The hot key still lives on one shard.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/ride-sharing/recall-2',
+    prompt:
+      'A ride status page in the browser only needs updates from the server: matching, driver assigned, driver arriving. Which transport fits with the least extra code?',
+    options: [
+      {
+        text: 'Server-sent events',
+        correct: true,
+        why: 'SSE is one-way push over plain HTTP. The browser reconnects on its own and sends Last-Event-ID, so the server can replay what it missed.',
+      },
+      {
+        text: 'A WebSocket',
+        why: 'It works, but the page never sends anything back on it, and your code handles reconnects and resuming.',
+      },
+      {
+        text: 'Polling the status every 100 ms',
+        why: 'Each page sends 10 requests per second, and nearly every answer says nothing changed.',
+      },
+    ],
+  },
+];
+
 This case study builds on the **Async and streaming** module, especially Logs and pub/sub and Stream processing, and on
 Queues and backpressure from the **Reliability** module. In [Sharding and consistent hashing](../../scaling/sharding/), a
 key decided which shard held each row. Here the key is a place on the map, and every row moves every few seconds.
+
+<Recall questions={recall} />
 
 <Objectives>
 
@@ -191,6 +248,9 @@ key decided which shard held each row. Here the key is a place on the map, and e
 - Reserve exactly one driver per ride with a versioned lease, an offer timeout, and a fallback, and reject a late accept from an old offer.
 
 </Objectives>
+
+**Route:** Advanced, case 8 of 10 on the beginner route through Module 6. Next on the route:
+[Metrics and alerting](../metrics/).
 
 ## The failure: measure the distance to every driver
 
@@ -424,11 +484,6 @@ ring (the next 16 cells, then 24) whenever the cells so far hold no free driver 
 sure. In the dense and edge scenarios it never widens. In Sparse suburbs it widens for 10 of 15 requests, out to 3 rings
 (49 cells) at most.
 
-Real systems handle sparse areas in one of two ways. They widen ring by ring, as the toy does, or they drop one
-character of precision and search 9 bigger cells, each 32 times the area. Dropping a character is simpler, and in a
-dense area it can pull in thousands of drivers, so systems pick the precision per area or stop widening as soon as they
-hold enough candidates.
-
 ### Try it
 
 The widget opens on Rider near a cell edge, the case you just predicted. Both lanes pick the same driver every time;
@@ -453,13 +508,35 @@ What to look for:
 - **Match distance.** Sparse matches average 993 m, against 241 m near cell edges. Fewer drivers means longer pickups,
   whichever lane searches.
 
-### Matching takes more than the nearest dot
+<details>
+<summary>Go deeper: real matchers, sparse suburbs, and a stadium</summary>
 
-Nearest by straight line is a toy. A driver 300 m away on the far side of a river or a one-way street can need ten
-minutes to arrive. Real matchers take the candidates from the cells, filter them by vehicle type, rating, and status,
-ask a **routing service** for the road ETA from each one to the pickup point, and rank by ETA. Some also collect the
-requests that arrive within a second or two and assign them together, which can cut the total pickup time when riders
-cluster.
+**Matching takes more than the nearest dot.** Nearest by straight line is a toy. A driver 300 m away on the far side of
+a river or a one-way street can need ten minutes to arrive. Real matchers take the candidates from the cells, filter
+them by vehicle type, rating, and status, ask a **routing service** for the road ETA from each one to the pickup point,
+and rank by ETA. Some also collect the requests that arrive within a second or two and assign them together, which can
+cut the total pickup time when riders cluster.
+
+**Sparse suburbs.** Real systems handle sparse areas in one of two ways. They widen ring by ring, as the toy does, or
+they drop one character of precision and search 9 bigger cells, each 32 times the area. Dropping a character is
+simpler, and in a dense area it can pull in thousands of drivers, so systems pick the precision per area or stop
+widening as soon as they hold enough candidates.
+
+**A stadium lets out.** A concert ends, and 2,000 drivers converge on the 4 precision 6 cells around the stadium, a
+2 × 2 block with about 500 drivers per cell. A rider in one of those cells requests a ride. Assume drivers spread evenly
+within each cell.
+
+- **The 9-cell search checks about 2,000 drivers.** Every one of the 4 hot cells touches the rider's cell, so the search
+  reads all of them, as many checks as a scan of a small city.
+- **Go one character finer in hot areas.** Each precision 6 cell splits into **32** precision 7 cells (8 columns by 4
+  rows), about **153 × 153 m** at the equator. 500 ÷ 32 is about **16 drivers per cell**, so a 9-cell search checks
+  about **140**.
+- **Cap the candidates.** Stop at the first ring that yields, say, **20** free drivers of the right type, and send only
+  those to the routing service for an ETA.
+- **Expect a burst of requests too.** Everyone leaves at once, so put a queue in front of the matcher and assign nearby
+  requests in batches.
+
+</details>
 
 ### Reserve one driver, then offer the ride
 
@@ -479,13 +556,13 @@ RETURNING reservation_version;
 ```
 
 Exactly one update finds the driver available and changes a row. The other changes zero rows and moves to its next
-candidate. The [Transactions and constraints](../../foundations/transactions/) lesson covers this pattern. A lock on the
-driver also works, and it makes every other matcher wait while held. The lease frees the driver even if the matcher that
+candidate. The [Transactions and constraints](../../foundations/transactions/) lesson covers this pattern. A lock also
+works, but every other matcher waits while it is held. The lease frees the driver even if the matcher that
 took it crashes, and the version names this one reservation among all of the driver's past ones.
 
-Next, the matcher offers the ride to the driver app with that version and starts a timer, 15 s in this illustration, the
-same length as the lease. The [Timeouts and cancellation](../../reliability/timeouts/) lesson covers why every wait needs
-a deadline. The rider sees one status, matching, the whole time.
+Next, the matcher offers the ride to the driver app with that version and starts a 15 s timer,
+the length of the lease. The [Timeouts and cancellation](../../reliability/timeouts/) lesson covers why every wait needs
+a deadline.
 
 The trap is a stale message. Networks delay replies, and processes pause for garbage collection or a slow disk. The
 driver's accept can arrive after the lease expired and another ride reserved the same driver, and a paused matcher can
@@ -516,7 +593,7 @@ the matcher moves to its next candidate. A matcher that needs more time renews w
 `expires_at` forward. The database checks every expiry against its own clock, `now()`, so the clocks on phones and
 matchers never decide who holds a driver.
 
-This timeline comes from the small reservation model behind this lesson. One driver, d7, meets two rides:
+This timeline comes from the lesson's reservation model. One driver, d7, meets two rides:
 
 | Time | Message                                          | Names     | d7's version | Result                      |
 | ---- | ------------------------------------------------ | --------- | ------------ | --------------------------- |
@@ -551,12 +628,27 @@ a driver back to where they were. A timestamp from the phone cannot do this job:
 the user corrects them, and one ping stamped an hour ahead would block every real ping for that hour. The sequence only
 has to rise within one session, and the server issues a higher session number at each sign in, so the first ping of a
 new session outranks the old one. As a backstop, a cell entry expires about 30 s after its last ping (illustrative), so
-a driver whose removal got lost, or whose app went offline, leaves the search on its own. When the consumers fall behind
-during a burst, Queues and backpressure lists the options. Here one answer stands out: skip to the newest ping for each
-driver, since an old position has no value for matching.
+a driver whose removal got lost, or whose app went offline, leaves the search on its own. When consumers fall behind
+during a burst, they skip to the newest ping for each driver, since an old position has no value for matching.
 
 A second consumer writes every ping to the location history, about 173 GB a day in this estimate, on cheap bulk
 storage. Fares, receipts, and disputes read a trip's route from it later.
+
+## Failure walkthrough: the matcher crashes after reserving a driver
+
+Ride R reserves driver d7 at 0 s and gets version 4. The matcher crashes at 0.1 s, before it sends the offer. The driver
+app never rings, and the rider's screen still says matching.
+
+1. **The lease holds d7 for 15 s.** Other matchers try d7, change zero rows, and move to their next candidate. One
+   driver sits idle for one lease, and nobody can book d7 twice.
+2. **The database frees d7 on its own clock.** At 15 s, `expires_at <= now()`, so the next reserve that picks d7
+   succeeds and sets version 5. No process has to remember to release it.
+3. **Another matcher takes over ride R.** Matchers claim rides with the same kind of lease, stored in the rides row.
+   When the crashed matcher's claim expires, a live matcher claims R, searches the cells again, and reserves a driver.
+   The rider waits about 15 s longer and still gets exactly one driver.
+4. **The old matcher wakes up harmless.** Suppose it restarts from a checkpoint and fires its timer for version 4. If
+   another reservation now holds d7, even a new one for ride R, the version differs and the release changes zero rows.
+   If nobody took d7, the release frees a driver whose lease had already lapsed.
 
 ## Trade-offs
 
@@ -602,27 +694,48 @@ This lesson's model is a toy. Here is what it leaves out:
 - **Rectangles.** At the equator a precision 6 cell is twice as wide as it is tall. The toy city sits at 57.6° N, where
   cells come out close to square.
 
-## Check yourself
+<KeyTakeaways>
+
+- Search the rider's geohash cell and its 8 neighbors, and widen one ring at a time when they come up short, so the work
+  tracks nearby drivers instead of the whole city.
+- Location writes outnumber searches about 144 to 1. Most pings stay in their cell and only overwrite a position, so
+  only about 1 ping in 12 touches the cell sets.
+- Reserve a driver with one conditional update that takes a 15 s lease and bumps a version. Every accept, decline, and
+  timer names the ride and the version, so a stale message changes zero rows.
+- Partition the ping log by driver id to keep each driver's pings in order, and shard the index by cell prefix so one
+  node answers most searches. Split hot prefixes further, and let lagging consumers skip to the newest ping.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-A concert ends, and 2,000 drivers converge on the 4 precision 6 cells around the stadium, a 2 × 2 block with about 500
-drivers per cell. A rider in one of those cells requests a ride. Using this lesson's illustrative numbers, how many
-drivers does a 9-cell search check? How would you bring that down? Assume drivers spread evenly within each cell.
+**Closing rubric: grow one dimension tenfold.** Keep this lesson's estimates (a ping every 4 s, 100 bytes per driver in
+the index, and a peak of 347 ride requests per second), and raise online drivers from 200,000 to 2 million.
+
+1. Which part hits its limit first, and by how much?
+2. What do you change, and what does the change cost?
+3. The index node for downtown, holding 1 in 20 drivers, crashes at peak, and its replacement starts 10 s later. What
+   do riders there see, and how much work does the rebuild take?
 
 <div slot="answer">
 
-- Every one of the 4 hot cells touches the rider's cell, so the 9-cell search reads all of them and checks about
-  **2,000 drivers**, as many as a scan of a small city.
-- Go one character finer in hot areas. Each precision 6 cell splits into **32** precision 7 cells (8 columns by 4 rows),
-  about **153 × 153 m** at the equator. 500 ÷ 32 is about **16 drivers per cell**, so a 9-cell search checks about
-  **140**.
-- Cap the candidates. Stop at the first ring that yields, say, **20** free drivers of the right type, and send only those
-  to the routing service for an ETA.
-- Expect a burst of requests too. Everyone leaves at once, so put a queue in front of the matcher and assign nearby
-  requests in batches.
+**The location write path breaks first.**
+
+- **The new numbers.** Pings grow to 500,000 per second, 10 times what the gateway, log, and index consumers handle:
+  about 1,441 writes per search. Cell changes grow to about 41,750 per second and history to about 1.73 TB a day. The
+  index still fits in memory at 200 MB. Searches stay at 347 per second, but each 9-cell search finds 10 times as many
+  drivers.
+- **The change.** Add log partitions and index consumers about tenfold; partitions keyed by driver id split cleanly.
+  Split dense prefixes across more index nodes, and use precision 7 cells there so each cell holds 1/32 as many
+  drivers. The cost: a 40 m hop crosses a 153 m cell edge about 33% of the time, against 8.35%, so the cell set
+  changes in those areas roughly quadruple. Pinging stationary drivers every 15 s instead of 4 s cuts writes where
+  positions barely change. The rest of the bill is ten times the write path machines and history storage.
+- **The crash.** The node holds 100,000 drivers, who send 25,000 pings per second. If downtown also takes 1 in 20
+  requests, about 170 riders find no drivers during the 10 s gap, stay in matching, and retry. The log keeps the
+  250,000 pings meanwhile, and the replacement skips to the newest ping per driver, about 100,000 writes. A standby
+  copy fed by the same log cuts the gap to the failover time and doubles that shard's memory and consumer writes.
 
 </div>
 

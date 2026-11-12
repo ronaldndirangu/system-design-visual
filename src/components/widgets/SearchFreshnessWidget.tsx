@@ -96,7 +96,9 @@ function LanePane({
         <div className="sdv-search__live">
           <p className="sdv-search__index-name">Live segments, text match only</p>
           {shown.length === 0 ? (
-            <p className="sdv-search__line">None yet. New documents land here within 1 s.</p>
+            <p className="sdv-search__line">
+              None yet. New documents land here after an assumed 1 s refresh.
+            </p>
           ) : (
             <ul className="sdv-search__segments" aria-label="Live segments">
               {shown.map((segment) => (
@@ -114,7 +116,7 @@ function LanePane({
       )}
       <p className="sdv-search__line">
         {lane.liveTier ? (
-          <ToneBadge tone="ok">Every new document searchable within 1 s</ToneBadge>
+          <ToneBadge tone="ok">Every new document searchable after an assumed 1 s refresh</ToneBadge>
         ) : summary.pendingAdded > 0 ? (
           <ToneBadge tone="warn">{`${count(summary.pendingAdded)} new documents not searchable yet`}</ToneBadge>
         ) : (

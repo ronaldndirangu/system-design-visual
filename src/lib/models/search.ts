@@ -108,6 +108,10 @@ export const BUILD_START_TICK = 8;
 export const QUERIES_PER_TICK = 48;
 export const TOP_K = 10;
 export const MERGE_FACTOR = 4;
+/**
+ * Assumed refresh interval, the Lucene-style default. The duel flushes once per 15-minute tick and reports a live
+ * document's wait as this value; it models no queue lag, replica copy or result cache TTL.
+ */
 export const REFRESH_SECONDS = 1;
 export const EVERGREEN_TOPICS = 30;
 export const DOCS_PER_TOPIC = 60;

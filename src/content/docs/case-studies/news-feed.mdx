@@ -1,9 +1,21 @@
 ---
 title: News feed
 description: Put every new post in every follower's feed within seconds. Watch one celebrity post bury the fanout queue and read-time feeds swamp the read tier, then fix both with hybrid fan-out.
+furtherReading:
+  - title: 'Feeding Frenzy: Selectively Materializing Users’ Event Feeds (SIGMOD 2010)'
+    url: https://doi.org/10.1145/1807167.1807224
+    note: Chooses push or pull per producer and consumer pair from post and view rates, the idea behind hybrid fan-out.
+  - title: Timelines at Scale (Raffi Krikorian, Twitter, QCon)
+    url: https://www.infoq.com/presentations/Twitter-Timeline-Scalability/
+    note: How Twitter fans tweets out on write into cached timelines and merges celebrity tweets at read time.
+  - title: 'Pattern: Transactional outbox'
+    url: https://microservices.io/patterns/data/transactional-outbox.html
+    note: Commit the post and the owed fanout job together, then publish the job at least once.
 ---
 
 import { Steps } from '@astrojs/starlight/components';
+import Recall from '../../../components/lesson/Recall.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -41,13 +53,13 @@ export const edges = [
 export const steps = [
   {
     title: 'A post goes up',
-    text: "Lena posts a photo. The post service stores it once in the posts table under a time-sortable id and answers her in milliseconds. Nobody's feed shows it yet.",
+    text: "Lena posts a photo. In one transaction, the post service stores the post once in the posts table under a time-sortable id and adds an outbox row that records the fanout it still owes. It answers her in milliseconds. Nobody's feed shows the post yet.",
     nodes: ['author', 'post', 'posts'],
     flows: ['author>post', 'post>posts'],
   },
   {
-    title: 'Queue the fanout',
-    text: 'The post service drops one job on the fanout queue: put this post in the feed of everyone who follows Lena. The queue absorbs bursts, so posting stays fast even when the workers fall behind.',
+    title: 'Publish the fanout job',
+    text: "A relay in the post service reads the outbox and publishes one job on the fanout queue: put this post in the feed of everyone who follows Lena. It marks the outbox row sent only after the queue confirms, so a crash can publish a job twice but never drops one. The queue absorbs bursts, so posting stays fast even when the workers fall behind.",
     nodes: ['post', 'fanout'],
     flows: ['post>fanout'],
   },
@@ -175,15 +187,64 @@ export const quiz = [
   },
 ];
 
+export const recall = [
+  {
+    id: 'case-studies/news-feed/recall-1',
+    prompt:
+      'Workers drain 50 requests per second, and a burst leaves 40 extra requests waiting in line. How long does the last request in line wait?',
+    options: [
+      {
+        text: 'About 0.8 s',
+        correct: true,
+        why: 'A backlog drains at the workers’ rate: 40 requests at 50 per second takes 0.8 s. A fanout queue behaves the same way, only with millions of writes.',
+      },
+      {
+        text: 'About 1.25 s',
+        why: 'That divides the drain rate by the backlog. The wait is backlog ÷ drain rate: 40 ÷ 50 = 0.8 s.',
+      },
+      {
+        text: 'No time, because the workers run in parallel',
+        why: 'Parallel workers set the drain rate of 50 per second. Requests behind the backlog still wait for it to clear.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/news-feed/recall-2',
+    prompt:
+      'You shard posts by author id. A celebrity posts, and millions of readers ask for that author’s recent posts at once. What protects the shard?',
+    options: [
+      {
+        text: 'A cache in front of it, because sharding spreads many keys but sends one hot key to one shard',
+        correct: true,
+        why: 'Every request for one author lands on that author’s shard. A cached copy of the hot entry, replicated if needed, absorbs the reads.',
+      },
+      {
+        text: 'More shards, because adding shards spreads every key',
+        why: 'More shards spread many keys across more machines. One author id still maps to exactly one shard.',
+      },
+      {
+        text: 'Nothing, because a shard serves any read rate',
+        why: 'A shard is one machine or replica set with a finite read rate. A hot key can exceed it.',
+      },
+    ],
+  },
+];
+
+<Recall questions={recall} />
+
 <Objectives>
 
 - Explain fan out on write and fan out on read, and what each costs per post and per feed load.
 - Estimate feed writes and feed lookups for a large social network, and see which side dominates.
 - Show why one celebrity post delays every later post when every post fans out on write.
 - Design hybrid fan-out: push posts from most authors, and pull posts from authors above a follower threshold.
+- Keep a fanout job from getting lost when the post service crashes after storing the post.
 - Contrast a news feed with notifications.
 
 </Objectives>
+
+**Route:** Intermediate, case 1 of 10 on the beginner route through Module 6. Next on the route:
+[Notifications](../notifications/).
 
 ## The failure: the puppy that arrived late
 
@@ -264,7 +325,8 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
    following, sharded by user. The feed cache holds one capped list per user of (post id, author id) pairs. A feed
    list holds ids only: post bodies come from the posts table, or a post cache in front of it, when a page renders.
 
-5. **High-level design.** A post service stores posts and enqueues fanout jobs. A fanout fleet reads followers from
+5. **High-level design.** A post service stores each post and an outbox row in one transaction, and a relay publishes
+   the outbox rows as fanout jobs. A fanout fleet reads followers from
    the follow graph and writes post ids into feed lists. A feed service reads the feed list, merges in celebrity
    posts, and fetches post bodies. The feed lists and celebrity posts sit in an in-memory
    [cache](../../scaling/caching/), and the follow graph serves its heavy read traffic from
@@ -286,7 +348,9 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
 Both lanes below get the same pre-generated workload: 60 ordinary posts over 24 seconds, each from an author with 20
 to 80 followers, plus one celebrity post at 3 s, and 40 feed loads per second from 20,000 readers. The left lane fans
 every post out on write. The right lane uses hybrid fan-out: posts from authors with more than 1,000 followers skip
-the fanout queue and get merged in when a follower loads their feed. Each fanout fleet runs 500 feed writes per second.
+the fanout queue and get merged in when a follower loads their feed. Each fanout fleet runs 500 feed writes per second,
+and each read tier serves 80 lookups per second, twice what fan out on write needs. A feed load shows the celebrity
+post only when the read tier returns it, so the widget also counts loads that showed the post within 1 s.
 The toy model counts one lookup for each list a feed load reads (the feed list, or one account's recent posts) and
 leaves out fetching post bodies, which every strategy pays equally. All numbers are illustrative, and the scale is
 compressed: a real celebrity has millions of followers and a real fleet runs millions of writes per second. The shape
@@ -300,13 +364,19 @@ What to look for:
   misses **0**. At 5.9 s, post 8 has waited 2 s in the fanout queue and its 59 followers still cannot see it. At
   13.0 s, the last celebrity follower gets the post, **10 s** after it went up, and **45** feed loads came back without
   it. Hybrid runs **2,974** feed writes instead of **7,974**, and pays for that with **1,520** lookups instead of
-  **1,200**.
+  **1,200**. The read tier has room for both, so **292** hybrid feed loads show the celebrity post within 1 s, against
+  **247** for fan out on write.
 - **Twice the followers.** With 10,000 followers, fan out on write misses **53** posts, the celebrity post takes
   **20 s** to reach everyone, and **193** feed loads miss it. Hybrid still misses **0**. Its lookups rise to **1,814**,
   because more readers follow the celebrity.
 - **Double the fleet.** With 1,000 writes per second, fan out on write still misses **11** posts and takes **5 s** to
   reach every celebrity follower. Hybrid misses **0**. A bigger fleet shrinks the delay, and the next celebrity can
   have ten times the followers.
+- **Read tier sized for push.** Cut the read tier to 40 lookups per second, exactly what fan out on write needs. Fan
+  out on write still serves every load in time. Hybrid fan-out needs 1,520 lookups, so its read queue grows: **996**
+  feed loads wait more than 1 s, the average wait reaches **3 s**, and **248** loads are still waiting when the run
+  ends. Only **17** hybrid loads show the celebrity post within 1 s, against **247** for fan out on write. Hybrid moves
+  the celebrity's work from the fanout fleet to the read tier, so the read tier needs the headroom.
 - **No celebrity.** Both lanes do the same work and meet every target. Hybrid fan-out changes nothing for ordinary
   authors.
 
@@ -350,9 +420,14 @@ removes more writes and adds more read work, because every reader pays one extra
 it. A reader who follows 200 celebrities would pay 201 lookups per feed load, so some designs also cap how many pulled
 accounts one load merges, or push to the most active followers of a celebrity and pull for the rest.
 
+The threshold trades between two budgets, so size both. The fanout fleet needs writes per second for every pushed
+post, and the read tier needs lookups per second for every pulled author on every feed load. The "Read tier sized for
+push" run shows the failure when only the first budget gets planned: hybrid fan-out clears the fanout queue and
+swamps the read tier instead.
+
 Pulled posts are cheap to serve because millions of readers ask for the same few lists. A celebrity's recent posts
-make an ideal cache entry: tiny, hot, and rarely changed. The [Caching](../../scaling/caching/) lesson covers how a hot
-key like that behaves, and why one replica per hot key may not be enough.
+make an ideal cache entry: tiny, hot, and rarely changed. The [Sharding](../../scaling/sharding/) lesson explains why
+one hot key still lands on one shard, and why a cache in front absorbs the reads.
 
 ## Edges the simulation leaves out
 
@@ -363,9 +438,46 @@ key like that behaves, and why one replica per hot key may not be enough.
   service builds older pages by fan out on read when someone does.
 - **Ranking.** Most real feeds rank posts instead of sorting them by time. Ranking reorders the candidates in the feed
   list and the pulled celebrity posts. It does not change who does the fanout work.
-- **Lost fanout jobs.** The fanout queue must not lose a job, or followers silently miss a post. The Delivery
-  semantics lesson covers at-least-once delivery, and adding a post id to a feed list twice is harmless when the
-  feed service drops duplicates.
+
+<details>
+<summary>Go deeper: deletes and unfollows</summary>
+
+A pop star with 40 million followers deletes a post minutes after sharing it. Separately, a reader unfollows an
+ordinary account they followed for years. With hybrid fan-out, filter at read time and clean up in the background.
+
+- **The celebrity delete is cheap.** The post never reached any feed list. Mark it deleted in the posts table and
+  evict it from the cache of the pop star's recent posts. The next feed load merges without it.
+- **An ordinary delete touches many lists.** The post id sits in every follower's feed list. When the feed service
+  fetches post bodies, it skips posts marked deleted, so the post vanishes on the next load. A background job removes
+  the stale ids later, or the ids age out of the 800 entry cap.
+- **The unfollow updates the follow graph first.** New fanout jobs then skip the reader. The feed service drops posts
+  from authors the reader no longer follows, and a background job strips that author's ids from the reader's list.
+- **What can still show.** A screen that already rendered the post keeps it until the reader refreshes, and any
+  cached post bodies need a short expiry or an explicit eviction. Fan out on write makes deletes the expensive
+  direction, and read-time filtering keeps them cheap.
+
+</details>
+
+## Failure walkthrough: the post service crashes before the fanout job
+
+Lena's post commits at 9:02:00. The post service crashes at 9:02:00.1, before anything reaches the fanout queue.
+Without an outbox, the post sits in the posts table and no job exists to put it in her friends' feeds. They never see
+it, and nothing reports an error.
+
+With the outbox, the same transaction that stored the post also stored a row that says "fan out post 812 to Lena's
+followers". The two rows commit together or not at all, so a stored post always has its owed fanout recorded.
+
+1. **The relay restarts.** It reads every outbox row not yet marked sent and finds post 812.
+2. **It publishes again.** The relay may have published the job just before the crash, so the queue can now hold two
+   copies. The relay marks the row sent only after the queue confirms, which makes delivery
+   [at least once](../../async/delivery-semantics/).
+3. **The fleet runs both copies.** Workers add post 812 to each follower's feed list. A feed list stores each post id
+   once, so the second copy changes nothing. A worker that crashes mid-job also replays safely, for the same reason.
+4. **Followers see the post late.** The delay equals the relay's downtime plus the queue wait. Nobody misses it.
+
+Change data capture (CDC) is the common alternative: a connector tails the database's commit log and publishes each
+new post as a fanout job, with the same at-least-once guarantee and no outbox table to clean up. Either way, the feed
+lists must tolerate duplicates.
 
 ## News feed versus notifications
 
@@ -395,28 +507,48 @@ constraint sits elsewhere.
 
 </TradeoffTable>
 
+<KeyTakeaways>
+
+- Fan out on write pays per follower when a post goes up. Fan out on read pays per followed account on every feed
+  load. Reads outnumber posts, so push wins for most authors.
+- One celebrity post turns into millions of queued writes and delays every post behind it. A bigger fleet only
+  shrinks the delay until the next, bigger celebrity.
+- Hybrid fan-out pulls posts from authors above a follower threshold. It moves their work to the read tier, so size
+  both the fanout fleet and the read tier.
+- Commit the post and its owed fanout job together through an outbox or CDC. Delivery is at least once, so feed lists
+  must ignore duplicate post ids.
+
+</KeyTakeaways>
+
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-A pop star with 40 million followers deletes a post minutes after sharing it. Separately, a reader unfollows an
-ordinary account they followed for years. Your feed uses hybrid fan-out with a feed list of 800 entries per user.
-Design how each change disappears from feeds, and say what a reader might still see and for how long.
+**Closing rubric: grow one dimension tenfold.** Keep the estimates from the design checklist (200 million daily users,
+10 feed loads and 0.5 posts per user per day, a peak of 3 times the average, and a fanout fleet of 2 million writes
+per second), and raise the average follow count from 300 to 3,000.
+
+1. Which part hits its limit first, and by how much?
+2. What do you change, and what does the change cost?
+3. The outbox relay goes down for 120 s at peak. How big is the backlog, and how long does the fleet take to catch up?
 
 <div slot="answer">
 
-**Filter at read time, and clean up in the background.**
+**The fanout fleet breaks first.**
 
-- **The celebrity delete is cheap.** The post never reached any feed list. Mark it deleted in the posts table and
-  evict it from the cache of the pop star's recent posts. The next feed load merges without it.
-- **An ordinary delete touches many lists.** The post id sits in every follower's feed list. When the feed service
-  fetches post bodies, it skips posts marked deleted, so the post vanishes on the next load. A background job removes
-  the stale ids later, or the ids age out of the 800 entry cap.
-- **The unfollow updates the follow graph first.** New fanout jobs then skip the reader. The feed service drops posts
-  from authors the reader no longer follows, and a background job strips that author's ids from the reader's list.
-- **What can still show.** A screen that already rendered the post keeps it until the reader refreshes, and any
-  cached post bodies need a short expiry or an explicit eviction. Fan out on write makes deletes the expensive
-  direction, and read-time filtering keeps them cheap.
+- **The new numbers.** Posts stay at about 1,157 per second (3,472 at peak). Each post now becomes 3,000 feed writes:
+  about 3,472,222 writes per second, and 10,416,667 at peak, five times the 2 million the fleet runs. Fan out on read
+  is worse: 69,444 peak loads times 3,000 lookups is about 208,333,333 lookups per second. The feed cache stays at
+  about 2.6 TB, because each list still holds 800 entries.
+- **The change.** Two options, often combined. Grow the fleet to about 12.5 million writes per second, which keeps 20%
+  headroom over the peak and costs six times the machines. Or push only to followers who opened the app this week
+  and rebuild the other feeds on read. If a third of followers are active, peak writes drop to about 3.5 million per
+  second. The cost: a returning user's first load pulls up to 3,000 accounts, so it is slow.
+- **The crash.** In 120 s at peak, 3,472 posts per second leave about 416,667 outbox rows, which owe about 1.25
+  billion feed writes. A 12.5 million fleet has about 2.08 million writes per second to spare at peak, so it catches
+  up in about 600 s. Feeds run behind for about 12 minutes. The relay drains the outbox in order, so no post reaches
+  feeds more than about 2 minutes late, and none are lost. The relay may replay some jobs, and feed lists ignore the
+  duplicate ids.
 
 </div>
 
