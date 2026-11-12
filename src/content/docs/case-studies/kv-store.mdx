@@ -1,0 +1,631 @@
+---
+title: Key-value store
+description: Build a key-value store that keeps answering while nodes crash, and decide what it does when too few replicas answer. Place keys on a ring, copy each one to three nodes, read and write by quorum, and repair the copies that fall behind.
+furtherReading:
+  - title: "Dynamo: Amazon’s Highly Available Key-value Store"
+    url: https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf
+    note: The paper behind this design. Read sections 4.4 to 4.8 for vector clocks, sloppy quorums, hinted handoff, Merkle trees, and gossip.
+  - title: "Hints"
+    url: https://cassandra.apache.org/doc/latest/cassandra/managing/operating/hints.html
+    note: How Cassandra stores hints on the coordinator’s disk, replays them with a throttle, and stops collecting them after the hint window.
+  - title: "Replication"
+    url: https://docs.riak.com/riak/kv/latest/learn/concepts/replication/index.html
+    note: Riak’s n_val, preference lists, fallback nodes during an outage, and read repair.
+---
+
+import Recall from '../../../components/lesson/Recall.astro';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import KvStoreDuelWidget from '../../../components/widgets/KvStoreDuelWidget';
+
+export const nodes = [
+  { id: 'client', kind: 'client', x: 70, y: 150, label: 'App server', sublabel: 'put and get' },
+  { id: 'coord', kind: 'server', x: 240, y: 150, label: 'Coordinator', sublabel: 'any node' },
+  { id: 'd', kind: 'database', x: 420, y: 50, label: 'Node D', sublabel: 'home 1' },
+  { id: 'b', kind: 'database', x: 420, y: 250, label: 'Node B', sublabel: 'home 2' },
+  { id: 'e', kind: 'database', x: 600, y: 50, label: 'Node E', sublabel: 'home 3' },
+  { id: 'c', kind: 'database', x: 600, y: 250, label: 'Node C', sublabel: 'next on the ring' },
+];
+
+export const edges = [
+  { from: 'client', to: 'coord' },
+  { from: 'coord', to: 'd' },
+  { from: 'coord', to: 'b' },
+  { from: 'coord', to: 'e' },
+  { from: 'coord', to: 'c' },
+  { from: 'c', to: 'b', dashed: true },
+];
+
+export const steps = [
+  {
+    title: 'Any node can coordinate',
+    text: 'The app server sends put(user:218) to any node in the cluster, often through a client library that knows the ring. That node becomes the coordinator for this one request.',
+    nodes: ['client', 'coord'],
+    flows: ['client>coord'],
+  },
+  {
+    title: 'Hash the key onto the ring',
+    text: 'The coordinator hashes user:218 to a point on the ring and walks clockwise. The first three distinct nodes it meets, D, B, and E, are the key’s homes: its preference list.',
+    nodes: ['coord', 'd', 'b', 'e'],
+    flows: [],
+  },
+  {
+    title: 'Write to three, answer after two',
+    text: 'The coordinator sends the new value to all three homes at once. With W = 2 it tells the app server “stored” after the second acknowledgment, and the third copy lands a moment later.',
+    nodes: ['coord', 'd', 'b', 'e'],
+    flows: ['coord>d', 'coord>b', 'coord>e'],
+  },
+  {
+    title: 'A home stops answering',
+    text: 'Node B is down. A sloppy quorum keeps walking the ring and sends the third copy to C, tagged with a hint that names B. A strict quorum writes to D and E only and keeps the hint itself.',
+    nodes: ['coord', 'd', 'e', 'c'],
+    flows: ['coord>d', 'coord>e', 'coord>c'],
+  },
+  {
+    title: 'Read two, repair the older',
+    text: 'A get asks the homes and waits for R = 2 answers. The coordinator returns the newest version and writes it back to any replica that answered with an older one: read repair.',
+    nodes: ['client', 'coord', 'd', 'e'],
+    flows: ['client>coord', 'coord>d', 'coord>e'],
+  },
+  {
+    title: 'Hand the hint back',
+    text: 'Gossip tells C that B is back. C replays the hinted write to B, deletes its own copy, and the key has its three homes again.',
+    nodes: ['c', 'b'],
+    flows: ['c>b'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'case-studies/kv-store/recall-1',
+    prompt: 'A cache places keys with hash(key) mod 10 across 10 servers, then adds an 11th server. Roughly what share of keys moves, and what does a hash ring with virtual nodes change?',
+    options: [
+      { text: 'About 1 in 11 keys moves either way, so the ring changes nothing', why: 'That is the ring’s figure. With mod N, the divisor changes for every key, so most keys land on a new server.' },
+      { text: 'About 10 in 11 keys move with mod N; on a ring with virtual nodes about 1 in 11 move, taken evenly from every old server', correct: true, why: 'The new server claims small arcs all around the ring, so only the keys in those arcs move.' },
+      { text: 'No keys move with mod N, because the hash of a key never changes', why: 'The hash stays the same, but the remainder after dividing by 11 differs from the remainder after dividing by 10.' },
+      { text: 'Half the keys move either way', why: 'Neither scheme moves half. Mod N moves almost all keys, and a ring moves about one share.' },
+    ],
+  },
+  {
+    id: 'case-studies/kv-store/recall-2',
+    prompt: 'A store keeps N = 3 replicas, acknowledges a write after W = 2, and answers a read after R = 2, always from the same three homes. Why must every read quorum include a replica that took the last acknowledged write?',
+    options: [
+      { text: 'Writes reach all three replicas before the acknowledgment', why: 'W = 2 acknowledges after two. The third copy can still be in flight.' },
+      { text: 'The coordinator caches the last write for each key', why: 'Any node can coordinate, and a read may reach a different coordinator from the write.' },
+      { text: 'R equals W', why: 'R = 1 with W = 3 also works. What matters is the sum.' },
+      { text: 'R + W > N, so any 2 replicas read share at least 1 replica with any 2 written', correct: true, why: 'Two sets of two drawn from three replicas always overlap, so the read reaches a copy of that write. Concurrent writes still need a rule to pick a winner.' },
+    ],
+  },
+];
+
+export const quiz = [
+  {
+    id: 'case-studies/kv-store/q1',
+    prompt: 'Two of a key’s three homes are down. Why does a sloppy quorum accept a write that a strict quorum with the same N = 3 and W = 2 refuses?',
+    options: [
+      {
+        text: 'The sloppy quorum lowers W to 1 for the length of the outage',
+        why: 'W stays at 2. The sloppy quorum changes which nodes may count toward it.',
+      },
+      {
+        text: 'The sloppy quorum queues the write and applies it when the homes return',
+        why: 'The write is stored and acknowledged during the outage. Only the copies meant for the missing homes wait as hints.',
+      },
+      {
+        text: 'The sloppy quorum counts the next healthy nodes on the ring toward W, so the write lands on the surviving home and two stand-ins',
+        correct: true,
+        why: 'Right. Each stand-in keeps a hint naming the home it covers and hands the write over later. A strict quorum counts only the key’s own homes, and one is not enough.',
+      },
+      {
+        text: 'The sloppy quorum writes twice to the surviving home',
+        why: 'A second write to the same node adds no durability, and no Dynamo-style store counts it twice.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/kv-store/q2',
+    prompt: 'A lab cluster has five nodes with N = 3. Nodes D and B go down for 20 seconds, and 95 of its 300 keys have both D and B among their homes. Writes arrive at 30 per second, spread evenly over the keys. About how many writes does a strict quorum with W = 2 refuse?',
+    options: [
+      {
+        text: 'About 190',
+        correct: true,
+        why: 'Right. 30 × 20 = 600 writes, and 95 of 300 keys is about 32%, so about 190 writes hit a key with one home left. The simulator on this page refuses 189.',
+      },
+      {
+        text: 'About 95, one per affected key',
+        why: 'That counts keys. Over 20 seconds each key takes about two writes, and the store refuses every one that lands on an affected key.',
+      },
+      {
+        text: 'About 500',
+        why: 'That counts every key with D or B among its homes. A key that loses only one home still reaches W = 2 with the other two.',
+      },
+      {
+        text: 'None, because one home is still up for every key',
+        why: 'One home gives one acknowledgment, and W = 2 needs two.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/kv-store/q3',
+    prompt: 'A team moves to sloppy quorums with N = 3, R = 2, and W = 2, and says reads still always see the latest write because R + W > N. What is wrong with the claim?',
+    options: [
+      {
+        text: 'Nothing. R + W > N still holds, so the sets overlap',
+        why: 'The overlap argument assumes both sets are drawn from the same three homes. Stand-ins break that assumption.',
+      },
+      {
+        text: 'Sloppy quorums need R + W > 2N to overlap',
+        why: 'No sum fixes it alone. Once stand-ins take part, overlap must be counted against every node that could hold the key, and that set grows with each failure.',
+      },
+      {
+        text: 'The overlap only fails for deletes',
+        why: 'Any write can land on stand-ins that a later read never asks.',
+      },
+      {
+        text: 'Stand-ins count toward W and R, so a write and a later read can reach different nodes and miss each other',
+        correct: true,
+        why: 'Right. A write taken by two stand-ins and a read answered by two homes share no replica. Hinted handoff and read repair close the gap later, so the store is eventually consistent.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/kv-store/q4',
+    prompt: 'A session store runs strict quorums with N = 3, R = 2, and W = 2 across three availability zones, one replica of each key per zone. One zone goes dark for an hour. What do users see?',
+    options: [
+      {
+        text: 'About a third of requests fail',
+        why: 'That would follow if keys lost two homes. Placing one replica per zone means every key loses exactly one.',
+      },
+      {
+        text: 'Every read and write still succeeds, because each key keeps two homes, and coordinators hold hints for the third',
+        correct: true,
+        why: 'Right. Two homes meet R = 2 and W = 2. An hour fits inside Cassandra’s default three-hour hint window, so coordinators keep hints for the dark zone. Hints are best effort, so scheduled repair still catches any that were lost.',
+      },
+      {
+        text: 'Reads succeed, but every write fails until the zone returns',
+        why: 'Writes need W = 2 acknowledgments, and the two surviving zones give exactly that.',
+      },
+      {
+        text: 'Every request fails, because a strict quorum needs all three replicas',
+        why: 'A quorum needs a majority of the homes, two of three, and that is the point of quorums.',
+      },
+    ],
+  },
+];
+
+<Recall questions={recall} />
+
+<Objectives>
+
+- Place keys on a hash ring with virtual nodes, and derive each key’s preference list of N homes.
+- Choose N, R, and W for a workload, and explain what R + W > N guarantees and when the guarantee stops holding.
+- Compare strict and sloppy quorums during an outage, and explain how hinted handoff, read repair, and Merkle-tree
+  anti-entropy bring replicas back in line.
+- Detect failures with gossip and phi accrual, resolve concurrent writes with vector clocks or last write wins, and
+  delete safely with tombstones.
+
+</Objectives>
+
+## The failure: two nodes down, a third of the keys gone
+
+A shopping cart service keeps every cart in a five-node key-value store. Each key lives on three nodes, its homes. A
+write counts as stored after two homes acknowledge it, and a read waits for two answers. The design tolerates one dead
+node per key, and for months that is enough.
+
+Then a rack loses power, and it holds nodes D and B. For 20 seconds, 95 of the store’s 300 test keys have only one
+home left, because D and B were two of their three. Every write to those keys needs two acknowledgments and gets one.
+Every read needs two answers and gets one. Shoppers with those carts see “Something went wrong” at the moment they try
+to pay.
+
+<Predict
+  client:visible
+  id="case-studies/kv-store/predict-1"
+  question="Two copies of this cluster face the same 20-second outage of D and B. The strict copy counts only a key’s own homes toward W and R. The sloppy copy lets the next healthy nodes on the ring stand in for missing homes and hand the data back later. What happens?"
+  options={[
+    'Both refuse the same requests, because both still need two acknowledgments',
+    'Neither refuses anything, because 20 seconds is shorter than any timeout',
+    'Strict refuses about 370 requests and serves nothing stale; sloppy refuses none but serves some stale reads, a few after D and B return',
+    'Sloppy refuses more, because the stand-ins hold no data yet',
+  ]}
+  answer={2}
+>
+
+<div slot="figure">
+
+| Setting            | Value                                        |
+| ------------------ | -------------------------------------------- |
+| Cluster            | 5 nodes on a ring, keys on 3 nodes each      |
+| Quorums            | N = 3, W = 2, R = 2                          |
+| Load               | 60 requests/s over 300 keys, half writes     |
+| Outage             | D and B down from 5 s to 25 s                |
+| Keys that lose two | 95 of 300                                    |
+
+</div>
+
+**Strict refuses 189 writes and 183 reads; sloppy refuses none and serves 33 stale reads.** The strict copy stays
+correct by saying no: every request for one of the 95 keys fails for 20 seconds, and no read ever returns old data.
+The sloppy copy writes to the one surviving home and two stand-ins, so every request succeeds. The price is staleness.
+A read can land on two stand-ins that never saw the older value of a key and answer “not found”. Nine stale reads
+come after D and B return, because the returned nodes answer reads before the stand-ins finish handing data back.
+
+</Predict>
+
+Neither answer is wrong. A cart that must always accept “add to cart” wants the sloppy copy, and Amazon built Dynamo
+for exactly that. A workload that would rather refuse a request than serve a stale read wants the strict copy. A bank
+balance also needs atomic conditional updates. This lesson builds a store that offers both copies and shows what each
+costs.
+
+## Requirements and estimates
+
+**Functional requirements.** Clients `put` a value under a key, `get` it back, and `delete` it. Keys are opaque bytes up
+to 256 bytes, and values are opaque bytes up to 1 MB. The store offers no queries across keys, no secondary indexes, and
+no transactions across keys. Each request may choose how many replicas must answer.
+
+**Non-functional requirements.** Writes keep succeeding when any one node, or any one availability zone, is lost. A
+`get` or `put` finishes in under 10 ms at p99 inside one region. Capacity grows by adding nodes, with no downtime and no
+mass reshuffle of data. A write the store acknowledges survives the loss of any one replica.
+
+**Estimates (illustrative).** The method comes from [requirements and estimates](../../thinking/requirements-and-estimates/).
+
+- **Data.** 10 billion keys at 1 KB each is 10 TB of values, and 30 TB with three replicas.
+- **Nodes.** An LSM storage engine needs free disk to compact, so plan on 2 TB of live data per 4 TB NVMe drive. That
+  gives 15 nodes. Round up to 18, six in each of three zones, so a zone can go dark without filling the other disks.
+- **Traffic.** 200,000 requests a second at peak, 80% reads. Reads touch R = 2 replicas and writes touch N = 3, so the
+  nodes serve 320,000 replica reads and 120,000 replica writes a second: about 18,000 reads and 7,000 writes per node.
+- **Write bandwidth.** 40,000 writes × 1 KB × 3 replicas is 120 MB/s across the cluster before compaction rewrites it
+  several times over.
+- **Hints.** Each node is a home for about a sixth of the keys. If one dies for an hour, about 6,700 writes a second
+  miss it, so coordinators collect 24 million hints, about 24 GB, to hand back when it returns.
+
+The last number shapes the design. Replay time depends on the backlog and the replay throttle, and an hour’s 24 GB,
+throttled to protect live traffic, can take hours to drain. An outage of a day leaves more than half a terabyte. Stores
+cap how long they collect hints and repair longer outages another way.
+
+## API and data model
+
+The API is three calls, plus a knob for how many replicas must answer.
+
+- **`get(key)`** returns the value, or several values when concurrent writes conflicted, plus an opaque **context**.
+  The context carries the version information the store needs to order later writes.
+- **`put(key, context, value)`** stores a value. The context from the `get` tells the store which versions this write
+  replaces. A `put` without a context makes a new, independent version.
+- **`delete(key, context)`** writes a tombstone, a marker that says “deleted at this version”, because a missing value
+  cannot outvote an old copy that a returning node still holds.
+- **Consistency per request.** Each call may set R or W. Cassandra names the levels: `ONE`, `QUORUM`, `ALL`, and `ANY`,
+  which accepts a write once anything, even a hint, holds it.
+
+Each replica stores a key as a list of versions. A version is a value or a tombstone plus its version stamp, a vector
+clock or a timestamp. Values larger than about 1 MB belong in [object storage](../../scaling/object-storage/), with the
+key-value store holding a pointer.
+
+## High-level design
+
+Every node runs the same code and can coordinate any request, so none is a single point of failure.
+
+<StepDiagram client:visible title="One write and one read for user:218" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+The rule that makes the design consistent: a key has N fixed homes, a write counts once W of them hold it, and a read
+asks R of them. When R + W > N and the homes are the same nodes for both, every read quorum includes at least one
+replica that holds the last acknowledged write. Concurrent writes still need a rule to pick a winner, covered under
+conflicts below. Everything else in this lesson is about what to do when some homes stop answering.
+
+<Analogy>
+
+A firm files every contract in three of its five filing cabinets, chosen by a rule on the contract’s name. A clerk
+counts a contract as filed once two cabinets hold a copy. When a cabinet is locked, a strict clerk refuses to file.
+A sloppy clerk puts the copy in the next unlocked cabinet with a sticky note, “belongs in cabinet B”, and moves it when
+B opens again.
+
+Where it breaks: a clerk looking up the contract checks two cabinets. If those are the two that hold only sticky-note
+copies from this week, the clerk misses last month’s version, and nothing in the cabinets says so.
+
+</Analogy>
+
+## Partitioning: the ring and the preference list
+
+The store hashes each key to a position on a ring, the consistent hashing ring from [sharding](../../scaling/sharding/).
+Cassandra uses Murmur3 and a 64-bit token space. The coordinator walks clockwise from the key’s position, and the
+first N distinct nodes it meets are the key’s homes. Dynamo calls that ordered list the **preference list**, and the
+nodes after the first N are the stand-ins a sloppy quorum uses when a home is down.
+
+In this lesson’s toy cluster each node holds one point on the ring, in the order A, D, B, E, C. `user:218` hashes just
+before D, so its walk is D, B, E, C, A: homes D, B, and E, with C and A as stand-ins. Two nodes that sit next to each
+other on the ring share many keys, and that is why losing D and B together hurt 95 keys while losing D alone hurts none.
+
+Three details make the ring work in production.
+
+- **Virtual nodes.** One point per node makes lumpy arcs, and a new node takes keys from a single neighbor. Real stores
+  give each node many tokens: Cassandra 4.0 defaults to 16 per node and earlier versions used 256. A joining node
+  takes a small slice from every node, and a dead node’s load spreads across all of them.
+- **Distinct physical nodes.** With virtual nodes, walking clockwise can meet two tokens owned by the same machine. The
+  walk skips tokens whose machine is already on the list, because three copies on one machine are one copy.
+- **Distinct zones.** The walk also skips nodes in a zone the list already covers, so each key keeps one home per zone.
+  Losing a whole zone then costs every key exactly one home, and W = 2, R = 2 keep working. Cassandra calls this
+  `NetworkTopologyStrategy` with rack awareness.
+
+Adding a node moves only the keys in the arcs it takes over, about 1/(n + 1) of the data for n existing nodes. The new
+node streams those ranges from the current homes while they keep serving, and it starts answering for a range once it
+holds a copy.
+
+## Deep dive: strict and sloppy quorums
+
+The [quorums](../../distributed-data/quorums/) lesson covers R + W > N for one key on fixed replicas. A key-value store
+adds the question of what a coordinator does when homes are missing. Real systems split on it.
+
+- **Strict quorum (Cassandra).** Only homes count toward W and R. If a home is down, the coordinator still writes the
+  others and stores a **hint** for the missing one on its own disk, but the hint never counts toward W. With too few
+  homes up, the request fails with an “unavailable” error. The one exception is consistency level `ANY`, where a stored
+  hint alone counts as success.
+- **Sloppy quorum (Dynamo, Riak).** The coordinator writes to the first N healthy nodes on the preference list. A
+  stand-in that takes a write for a missing home keeps it with a hint naming that home, and its acknowledgment counts
+  toward W. Reads count stand-ins too.
+
+The duel below replays the same request stream through both rules on the five-node cluster from the high-level design.
+Both lanes collect hints and replay them when the nodes return.
+
+<KvStoreDuelWidget client:visible scenarios={['two-down', 'one-down']} />
+
+What to look for with **Two nodes down**:
+
+- **Strict refuses steadily.** From 5 s to 25 s the strict lane fails 11 to 26 requests every second, all for the 95
+  keys that kept one home. It refuses **189 writes** and **183 reads**, and returns **0 stale reads**.
+- **Sloppy’s stale reads cluster at the edges.** The sloppy lane refuses nothing. It serves **7 stale reads** in the
+  first second, when reads first land on two stand-ins that hold no copy of the key yet, then a trickle as the
+  stand-ins fill up. At 25 s it serves **4 more**, when D and B answer before their hints arrive. The total is **33**,
+  **9** of them after the return.
+- **Sloppy owes twice the hints.** At the return the strict lane holds **315 hints** and the sloppy lane **693**,
+  because sloppy accepted the writes strict refused and each of those missed two homes. Strict replays its last hint at
+  28 s and sloppy at 31 s.
+- **Read repair works harder in sloppy.** Strict repairs **11** replicas during reads and sloppy repairs **139**.
+
+### One node down
+
+<Predict
+  client:visible
+  id="case-studies/kv-store/predict-2"
+  question="Now only D fails, for the same 20 seconds. Which lane refuses more requests?"
+  options={[
+    'Neither refuses any, because every key still has two of its three homes',
+    'Strict refuses about half as many as before, for the keys D is home to',
+    'Sloppy refuses more, because its stand-ins hold no older data',
+    'Both refuse a few, in the first second while the coordinators notice D is gone',
+  ]}
+  answer={0}
+>
+
+**Neither refuses any.** Every key has three homes on three different nodes, so losing one node leaves every key two,
+which meets W = 2 and R = 2. Switch the duel above to **One node down**: both lanes accept all **1,201 writes** and
+**1,176 reads**, serve **0 stale reads**, collect **330 hints** for D, and replay them by 28 s. The only difference is
+read repair, **16** against **72**, because sloppy reads sometimes ask a stand-in and repair it from the surviving
+home.
+
+</Predict>
+
+This is the case a quorum of three is built for, and the strict rule costs nothing in it. The rules differ only when a
+key loses a majority of its homes. With three zones and zone-aware placement, that takes two zones failing at once.
+
+<details>
+<summary>Go deeper: why a sloppy quorum breaks R + W > N</summary>
+
+R + W > N guarantees overlap only when every read and every write draws from the same N nodes. A sloppy write to
+`user:218` lands on E, C, and A while D and B are down. A sloppy read a moment later, after D and B return, gets its
+two answers from D and B. R + W > N still holds on paper, yet the two sets share nothing, because together they span
+five nodes. Dynamo’s authors accepted this on purpose: a shopping cart that sometimes shows an older state beats a
+cart that refuses an item. Cassandra kept strict quorums so that `QUORUM` reads and writes keep their overlap through
+any outage they survive.
+
+</details>
+
+## Deep dive: repair
+
+Every outage leaves some replicas behind. A key-value store runs three repair paths, from cheapest to most thorough.
+
+- **Hinted handoff.** The node holding a hint replays it once gossip reports the home is back. Cassandra stops
+  generating hints for a node once it has been down longer than `max_hint_window`, 3 hours by default, and throttles
+  replay with `hinted_handoff_throttle` so a returning node does not drown in catch-up writes. Past the window, the node
+  misses every later write until repair runs. Hints are best effort: they die with the node holding them, so scheduled
+  repair runs after short outages too.
+- **Read repair.** When a read sees replicas disagree, the coordinator writes the newest version back to the replicas
+  that answered with an older one. It fixes only keys that someone reads, so cold keys stay stale.
+- **Anti-entropy.** A background job compares whole replicas. Cassandra’s `nodetool repair` has each replica build a
+  **Merkle tree**, a tree of hashes over its token range, then compares the trees and streams only the ranges whose
+  hashes differ. Riak’s active anti-entropy keeps its hash trees current as writes land and exchanges them
+  continuously. Only anti-entropy fixes cold keys and expired hints, so operators schedule it.
+
+The duel below replays the two-node outage with one change: hints replay at 10 per second instead of 100, the way a
+throttled replay behaves when a large backlog meets a small budget.
+
+<KvStoreDuelWidget client:visible scenarios={['slow-handoff']} />
+
+What to look for with **Throttled handoff**:
+
+- **Strict stays correct while it waits.** The strict lane needs until **56 s** to replay its 315 hints, yet it serves
+  **0 stale reads**. Every strict write reached two homes, so every quorum read overlaps a copy that has it, and read
+  repair fixes the other copy. Read repairs rise from **11** to **45**.
+- **Sloppy’s stale tail grows.** Sloppy reads keep landing on D and B before their hints arrive. Stale reads after the
+  return rise from **9** to **15**, and they keep appearing until 38 s instead of 30 s.
+- **The hint queue outlives the damage.** At 60 s the sloppy lane still holds **343 hints**, yet D and B already hold
+  the newest value of every key they own. Fresh writes, **183** read repairs, and the hints that did arrive got there
+  first. The leftover hints carry versions the homes already have, and they still cost disk and replay bandwidth.
+
+The simulation reads every key often, so read repair covers for slow replay. A cold key that missed a write stays wrong
+until its hint lands or repair compares its range, and the deletes section below shows why that repair has a deadline.
+
+<details>
+<summary>Go deeper: what a Merkle tree comparison costs</summary>
+
+Each leaf hashes the rows in one slice of the token range, and each parent hashes its children. Two replicas compare
+roots first. Matching roots end the comparison after one hash, the common case on a healthy cluster. A mismatch sends
+the comparison down only the branches whose hashes differ, so a binary tree over a million leaves costs about 20
+comparisons per differing leaf. The expensive part is building the tree: each replica reads and hashes every row in
+the range, which Cassandra runs as a validation compaction that competes with live traffic for disk. A leaf also
+covers many rows, so one changed row streams its whole slice, a cost known as overstreaming. Incremental repair, added
+in Cassandra 2.1, marks repaired SSTables and skips them on later runs, so each run hashes only data written since the
+last one.
+
+</details>
+
+## Deep dive: membership and failure detection
+
+A coordinator must know which nodes are up before it can pick homes or stand-ins. A central membership service would
+add one more thing to fail, so Dynamo and Cassandra spread membership by **gossip**.
+
+- **Gossip.** Every second, each Cassandra node exchanges state with one random live peer, and sometimes with an
+  unreachable node or a seed. Each exchange carries versioned heartbeats and token ownership for every node the sender
+  knows. A change spreads like a rumor: the number of informed nodes roughly doubles each round, so news reaches all n
+  nodes in O(log n) rounds, a few seconds for 18 nodes.
+- **Phi accrual detection.** A fixed rule such as “down after two missed heartbeats” flaps on a jittery network and
+  reacts slowly on a steady one. The phi accrual detector records the gaps between each peer’s heartbeats and outputs a
+  suspicion level, phi, that climbs the longer the current gap runs past that peer’s history. Phi of 8 means a live
+  peer would go this quiet about once in 100 million gaps. Cassandra marks a peer down when phi crosses
+  `phi_convict_threshold`, 8 by default, and its configuration notes suggest 10 to 12 on unstable networks.
+- **Down is different from gone.** A node that stops answering keeps its place on the ring. Coordinators route around
+  it and collect hints, and no data moves. Dynamo’s authors chose this because most outages are short, and a reboot
+  should not trigger a reshuffle of terabytes. Only an operator changes ownership: `nodetool decommission` streams a
+  live node’s ranges to their new owners, and a replacement node started with `replace_address_first_boot` takes over
+  a dead node’s tokens and streams their data from the surviving replicas.
+
+Detection speed matters less than it seems. A coordinator sends each write to all three homes and waits for the first
+two acknowledgments, so a dead home that nobody has convicted yet just never answers. Cassandra writes a hint for a
+home that times out as well as for one gossip marks down. In the duel, D and B keep their ranges while down.
+
+## Deep dive: conflicts and deletes
+
+Sloppy quorums, hints, and repair all deliver writes late and out of order, so every replica needs a rule for two
+versions of one key. In [PACELC](../../distributed-data/cap-and-pacelc/) terms, Dynamo chooses availability during a
+partition and low latency otherwise. Cassandra lets each request choose: `ONE` behaves like Dynamo, while `QUORUM`
+refuses requests when too few homes answer.
+[Consistency models](../../distributed-data/consistency-models/) names the guarantees; three mechanisms deliver them.
+
+- **Last write wins (Cassandra).** Every write carries a timestamp from the client or the coordinator, and each replica
+  keeps the value with the higher one, column by column. Merging needs no reads. When two clients write the same key at
+  nearly the same moment, one write vanishes without an error, and with clock skew the later write can lose.
+- **Version vectors and siblings (Dynamo, Riak).** Each version carries a vector clock, one counter per coordinating
+  node. If one clock dominates, the store keeps the newer version. If neither dominates, the writes were concurrent:
+  the store keeps both as **siblings**, returns both on the next read, and the client writes back a merge. Dynamo’s
+  cart merges by taking the union of items, which keeps every added item and can bring back a removed one.
+- **CRDTs.** The merge moves into the data type: counters, sets, and maps whose concurrent updates merge the same way on
+  every replica. Riak 2.0 ships them as data types, and the [collaborative editor](../collaborative-editor/) case study
+  applies the idea to text.
+
+### Deletes need tombstones
+
+A replica cannot delete a key by erasing it. If one home misses the delete and later answers a read or a repair with
+its old copy, the other homes have nothing to compare it against, and the old value spreads back. So a delete writes a
+**tombstone**, a marker with its own timestamp that beats older values like any other write.
+
+Tombstones cost space and slow reads, so they expire. Cassandra purges a tombstone during compaction, the background
+merge of SSTables in its [LSM storage engine](../../foundations/storage-engines/), once the tombstone is older than
+`gc_grace_seconds`: 864,000 seconds, or 10 days, by default. That sets a deadline. Every replica must see the tombstone
+through hints, read repair, or `nodetool repair` within those 10 days. A replica down for two weeks and restarted
+without repair still holds the old value after the others purge their tombstones, and the next repair copies the
+deleted row back everywhere. Operators call these rows **zombies**. Two rules follow: repair every node at least once
+per `gc_grace_seconds`, and replace a node that stayed down longer than that instead of restarting it.
+
+Reads pay for tombstones too. A Cassandra query that scans more than 100,000 of them fails
+(`tombstone_failure_threshold`), which is why a table used as a queue, with constant inserts and deletes, is a known
+anti-pattern.
+
+<details>
+<summary>Go deeper: why vector clocks get truncated, and how siblings pile up</summary>
+
+A vector clock gains an entry for every node that coordinates a write to its key. During failures, writes to one key
+pass through many coordinators, so the clock grows. Dynamo caps it: once a clock holds more than a threshold of
+entries, 10 in the paper, it drops the entry with the oldest timestamp. Truncation can make two ordered versions look
+concurrent and create a needless sibling, and the paper reports this never surfaced in production. Riak met a
+different problem. It keyed clocks by the virtual node that coordinated the write, so when two clients wrote through
+the same virtual node with the same stale context, the node had to keep both values, and on the next write it could
+not tell which siblings the client had seen. Siblings piled up without bound. Riak 2.0 added dotted version vectors,
+which tag each sibling with the single event that created it, so a write removes exactly the siblings its context
+covers.
+
+</details>
+
+## Failure walkthrough
+
+Follow writes to `user:218` through the failures they meet, with strict quorums, N = 3, and W = R = 2.
+
+| What fails | What the user sees | What recovers it |
+| ---------- | ------------------ | ---------------- |
+| One home crashes | Nothing | The other two homes acknowledge, and the coordinator hints the third |
+| A whole zone goes dark | Nothing | One home per zone leaves every key two homes. Hints cover outages inside the 3-hour window |
+| Two homes are down | Reads and writes of the key fail | The client retries with backoff, as in [retries](../../reliability/retries/), or the store runs sloppy and accepts stale reads |
+| The coordinator dies after one home stored the write | A timeout | A retried `put` rewrites the same value. A counter increment is not safe to retry without an [idempotency](../../reliability/idempotency/) key |
+| A hint holder dies before replay | Nothing | Two homes still hold the write, and repair fixes the third |
+| A node returns after 14 days down | Deleted rows come back | Only prevention works: replace the node instead of restarting it |
+
+The last row is the subtle one. The other replicas purged their tombstones after 10 days, so the returning node’s old
+values look like the only copy, and repair spreads them.
+
+## Trade-offs
+
+<TradeoffTable title="Choosing quorums and conflict rules">
+
+| Setting                    | What it buys                                                  | What it costs                                                    |
+| -------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Strict quorum, W = R = 2   | Every read quorum overlaps the last acknowledged write        | Refused 189 of 1,201 writes when two homes went down             |
+| Sloppy quorum with hints   | Accepted every write in the duel                              | 33 stale reads, 9 of them after the nodes returned               |
+| `ONE` for reads or writes  | Lowest latency, and survives two dead homes                   | A read can miss the latest write with no failure at all          |
+| `ALL` for writes           | Every replica holds every write                               | One dead home blocks the write                                   |
+| Last write wins            | No siblings and no client merge                               | Concurrent writes lose one silently, and skewed clocks pick it   |
+| Version vectors            | No write lost silently                                        | Clients merge siblings, and deleted items can return             |
+| Shorter `gc_grace_seconds` | Fewer tombstones and faster reads                             | A tighter repair deadline before zombies appear                  |
+
+</TradeoffTable>
+
+Skip this design when a key’s value must never fork, such as a lock owner or an account balance: use a consensus
+store built on [Raft](../../distributed-data/raft/), or a database with [transactions](../../foundations/transactions/). Skip it when
+the data fits on one primary with replicas, which gives one order of writes with far less machinery.
+
+## Common mistakes
+
+- **Reading R + W > N as linearizable.** Sloppy quorums break the overlap, and even strict quorums can show a failed
+  write in some reads and not others.
+- **Restarting a node that was down past `gc_grace_seconds`.** Replace it, or deleted rows return.
+- **Skipping scheduled repair.** Hints expire and read repair never touches cold keys.
+- **Using the store as a queue.** Deletes pile up tombstones until reads fail.
+- **Placing replicas without zones.** Three homes in one zone fall together.
+
+<KeyTakeaways>
+
+- A hash ring with virtual nodes gives each key N homes, and a new node takes about 1/(n + 1) of the data.
+- R + W > N guarantees overlap only when reads and writes use the same N homes. Strict quorums refuse writes to keep
+  it; sloppy quorums keep writing and become eventually consistent.
+- Hints repair short outages, read repair fixes hot keys, and Merkle-tree anti-entropy fixes everything else.
+- Gossip spreads membership and phi accrual decides “down”. A down node keeps its data, and only an operator moves it.
+- Last write wins drops one of two concurrent writes, and version vectors keep both for the client. Deletes are
+  tombstones, and repair must finish before they expire.
+
+</KeyTakeaways>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+The store grows ten times: 100 billion keys and 2 million requests a second, still 80% reads. Size the cluster from
+the estimates. Then, at the evening peak, one zone goes dark for five hours. Say what users see, what happens to hints,
+and what you change.
+
+<div slot="answer">
+
+- **Size.** 300 TB with replicas at 2 TB of live data per node is 150 nodes. Round up to 180, 60 per zone. Load per
+  node stays about 18,000 reads and 7,000 writes a second.
+- **Users see nothing.** Every key keeps two homes, so W = 2 and R = 2 keep working.
+- **Hints overflow.** Each of the 400,000 writes a second has one home in the dark zone: 1.44 TB of hints an hour.
+  After 3 hours coordinators stop collecting them, and the zone misses the last two hours of writes.
+- **Reads stay correct.** Every write during the outage sits on both surviving homes, so any two homes include one
+  that has it, and read repair fixes the stale copy.
+- **Change: repair the zone on return.** Run repair range by range, throttled, well inside the 10 days of
+  `gc_grace_seconds`. Raising the hint window instead costs about 12 GB of disk per surviving node per hour.
+- **Extension.** Add a second region with one ring and `LOCAL_QUORUM`. The cost: the two regions’ conflicting writes
+  meet only through asynchronous replication and last write wins.
+
+</div>
+
+</Challenge>

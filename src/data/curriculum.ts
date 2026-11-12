@@ -429,7 +429,7 @@ const modules: ModuleInput[] = [
     number: 6,
     title: 'Case studies',
     summary:
-      'Ten products, each chosen for one constraint that dominates its design. Start each one as soon as you finish the module it builds on.',
+      'Twelve products, each chosen for one constraint that dominates its design. Start each one as soon as you finish the module it builds on.',
     example: 'A different system per lesson',
     sharedExample: false,
     lessons: [
@@ -520,12 +520,32 @@ const modules: ModuleInput[] = [
         bestAfter: 'async',
       },
       {
+        id: 'case-studies/file-sync',
+        title: 'File sync',
+        summary:
+          'Sync one folder across devices: hash files into blocks, commit manifests, stream changes, and settle offline conflicts.',
+        minutes: 39,
+        difficulty: 2,
+        buildsOn: ['reliability/idempotency', 'foundations/data-modeling', 'async/delivery-semantics'],
+        bestAfter: 'async',
+      },
+      {
         id: 'case-studies/collaborative-editor',
         title: 'Collaborative editor',
         summary: 'Merge concurrent edits so every copy of the document converges.',
         minutes: 21,
         difficulty: 3,
         buildsOn: ['foundations/real-time', 'distributed-data/consistency-models'],
+        bestAfter: 'distributed-data',
+      },
+      {
+        id: 'case-studies/kv-store',
+        title: 'Key-value store',
+        summary:
+          'Keep a replicated store answering while nodes crash: place keys on a ring, read and write by quorum, and repair the copies that fall behind.',
+        minutes: 42,
+        difficulty: 3,
+        buildsOn: ['distributed-data/quorums', 'scaling/sharding', 'distributed-data/consistency-models'],
         bestAfter: 'distributed-data',
       },
     ],
