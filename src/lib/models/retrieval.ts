@@ -580,14 +580,31 @@ export interface CacheKeyInput {
   model: string;
   promptVersion: string;
   sampling: string;
+  /** The index build the answer was grounded on. A reindex bumps it, so older entries stop matching. */
+  corpusVersion: string;
+  /** Earlier turns in the conversation, oldest first. Empty for a first question. */
+  conversation: readonly string[];
   query: string;
 }
 
-/** An exact-match answer cache key. The store and permission scope keep entries apart. */
+function digest(text: string): string {
+  return hashString(text.toLowerCase().replace(/\s+/g, ' ').trim()).toString(16).padStart(8, '0');
+}
+
+/**
+ * An exact-match answer cache key. The store and permission scope keep entries apart, the corpus version
+ * retires answers built on an older index, and the conversation keeps a follow-up from reusing a first-turn answer.
+ */
 export function cacheKey(input: CacheKeyInput): string {
-  const normalized = input.query.toLowerCase().replace(/\s+/g, ' ').trim();
-  const digest = hashString(normalized).toString(16).padStart(8, '0');
-  return [input.tenant, input.scope, input.model, input.promptVersion, input.sampling, `q:${digest}`].join(
-    '|',
-  );
+  const history = input.conversation.length === 0 ? 'new' : digest(input.conversation.join('\n'));
+  return [
+    input.tenant,
+    input.scope,
+    input.model,
+    input.promptVersion,
+    input.sampling,
+    input.corpusVersion,
+    `h:${history}`,
+    `q:${digest(input.query)}`,
+  ].join('|');
 }

@@ -3,6 +3,7 @@ import {
   BACKGROUND_SCORE,
   CapstoneRun,
   type CapstoneScenarioId,
+  CORPUS_VERSION,
   capstoneScenarioOrder,
   capstoneScenarios,
   EVIDENCE_THRESHOLD,
@@ -157,6 +158,23 @@ describe('support assistant capstone model', () => {
     expect(guarded?.path.slice(-2)).toEqual(['checks', 'staff']);
   });
 
+  it('the guarded cache key misses on a follow-up turn, so it never reuses a first-turn answer', () => {
+    const pipeline = new SupportPipeline('guarded', 60);
+    const first = {
+      id: 'K1',
+      tenant: 'harbor' as const,
+      role: 'customer' as const,
+      text: 'Can I return it?',
+      cacheable: true,
+      hits: [],
+    };
+    const followUp = { ...first, id: 'K2', conversation: ['I bought a sale jacket.'] };
+    expect(pipeline.cacheKey(first)).toContain(`|${CORPUS_VERSION}|h:new|`);
+    expect(pipeline.cacheKey(followUp)).not.toBe(pipeline.cacheKey(first));
+    expect(pipeline.cacheKey({ ...first, id: 'K3' })).toBe(pipeline.cacheKey(first));
+    expect(new SupportPipeline('prototype', 60).cacheKey(followUp)).toBe('can i return it?');
+  });
+
   it('keys refunds by tenant, so two stores can refund the same order number', () => {
     const pipeline = new SupportPipeline('guarded', 60);
     const ask = { order: '2201', amount: 89, valid: true, reason: 'fixture approval' };
@@ -189,10 +207,26 @@ describe('support assistant capstone model', () => {
       refunded: 1,
       declined: 2,
       answered: 1,
-      staffTouches: 3,
+      staffTouches: 1,
       spent: 12,
       totalHarms: 0,
     });
+  });
+
+  it('code enforces the refund policy, and staff approval only gates refunds that pass it', () => {
+    const run = new CapstoneRun('refund');
+    run.finish();
+    const guarded = run.lanes[1].results;
+    const declined = guarded.filter((r) => r.outcome === 'declined');
+    expect(declined.map((r) => r.request.id)).toEqual(['F2', 'F3']);
+    for (const r of declined) {
+      expect(r.path).toContain('checks');
+      expect(r.path).not.toContain('staff');
+      expect(r.path).not.toContain('tool');
+    }
+    const refunded = guarded.filter((r) => r.outcome === 'refunded');
+    expect(refunded.map((r) => r.request.id)).toEqual(['F1']);
+    expect(refunded[0]?.path.slice(-3)).toEqual(['checks', 'staff', 'tool']);
   });
 
   it('pins the budget scenario', () => {

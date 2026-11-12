@@ -69,9 +69,9 @@ test.describe('/ai-systems/evaluation-and-budgets', () => {
     await expect(p95).toContainText('1.50 s');
     await expect(p95).toContainText('3.01 s');
     const cost = row(sim, 'Cost per 1,000 questions');
-    await expect(cost).toContainText('987');
-    await expect(cost).toContainText('3,949');
-    await expect(cost).toContainText('14,809');
+    await expect(cost).toContainText('965');
+    await expect(cost).toContainText('3,862');
+    await expect(cost).toContainText('14,482');
     const verdicts = row(sim, 'Default budgets');
     await expect(verdicts).toContainText('Fits every budget');
     await expect(verdicts).toContainText('Misses p95 latency');
@@ -147,9 +147,9 @@ test.describe('/ai-systems/gateway', () => {
     await expect(passed).toContainText('59 (98.3%)');
     await expect(row(sim, 'p95 latency')).toContainText('2.31 s');
     const cost = row(sim, 'Cost per 1,000 requests');
-    await expect(cost).toContainText('1,870');
-    await expect(cost).toContainText('1,709');
-    await expect(cost).toContainText('3,949');
+    await expect(cost).toContainText('1,905');
+    await expect(cost).toContainText('1,748');
+    await expect(cost).toContainText('3,862');
     const verdicts = row(sim, 'Lesson 1 budgets').getByRole('cell');
     await expect(verdicts.first()).toHaveText('Fits every budget');
     await expect(verdicts.nth(1)).toContainText('Misses');
@@ -157,6 +157,7 @@ test.describe('/ai-systems/gateway', () => {
 
   test('dropping the store from the cache key serves the wrong policy', async ({ page }) => {
     await page.goto('ai-systems/gateway/');
+    await page.getByText('Go deeper: the cache widget, answers versus prompt work').click();
     const widget = page.getByRole('region', { name: 'Interactive: Two caches: answers versus prompt work' });
     await widget.scrollIntoViewIfNeeded();
     await expect(widget.getByText('Every hit is the right answer', { exact: true })).toBeVisible();
@@ -234,6 +235,7 @@ test.describe('/ai-systems/retrieval', () => {
 
   test('overlap keeps the sale exception with the rule', async ({ page }) => {
     await page.goto('ai-systems/retrieval/');
+    await page.getByText('Go deeper: try chunk sizes and overlap').click();
     const widget = page.getByRole('region', { name: 'Interactive: Where does the exception land?' });
     await widget.scrollIntoViewIfNeeded();
     await expect(
@@ -306,6 +308,7 @@ test.describe('/ai-systems/llm-serving', () => {
 
   test('chunked prefill shortens the longest wait between tokens', async ({ page }) => {
     await page.goto('ai-systems/llm-serving/');
+    await page.getByText('Go deeper: chunked prefill in the simulator').click();
     const sim = await openSimulation(page, 'One long prompt, with and without chunked prefill');
     await skipToEnd(sim);
     const gap = row(sim, 'Longest wait between tokens');
@@ -359,7 +362,7 @@ test.describe('/ai-systems/agents', () => {
     await skipToEnd(sim);
     await expect(row(sim, 'Tool calls used')).toContainText('30, no cap');
     await expect(row(sim, 'Tool calls used')).toContainText('8 of 8');
-    await expect(row(sim, 'Cost units (illustrative)')).toContainText('124 units, no cap');
+    await expect(row(sim, 'Cost units (illustrative)')).toContainText('172 units, no cap');
 
     const budget = sim.getByRole('switch', { name: 'Step and cost budget' });
     await budget.focus();

@@ -31,12 +31,5 @@
   "case-studies/notifications",
   "case-studies/ride-sharing",
   "case-studies/metrics",
-  "case-studies/collaborative-editor",
-  "ai-systems/evaluation-and-budgets",
-  "ai-systems/gateway",
-  "ai-systems/retrieval",
-  "ai-systems/llm-serving",
-  "ai-systems/agents",
-  "ai-systems/recommendations",
-  "ai-systems/support-assistant"
+  "case-studies/collaborative-editor"
 ]

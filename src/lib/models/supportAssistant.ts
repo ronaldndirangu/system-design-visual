@@ -39,9 +39,9 @@ export interface SearchHit {
 export interface RefundAsk {
   order: string;
   amount: number;
-  /** Whether the store’s policy allows this refund. */
+  /** Whether the store’s written policy allows this refund, as the server-side policy check decides it. */
   valid: boolean;
-  /** The reviewer’s reason, written as a fixture. */
+  /** The policy rule behind that decision, written as a fixture. */
   reason: string;
 }
 
@@ -52,6 +52,8 @@ export interface SupportRequest {
   text: string;
   /** Policy questions are cacheable. Questions about one customer’s order are not. */
   cacheable: boolean;
+  /** Earlier turns in the same chat, oldest first. Absent for a first question. */
+  conversation?: readonly string[];
   /** Best matching documents from every store, best first. Every other document scores BACKGROUND_SCORE. */
   hits: SearchHit[];
   /** The fixture answer states this, and no retrieved document supports it. */
@@ -109,6 +111,10 @@ export const TOP_K = 2;
 export const BACKGROUND_SCORE = 0.1;
 export const MODEL_CALL_UNITS = 3;
 export const PROMPT_VERSION = 'v3';
+export const MODEL_ID = 'Medium';
+export const SAMPLING = 't0';
+/** The search index build. A reindex bumps it, which retires every cached answer built on the old one. */
+export const CORPUS_VERSION = 'idx7';
 
 export const tenants: Record<TenantId, Tenant> = {
   harbor: { id: 'harbor', name: 'Harbor Bikes', short: 'Harbor', initial: 'H' },
@@ -516,7 +522,18 @@ export class SupportPipeline {
 
   cacheKey(request: SupportRequest): string {
     const text = request.text.trim().toLowerCase();
-    return this.guarded ? `${request.tenant}|${request.role}|${PROMPT_VERSION}|${text}` : text;
+    if (!this.guarded) return text;
+    const history = request.conversation?.length ? request.conversation.join('\n').toLowerCase() : 'new';
+    return [
+      request.tenant,
+      request.role,
+      MODEL_ID,
+      PROMPT_VERSION,
+      SAMPLING,
+      CORPUS_VERSION,
+      `h:${history}`,
+      `q:${text}`,
+    ].join('|');
   }
 
   handle(request: SupportRequest): RequestResult {
@@ -551,7 +568,7 @@ export class SupportPipeline {
         fromCache: true,
         note: reason
           ? `Cache hit on the question text alone served an answer built from ${reason}: “${doc?.says}”`
-          : `Cache hit on store, role, prompt version, and question. Served the cited answer for 0 units.`,
+          : `Cache hit on store, role, model, settings, corpus version, conversation, and question. Served the cited answer for 0 units.`,
       });
     }
 
@@ -684,22 +701,22 @@ export class SupportPipeline {
         note: `Idempotency key ${idempotencyKey} already exists, so the tool returned the first result. No second refund.`,
       });
     }
-    path.push('staff');
+    // Code enforces the written policy. Staff approval is a second gate for money that passes it, never the policy itself.
     if (!ask.valid) {
       return done({
         ...base,
         outcome: 'declined',
         cites,
-        note: `The model proposed a ${amount} refund for order ${ask.order}. Staff declined it: ${ask.reason}.`,
+        note: `The model proposed a ${amount} refund for order ${ask.order}. The server's policy check rejected it before any person saw it: ${ask.reason}.`,
       });
     }
-    path.push('tool');
+    path.push('staff', 'tool');
     this.refunded.add(idempotencyKey);
     return done({
       ...base,
       outcome: 'refunded',
       cites,
-      note: `The model proposed a ${amount} refund for order ${ask.order}. Staff approved it (${ask.reason}), and the tool ran it once under key ${idempotencyKey}.`,
+      note: `The model proposed a ${amount} refund for order ${ask.order}. The policy check passed (${ask.reason}), staff approved it as a second gate, and the tool ran it once under key ${idempotencyKey}.`,
     });
   }
 }

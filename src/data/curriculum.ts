@@ -542,7 +542,7 @@ const modules: ModuleInput[] = [
         title: 'Evaluation and budgets',
         summary:
           'Define the task, build an evaluation set, and set quality, latency, and cost budgets before choosing a model.',
-        minutes: 20,
+        minutes: 27,
         difficulty: 2,
         buildsOn: ['thinking/requirements-and-estimates', 'thinking/slos'],
       },
@@ -551,7 +551,7 @@ const modules: ModuleInput[] = [
         title: 'The AI gateway',
         summary:
           'Route and cascade model calls, cache safely, enforce quotas, validate output, and fall back.',
-        minutes: 35,
+        minutes: 29,
         difficulty: 2,
         buildsOn: ['ai-systems/evaluation-and-budgets', 'scaling/load-balancing', 'scaling/caching'],
       },
@@ -560,7 +560,7 @@ const modules: ModuleInput[] = [
         title: 'Retrieval',
         summary:
           'Ground answers in your documents with chunking, hybrid search, tenant scoping, and citations.',
-        minutes: 26,
+        minutes: 28,
         difficulty: 2,
         buildsOn: ['ai-systems/evaluation-and-budgets', 'ai-systems/gateway'],
       },
@@ -569,7 +569,7 @@ const modules: ModuleInput[] = [
         title: 'Serving models',
         summary:
           'See why prefill and decode behave differently, and how batching and KV cache memory set throughput.',
-        minutes: 35,
+        minutes: 28,
         difficulty: 3,
         buildsOn: ['ai-systems/gateway', 'scaling/load-balancing'],
       },
@@ -586,7 +586,7 @@ const modules: ModuleInput[] = [
         id: 'ai-systems/recommendations',
         title: 'Recommendation systems',
         summary: 'Narrow millions of items to a handful with candidate generation, then ranking.',
-        minutes: 21,
+        minutes: 28,
         difficulty: 2,
         buildsOn: ['ai-systems/retrieval', 'ai-systems/evaluation-and-budgets'],
       },
@@ -595,7 +595,7 @@ const modules: ModuleInput[] = [
         title: 'Capstone: support assistant',
         summary:
           'Design a multi-tenant assistant with citations, an abstention path, one approved action, and a fixed budget.',
-        minutes: 25,
+        minutes: 24,
         difficulty: 3,
         buildsOn: ['ai-systems/retrieval', 'ai-systems/gateway', 'ai-systems/agents'],
       },
