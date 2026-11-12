@@ -1,11 +1,23 @@
 ---
 title: Consensus with Raft
 description: Elect one leader with randomized timeouts and terms, replicate a chat log, and commit each message once a majority stores it, in a seeded, simplified Raft.
+furtherReading:
+  - title: "In Search of an Understandable Consensus Algorithm (Extended Version)"
+    url: https://raft.github.io/raft.pdf
+    note: Ongaro and Ousterhout's paper with the full rules, the safety proof, and the Figure 8 scenario this lesson replays.
+  - title: The Raft Consensus Algorithm
+    url: https://raft.github.io/
+    note: The official site, with an interactive visualization and a list of implementations.
+  - title: Paxos Made Simple
+    url: https://lamport.azurewebsites.net/pubs/paxos-simple.pdf
+    note: Lamport's short account of Paxos, the older consensus algorithm Raft set out to make easier to understand.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
@@ -31,394 +43,419 @@ export const edges = [
 export const steps = [
   {
     title: 'One leader sends heartbeats',
-    text: 'Node 2 leads term 1. Every 50 ms it sends a heartbeat to the other four servers, and each heartbeat restarts their election timers.',
+    text: 'Node 2 leads term 1. Its heartbeat every 50 ms restarts each follower’s election timer.',
     nodes: ['n1', 'n2', 'n3', 'n4', 'n5'],
     flows: ['n2>n1', 'n2>n3', 'n2>n4', 'n2>n5'],
   },
   {
     title: 'The leader goes quiet',
-    text: 'Node 2 crashes. Nobody announces it. Each follower only notices that heartbeats stopped, while its own random timer, somewhere between 150 and 300 ms, keeps draining.',
+    text: 'Node 2 crashes. Each follower sees heartbeats stop while its random 150 to 300 ms timer drains.',
     nodes: ['n1', 'n3', 'n4', 'n5'],
     flows: [],
   },
   {
     title: 'The first timer out asks for votes',
-    text: 'Node 3 runs out first. It moves to term 2, votes for itself, and asks everyone for a vote, sending the term and position of its last log entry.',
+    text: 'Node 3 runs out first. It moves to term 2, votes for itself, and asks the others for votes.',
     nodes: ['n1', 'n3', 'n4', 'n5'],
     flows: ['n3>n1', 'n3>n4', 'n3>n5'],
   },
   {
     title: 'A majority says yes',
-    text: 'Node 1 and Node 4 have not voted in term 2, and their logs are no newer than the log of Node 3, so both say yes. Three of five is a majority, so Node 3 now leads term 2.',
+    text: 'Node 1 and Node 4 hold no newer log and have not voted in term 2. With 3 of 5 votes, Node 3 leads.',
     nodes: ['n1', 'n3', 'n4'],
     flows: ['n1>n3', 'n4>n3'],
   },
   {
     title: 'Commit on a majority',
-    text: 'Node 3 appends the chat message “noon?” and sends it to the followers. Once 3 of 5 servers store it, Node 3 commits it, the chat shows it as sent, and the next heartbeat tells the followers.',
+    text: 'Node 3 appends “noon?” and commits it once 3 of 5 servers store it.',
     nodes: ['n1', 'n3', 'n4', 'n5'],
     flows: ['n3>n1', 'n3>n4', 'n3>n5'],
   },
 ];
+export const recall = [
+  {
+    id: 'distributed-data/raft/recall-1',
+    prompt: 'N = 3 replicas, and each write waits for W = 2. What is the smallest read quorum R that always sees the latest confirmed write?',
+    options: [
+      { text: 'R = 1', why: 'R + W = 3 equals N, so a read can miss the write.' },
+      { text: 'R = 2', correct: true, why: 'R + W = 4 exceeds N, so every read overlaps every write.' },
+      { text: 'R = 3', why: 'It works, but one slow replica stalls every read.' },
+      { text: 'Any R once W is a majority', why: 'R = 1 can read the one replica a majority write skipped.' },
+    ],
+  },
+  {
+    id: 'distributed-data/raft/recall-2',
+    prompt: 'With N = 3, R = 2 and W = 2, does quorum overlap alone make reads linearizable?',
+    options: [
+      { text: 'Yes, every read overlaps the latest confirmed write', why: 'Reads that race an in-flight write can see the new value, then the old one.' },
+      { text: 'No, reads that race an in-flight write can disagree', correct: true, why: 'Linearizable reads also need one order for all writes, which a single leader provides.' },
+      { text: 'Only when every replica is up', why: 'Racing reads disagree even with all replicas up.' },
+      { text: 'Yes, because W = 2 is a majority of 3', why: 'A majority write still lands one replica at a time.' },
+    ],
+  },
+];
+
 export const quiz = [
   {
     id: 'distributed-data/raft/q1',
     prompt: 'A five-server Raft cluster loses two servers. Can it still commit new chat messages?',
     options: [
-      {
-        text: 'Yes, because the three survivors are a majority',
-        correct: true,
-        why: 'Raft needs 3 of 5. The survivors can elect a leader among themselves and commit every new message.',
-      },
-      {
-        text: 'No, because a commit needs all five servers',
-        why: 'A commit needs a majority. Waiting for all five would let one slow or dead server stall the whole chat.',
-      },
-      {
-        text: 'Only if the leader is one of the survivors',
-        why: 'If the leader died, the first survivor whose timer runs out starts a new term and wins with 3 of 5 votes.',
-      },
-      {
-        text: 'Yes, and it keeps committing after a third server fails',
-        why: 'Two of five is short of a majority. The cluster stops accepting writes, which keeps the log safe until servers return.',
-      },
+      { text: 'Yes, the three survivors are a majority', correct: true, why: 'They elect a leader and keep committing.' },
+      { text: 'No, a commit needs all five servers', why: 'A commit needs only a majority.' },
+      { text: 'Only if the leader survived', why: 'Otherwise a survivor wins with 3 votes.' },
+      { text: 'Yes, even after a third server fails', why: 'Two of five is no majority, so writes stop.' },
     ],
   },
   {
     id: 'distributed-data/raft/q2',
     prompt: 'Why does Raft draw each election timeout at random?',
     options: [
-      {
-        text: 'So that one follower usually times out first and wins before the others start',
-        correct: true,
-        why: 'Different timers break the symmetry. The early server collects votes while the others are still waiting.',
-      },
-      {
-        text: 'To spread the heartbeat load evenly',
-        why: 'The leader sends heartbeats on a fixed schedule. The random timers belong to the followers.',
-      },
-      {
-        text: 'To make elections hard for an attacker to predict',
-        why: 'Raft assumes every server is honest. The randomness only breaks ties between identical followers.',
-      },
-      {
-        text: 'To guarantee that a split vote never happens',
-        why: 'It makes split votes rare. The Split vote scenario shows one, and a fresh random timeout settles it in the next term.',
-      },
+      { text: 'So one follower usually times out first and wins', correct: true, why: 'It collects votes while the others still wait.' },
+      { text: 'To spread the heartbeat load', why: 'Heartbeats run on a fixed schedule.' },
+      { text: 'To make elections hard for an attacker to predict', why: 'Raft assumes honest servers.' },
+      { text: 'To guarantee that no vote ever splits', why: 'Votes can still split; fresh timers settle them.' },
     ],
   },
   {
     id: 'distributed-data/raft/q3',
     prompt:
-      'Node 4 has already voted for Node 5 in term 7. Node 2 then asks Node 4 for a vote in term 7, and Node 2 has the longer log. What does Node 4 do?',
+      'Node 4 voted for Node 5 in term 7. Node 2, with a longer log, then asks Node 4 for a term 7 vote. What does Node 4 do?',
     options: [
-      {
-        text: 'Refuses, because it gets one vote per term',
-        correct: true,
-        why: 'One vote per term is what stops two candidates from both reaching a majority in the same term.',
-      },
-      {
-        text: 'Switches its vote to Node 2, because Node 2 has the better log',
-        why: 'The log check only applies before a server votes. Switching would let two candidates count the same vote.',
-      },
-      {
-        text: 'Votes for both candidates',
-        why: 'Then Node 2 and Node 5 could each reach 3 votes, and term 7 would have two leaders.',
-      },
-      {
-        text: 'Starts its own election in term 8',
-        why: 'Node 4 stands for election only when its own timer runs out. A request it refuses changes nothing.',
-      },
+      { text: 'Refuses, because it gets one vote per term', correct: true, why: 'Otherwise two candidates could both reach a majority.' },
+      { text: 'Switches to Node 2, which has the better log', why: 'Switching lets one vote count twice in a term.' },
+      { text: 'Votes for both candidates', why: 'Then term 7 could have two leaders.' },
+      { text: 'Starts its own election in term 8', why: 'Node 4 stands only when its own timer runs out.' },
     ],
   },
   {
     id: 'distributed-data/raft/q4',
     prompt:
-      'The leader stores a new chat message and sends it out. Two of its four followers store it, and the other two are cut off. Is the message committed?',
+      'The leader stores a new message. Two of its four followers store it, and the other two are cut off. Is it committed?',
     options: [
-      {
-        text: 'Yes, because the leader and two followers make 3 of 5',
-        correct: true,
-        why: 'The copy on the leader counts. Three of five servers store the message, so any future majority includes one of them.',
-      },
-      {
-        text: 'No, because every follower must store it',
-        why: 'Raft waits for a majority. Waiting for every follower would let one cut-off server stall the chat.',
-      },
-      {
-        text: 'No, because only followers count, and 2 of 4 is no majority',
-        why: 'Majorities count all five servers, and the leader is one of them.',
-      },
-      {
-        text: 'Yes, the moment the leader stores it',
-        why: 'A copy on one server can vanish. In the Old leader cut off scenario, two messages the old leader stored get erased.',
-      },
+      { text: 'Yes, the leader and two followers make 3 of 5', correct: true, why: 'Every future majority includes one of the three.' },
+      { text: 'No, every follower must store it', why: 'Raft waits only for a majority.' },
+      { text: 'No, 2 of 4 followers is no majority', why: 'Majorities count all five servers, the leader included.' },
+      { text: 'Yes, the moment the leader stores it', why: 'One copy can vanish, as Old leader cut off shows.' },
     ],
   },
   {
     id: 'distributed-data/raft/q5',
     prompt:
-      'A partition heals. The old leader holds two entries from its old term that the new leader does not have. What happens to them?',
+      'A partition heals. The old leader holds two old-term entries the new leader lacks. What happens to them?',
     options: [
-      {
-        text: 'The old leader erases them and copies the entries of the new leader',
-        correct: true,
-        why: 'Those entries never reached a majority, so no user got a confirmation. Followers delete entries that conflict with the leader.',
-      },
-      {
-        text: 'The new leader merges them into its log',
-        why: 'Merging would add history the majority never agreed on and could reorder messages users already saw as sent.',
-      },
-      {
-        text: 'The old leader takes over again, because it has more entries',
-        why: 'The higher term wins. The old leader sees term 2 on the first message it receives and steps down.',
-      },
-      {
-        text: 'The cluster stops until an operator picks a log',
-        why: 'Raft repairs it on its own. The consistency check on each append finds where the logs diverge, and the follower truncates from there.',
-      },
+      { text: 'The old leader erases them and copies the new log', correct: true, why: 'They never reached a majority, so no user saw them confirmed.' },
+      { text: 'The new leader merges them into its log', why: 'That adds history the majority never agreed on.' },
+      { text: 'The old leader takes over, since it has more entries', why: 'The higher term wins.' },
+      { text: 'The cluster waits for an operator to pick a log', why: 'The consistency check finds where the logs split.' },
+    ],
+  },
+  {
+    id: 'distributed-data/raft/q6',
+    prompt:
+      'Kubernetes stores its state in etcd, which runs Raft. A team runs 4 etcd servers instead of 3. How many failures can it survive and still accept writes?',
+    options: [
+      { text: 'Two, because four servers hold more copies', why: 'Two of four is no majority.' },
+      { text: 'One, the same as three servers', correct: true, why: 'A majority of 4 is 3, which is why etcd recommends odd sizes.' },
+      { text: 'Three, as long as one server survives', why: 'One of four cannot win an election.' },
+      { text: 'None, because an even cluster cannot elect a leader', why: 'Four servers elect a leader with 3 votes.' },
     ],
   },
 ];
 
+<Recall questions={recall} />
+
 <Objectives>
 
-- Explain how randomized election timeouts, terms, and one vote per term give each term at most one leader.
-- Trace how a leader replicates a chat message and commits it once a majority of servers store it.
-- Explain why a leader counts copies only for entries from its own term.
-- Predict what a split vote does, and why a cut-off old leader cannot commit anything.
-- Weigh cluster size and timeout settings against failover time and write latency.
+- Explain how randomized timeouts, terms, and one vote per term give each term at most one leader.
+- Trace a majority commit, and explain why a leader counts copies only for its own-term entries.
+- Predict what a split vote and a cut-off old leader do.
+- Weigh cluster size and timeouts against failover time and write latency.
 
 </Objectives>
 
 ## The failure: two leaders fork the chat
 
-The chat service keeps its message history on five servers. One server, the leader, takes every new message and copies
-it to the others in order, the same primary-and-copies shape as [read replicas](../../scaling/read-replicas/). Every
-server shows the same history, until the leader crashes.
+The chat service keeps its history on five servers. A leader takes every new message and copies it to the others in
+order, like [read replicas](../../scaling/read-replicas/). Then the leader crashes.
 
-Someone has to take over. The naive rule says: any server that stops hearing from the leader promotes itself. Two
-servers notice the silence at about the same moment, and both promote themselves. One friend’s “noon?” lands on one,
-and another friend’s “6 pm?” lands on the other. The chat now has two histories, and when they meet, one side must
-throw away messages that its users already saw as sent. This is **split brain**.
-
-It gets worse. A leader that is slow, or cut off by the network, looks exactly like a crashed one. It keeps running,
-keeps believing it leads, and keeps accepting messages.
+The naive fix lets any server that stops hearing from the leader promote itself. If two notice together, both do.
+“noon?” lands on one and “6 pm?” on the other, and merging the histories discards messages users saw as sent. This is
+**split brain**. A slow or cut-off leader makes it worse: it looks crashed, yet keeps accepting messages.
 
 <Predict
   client:visible
   id="distributed-data/raft/predict-1"
-  question="The chat leader crashes. Each follower waits a random 150 to 300 ms without a heartbeat, then asks the others for votes, and a follower needs 3 of 5 votes to lead. What happens if two followers run out of time together?"
+  question="The leader crashes. Each follower waits a random 150 to 300 ms, then asks for votes and needs 3 of 5 to lead. What if two followers time out together?"
   options={[
     'Both win, and the chat history forks',
     'The lower-numbered server wins by rule',
-    'At most one wins the term, and if the votes split, new random timers pick a winner in a later term',
+    'At most one wins; a split vote retries in a later term with new random timers',
     'The cluster stops until an operator picks a leader',
   ]}
   answer={2}
 >
 
-**At most one wins, and a split vote ends in a retry.** Each candidate votes for itself, and each server votes once
-per term, so two candidates cannot both collect 3 of 5. If both remaining followers vote for the same candidate, it
-wins at once. In the Split vote scenario they split: Node 2 and Node 5 both ask for votes in term 2 at 1.14 s, Node 1
-votes for Node 2, Node 4 votes for Node 5, and the crashed Node 3 votes for nobody. Each candidate holds 2 of 5, and
-term 2 ends without a leader. Each candidate then draws a fresh random timeout. The 180 ms timer of Node 2 runs out
-first, so it asks again in term 3 at 1.32 s and wins at 1.38 s. The randomness that allowed the tie also breaks it.
+<div slot="figure">
+
+| Server         | In term 2                     |
+| -------------- | ----------------------------- |
+| Node 2, Node 5 | Timer ran out, asks for votes |
+| Node 1, Node 4 | Waiting, one vote each        |
+| Node 3         | Crashed leader                |
+
+</div>
+
+**At most one wins, and a split vote ends in a retry.** Each server votes once per term, so two candidates cannot both
+get 3 of 5. In Split vote, Node 2 and Node 5 tie at 2 votes each in term 2. Node 2’s fresh timer runs out first, and it
+wins term 3 at 1.38 s.
 
 </Predict>
 
 ## The idea: terms, votes, and a majority
 
-Raft is a consensus algorithm: a way for a group of servers to agree on one ordered log, here the chat history, while
-some of them crash or get cut off. It rests on five rules.
+Raft is a consensus algorithm: servers agree on one ordered log, here the chat history, while some crash or get cut off.
+It rests on five rules.
 
-- **Terms.** Time is split into numbered terms. Each term starts with an election and has at most one leader. Every
-  message carries the term of its sender. A server that sees a higher term adopts it and becomes a follower on the
-  spot, and everyone rejects messages from an older term. A stale leader learns it is stale the first time it hears
-  from anyone.
-- **Randomized election timeouts.** The leader sends a heartbeat every 50 ms. Each follower draws a random timeout
-  between 150 and 300 ms and restarts it on every heartbeat. When it runs out, the follower becomes a **candidate**: it
-  moves to the next term, votes for itself, and asks everyone else for a vote. Random timers make it likely that one
-  server wakes up first and wins before the others start.
-- **One vote per term, for an up-to-date log only.** Each server grants at most one vote per term, to the first
-  candidate that asks. It refuses a candidate whose log is behind its own: an older term on the last entry, or the same
-  term and fewer entries. A candidate needs a majority, 3 of 5.
-- **Append with a consistency check.** The leader appends each chat message to its log and sends it to the followers.
-  Each send names the entry just before the new ones, by position and term. A follower whose log disagrees at that
-  point says no, and the leader retries one entry earlier until the logs match. The follower then deletes everything
-  after the match that conflicts and copies the entries of the leader.
-- **Commit on a majority.** Once a majority stores an entry from the current term of the leader, the leader commits
-  it: the chat shows the message as sent, and the leader passes the new commit point to followers on its next message.
-  A committed entry never changes. Older-term entries commit along with the first current-term entry after them,
-  because counting copies of an older-term entry is unsafe, as
+- **Terms.** Time splits into numbered terms, each with at most one leader. A server that sees a higher term adopts it,
+  so a stale leader steps down as soon as it hears from anyone.
+- **Randomized election timeouts.** Each 50 ms heartbeat restarts a follower’s random 150 to 300 ms timer. When it runs
+  out, the follower becomes a **candidate** in the next term and asks for votes.
+- **One vote per term, for an up-to-date log only.** A server votes once per term, never for a candidate whose log is
+  behind its own. A candidate needs 3 of 5.
+- **Append with a consistency check.** Each append names the entry before it. A follower that disagrees says no, and the
+  leader backs up until the logs match.
+- **Commit on a majority, for the current term.** Once a majority stores an entry from the leader’s own term, the leader
+  commits it for good. Earlier-term entries commit along with it, as
   [Why a leader counts only its own term](#why-a-leader-counts-only-its-own-term) shows.
 
-Majorities do the heavy lifting. Any two groups of 3 out of 5 share at least one server, the overlap from
-[Quorums](../quorums/). So two candidates cannot both win a term, and every winning candidate collects a vote from at
-least one server that stores every committed entry. That server refuses a candidate with an older log, so each new
-leader already holds the whole committed chat.
+Any two groups of 3 out of 5 share a server, the overlap from [Quorums](../quorums/). So no term has two winners, and
+every winner needs a vote from a server that holds every committed entry. That gives **leader completeness**: each new
+leader holds the whole committed chat.
 
 <StepDiagram client:visible title="How Raft replaces a crashed leader" nodes={nodes} edges={edges} steps={steps} height={320} />
 
 <Analogy>
 
-A club keeps its minutes in the notebook of every member, and its meetings are numbered. When the chair goes missing,
-any member can call meeting number 2 and ask to chair it. Each member backs one candidate per meeting number, and
-refuses anyone whose notebook is missing lines their own notebook has. The chair reads out each new line, and a line
-counts once most members have written it down. A former chair who walks back in sees meeting 2 on the door and sits
-down as an ordinary member.
+A club keeps its minutes in every member’s notebook and numbers its meetings. When the chair goes missing, any member
+can call meeting 2 and ask to chair it. Members back one candidate per meeting and refuse anyone with missing lines. A
+former chair sees meeting 2 on the door and sits down. Where it breaks: a server cannot tell a dead leader from a slow
+one, so its timeout only guesses.
 
 </Analogy>
 
-## Try it
+<details>
+<summary>Go deeper: the five rules in full</summary>
 
-Pick a scenario and press Play. The widget runs a toy, **simplified Raft**: five servers, ticks of 10 ms, and messages
-that take 20 or 30 ms. Every number is illustrative and seeded, so each scenario replays the same way every time. Start
-with Leader crash, then try Split vote, Old leader cut off, and Old entry on a majority. The unsafe rule toggle swaps
-the commit rule of Raft for a naive one, so you can watch it break.
+**Terms.** Every message carries its sender’s term. A server that sees a higher term adopts it and becomes a follower at
+once, and every server rejects messages from an older term. This gives **election safety**: each term has at most one
+leader, because a candidate needs a majority and each server votes once per term.
+
+**The up-to-date check.** A voter compares the candidate’s last entry with its own. It refuses an older term on the
+last entry, or the same term with fewer entries. A server grants its vote to the first candidate that passes and
+refuses every other candidate in that term.
+
+**The consistency check.** Each append names the entry just before the new ones, by position and term. A follower whose
+log disagrees at that point says no, and the leader retries one entry earlier. Once the logs match, the follower deletes
+everything after the match that conflicts and copies the leader’s entries. This gives **log matching**: if two logs hold
+an entry with the same position and term, they agree on every entry up to it.
+
+**The commit point.** The leader passes its commit point to followers on its next append or heartbeat, and each
+follower applies entries up to it. A leader never erases or rewrites its own log; only followers truncate.
+
+**Disk.** Real servers write their term, vote, and log to disk before they reply, so a server that restarts cannot vote
+twice in one term or forget an entry it acknowledged.
+
+</details>
+
+## Try it: crash, split, and cut off the leader
+
+Pick a scenario and press Play. The widget runs a seeded, **simplified Raft** with five servers, so each scenario
+replays the same way, and every number is illustrative. Start with Leader crash, then try Split vote, Old leader cut
+off, and Old entry on a majority. The unsafe rule toggle swaps in a naive commit rule.
 
 <RaftWidget client:visible />
 
 What to look for:
 
-- **The timer bars.** Heartbeats refill them. After the leader crashes, the bar that empties first belongs to the next
-  candidate.
-- **Votes and terms.** A candidate needs 3 of 5 votes. In Split vote, term 2 ends with nobody at 3, and a fresh random
-  timer picks the winner of term 3.
-- **The check marks.** A log entry gets its check mark only after 3 servers store it. On the cut-off side of Old leader
-  cut off, entries stay unchecked however long you wait.
-- **The numbered transcript.** Every vote, append, commit, and erase appears there with its time, so you can match the
-  diagram to the logs.
-- **Committed copies erased.** Under the rule of Raft this row stays at 0 in every scenario. Turn on the unsafe rule in
-  Old entry on a majority and it turns red.
+- **The timer bars.** Heartbeats refill them. After a crash, the first to empty marks the next candidate.
+- **The check marks.** An entry gets one once 3 servers store it, so cut-off entries stay unchecked.
+- **Committed copies erased.** Raft’s rule keeps it at 0. The unsafe rule in Old entry on a majority turns it red.
 
-## Commit on a majority
+## Commit on a majority, even with the leader cut off
 
-In Leader crash, Node 2 wins term 1 at 0.19 s, and the first three chat messages commit at 0.44, 0.64, and 0.84 s. At
-1.00 s Node 2 crashes. At 1.10 s a user sends “noon?”, and with no leader to take it, the chat app holds it.
+In Leader crash, Node 2 crashes at 1.00 s, and a user sends “noon?” at 1.10 s. Node 3 times out first, wins term 2 at
+1.19 s, and commits “noon?” at 1.25 s, once 3 of 5 servers store it. The chat had no leader for 190 ms. Any future
+leader needs 3 votes, so at least one voter stores “noon?” and refuses a log that lacks it.
 
-- The timer of Node 3 runs out at 1.13 s. Node 3 asks for votes in term 2 and wins at 1.19 s.
-- Node 3 appends “noon?”, and the message commits at 1.25 s, once 3 of 5 servers store it.
-- The chat had no working leader for 190 ms.
-- Node 2 comes back at 2.00 s, sees term 2, stays a follower, and catches up from Node 3.
+A partition is harder, because the old leader keeps running. In Old leader cut off, Node 2 and Node 3 split from the
+other three. Node 2 accepts “tacos?” and “6 pm?”, but with 2 of 5 copies neither commits or gets confirmed. Node 1 wins
+term 2 on the majority side. When the network heals, Node 2 sees term 2, steps down, and erases both. Clients resend
+after a timeout and deduplicate by message ID, as [Idempotency](../../reliability/idempotency/) covers.
 
-Waiting for 3 copies is what makes the commit safe. Any future leader needs 3 votes, and at least one of those voters
-stores “noon?” and refuses a candidate whose log lacks it. So a committed message shows up in the log of every later
-leader. The unit tests of the model check this after every tick, in all four scenarios with 50 seeds each, along with
-at most one leader per term.
+The minority side refuses writes, the consistent choice from [CAP and PACELC](../cap-and-pacelc/). A cut-off leader
+still believes it leads, so before a read a leader confirms its majority (ReadIndex) or relies on a lease that assumes
+bounded clock drift. Either gives the linearizable reads from [Consistency models](../consistency-models/).
 
-## When the old leader is cut off
+<details>
+<summary>Go deeper: the full crash, split, and partition timelines</summary>
 
-A crash is the easy case. A network partition is harder, because the old leader keeps running and still believes it
-leads. In Old leader cut off, the network splits at 1.00 s: Node 2 (the term 1 leader) and Node 3 can reach only each
-other, and Nodes 1, 4, and 5 can reach only each other.
+**Leader crash.** Node 2 wins term 1 at 0.19 s, and the first three chat messages commit at 0.44, 0.64, and 0.84 s.
+Node 2 crashes at 1.00 s. Node 3’s timer runs out at 1.13 s, it asks for votes in term 2, and wins at 1.19 s. It
+appends “noon?”, which commits at 1.25 s, and later messages commit at 1.76 and 2.34 s. Node 2 comes back at 2.00 s,
+sees term 2, stays a follower, and catches up from Node 3.
 
-1. At 1.10 s, Node 2 accepts “tacos?”. Only 2 of 5 servers store it, so it can never commit, and its sender never gets
-   a confirmation.
-2. On the majority side, the timer of Node 1 runs out at 1.18 s. Node 1 wins term 2 at 1.24 s, and “noon?” commits at
-   1.30 s.
+**Split vote.** Node 2 and Node 5 both ask for votes in term 2 at 1.14 s. Node 1 votes for Node 2, Node 4 votes for
+Node 5, and the crashed Node 3 votes for nobody, so term 2 ends with 2 votes each. The randomness that allowed the tie
+also breaks it: Node 2’s fresh 180 ms timer runs out first, so it asks again in term 3 at 1.32 s and wins at 1.38 s.
+
+**Old leader cut off.** At 1.00 s the network splits Nodes 2 and 3 from Nodes 1, 4, and 5.
+
+1. At 1.10 s, Node 2 accepts “tacos?”. Only Node 2 and Node 3 store it.
+2. Node 1’s timer runs out at 1.18 s. Node 1 wins term 2 at 1.24 s, and “noon?” commits at 1.30 s.
 3. At 1.40 s, Node 2 accepts “6 pm?”, which cannot commit either.
-4. The network heals at 2.00 s. At 2.02 s Node 2 sees term 2, steps down, and erases “tacos?” and “6 pm?”, because they
-   conflict with the log of the new leader. Node 3 erases the same two entries 10 ms later.
+4. The network heals at 2.00 s. Node 2 erases “tacos?” and “6 pm?” at 2.02 s, because they conflict with the new
+   leader’s log, and Node 3 erases them at 2.03 s.
 
-Every server ends with the same chat: hi, hey!, noon?, sure, see you. Five of seven messages committed, the two sent to
-the old leader were lost, and the chat had no working leader for 240 ms. No committed message was lost. Neither erased
-message was ever confirmed, so a real chat client would time out and resend it to the new leader. That resend is why
-each message needs an ID the server can check for duplicates, which the [Idempotency](../../reliability/idempotency/) lesson covers.
+Every server ends with the same chat: hi, hey!, noon?, sure, see you. Five of seven messages commit, and the chat has no
+working leader for 240 ms. The model’s unit tests check after every tick, in all four scenarios with 50 seeds each,
+that each term has at most one leader and that every later leader holds every committed message.
 
-The minority side stayed consistent by refusing to commit: it gave up availability for writes during the partition.
-That is the choice [CAP and PACELC](../cap-and-pacelc/) describes, and Raft always makes it the same way.
+</details>
+
+<details>
+<summary>Go deeper: ReadIndex and leases</summary>
+
+**ReadIndex.** The leader records its commit point, sends a heartbeat round, and answers the read once a majority
+replies in its term. A deposed leader cannot collect that majority, so it never serves stale chat. The cost is one
+round trip per read, or per batch of reads.
+
+**Leases.** The leader skips the round trip for a while after a majority acknowledges a heartbeat. Followers that heard
+from it recently refuse to vote for anyone else until their election timeout passes, so no new leader can appear before
+the lease ends. This is only safe when clocks drift by a bounded amount, because a fast follower clock or a long leader
+pause can let an old leader answer after a new one has taken writes.
+
+**Follower reads.** A follower can serve a read by asking the leader for its commit point, then waiting until it has
+applied entries up to it. This spreads read load while keeping reads linearizable.
+
+</details>
 
 ## Why a leader counts only its own term
 
-The commit rule carries a qualifier: a leader counts copies only for entries from its own term. Old entry on a majority
-replays Figure 8 of the Raft paper with chat messages to show why. “hi” commits at 0.24 s, and Node 1 wins term 2 at
-0.44 s.
+A leader counts copies only for entries from its own term. Earlier-term entries commit indirectly, along with the first
+own-term entry after them. Old entry on a majority replays Figure 8 of the Raft paper to show why.
 
-1. At 0.60 s the network splits into Nodes 1 and 2 on one side and Nodes 3, 4, and 5 on the other. Node 1 adds
-   “pizza?” as entry 2, which reaches only Node 2, and Node 1 crashes at 0.62 s.
-2. Node 5 wins term 3 at 0.72 s with votes from Nodes 3 and 4. Node 2 refuses, because its log holds “pizza?” and the
-   log of Node 5 does not. At 0.80 s Node 5 adds “tacos?” as entry 2, then the network cuts it off and it crashes, so
-   only Node 5 stores “tacos?”.
-3. Node 1 recovers at 0.76 s and wins term 4 at 0.92 s. It copies “pizza?” to Node 3, and at 1.04 s 3 of 5 servers
-   store the entry.
+1. “hi” commits, and Node 1 wins term 2. Its entry “pizza?” reaches only Node 2 before Node 1 crashes.
+2. Node 5 wins term 3, adds “tacos?” as entry 2, and crashes. Only Node 5 stores it.
+3. Node 1 wins term 4 and copies “pizza?” to Node 3, so at 1.04 s 3 of 5 servers store it.
 
 <Predict
   client:visible
   id="distributed-data/raft/predict-2"
-  question="Node 1 leads term 4 and sees its term 2 entry “pizza?” on 3 of 5 servers. Should it commit the entry and show the message as sent?"
+  question="Node 1 leads term 4, and its term 2 entry “pizza?” sits on 3 of 5 servers. Should it commit and show the message as sent?"
   options={[
-    'Yes: 3 of 5 is a majority, and every later leader needs a vote from one of those servers',
-    'No: a candidate whose log ends in a newer term can still win and overwrite it, so Node 1 waits for an entry from term 4 to reach a majority',
+    'Yes: 3 of 5 is a majority, so every later leader needs a vote from one of them',
+    'No: a candidate with a newer last term can still win and overwrite it, so Node 1 waits for a term 4 entry to commit',
     'Yes, but only once all 5 servers store it',
     'No: an entry from an earlier term can never commit',
   ]}
   answer={1}
 >
 
-**No, it waits.** The vote check compares the term of the last entry first. Node 5 holds “tacos?” from term 3, which
-is newer than the term 2 of “pizza?”, so servers that store “pizza?” still count Node 5 as up to date and vote for it.
-An entry from term 4 on a majority would stop Node 5, because those servers would refuse a log that ends in term 3. So
-“pizza?” commits only along with a later entry from the term of its leader, never on its own copy count.
+**No, it waits.** Votes compare the last entry’s term first, and Node 5’s term 3 “tacos?” beats term 2. So servers that
+store “pizza?” still vote for Node 5.
 
 </Predict>
 
-The rest of the run plays out the same way under both rules, and only the meaning changes.
+Node 1 crashes again, and Node 5 wins term 5 at 1.26 s and erases all four copies of “pizza?”. Under Raft’s rule nobody
+saw it as sent, so **Committed copies erased** reads 0. The unsafe rule committed it at 1.04 s, so the row reads 4.
 
-1. Node 1 crashes at 1.10 s, and Node 5 recovers at 1.11 s. Node 5 wins term 5 at 1.26 s with votes from Nodes 2 and
+Real Raft closes the gap with a **no-op entry**: each new leader at once appends an empty entry from its own term. In
+term 4, it would have committed “pizza?” along with it and blocked Node 5.
+
+<details>
+<summary>Go deeper: the Figure 8 timeline</summary>
+
+“hi” commits at 0.24 s, and Node 1 wins term 2 at 0.44 s.
+
+1. At 0.60 s the network splits Nodes 1 and 2 from Nodes 3, 4, and 5. “pizza?” reaches only Node 2, and Node 1 crashes
+   at 0.62 s.
+2. Node 5 wins term 3 at 0.72 s with votes from Nodes 3 and 4. Node 2 refuses, because its log holds “pizza?” and
+   Node 5’s does not. At 0.80 s Node 5 adds “tacos?” as entry 2, then the network cuts it off and it crashes, so only
+   Node 5 stores “tacos?”.
+3. Node 1 recovers at 0.76 s and wins term 4 at 0.92 s. At 1.04 s, “pizza?” is on 3 of 5 servers.
+4. Node 1 crashes at 1.10 s, and Node 5 recovers at 1.11 s. Node 5 wins term 5 at 1.26 s with votes from Nodes 2 and
    4, both of which store “pizza?”.
-2. Node 5 overwrites entry 2 everywhere: “pizza?” disappears from Node 4 at 1.32 s, from Nodes 2 and 3 at 1.35 s, and
-   from Node 1 at 1.57 s, after Node 1 recovers.
+5. Node 5 erases “pizza?” from Node 4 at 1.32 s, from Nodes 2 and 3 at 1.35 s, and from Node 1 at 1.57 s.
 
-Under the rule of Raft, Node 1 held “pizza?” at 1.04 s, so the four erased copies were never committed, and no user
-lost a confirmed message. Node 5 holds “tacos?” at 1.38 s for the same reason, then commits it along with “see you”,
-its first entry from term 5, at 1.74 s. Under the unsafe rule, Node 1 commits “pizza?” at 1.04 s and the chat shows it
-as sent. The erase at 1.32 s then removes a message that users already saw, Committed copies erased reads 4, and the
-safety check of the model fails. The unit tests run this scenario with 50 seeds: the unsafe rule breaks safety on every
-seed, and the rule of Raft on none.
+Under Raft’s rule, commits land at 0.24 and 1.74 s: Node 5 holds “tacos?” uncommitted, then commits it along with “see
+you”, its first term 5 entry. Under the unsafe rule, commits land at 0.24, 1.04, 1.38, and 1.74 s, and the model’s
+safety check fails with “Leader completeness broken”. The unit tests run this scenario with 50 seeds: the unsafe rule
+breaks safety on every seed, and Raft’s rule on none. A term 4 entry on a majority would have stopped Node 5, because
+those servers refuse a candidate whose log ends in term 3.
 
-Real Raft closes the gap with the no-op entry: each new leader appends an empty entry from its own term at once. Had
-Node 1 done that in term 4, the no-op would have travelled with “pizza?” to the same three servers and committed both,
-and Node 5 could no longer collect 3 votes.
+</details>
 
-## What this simplified Raft leaves out
+<details>
+<summary>Go deeper: what this simplified Raft leaves out</summary>
 
-Real Raft, as used in etcd (the store behind Kubernetes), Consul, and CockroachDB, adds pieces this model skips:
+Real Raft, as used in etcd (the store behind Kubernetes), Consul, and CockroachDB, adds pieces this model skips.
 
-- **Snapshots.** Real logs would grow forever, so servers compact old entries into a snapshot.
-- **Membership changes.** Adding or removing a server safely takes a special two-step configuration change.
-- **Pre-vote.** A server returning from a partition can bump the term and disrupt a healthy leader. Pre-vote asks
-  first whether it could win.
-- **The no-op entry.** A new leader appends an empty entry at the start of its term, so older entries commit promptly
-  and safely, as [Why a leader counts only its own term](#why-a-leader-counts-only-its-own-term) shows. In the model,
-  older entries wait for the next chat message.
-- **Client retries and safe reads.** Clients resend after a timeout, and a leader confirms it still leads before it
-  answers a read, so a cut-off leader never serves stale chat. [Consistency models](../consistency-models/) explains
-  what those reads promise.
-- **Disk.** Real servers write their term, vote, and log to disk before they reply. The model keeps all three through a
-  crash as if they were on disk.
+**Snapshots.** Servers compact old log entries into a snapshot so logs stop growing forever.
+
+**Membership changes.** Adding or removing a server safely takes a special two-step configuration change.
+
+**Pre-vote.** A server returning from a partition can bump the term and disrupt a healthy leader. Pre-vote first asks
+whether it could win, and randomized timeouts keep the remaining elections rare.
+
+**The no-op entry.** The model skips it, so earlier-term entries wait for the next chat message to commit.
+
+**Client retries and reads.** Clients resend after a timeout, and leaders confirm leadership before reads, as the
+ReadIndex and lease notes above describe.
+
+**Disk.** The model keeps term, vote, and log through a crash as if they were on disk.
+
+</details>
 
 ## Trade-offs
 
 <TradeoffTable title="Raft choices">
 
-| Choice                            | What it buys                                    | What it costs                                                  |
-| --------------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
-| Five servers instead of three     | Survives two failures instead of one            | Each commit waits for 3 copies instead of 2, with more traffic |
-| Shorter election timeout          | Faster failover after a real crash              | Needless elections when the network or a server is only slow   |
-| Wider random timeout range        | Fewer split votes                               | A slower worst case before anyone stands for election          |
-| Raft for every chat message       | One agreed order, and no confirmed message lost | Every write waits for a majority round trip through one leader |
-| Leader checks it still leads      | Reads never show stale chat                     | An extra heartbeat round (or a time-based lease) for each read |
-| Servers spread across three zones | Survives losing a whole zone                    | Cross-zone round trips add to every commit                     |
+| Choice                           | What it buys                         | What it costs                                 |
+| -------------------------------- | ------------------------------------ | --------------------------------------------- |
+| Five servers instead of three    | Survives two failures instead of one | Each commit waits for 3 copies instead of 2   |
+| Shorter election timeout         | Faster failover after a real crash   | Needless elections when a server is only slow |
+| Wider random timeout range       | Fewer split votes                    | A slower worst case before anyone stands      |
+| Lease reads instead of ReadIndex | Reads skip a majority round trip     | Safety depends on bounded clock drift         |
 
 </TradeoffTable>
+
+Skip Raft when a primary with a manual failover is enough, or when a leaderless [quorum](../quorums/) store fits data
+with no single order. For one agreed order, use etcd, Consul, or a Raft-based database instead of writing your own.
+
+## Common mistakes
+
+- **Committing an old-term entry because a majority stores it.** A newer candidate can still win and erase it.
+- **Running an even cluster, or a majority in one zone.** Four servers survive one failure, and a zone holding 3 of 5
+  takes the cluster down.
+- **Setting the election timeout near the heartbeat interval.** Pauses and lost packets start needless elections, and
+  each one pauses writes.
+- **Reading from the leader without a leadership check.** A cut-off old leader still answers, with stale chat.
+
+<KeyTakeaways>
+
+- Randomized timeouts, terms, and one vote per term give each term at most one leader.
+- A leader commits an entry from its own term once a majority stores it; earlier-term entries commit along with it.
+- Majorities overlap, so every new leader already holds every committed entry.
+- A cut-off minority stops accepting writes, and reads need ReadIndex or a lease to stay linearizable.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-Your chat history runs on a five-server Raft group spread across three zones: two servers, two servers, and one. The
-election timeout is a random 150 to 300 ms, and the leader sends heartbeats every 50 ms.
+Your chat runs on five Raft servers across three zones, holding two, two, and one. Election timeouts are a random 150
+to 300 ms, with 50 ms heartbeats.
 
 1. Which single zone can go down without stopping new messages?
 2. Product wants failover in under 100 ms. What would you change, and what would break?
@@ -426,16 +463,12 @@ election timeout is a random 150 to 300 ms, and the leader sends heartbeats ever
 
 <div slot="answer">
 
-- **Any one zone.** Losing a two-server zone leaves 3 of 5, still a majority. With a three-and-two layout across two
-  zones, losing the three-server zone would stop all writes, so spread the servers until no zone holds a majority.
-- **Shorter timeouts trade safety margin for speed.** Failover takes roughly one election timeout plus a vote round
-  trip. Timeouts under 100 ms sit close to the heartbeat interval and to cross-zone round trips, so a long garbage
-  collection pause or a few lost packets start needless elections, and each one pauses writes. Keep the heartbeat
-  interval far below the timeout, and the timeout far below the time between real failures. Let the chat app hold and
-  resend messages during the gap, the way the model holds “noon?”.
-- **Followers are missing heartbeats.** The leader may be overloaded, a server may stall in long pauses, or one link
-  may drop packets. Fix the slow leader or link, raise the timeout, or turn on pre-vote so one flaky server cannot keep
-  forcing new terms.
+- **Any one zone.** Losing a two-server zone leaves 3 of 5, a majority. Spread servers so no zone holds a majority.
+- **Shorter timeouts trade safety margin for speed.** Failover takes about one timeout plus a vote round trip. Under
+  100 ms, pauses and lost packets start needless elections. Keep the heartbeat far below the timeout, and the timeout
+  far below the time between real failures.
+- **Followers are missing heartbeats.** Look for an overloaded leader, long pauses, or a lossy link. Fix it, raise the
+  timeout, or turn on pre-vote so one flaky server cannot keep forcing new terms.
 
 </div>
 

@@ -161,6 +161,7 @@ test('stream processing: event time, window shapes, and watermarks', async ({ pa
   await expect(values(clocks, 'Counted in the wrong window')).toHaveText(['20', '0']);
   await expect(values(clocks, 'Spike alerts that paged on-call')).toHaveText(['0', '0']);
 
+  await page.getByText('Go deeper: tumbling and sliding windows side by side').click();
   const shapes = await simulation(page, 'Tumbling and sliding windows', 'Interactive');
   await expect(shapes).toContainText('Tumbling windows miss the burst');
   await expect(values(shapes, 'Highest tumbling count')).toHaveText(['32']);
