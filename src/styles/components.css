@@ -1033,6 +1033,10 @@ button[data-tone="bad"] {
   min-width: 0;
   padding: 0.9rem;
 }
+/* Grid items default to min-width: auto, so one long badge or label would widen the stage past a phone screen. */
+.sdv-sim__stage > * {
+  min-width: 0;
+}
 .sdv-sim__toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -1084,15 +1088,6 @@ button[data-tone="bad"] {
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem 0.6rem;
-}
-.sdv-stats .sdv-badge {
-  max-width: 100%;
-  white-space: normal;
-}
-.sdv-stats .sdv-badge__text {
-  line-height: 1.2;
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 .sdv-stats__value {
   color: var(--sl-color-white);
