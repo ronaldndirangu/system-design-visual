@@ -66,6 +66,7 @@ export const steps = [
 export const quiz = [
   {
     id: 'reliability/rate-limiting/q1',
+    ordered: true,
     prompt: 'A token bucket refills 10 tokens per second and holds 20. The client has been idle for a minute, then sends 50 requests in one instant. How many get through?',
     options: [
       { text: '10, the refill rate', why: 'The refill rate caps the long run average. After a quiet minute the bucket is full, so the client can spend all 20 stored tokens at once.' },
@@ -76,6 +77,7 @@ export const quiz = [
   },
   {
     id: 'reliability/rate-limiting/q2',
+    ordered: true,
     prompt: 'A fixed window allows 100 requests per calendar second. What is the most a client can send in any 0.2 s stretch?',
     options: [
       { text: '20, the limit scaled to 0.2 s', why: 'A fixed window checks only the count inside each calendar second. It never spreads the 100 requests evenly.' },

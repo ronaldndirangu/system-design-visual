@@ -80,6 +80,7 @@ export const recall = [
 export const quiz = [
   {
     id: 'foundations/transactions/q1',
+    ordered: true,
     prompt: 'The launch row holds clicks = 7. Two handlers each run SELECT clicks, then UPDATE ... SET clicks = 8, at the same moment. What does the row hold afterward?',
     options: [
       { text: '9', why: 'Each handler computed 7 + 1 from its own read, so neither wrote 9.' },
