@@ -1,0 +1,420 @@
+---
+title: Storage engines
+description: Follow one new short link from a write-ahead log to a page or a sorted file on disk. Compare B-trees with LSM trees, and see what each one pays in read, write, and space amplification.
+furtherReading:
+  - title: PostgreSQL documentation, Write-Ahead Logging
+    url: https://www.postgresql.org/docs/current/wal-intro.html
+    note: Why a database logs a change before it touches the data pages, and how recovery replays the log.
+  - title: The Log-Structured Merge-Tree (O'Neil, Cheng, Gawlick, O'Neil, 1996)
+    url: https://www.cs.umb.edu/~poneil/lsmtree.pdf
+    note: The paper that introduced the LSM tree.
+  - title: RocksDB overview
+    url: https://github.com/facebook/rocksdb/wiki/RocksDB-Overview
+    note: A production LSM engine, with memtables, SSTables, Bloom filters, and compaction styles.
+---
+
+import Recall from '../../../components/lesson/Recall.astro';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+
+export const nodes = [
+  { id: 'app', kind: 'server', x: 70, y: 150, label: 'sho.rt app' },
+  { id: 'wal', kind: 'database', x: 250, y: 50, label: 'Write-ahead log', sublabel: 'append only' },
+  { id: 'memtable', kind: 'cache', x: 250, y: 250, label: 'Memtable', sublabel: 'sorted, in memory' },
+  { id: 'l0', kind: 'database', x: 450, y: 250, label: 'SSTable', sublabel: 'sorted file' },
+  { id: 'l1', kind: 'database', x: 620, y: 150, label: 'Merged SSTable', sublabel: 'after compaction' },
+];
+
+export const edges = [
+  { from: 'app', to: 'wal' },
+  { from: 'app', to: 'memtable' },
+  { from: 'memtable', to: 'l0' },
+  { from: 'l0', to: 'l1' },
+];
+
+export const steps = [
+  {
+    title: 'Append to the log, then flush it to disk',
+    text: 'A user creates sho.rt/bATJ4g. The engine appends one record to the end of the write-ahead log and calls fsync, which returns once the drive reports the bytes stored. An append costs no seeks and no page rewrites.',
+    nodes: ['app', 'wal'],
+    flows: ['app>wal'],
+  },
+  {
+    title: 'Insert into the memtable and answer',
+    text: 'The engine adds the record to the memtable, a sorted structure in memory, and answers 201 Created. A crash now loses the memtable, and a restart rebuilds it from the log.',
+    nodes: ['app', 'memtable'],
+    flows: ['app>memtable'],
+  },
+  {
+    title: 'Flush a full memtable to a sorted file',
+    text: 'At 64 MB, the engine writes the memtable out in key order as one immutable file, an SSTable (sorted string table), and deletes the matching part of the log.',
+    nodes: ['memtable', 'l0'],
+    flows: ['memtable>l0'],
+  },
+  {
+    title: 'Read newest first',
+    text: 'A redirect for bATJ4g checks the memtable, then each SSTable from newest to oldest, and stops at the first match. A small Bloom filter per file skips most files that cannot hold the code.',
+    nodes: ['app', 'memtable', 'l0'],
+    flows: ['app>memtable', 'memtable>l0'],
+  },
+  {
+    title: 'Compact in the background',
+    text: 'Each extra SSTable can add work to a read. A background job merges sorted files in one sequential pass, keeps the newest value of each key, and drops deleted keys.',
+    nodes: ['l0', 'l1'],
+    flows: ['l0>l1'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'foundations/storage-engines/recall-1',
+    prompt: 'In the indexes lesson, a lookup by code in the 10 million row links table read 4 pages. Where did those reads go?',
+    options: [
+      {
+        text: 'Three B-tree pages, root to leaf, then the one table page that holds the row',
+        correct: true,
+        why: 'Each level divides the search by up to 500, so three levels cover 10 million codes.',
+      },
+      {
+        text: 'Four table pages, chosen by binary search',
+        why: 'Table rows sit in insert order. The index holds the sorted order.',
+      },
+      {
+        text: 'One page in each of four indexes',
+        why: 'That lookup used the single index on code.',
+      },
+      {
+        text: 'The first four pages of the table, where new links land',
+        why: 'The index skips straight to the one page that holds the row.',
+      },
+    ],
+  },
+  {
+    id: 'foundations/storage-engines/recall-2',
+    prompt: 'Two requests try to create the custom code launch-party at the same moment. What makes exactly one of them succeed?',
+    options: [
+      {
+        text: 'Each request checks that the code is free before it inserts',
+        why: 'Both checks can run before either insert, so both see a free code.',
+      },
+      {
+        text: 'A UNIQUE constraint on code, so the second insert fails',
+        correct: true,
+        why: 'The database enforces it inside the write, so the loser gets a duplicate key error.',
+      },
+      {
+        text: 'The load balancer sends both requests to one server',
+        why: 'Two threads on one server race the same way.',
+      },
+      {
+        text: 'A cache entry for the code',
+        why: 'A cache has no say in whether an insert commits.',
+      },
+    ],
+  },
+];
+
+export const quiz = [
+  {
+    id: 'foundations/storage-engines/q1',
+    prompt: 'Why can an LSM engine usually absorb more writes per second than a B-tree on the same drive?',
+    options: [
+      {
+        text: 'It skips the write-ahead log',
+        why: 'An LSM engine logs every write too, so the memtable survives a crash.',
+      },
+      {
+        text: 'It keeps all data in memory',
+        why: 'Only the memtable lives in memory. Older data sits in SSTables on disk.',
+      },
+      {
+        text: 'It turns small random page updates into appends and large sequential file writes',
+        correct: true,
+        why: 'A B-tree rewrites the page that owns each key, wherever it sits. Sequential writes are what drives handle best.',
+      },
+      {
+        text: 'It stores each key only once',
+        why: 'Several versions of a key can sit in different files until compaction merges them.',
+      },
+    ],
+  },
+  {
+    id: 'foundations/storage-engines/q2',
+    prompt: 'At peak, sho.rt creates 2,000 links a second of about 200 bytes each. In an LSM engine, each byte is written once to the log, once in a memtable flush, and 3 more times by compaction. About how much does the engine write to disk each second?',
+    options: [
+      {
+        text: '400 KB',
+        why: 'That is the raw data, 2,000 times 200 bytes, before any copies.',
+      },
+      {
+        text: '2 MB',
+        correct: true,
+        why: 'Right. 400 KB written 5 times (log, flush, three compactions) is about 2 MB a second.',
+      },
+      {
+        text: '1.2 MB',
+        why: 'That leaves out the log append and the first flush.',
+      },
+      {
+        text: '16 MB',
+        why: 'That writes a full 8 KB page for every link, the worst case for a B-tree with no batching.',
+      },
+    ],
+  },
+  {
+    id: 'foundations/storage-engines/q3',
+    prompt: 'The database answered COMMIT for a new link. Which statement is true at that moment?',
+    options: [
+      {
+        text: 'The table and index pages on disk already hold the new row',
+        why: 'The changed pages may sit only in memory until a checkpoint or flush.',
+      },
+      {
+        text: 'The new row exists only in memory, so a crash now loses it',
+        why: 'The log record reached disk before the commit returned.',
+      },
+      {
+        text: 'Every replica has the row',
+        why: 'Replication is a separate step with its own guarantees.',
+      },
+      {
+        text: 'The log record for the change is on disk, and a crash replays it',
+        correct: true,
+        why: 'Right. Durability comes from the log, and recovery replays it from the last checkpoint.',
+      },
+    ],
+  },
+  {
+    id: 'foundations/storage-engines/q4',
+    prompt: 'A metrics service stores 500,000 points a second, each tagged with a series and a timestamp. Reads ask for the last hour of one series. Which engine fits better, and why?',
+    options: [
+      {
+        text: 'A B-tree, because it reads any key in a few pages',
+        why: 'Reads are fine either way. The problem is half a million random page updates a second.',
+      },
+      {
+        text: 'An LSM engine, because writes dominate and a read scans one sorted key range',
+        correct: true,
+        why: 'Right. Sorted flushes keep up with the writes, and keys built from series and time keep each hour in one range.',
+      },
+      {
+        text: 'Either one, because the drive sets the speed',
+        why: 'One drive behaves very differently under random rewrites and sequential appends.',
+      },
+      {
+        text: 'Neither, because time series need memory only',
+        why: 'Metrics must survive restarts, and many time-series databases use LSM engines on disk.',
+      },
+    ],
+  },
+];
+
+<Recall questions={recall} />
+
+<Objectives>
+
+- Explain why a database writes every change to a log first, and what "durable" means when it answers COMMIT.
+- Trace a write through an LSM tree, from log to memtable to SSTable to compaction, and a read back out.
+- Compare B-trees and LSM trees by their read, write, and space amplification.
+- Predict how a Bloom filter cuts the files a read must open.
+
+</Objectives>
+
+## The failure: a link that came back 201 and then vanished
+
+The shortener stores links in one database. [Indexes](../indexes/) showed how a B-tree finds `bATJ4g` among 10 million
+rows in 4 page reads. That lesson assumed every row was already safely on disk. Getting it there is the job of the
+**storage engine**: the part of the database that lays bytes out on disk and gets them back.
+
+Writing straight to the data pages for every insert is slow, because each insert lands on a random page. Keeping new
+rows in memory and writing later is fast, and a power cut erases them. A user who saw 201 Created would then find a
+dead link.
+
+<Predict
+  client:visible
+  id="foundations/storage-engines/predict-1"
+  question="To go faster, the engine appends each new link to a log file with write() and answers 201 right away, without calling fsync. The power fails 300 ms after the answer. What happens to the link?"
+  options={[
+    'It is safe, because write() returned',
+    'It is probably lost, because write() only reached the operating system cache in memory',
+    'It is safe, because the drive writes everything within 100 ms',
+    'It is lost only if the log file was open in another process',
+  ]}
+  answer={1}
+>
+
+**Probably lost.** `write()` copies bytes into the operating system's page cache and returns. The kernel writes them to
+the drive seconds later. `fsync` forces them out and waits until the drive reports them stored, so an engine is
+durable only if it calls `fsync` on the log before it answers.
+
+</Predict>
+
+## The idea: log first, organize later
+
+Every serious engine starts the same way. Before it changes any data structure, it appends a description of the change
+to a **write-ahead log** (WAL) and flushes the log to disk. Appends are fast, since they land at the end of one file.
+If the machine crashes, the engine replays the log on restart and rebuilds whatever it had only in memory. This is the
+same log that [read replicas](../../scaling/read-replicas/) stream from the primary to stay in sync.
+
+After the log, engines split into two families:
+
+- **B-tree engines** (PostgreSQL, MySQL InnoDB, SQLite) update the sorted tree in place. They change the page in memory,
+  mark it dirty, and write it back later.
+- **LSM-tree engines** (RocksDB, LevelDB, Cassandra, ScyllaDB) never update a file in place. They collect writes in
+  memory, write them out as new sorted files, and merge files in the background. LSM stands for log-structured merge.
+
+<StepDiagram client:visible title="One write through an LSM tree" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy>
+
+A busy clerk jots every receipt in a running notebook, and also drops it into a sorted tray. When the tray fills, the
+clerk files it as one sorted folder, and later merges old folders and throws out replaced receipts. The analogy breaks
+on timing: real compaction never waits for a quiet afternoon, and it competes with live writes for the drive.
+
+</Analogy>
+
+## Crash recovery and durable acks
+
+A commit is durable once its log record is on disk. The data pages can lag far behind. A B-tree engine flushes dirty
+pages in the background and records a **checkpoint**: a point in the log before which every change has reached the
+pages. After a crash, recovery starts at the last checkpoint and replays the log forward. Frequent checkpoints shorten
+recovery and cost more page writes.
+
+An `fsync` takes from well under a millisecond to several milliseconds. One fsync per commit would cap a slow drive at a
+few hundred commits a second. **Group commit** fixes that: the engine collects every commit that arrives during one
+flush, writes them together, and answers all of them when the flush returns.
+
+The log is also why [transactions](../transactions/) can roll back cleanly. Recovery redoes committed changes and
+undoes changes from transactions that never committed.
+
+<details>
+<summary>Go deeper: torn pages</summary>
+
+A database page is often 8 KB (PostgreSQL) or 16 KB (InnoDB), and a drive may write in 4 KB units. A crash halfway
+through a page write leaves a **torn page**: half new, half old. A log record that says "change byte 300" cannot repair
+a page whose other half is garbage. PostgreSQL writes a full copy of each page into the log the first time it changes
+after a checkpoint. InnoDB writes pages to a doublewrite buffer first. Both pay extra writes to make every page
+recoverable.
+
+</details>
+
+## Reads, Bloom filters, and compaction
+
+An LSM read checks the memtable, then every SSTable that might hold the key, newest first. A code that exists stops at
+the first match. A code that does not exist, such as a mistyped link, would check every file. A **Bloom filter**
+prevents most of that work. It is a small bit array per file, kept in memory, that answers "definitely not here" or
+"maybe here". About 10 bits per key give a false positive rate near 1%.
+
+<Predict
+  client:visible
+  id="foundations/storage-engines/predict-2"
+  question="A redirect asks for a code that does not exist. The engine holds 6 SSTables, each with a Bloom filter that says 'maybe' for 1% of absent keys. How many files does the read open from disk, on average?"
+  options={['About 0.06', 'About 1', 'About 3', 'All 6']}
+  answer={0}
+>
+
+**About 0.06.** Each filter wrongly says "maybe" 1% of the time, so 6 files give 6 times 0.01, or 0.06 expected disk
+reads. Most of these lookups touch the disk zero times. Without filters, every one of them reads all 6 files. The
+filters cost memory: 10 bits per key is about 12 MB for 10 million links.
+
+</Predict>
+
+**Compaction** keeps the file count down. It merges sorted files into larger ones, keeps the newest version of each key,
+and drops keys that were deleted. A delete in an LSM engine is itself a write: a **tombstone** that hides older values
+until compaction removes both.
+
+<details>
+<summary>Go deeper: leveled and tiered compaction</summary>
+
+**Leveled compaction** keeps each level about 10 times the size of the one above, with no overlapping keys inside a
+level. Reads check about one file per level, and data gets rewritten many times as it moves down. **Tiered
+compaction** waits until several similar-sized files pile up, then merges them. It rewrites data less often, and reads
+check more files.
+
+</details>
+
+## Read, write, and space amplification
+
+Every engine pays somewhere. Three ratios name the bill:
+
+- **Write amplification:** bytes written to disk per byte the application writes. A B-tree rewrites a whole 8 KB page
+  to change an 80-byte row. An LSM tree writes each record to the log, a flushed file, and again at each compaction.
+- **Read amplification:** disk reads per lookup. A B-tree reads one page per level. An LSM tree reads up to one file
+  per level, fewer with Bloom filters and caches.
+- **Space amplification:** disk used per byte of live data. B-tree pages run partly empty after splits. An LSM tree
+  holds old versions and tombstones until compaction catches up.
+
+| | B-tree | LSM tree |
+| --- | --- | --- |
+| Write path | Log, then rewrite the page in place | Log, memtable, then new sorted files |
+| Writes | Random page writes | Sequential appends and file writes |
+| Point reads | Steady: one page per level | Memtable plus files, helped by Bloom filters |
+| Range scans | One sorted run of leaf pages | Merge the range from several files |
+| Background work | Checkpoints and page flushes | Compaction, which competes with live traffic |
+| Typical use | Transactional apps with many reads | Heavy writes: events, metrics, messages |
+
+## Trade-offs
+
+<TradeoffTable title="Storage engine choices">
+
+| Choice                        | What it buys                                        | What it costs                                                   |
+| ----------------------------- | --------------------------------------------------- | --------------------------------------------------------------- |
+| fsync the log on every commit | No acknowledged write lost to a crash               | Commit latency includes a disk flush                            |
+| Group commit                  | Hundreds of commits share one flush                 | Each commit waits a little for the batch                        |
+| B-tree engine                 | Predictable reads and range scans                   | Random page writes, partly empty pages                          |
+| LSM engine                    | High write throughput on ordinary drives            | Compaction load, slower misses, old versions take space         |
+| Leveled compaction            | Fewer files per read, less wasted space             | More rewrites per byte                                          |
+| More Bloom filter bits        | Fewer wasted disk reads for absent keys             | Memory for every key                                            |
+
+</TradeoffTable>
+
+## Common mistakes
+
+- Answering the client before the log reaches stable storage, or trusting a drive cache that a power cut wipes.
+- Turning off `fsync` to win a benchmark and leaving it off in production.
+- Expecting an LSM delete to free space at once. It writes a tombstone, and space returns after compaction.
+- Running an LSM disk nearly full. Compaction writes its output before it deletes its input and needs the headroom.
+- Picking an engine by write speed alone, when the workload is mostly point reads and range scans.
+
+<KeyTakeaways>
+
+- A commit is durable when its log record is on disk. Data pages catch up later, and recovery replays the log.
+- B-trees update sorted pages in place. LSM trees append, flush sorted files, and merge them in the background.
+- Bloom filters let an LSM read skip most files that cannot hold the key.
+- Every engine trades among read, write, and space amplification. Pick the one whose costs your workload can afford.
+
+</KeyTakeaways>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+The shortener records every click: code, time, and country. At peak it sees 20,000 clicks a second. The dashboard
+asks for clicks per day for one code over the last 30 days, and a privacy rule deletes clicks older than 90 days.
+
+1. Which engine family fits the click store, and why?
+2. How would you lay out keys so the dashboard query reads one sorted range?
+3. How would you delete 90-day-old clicks without writing billions of tombstones?
+
+<div slot="answer">
+
+- **An LSM engine.** Writes dominate by far, and appends keep up with 20,000 a second. Group commit keeps the number of
+  log flushes small.
+- **Key by code, then time.** With keys like `bATJ4g#2024-05-01T10:15:02.137#a91f`, one code's clicks sit together in
+  time order in every file, so the 30-day query is one range scan per file. The random suffix keeps two clicks in the
+  same millisecond from overwriting each other. Store a running count per code per day as well,
+  so the dashboard reads 30 small rows.
+- **Drop whole files or partitions.** Split the data by day, as separate tables or partitions, and drop each day after
+  90 days. Some LSM engines also support a time-to-live that lets compaction discard expired records without
+  tombstones. Deleting rows one at a time would write billions of tombstones and slow every read until compaction
+  clears them.
+
+</div>
+
+</Challenge>

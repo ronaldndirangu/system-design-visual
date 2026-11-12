@@ -1,0 +1,126 @@
+---
+title: Unique IDs
+description: Give every link, message, and order an ID that never collides. Compare counter ranges, Snowflake IDs, UUIDv7, and random base62 codes.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+
+export const quiz = [
+  {
+    id: 'foundations/unique-ids/q1',
+    prompt: 'A Snowflake ID gives each machine a 12-bit sequence per millisecond. How many IDs can one machine mint per second at most?',
+    options: [
+      { text: '4,096', why: 'That is the limit per millisecond. A second holds 1,000 of them.' },
+      { text: 'About 4.1 million', correct: true, why: 'Right. 4,096 per millisecond times 1,000 milliseconds.' },
+      { text: '1,024', why: 'That is the number of machines the 10-bit machine field allows.' },
+      { text: 'About 4.3 billion', why: 'That is 2 to the 32nd. The sequence field holds only 12 bits.' },
+    ],
+  },
+  {
+    id: 'foundations/unique-ids/q2',
+    prompt: 'A team switches the orders primary key from an auto-increment number to UUIDv4. As the table grows, inserts slow down. What is the likely cause?',
+    options: [
+      { text: 'UUIDs take long to generate', why: 'Generating 16 random bytes takes microseconds.' },
+      { text: 'The database checks each UUID against every row', why: 'The unique index checks one key in a few page reads, as for any key.' },
+      {
+        text: 'Random keys land on random index pages, so the pages being written no longer fit in memory',
+        correct: true,
+        why: 'Right. Ascending keys always land at the right edge of the B-tree. Random keys touch every leaf page, so inserts start waiting on disk reads.',
+      },
+      { text: '16-byte keys are too large for an index', why: 'Larger keys make the index bigger, and that alone does not cause this slowdown.' },
+    ],
+  },
+  {
+    id: 'foundations/unique-ids/q3',
+    prompt: 'Chat messages need IDs that sort by send time within a room. 200 chat servers mint them, with no central counter. Which scheme fits?',
+    options: [
+      { text: 'One auto-increment counter in a database', why: 'Every message would wait on one machine, which the requirement rules out.' },
+      { text: 'Random base62 codes', why: 'They are unique enough and carry no order.' },
+      {
+        text: 'Snowflake-style IDs, with a unique machine number per server',
+        correct: true,
+        why: 'Right. Each server mints on its own, and the timestamp at the front makes IDs sort by time across servers.',
+      },
+      { text: 'UUIDv4', why: 'They need no coordination and carry no order.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Choose an ID scheme by what it must give you: uniqueness, order, size, and resistance to guessing.
+- Read the bit layout of a Snowflake ID and a UUIDv7.
+- Estimate when random short codes start to collide.
+
+</Objectives>
+
+## Why IDs get hard
+
+Every table in the [data model](../data-modeling/) needs a primary key. One database can number rows with an
+auto-increment counter, and [transactions](../transactions/) make sure no two inserts get the same value. Scale breaks
+that in three ways. Every insert waits on one machine. Each shard of a [sharded](../../scaling/sharding/) table counts
+from 1 on its own. And sequential public IDs let anyone walk your data by adding 1.
+
+## Four schemes
+
+**Counter ranges.** A central counter hands each app server a block of 1,000 numbers. The server spends its block
+locally and asks for another when it runs out, so the counter sees one request per 1,000 inserts. A crashed server
+wastes the rest of its block. IDs must be unique, and gaps do no harm.
+
+**Snowflake.** Twitter's scheme packs a 64-bit number with no coordination per ID:
+
+| Bits | Field                               | Limit                            |
+| ---- | ----------------------------------- | -------------------------------- |
+| 1    | Sign, always 0                      |                                  |
+| 41   | Milliseconds since a chosen epoch   | About 69 years                   |
+| 10   | Machine number                      | 1,024 machines                   |
+| 12   | Sequence within one millisecond     | 4,096 IDs per machine per ms     |
+
+IDs sort roughly by time. Each machine needs a unique number, and a clock that steps backward could repeat IDs, so a
+generator waits until its clock passes the last timestamp it used.
+
+**UUIDs.** A UUIDv4 holds 122 random bits. Any machine, even a phone offline, can mint one with no realistic chance of
+collision. Random order hurts a B-tree [index](../indexes/): every insert lands on a random leaf page. A UUIDv7 puts a
+48-bit millisecond timestamp first and random bits after it, so new IDs land at the right edge of the index.
+
+**Random short codes.** sho.rt codes such as `bATJ4g` use 6 base62 characters (a to z, A to Z, 0 to 9): 62 to the 6th,
+about 56.8 billion codes. A Snowflake ID needs 11 base62 characters, too long for a short link.
+
+<Predict
+  client:visible
+  id="foundations/unique-ids/predict-1"
+  question="sho.rt picks random 6-character codes from 56.8 billion. Roughly how many links exist when the first collision becomes likely?"
+  options={['About 300,000', 'About 5 million', 'About 28 billion', 'About 56.8 billion']}
+  answer={0}
+>
+
+**About 300,000.** This is the birthday paradox: collisions turn likely near the square root of the space, and the
+square root of 56.8 billion is about 238,000. So random codes always need a UNIQUE constraint on `code` and a retry
+on a duplicate key. With 10 million links stored, a new code collides about once in 5,700 tries, so retries stay rare.
+
+</Predict>
+
+## Choosing
+
+| Need                                  | Pick                                                                 |
+| ------------------------------------- | -------------------------------------------------------------------- |
+| Short, hard-to-guess public codes     | Random base62, with a unique constraint and retry                    |
+| Short codes with no retries           | Counter ranges, scrambled by a reversible shuffle before base62      |
+| Time-sorted IDs from many machines    | Snowflake or UUIDv7                                                  |
+| IDs minted offline on devices         | UUIDv4 or UUIDv7                                                     |
+
+<KeyTakeaways>
+
+- Uniqueness is required. Order, size, and resistance to guessing are choices you trade.
+- Counter ranges cut coordination to one request per block.
+- Snowflake and UUIDv7 sort by time, which keeps B-tree inserts at one edge of the index.
+- Random codes collide near the square root of the space, so pair them with a unique constraint and a retry.
+
+</KeyTakeaways>
+
+## Check yourself
+
+<Quiz client:visible questions={quiz} />

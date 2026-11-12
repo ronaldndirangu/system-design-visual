@@ -1,11 +1,23 @@
 ---
 title: Quorums on a replicated ring
 description: Keep three copies of a shopping cart on a hash ring. Tune N, R, and W, see why reads and writes must overlap, and watch which settings survive a lost replica.
+furtherReading:
+  - title: "Dynamo: Amazon's highly available key-value store"
+    url: https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf
+    note: The original design of preference lists, sloppy quorums, hinted handoff, and Merkle tree anti-entropy.
+  - title: Probabilistically Bounded Staleness for Practical Partial Quorums
+    url: https://arxiv.org/abs/1204.6082
+    note: Models how often and for how long reads go stale when R + W does not exceed N.
+  - title: "Apache Cassandra documentation: Dynamo"
+    url: https://cassandra.apache.org/doc/latest/cassandra/architecture/dynamo.html
+    note: Per-request consistency levels such as ONE, QUORUM, and ALL, and why W + R > RF gives strong reads.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
@@ -30,33 +42,56 @@ export const edges = [
 export const steps = [
   {
     title: 'Three copies of one cart',
-    text: 'The cart service hashes the key cart:sam onto the ring and walks clockwise. The first three replicas it meets, A, D, and B, each keep a copy. That list is the preference list, and its length is N = 3.',
+    text: 'The service hashes cart:sam onto the ring and walks clockwise. The first three replicas, A, D, and B, form the preference list, so N = 3.',
     nodes: ['service', 'a', 'd', 'b'],
     flows: ['service>a', 'service>d', 'service>b'],
   },
   {
     title: 'A write waits for W copies',
-    text: 'Sam adds the book. The service sends the new cart to all three copies and confirms the add once W of them have applied it. With W = 1, D applies it first and Sam hears “added”, while the book is still on its way to A.',
+    text: 'Sam adds the book. The service sends it to all three copies and confirms once W apply it. With W = 1, D alone is enough, while the book still travels to A.',
     nodes: ['sam', 'service', 'd'],
     flows: ['sam>service', 'service>d'],
   },
   {
     title: 'A read asks R copies',
-    text: 'Sam opens the cart. With R = 1, the service asks one copy, and this time it picks A. A has not received the book yet, so Sam sees a cart without it. The write set, D, and the read set, A, never met.',
+    text: 'Sam opens the cart. With R = 1, the service asks only A, which lacks the book: the write set and the read set never met.',
     nodes: ['sam', 'service', 'a'],
     flows: ['sam>service', 'service>a'],
   },
   {
     title: 'Make the sets overlap',
-    text: 'With W = 2, the add waits for D and B. With R = 2, the view asks A and B. Any two of three replicas share at least one, so B answers with the book, and the service returns the newest version it hears.',
+    text: 'With W = 2, the add waits for D and B. With R = 2, the view asks A and B. Any two of three replicas share one, so B answers with the book.',
     nodes: ['sam', 'service', 'a', 'b'],
     flows: ['sam>service', 'service>a', 'service>b'],
   },
   {
     title: 'Lose a replica',
-    text: 'D goes down. With W = 2 and R = 2, A and B still form both sets, so adds and views keep working. With W = 3, every add needs all three copies, and the service refuses each one until D returns.',
+    text: 'D goes down. With W = 2 and R = 2, A and B still form both sets. With W = 3, the service refuses adds until D returns.',
     nodes: ['service', 'a', 'b'],
     flows: ['service>a', 'service>b'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'distributed-data/quorums/recall-1',
+    prompt: 'A store answers every read from the nearest replica when the network is healthy, and keeps answering on both sides of a partition. What is its PACELC label?',
+    options: [
+      { text: 'PC/EC', why: 'That store waits for agreement in both cases.' },
+      { text: 'PA/EL', correct: true, why: 'Availability in a Partition, low Latency Else, and stale answers in both.' },
+      { text: 'PA/EC', why: 'That store waits for agreement while the network is healthy.' },
+      { text: 'PC/EL', why: 'That store refuses during a partition.' },
+    ],
+  },
+  {
+    id: 'distributed-data/quorums/recall-2',
+    prompt: 'Shards sit on a consistent hashing ring, and each key belongs to the first shard clockwise. One shard leaves. Where do its keys go?',
+    options: [
+      { text: 'To the next shard clockwise from each of its points', correct: true, why: 'Each arc passes to its clockwise neighbor, so only that shard’s keys move.' },
+      { text: 'Evenly over every remaining shard by hash mod N', why: 'That is mod N, which moves most keys.' },
+      { text: 'To the previous shard counterclockwise', why: 'Keys belong to the first shard clockwise.' },
+      { text: 'Nowhere until the shard returns', why: 'The ring reassigns the arc at once.' },
+    ],
   },
 ];
 
@@ -67,20 +102,20 @@ export const quiz = [
     options: [
       {
         text: 'R = 1',
-        why: 'R + W = 3, which does not exceed N = 3. The one replica you ask can be the one replica the add skipped, exactly like the 0.70 s view in N3 R1 W1 that asks A and misses the book.',
+        why: '1 + 2 does not exceed 3, so the one copy asked can miss the add, like the 0.70 s view.',
       },
       {
         text: 'R = 2',
         correct: true,
-        why: 'Right. R + W = 4 > 3, so any two replicas you ask share at least one with the two that confirmed the add. That shared replica holds the newest version, and the service returns the newest version it hears.',
+        why: 'Right. 2 + 2 > 3, so any two copies asked include one that confirmed the add.',
       },
       {
         text: 'R = 3',
-        why: 'Asking all three also overlaps, but it is more than you need. Every view then waits for the slowest replica, and a single lost replica makes every view fail.',
+        why: 'It overlaps too, and one lost replica fails every view.',
       },
       {
         text: 'No value of R can guarantee it',
-        why: 'Overlap is simple counting: two groups drawn from three replicas, with sizes adding up to more than three, must share a member. That shared replica applied the add before it was confirmed.',
+        why: 'Two sets from three replicas whose sizes sum past three share a member.',
       },
     ],
   },
@@ -91,19 +126,19 @@ export const quiz = [
       {
         text: 'A view needs one live replica, and every add that was confirmed already reached all three copies.',
         correct: true,
-        why: 'Right. W = 3 means a confirmed add sits on every copy, so any single replica answers with the latest confirmed cart. R = 1 needs only one of the two live replicas. All the fragility sits on the write side.',
+        why: 'Right. W = 3 puts every confirmed add on all three copies, so any live copy is current.',
       },
       {
         text: 'The service reads from a backup of D.',
-        why: 'The model has no backups. D is simply skipped while it is down, and A or B answers.',
+        why: 'The model has no backups. A or B answers.',
       },
       {
         text: 'The cart service caches the cart between views.',
-        why: 'The model has no cache. Every view goes to a replica, and the transcript lists which one answered.',
+        why: 'The model has no cache. Every view goes to a replica.',
       },
       {
         text: 'Views fail too, but the table only counts adds.',
-        why: 'The table counts every failed request. In this run all 4 failures are adds, and all 17 views succeed.',
+        why: 'All 4 failures are adds, and all 17 views succeed.',
       },
     ],
   },
@@ -114,19 +149,19 @@ export const quiz = [
       {
         text: 'B holds v6, and the service returns the newest version among the replies.',
         correct: true,
-        why: 'Right. D was down for every add from the scarf to the pen, so those adds were confirmed by A and B. Any two replicas include at least one of A and B, so a view always hears v6 from someone.',
+        why: 'Right. A and B confirmed every add while D was down, and every pair includes A or B.',
       },
       {
         text: 'D copies the missed adds from A the moment it returns.',
-        why: 'Nothing in this model copies missed adds. D keeps v2 until the next add reaches it. Real systems close that gap with hinted handoff, read repair, or background sync.',
+        why: 'Nothing in this model copies missed adds, so D keeps v2.',
       },
       {
         text: 'The service skips replicas that were recently down.',
-        why: 'The service does ask D, and D answers with v2. The service treats D like any other replica, and the overlap with B rescues the view.',
+        why: 'D answers v2, and B’s newer v6 wins.',
       },
       {
         text: 'Luck: a different pair of replicas could have returned v2.',
-        why: 'The service only asks the three copies A, D, and B, and every pair of them includes A or B. Both hold v6, so this view could not miss it.',
+        why: 'Every pair of A, D, and B includes A or B, and both hold v6.',
       },
     ],
   },
@@ -137,19 +172,19 @@ export const quiz = [
       {
         text: 'N5 R3 W3',
         correct: true,
-        why: 'Right. Five copies minus two leaves three, enough for W = 3 and R = 3, and 3 + 3 > 5 keeps the sets overlapping. The run with D and B down shows 0 stale reads and 0 failed requests.',
+        why: 'Right. Three live copies cover W = 3 and R = 3, and 3 + 3 > 5.',
       },
       {
         text: 'N3 R2 W2',
-        why: 'If both lost replicas hold copies of this cart, only one copy is left, short of both R = 2 and W = 2. The run with D and B down refuses 11 of 29 requests: 4 adds and 7 views.',
+        why: 'With one copy left, it refuses 11 of 29 requests.',
       },
       {
         text: 'N3 R1 W1',
-        why: 'It keeps answering, but the answers go stale: 5 stale views in the run, and the 3.91 s view comes back from D missing 5 confirmed adds.',
+        why: 'It keeps answering, and 5 views go stale.',
       },
       {
         text: 'N3 R1 W3',
-        why: 'Every add needs all three copies, so it refuses adds while even one copy is down. It refuses 4 adds with one replica down and the same 4 with two.',
+        why: 'It refuses every add while any copy is down.',
       },
     ],
   },
@@ -159,43 +194,65 @@ export const quiz = [
     options: [
       {
         text: 'No. Overlap makes every view return the same cart.',
-        why: 'Overlap covers confirmed writes only. In N3 R2 W2 the view at 1.50 s returns v3 at 1.52 s, 60 ms before Sam’s add of the scarf is confirmed. B and D both hold v2 until 1.57 s, so a view that asked B and D just after 1.52 s would return v2 after this one returned v3.',
+        why: 'Overlap covers confirmed adds only. In N3 R2 W2 the 1.50 s view returns v3 60 ms before the scarf is confirmed, while B and D still hold v2.',
       },
       {
         text: 'Yes. While an add is still in flight, one view can see it and another can miss it.',
         correct: true,
-        why: 'Right. R + W > N guarantees that a view sees every add confirmed before it started. An add still on its way can reach some replicas and not others, so racing views can disagree, and a later view can even return an older cart than an earlier one. Linearizable reads need extra work on top of overlap.',
+        why: 'Right. A view sees every add confirmed before it started. An add in flight can reach some copies and miss others.',
       },
       {
         text: 'Only while a replica is down.',
-        why: 'The 1.50 s view happens with every replica up. The race comes from an add still crossing the network.',
+        why: 'The 1.50 s race happens with every replica up.',
       },
       {
         text: 'Only when R = 1.',
-        why: 'The example uses R = 2. Any setting that answers before an in-flight add reaches every copy can show the race.',
+        why: 'The 1.50 s race uses R = 2.',
+      },
+    ],
+  },
+  {
+    id: 'distributed-data/quorums/q6',
+    prompt: 'A profile store keeps N = 3 copies. Profiles are read far more often than edited, reads must be fast, and a read must show the last confirmed edit. Which setting fits?',
+    options: [
+      {
+        text: 'R = 2, W = 2',
+        why: 'It overlaps, and every read waits for a second copy.',
+      },
+      {
+        text: 'R = 1, W = 3',
+        correct: true,
+        why: 'Right. 1 + 3 > 3, and reads ask one copy. Rare edits pay: they wait for the slowest copy and fail while any copy is down.',
+      },
+      {
+        text: 'R = 1, W = 1',
+        why: '1 + 1 does not exceed 3, so a read can miss the last edit.',
+      },
+      {
+        text: 'R = 3, W = 1',
+        why: 'It overlaps, and every read waits for all three copies.',
       },
     ],
   },
 ];
 
+<Recall questions={recall} />
+
 <Objectives>
 
 - Explain how a hash ring picks the N replicas that hold copies of a key.
 - Explain why R + W > N makes every read meet the latest confirmed write.
-- Predict which settings keep accepting adds and views as replicas fail.
-- Weigh latency against stale reads and refused requests when you choose R and W.
-- Name what quorums alone leave out: catching up a replica that returns behind, and linearizable reads.
+- Predict which settings keep accepting adds and views as replicas fail, and what each costs in latency and stale reads.
+- Name what quorums leave out: catching up a replica that returns behind, and linearizable reads.
 
 </Objectives>
 
 ## The failure: a cart that forgets the book
 
-An online store keeps three copies of every shopping cart, so a dead disk never empties a cart. To stay fast, the cart
-service confirms an add as soon as **one** copy has applied it, and answers a view by asking **one** copy. Every add
-carries Sam’s whole cart as a new version: v1 holds the mug, v2 the mug and the book, and so on.
-
-Sam adds a book. Replica D applies it first, and the service confirms the add to Sam at 0.52 s. At 0.70 s Sam opens
-the cart, and the service asks replica A.
+A store keeps three copies of every cart, so a dead disk never empties one. To stay fast, the cart service confirms an
+add once **one** copy applies it and answers a view from **one** copy. Each add writes Sam’s whole cart as a new
+version: v1 holds the mug, v2 the mug and the book. Sam adds the book, replica D applies it first, and the service
+confirms at 0.52 s. At 0.70 s Sam opens the cart.
 
 <Predict
   client:visible
@@ -209,58 +266,61 @@ the cart, and the service asks replica A.
   answer={1}
 >
 
-**Only the mug.** The service confirmed the add after one copy, D, applied it. The book was still crossing the network
-to A, which answers with v1. Nothing is broken and no replica is down: the add went to one copy and the view asked a
-different one. In the simulation below this happens 6 times in 17 views.
+<div slot="figure">
+
+| Time   | What happens                                          |
+| ------ | ----------------------------------------------------- |
+| 0.52 s | D applies v2 with the book. The service confirms.     |
+| 0.70 s | Sam opens the cart. The service asks replica A.       |
+
+</div>
+
+**Only the mug.** D confirmed the add while the book was still crossing the network to A, which answers v1. No
+replica is down: the add reached one copy and the view asked another, 6 times in 17 views below. The fix is to make
+those two sets overlap.
 
 </Predict>
 
 ## The idea: make every read meet every write
 
-The cart service places copies with the same consistent hashing ring you met in [sharding](../../scaling/sharding/).
-It hashes the key `cart:sam` onto the ring and walks clockwise. The first **N** replicas it meets hold copies, and that
-ordered list is the key’s **preference list**. Then two more numbers decide each request:
+The cart service places copies with the consistent hashing ring from [sharding](../../scaling/sharding/). It hashes
+`cart:sam` onto the ring and walks clockwise. The first **N** replicas it meets hold copies, and that ordered list is
+the key’s **preference list**. Two more numbers decide each request:
 
 - **W** is how many copies must apply an add before the service confirms it.
-- **R** is how many copies a view asks before the service answers with the newest version it hears.
+- **R** is how many copies a view asks. The service returns the newest version it hears.
 
-If **R + W > N**, the copies a view asks always include at least one copy that applied the latest confirmed add. With
-N = 3, a write set of 2 and a read set of 2 cannot avoid each other: there are only three replicas to choose from. That
-shared replica carries the newest version, so the view returns it.
+If **R + W > N**, every view asks at least one copy that applied the latest confirmed add. With N = 3, any two copies
+share one with any other two.
 
 <StepDiagram client:visible title="How W and R decide what a view sees" nodes={nodes} edges={edges} steps={steps} height={300} />
 
 <Analogy>
 
-A club keeps its member list in three binders in three rooms. When the secretary adds a member, she updates two
-binders before saying “done”. When someone checks membership, they read two binders and trust the newer entry. Two
-rooms out of three always share one, so every check finds the new member. If the secretary updated one binder and the
-reader checked a different one, the check would miss. If she insisted on updating all three, a locked room would stop
-every new membership until someone found the key.
+A club keeps its member list in three binders in three rooms. The secretary updates two binders before saying “done”.
+A member check reads two binders and trusts the newer entry. Any two rooms out of three share one, so every check finds
+the new member.
+
+Where it breaks: a binder sits still, while a replica can go down, return behind, and miss entries until something
+copies them over.
 
 </Analogy>
 
-## Try it
+## Try it: tune the quorum, then lose replicas
 
-Pick a quorum setting and a failure, then press **Play**. Every run replays the same 29 requests from Sam (12 adds and
-17 views) over 7 seconds, with the same network delays and the same choice of which copies each view asks first. Only
-N, R, and W change. The table under the ring compares all four settings on those requests, so you can read the cost of
-each one side by side. The service gives up on a request after 800 ms. All numbers come from this toy model with a
-fixed seed and are illustrative.
+Pick a setting and a failure, then press **Play**. Every run replays the same 29 requests (12 adds, 17 views) with the
+same delays and copy choices, so only N, R, and W change. The table under the ring compares all four settings.
+Requests time out after 800 ms, and the numbers come from a seeded toy model.
 
 <QuorumWidget client:visible />
 
 What to look for with **All replicas up**:
 
-- **N3 R1 W1** answers fast, 25 ms per confirmed add and 16 ms per view, and returns 6 stale carts. At 0.70 s the view
-  asks A and gets v1, without the book confirmed at 0.52 s. At 3.91 s it asks D and gets v6, without the jam confirmed
-  at 3.79 s.
-- **N3 R2 W2** returns 0 stale carts. The 0.70 s view now asks A and B. A still holds v1 and B holds v2, so the service
-  returns v2. Adds wait 68 ms on average, because each one waits for the second copy to answer.
-- **N3 R1 W3** also returns 0 stale carts, and views stay at 16 ms. Each add waits for the slowest of three copies, so
-  the average wait climbs to 222 ms.
-- **N5 R3 W3** returns 0 stale carts with 70 ms adds. All five replicas end with v12. In the N = 3 settings, E and C
-  never hold a copy.
+- **N3 R1 W1** answers fastest (25 ms adds, 16 ms views) and returns 6 stale carts.
+- **N3 R2 W2** returns 0 stale carts. The 0.70 s view asks A (v1) and B (v2) and returns v2. Adds wait 68 ms for the
+  second copy.
+- **N3 R1 W3** also returns 0 stale carts with 16 ms views, and adds wait 222 ms for the slowest copy.
+- **N5 R3 W3** returns 0 stale carts with 70 ms adds, and all five replicas end with v12.
 
 <Predict
   client:visible
@@ -275,91 +335,139 @@ What to look for with **All replicas up**:
   answer={1}
 >
 
-**Only N3 R2 W2.** Overlap protects what a view sees. It says nothing about how many copies must be alive. W = 2 needs
-two of the three copies, and A and B are still up, so R2 W2 finishes with 0 failed requests and 0 stale carts. W = 3
-needs all three, so R1 W3 refuses the scarf at 1.35 s, the lamp at 1.79 s, and 4 adds in all. R1 W3 spends all of its
-fault tolerance on views: a view survives two lost copies, and an add survives none.
+**Only N3 R2 W2.** Overlap protects what a view sees and says nothing about how many copies must be alive. W = 2
+needs two copies, and A and B are up: 0 failed and 0 stale. W = 3 needs all three, so R1 W3 refuses 4 adds, starting
+with the scarf at 1.35 s.
 
 </Predict>
 
-Now pick **One replica down**, then **Two replicas down**, and replay each setting:
+Now pick **One replica down**, then **Two replicas down**:
 
-- With D down, **N3 R1 W1** never refuses and returns 7 stale carts. D comes back at 3.50 s holding only what it had at
-  1.00 s, and nothing in this model copies the missed adds over.
+- With D down, **N3 R1 W1** never refuses and returns 7 stale carts. D returns at 3.50 s holding its 1.00 s state.
+- With D and B down, **N3 R2 W2** refuses 11 of 29 requests: “only 1 of the 3 replicas for this cart is up and R = 2”.
+- With D and B down, **N5 R3 W3** returns 0 stale carts and 0 failures, and adds slow from 70 ms to 114 ms.
+
+Sam’s app resends a refused item inside the next add. A refusal delays an item, and a stale view hides one.
+
+<details>
+<summary>Go deeper: the runs in detail</summary>
+
+- With every replica up, **N3 R1 W1** also misses at 3.91 s: it asks D and gets v6, without the jam confirmed at
+  3.79 s.
+- With D down, **N3 R1 W1** keeps D’s 1.00 s state after D returns at 3.50 s, because nothing in this model copies the
+  missed adds over.
 - With D down, **N3 R2 W2** still returns 0 stale carts. At 3.91 s the view asks D and B. D still holds v2 and B holds
   v6, so the service returns v6. The overlap covers the replica that came back behind.
-- With D and B down, **N3 R2 W2** refuses 11 of 29 requests, 4 adds and 7 views, because only A is left: “only 1 of the
-  3 replicas for this cart is up and R = 2”.
-- With D and B down, **N3 R1 W1** never refuses, and at 3.91 s it asks D and gets v2, missing 5 confirmed adds.
-- With D and B down, **N5 R3 W3** returns 0 stale carts and 0 failures. Three of its five copies are still up, enough
-  for both sets. Adds slow from 70 ms to 114 ms, because each one must wait for all three live copies, the slowest
-  included.
+- **N3 R1 W3** spends all of its fault tolerance on views: a view survives two lost copies, and an add survives none.
+- With D and B down, **N3 R2 W2** refuses 4 adds and 7 views, because only A is left. **N3 R1 W1** never refuses, and
+  at 3.91 s it asks D and gets v2, missing 5 confirmed adds.
+- With D and B down, **N5 R3 W3** still has three of its five copies, enough for both sets. Adds slow down because
+  each one waits for all three live copies, the slowest included.
 
-Because each add carries the whole cart, Sam’s app keeps a refused item and sends it again inside the next add that gets
-through. A refusal delays an item, and a stale view hides one.
+</details>
 
 ## What real systems do
 
-The widget is a toy, and real systems differ from it in a few important ways:
+The widget is a toy. Real Dynamo-style stores differ from it in six ways:
 
-- **Settings are per request.** Dynamo-style stores such as Cassandra let each read and write choose how many copies to
-  wait for: ONE, QUORUM (a majority of N), or ALL. With N = 3, QUORUM for both means R = 2 and W = 2. A team can read
-  product reviews at ONE and checkout totals at QUORUM from the same store, which slides one store between the two
-  lanes of [CAP and PACELC](../cap-and-pacelc/).
-- **Replicas catch up on their own.** Here D stays behind until the next add reaches it. Real stores add three repairs.
-  With **hinted handoff**, a neighbor holds the adds D missed and delivers them when D returns. With **read repair**, a
-  view that hears v2 and v6 writes v6 back to the stale copy. **Anti-entropy** jobs compare replicas in the background,
-  often with Merkle trees, and copy over what differs.
-- **Sloppy quorums trade overlap for availability.** Dynamo keeps accepting writes when preferred replicas are down by
-  counting acks from the next healthy nodes on the ring. Writes stay available, but those stand-ins sit outside the
-  preference list, so R + W > N no longer guarantees that a read meets them.
-- **Overlap is weaker than linearizable.** In N3 R2 W2, the view at 1.50 s returns v3 at 1.52 s, 60 ms before Sam’s add
-  of the scarf is confirmed at 1.58 s. B and D both hold v2 until 1.57 s, so a view that asked them just after 1.52 s
-  would return an older cart than one already shown. For the stronger promises from
-  [consistency models](../consistency-models/), stores make each read write the newest version it saw back to W copies
-  before answering, or order every write through a consensus log such as [Raft](../raft/).
-- **A failed write can still land.** A write that times out stays on every copy that applied it, so a later view can
-  return an add that Sam was told failed. Retries must be safe to repeat.
-- **Concurrent writers need a merge rule.** One shopper writes this cart, so its versions form a simple sequence. When
-  two devices write at once, stores tag versions with timestamps or vector clocks and must merge siblings, with the
-  same risks the [CAP lesson](../../distributed-data/cap-and-pacelc/) shows.
+- **Settings are per request.** Cassandra lets each read and write choose ONE, QUORUM, or ALL, which slides one store
+  between the lanes of [CAP and PACELC](../cap-and-pacelc/).
+- **Replicas catch up.** Hinted handoff, read repair, and background anti-entropy copy missed adds to a replica that
+  returns behind.
+- **Sloppy quorums trade overlap for availability.** Stand-ins outside the preference list keep writes flowing, so
+  R + W > N no longer guarantees that a read meets them.
+- **Overlap is weaker than linearizable.** Racing views can disagree while an add is in flight.
+  [Linearizable](../consistency-models/) reads need extra work, such as [Raft](../raft/).
+- **A failed write can still land.** A timed-out add stays on every copy that applied it, so retries must be safe.
+- **Concurrent writers need a merge rule.** Two devices writing one cart need timestamps or vector clocks.
+
+<details>
+<summary>Go deeper: how real stores close the gaps</summary>
+
+**Per-request settings.** QUORUM means a majority of N, so with N = 3, QUORUM for both reads and writes means R = 2 and
+W = 2. A team can read product reviews at ONE and checkout totals at QUORUM from the same store.
+
+**Three repairs.** In the widget, D stays behind until the next add reaches it. With **hinted handoff**, a neighbor
+holds the adds D missed and delivers them when D returns. With **read repair**, a view that hears v2 and v6 writes v6
+back to the stale copy. **Anti-entropy** jobs compare replicas in the background, often with Merkle trees, and copy
+over what differs.
+
+**Sloppy quorums.** Dynamo keeps accepting writes when preferred replicas are down by counting acks from the next
+healthy nodes on the ring. Writes stay available, but those stand-ins sit outside the preference list, so R + W > N no
+longer guarantees that a read meets them.
+
+**Weaker than linearizable.** In N3 R2 W2, the view at 1.50 s returns v3 at 1.52 s, 60 ms before Sam’s add of the
+scarf is confirmed at 1.58 s. B and D both hold v2 until 1.57 s, so a view that asked them just after 1.52 s would
+return an older cart than one already shown. Stores close this gap by making each read write the newest version it saw
+back to W copies before answering, or by ordering every write through a consensus log such as Raft.
+
+**Failed writes.** A write that times out stays on every copy that applied it, so a later view can return an add that
+Sam was told failed. Retries must be safe to repeat.
+
+**Merge rules.** One shopper writes this cart, so its versions form a simple sequence. When two devices write at once,
+stores tag versions with timestamps or vector clocks and must merge siblings, with the same risks the
+[CAP lesson](../../distributed-data/cap-and-pacelc/) shows.
+
+</details>
 
 ## Trade-offs
 
 <TradeoffTable title="Choosing N, R, and W for one cart">
 
-| Setting                           | What it buys                                                                          | What it costs                                                                                              |
-| --------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| N3 R1 W1 (sets can miss)          | The fastest answers, 25 ms per add and 16 ms per view, and no refusals while one copy lives. | Stale carts: 6 of 17 views with every replica up, 7 with D down.                                        |
-| N3 R2 W2 (majority both ways)     | 0 stale carts in every run, and both adds and views survive one lost copy.            | Adds wait for the second copy (68 ms); with two copies lost, 11 of 29 requests are refused.                 |
-| N3 R1 W3 (write all, read one)    | 0 stale carts, and views as fast as R1 W1.                                            | Adds wait for the slowest copy (222 ms), and every add is refused while any copy is down.                   |
-| N5 R3 W3 (more copies)            | 0 stale carts and 0 failures with any two replicas down.                              | Five copies to store and send; adds take 70 ms, or 114 ms with two replicas down.                          |
+| Setting  | What it buys                                                   | What it costs                                              |
+| -------- | -------------------------------------------------------------- | ---------------------------------------------------------- |
+| N3 R1 W1 | The fastest answers (25 ms adds, 16 ms views), no refusals     | 6 stale views of 17 with all up, 7 with D down             |
+| N3 R2 W2 | 0 stale views, and adds and views survive one lost copy        | 68 ms adds; 11 of 29 refused with two copies lost          |
+| N3 R1 W3 | 0 stale views, and 16 ms views                                 | 222 ms adds, and every add refused while any copy is down  |
+| N5 R3 W3 | 0 stale and 0 failed with any two replicas down                | Five copies to store; 70 ms adds, 114 ms with two down     |
 
 </TradeoffTable>
+
+Skip leaderless quorums when every write must land in one agreed order, such as a bank balance or a lock: use one
+leader with [Raft](../raft/). A quorum store pays off when replicas must stay writable through failures and a read
+needs only the latest confirmed write.
+
+## Common mistakes
+
+- **Treating R + W > N as linearizable.** Overlap covers adds confirmed before a view starts. Racing views can
+  disagree while an add is in flight.
+- **Counting stand-ins toward the quorum.** Sloppy quorum stand-ins sit outside the preference list, so a read can
+  miss them.
+- **Setting W = N for safety.** Reads stay fresh, and every write fails while any one copy is down.
+- **Expecting a returning replica to catch up on its own.** Without hinted handoff, read repair, or anti-entropy, it
+  keeps old data for any R = 1 view to return.
+
+<KeyTakeaways>
+
+- A hash ring picks a key’s N replicas. A write waits for W copies, and a read asks R and returns the newest
+  version.
+- R + W > N makes every read meet every confirmed write. R + W ≤ N answers faster and can return stale data.
+- A read needs R live copies and a write needs W, so overlap alone says nothing about availability. N5 R3 W3 survives
+  two lost replicas.
+- Quorums alone neither catch up a replica that returns behind nor make reads linearizable. Add repairs, and use a
+  leader where order matters.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-A chat service stores each conversation on a ring with N = 3. The product needs three things: a sender must always see
-their own message on the next refresh, the service must keep accepting messages while any one replica is down, and
-reading a conversation should stay fast. Choose R and W, and say what you would add so a replica that returns behind
-catches up. What changes if the service must survive two lost replicas?
+A chat service stores each conversation on a ring with N = 3. A sender must always see their own message on the next
+refresh, the service must keep accepting messages while any one replica is down, and reads should stay fast. Choose R
+and W, and say what helps a replica that returns behind catch up. What changes if the service must survive two lost
+replicas?
 
 <div slot="answer">
 
-- **Choose W = 2 and R = 2.** 2 + 2 > 3, so a refresh always reaches a replica that stored the sender’s confirmed
-  message. Both sets need only two of three copies, so one lost replica refuses nothing. A view waits for two replies
-  instead of one, which costs little: 17 ms against 16 ms per view in the run.
-- **Rule out the others.** R = 1 and W = 1 is faster but lets a sender miss their own message, like the stale carts in
-  the run. R = 1 and W = 3 overlaps, but it refuses every message while any copy is down.
-- **Add repair.** Use hinted handoff so a neighbor holds the messages a down replica missed, read repair so a view
-  that sees an old copy fixes it, and a background anti-entropy job for conversations nobody reads.
-- **Two lost replicas.** Three copies cannot keep two-copy sets alive with two of them gone. Move to N = 5 with R = 3
-  and W = 3, as in the last column of the table, and pay for two more copies of every conversation.
-- **Know the limit.** Overlap shows every confirmed message. Two members refreshing while a message is still in flight
-  can briefly disagree, so a chat that needs strict order should send each conversation through one leader, as in
-  [Raft](../raft/).
+- **W = 2 and R = 2.** 2 + 2 > 3, so a refresh reaches a copy holding the confirmed message, and one lost replica
+  refuses nothing.
+- **Rule out the others.** R1 W1 lets a sender miss their own message. R1 W3 refuses every message while any copy is
+  down.
+- **Add repair:** hinted handoff, read repair, and a background anti-entropy job for conversations nobody reads.
+- **Two lost replicas:** N = 5 with R = 3 and W = 3, at the cost of two more copies.
+- **Know the limit.** Racing refreshes can disagree while a message is in flight. Strict order needs one leader per
+  conversation, as in [Raft](../raft/).
 
 </div>
 

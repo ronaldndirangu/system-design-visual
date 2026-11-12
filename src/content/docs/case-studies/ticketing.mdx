@@ -342,7 +342,8 @@ They close the tab, their card fails, or they change their mind. If a hold lasts
 stays locked for the rest of the sale while people in line are told it is sold out.
 
 So every hold gets a deadline, and the deadline binds every buyer, including one whose payment is still at the bank. A
-seat moves through a small state machine, and each move is one conditional write on its row:
+hold is a lease, and [Time, leases, and fencing](../../distributed-data/time-leases-fencing/) explains why the check
+belongs in the write. A seat moves through a small state machine, and each move is one conditional write on its row:
 
 1. **Held.** The claim from step 6 sets `status = 'held'`, the holder, and a deadline.
 2. **Paying.** When the buyer presses Pay, the server claims the hold before it charges anything:

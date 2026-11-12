@@ -556,18 +556,20 @@ RETURNING reservation_version;
 ```
 
 Exactly one update finds the driver available and changes a row. The other changes zero rows and moves to its next
-candidate. The [Transactions and constraints](../../foundations/transactions/) lesson covers this pattern. A lock on the
-driver also works, and it makes every other matcher wait while held. The lease frees the driver even if the matcher that
+candidate. The [Transactions and constraints](../../foundations/transactions/) lesson covers this pattern. A lock also
+works, but every other matcher waits while it is held. The lease frees the driver even if the matcher that
 took it crashes, and the version names this one reservation among all of the driver's past ones.
 
-Next, the matcher offers the ride to the driver app with that version and starts a timer, 15 s in this illustration, the
-same length as the lease. The [Timeouts and cancellation](../../reliability/timeouts/) lesson covers why every wait needs
-a deadline. The rider sees one status, matching, the whole time.
+Next, the matcher offers the ride to the driver app with that version and starts a 15 s timer,
+the length of the lease. The [Timeouts and cancellation](../../reliability/timeouts/) lesson covers why every wait needs
+a deadline.
 
 The trap is a stale message. Networks delay replies, and processes pause for garbage collection or a slow disk. The
 driver's accept can arrive after the lease expired and another ride reserved the same driver, and a paused matcher can
 wake up and fire its old timer. So every message names the ride and the version it answers, and the update matches
-both. The driver's accept also needs the lease to still be running:
+both. The version works as a fencing token, which the [Time, leases, and
+fencing](../../distributed-data/time-leases-fencing/) lesson covers. The driver's accept also needs the lease to still
+be running:
 
 ```sql
 UPDATE drivers
@@ -591,7 +593,7 @@ the matcher moves to its next candidate. A matcher that needs more time renews w
 `expires_at` forward. The database checks every expiry against its own clock, `now()`, so the clocks on phones and
 matchers never decide who holds a driver.
 
-This timeline comes from the small reservation model behind this lesson. One driver, d7, meets two rides:
+This timeline comes from the lesson's reservation model. One driver, d7, meets two rides:
 
 | Time | Message                                          | Names     | d7's version | Result                      |
 | ---- | ------------------------------------------------ | --------- | ------------ | --------------------------- |
@@ -626,9 +628,8 @@ a driver back to where they were. A timestamp from the phone cannot do this job:
 the user corrects them, and one ping stamped an hour ahead would block every real ping for that hour. The sequence only
 has to rise within one session, and the server issues a higher session number at each sign in, so the first ping of a
 new session outranks the old one. As a backstop, a cell entry expires about 30 s after its last ping (illustrative), so
-a driver whose removal got lost, or whose app went offline, leaves the search on its own. When the consumers fall behind
-during a burst, Queues and backpressure lists the options. Here one answer stands out: skip to the newest ping for each
-driver, since an old position has no value for matching.
+a driver whose removal got lost, or whose app went offline, leaves the search on its own. When consumers fall behind
+during a burst, they skip to the newest ping for each driver, since an old position has no value for matching.
 
 A second consumer writes every ping to the location history, about 173 GB a day in this estimate, on cheap bulk
 storage. Fares, receipts, and disputes read a trip's route from it later.

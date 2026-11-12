@@ -127,6 +127,16 @@ const modules: ModuleInput[] = [
         buildsOn: ['thinking/access-patterns'],
       },
       {
+        id: 'foundations/unique-ids',
+        title: 'Unique IDs',
+        summary:
+          'Mint IDs that never collide, from one counter to Snowflake, UUIDv7, and short base62 codes.',
+        format: 'card',
+        minutes: 10,
+        difficulty: 1,
+        buildsOn: ['foundations/data-modeling'],
+      },
+      {
         id: 'foundations/transactions',
         title: 'Transactions and constraints',
         summary:
@@ -143,6 +153,15 @@ const modules: ModuleInput[] = [
         minutes: 21,
         difficulty: 1,
         buildsOn: ['foundations/data-modeling', 'foundations/transactions'],
+      },
+      {
+        id: 'foundations/storage-engines',
+        title: 'Storage engines',
+        summary:
+          'Follow a write through the log, B-trees, and LSM trees, and see what each engine pays for speed.',
+        minutes: 22,
+        difficulty: 2,
+        buildsOn: ['foundations/indexes', 'foundations/transactions'],
       },
       {
         id: 'foundations/real-time',
@@ -193,6 +212,16 @@ const modules: ModuleInput[] = [
         minutes: 20,
         difficulty: 1,
         buildsOn: ['scaling/caching', 'foundations/what-happens-when-you-click'],
+      },
+      {
+        id: 'scaling/object-storage',
+        title: 'Object storage',
+        summary:
+          'Store large files in buckets with presigned URLs, multipart uploads, tiers, and erasure coding.',
+        format: 'card',
+        minutes: 10,
+        difficulty: 1,
+        buildsOn: ['scaling/cdn'],
       },
       {
         id: 'scaling/read-replicas',
@@ -288,7 +317,7 @@ const modules: ModuleInput[] = [
         id: 'async/logs-and-pubsub',
         title: 'Logs and pub/sub',
         summary: 'Partition a log, run consumer groups, and see why order holds only within a partition.',
-        minutes: 20,
+        minutes: 26,
         difficulty: 2,
         buildsOn: ['scaling/sharding', 'reliability/queues-and-backpressure'],
       },
@@ -297,7 +326,7 @@ const modules: ModuleInput[] = [
         title: 'Delivery semantics and the outbox',
         summary:
           'At most once, at least once, and effectively once through idempotent consumers, plus the outbox that keeps events and data in step.',
-        minutes: 20,
+        minutes: 26,
         difficulty: 2,
         buildsOn: ['async/logs-and-pubsub', 'reliability/idempotency'],
       },
@@ -306,7 +335,7 @@ const modules: ModuleInput[] = [
         title: 'Event-driven design',
         summary:
           'Choose between thin and fat events, choreography and orchestration, evolve event schemas safely, and park poison messages in a dead-letter queue.',
-        minutes: 25,
+        minutes: 27,
         difficulty: 2,
         buildsOn: ['async/delivery-semantics'],
       },
@@ -315,7 +344,7 @@ const modules: ModuleInput[] = [
         title: 'Stream processing',
         summary:
           'Count events in windows, handle late data with watermarks, and choose between batch and stream.',
-        minutes: 27,
+        minutes: 28,
         difficulty: 2,
         buildsOn: ['async/logs-and-pubsub', 'async/delivery-semantics'],
       },
@@ -332,7 +361,7 @@ const modules: ModuleInput[] = [
         id: 'distributed-data/consistency-models',
         title: 'Consistency models',
         summary: 'From strong to eventual: what each promise lets a reader see.',
-        minutes: 20,
+        minutes: 23,
         difficulty: 2,
         buildsOn: ['scaling/read-replicas'],
         example: 'Chat',
@@ -342,7 +371,7 @@ const modules: ModuleInput[] = [
         title: 'CAP and PACELC',
         summary:
           'See what a network partition forces you to choose, and what latency costs you the rest of the time.',
-        minutes: 20,
+        minutes: 23,
         difficulty: 2,
         buildsOn: ['distributed-data/consistency-models'],
         example: 'Shopping cart',
@@ -351,16 +380,26 @@ const modules: ModuleInput[] = [
         id: 'distributed-data/quorums',
         title: 'Quorums on a replicated ring',
         summary: 'Tune N, R, and W, and watch reads and writes survive node loss.',
-        minutes: 20,
+        minutes: 25,
         difficulty: 2,
         buildsOn: ['distributed-data/cap-and-pacelc', 'scaling/sharding'],
         example: 'Shopping cart',
       },
       {
+        id: 'distributed-data/time-leases-fencing',
+        title: 'Time, leases, and fencing',
+        summary:
+          'See why clocks lie, why a lock can expire under you, and how a fencing token stops a stale writer.',
+        minutes: 24,
+        difficulty: 3,
+        buildsOn: ['distributed-data/quorums', 'reliability/idempotency'],
+        example: 'Chat',
+      },
+      {
         id: 'distributed-data/raft',
         title: 'Consensus with Raft',
         summary: 'Watch nodes elect a leader and agree on a log.',
-        minutes: 22,
+        minutes: 25,
         difficulty: 3,
         buildsOn: ['distributed-data/quorums'],
         example: 'Chat',
@@ -369,7 +408,7 @@ const modules: ModuleInput[] = [
         id: 'distributed-data/sagas',
         title: 'Sagas',
         summary: 'Coordinate a multi-step business process with compensating steps instead of a global lock.',
-        minutes: 22,
+        minutes: 25,
         difficulty: 3,
         buildsOn: ['foundations/transactions', 'async/event-driven-design'],
         example: 'Shopping cart checkout',
