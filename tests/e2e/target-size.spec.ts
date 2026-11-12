@@ -130,7 +130,8 @@ for (const { name, path } of pages) {
     expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
     // Starlight's mobile table of contents is a dropdown that overlays the page when open, so leave it shut.
     await page.evaluate(() => {
-      for (const details of document.querySelectorAll('main details')) details.open = true;
+      for (const details of document.querySelectorAll<HTMLDetailsElement>('main details'))
+        details.open = true;
     });
     expect.soft(await undersized(page, 'body')).toEqual([]);
 
