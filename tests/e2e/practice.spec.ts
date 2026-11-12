@@ -28,7 +28,7 @@ test('a timed round runs by keyboard and opens the rubric only after it ends', a
   await expect(round.getByRole('heading', { name: 'Round finished' })).toBeFocused();
   await expect(round.getByRole('heading', { name: 'Score yourself' })).toBeVisible();
 
-  const rubric = round.getByRole('group', { name: 'Score for Requirements' });
+  const rubric = round.getByRole('radiogroup', { name: 'Score for Requirements' });
   await rubric.getByRole('radio', { name: 'Solid' }).check();
   await expect(round.getByText(/Total 2 of 14, 1 of 7 scored/)).toBeVisible();
 

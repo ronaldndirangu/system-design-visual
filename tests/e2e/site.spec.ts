@@ -218,7 +218,8 @@ for (const { path, selector } of [
 ]) {
   test(`every ${selector} on ${path} is its own pointer target`, async ({ page }) => {
     await page.goto(path);
-    const inputs = page.locator(selector);
+    // Radios inside a segmented control that swapped to its select have no box to hit.
+    const inputs = page.locator(`${selector}:visible`);
     await expect(inputs.first()).toBeAttached();
     const misses = await inputs.evaluateAll((elements) =>
       elements.flatMap((input) => {

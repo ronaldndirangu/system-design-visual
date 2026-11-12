@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 
 async function openEstimator(page: Page) {
@@ -59,13 +60,13 @@ test.describe('estimator readability', () => {
     let sim = await openEstimator(page);
     const select = sim.getByRole('combobox', { name: 'Scale' });
     await expect(select).toBeVisible();
-    await expect(sim.getByRole('group', { name: 'Scale' })).toBeHidden();
+    await expect(sim.getByRole('radiogroup', { name: 'Scale' })).toBeHidden();
     await select.selectOption({ label: 'Planet scale' });
     await expect(select).toHaveValue('planet');
 
     await page.setViewportSize({ width: 1440, height: 900 });
     sim = await openEstimator(page);
-    await expect(sim.getByRole('group', { name: 'Scale' })).toBeVisible();
+    await expect(sim.getByRole('radiogroup', { name: 'Scale' })).toBeVisible();
     await expect(sim.getByRole('combobox', { name: 'Scale' })).toBeHidden();
   });
 
@@ -260,6 +261,109 @@ test.describe('type and tokens', () => {
       await page.setViewportSize({ width: 390, height: 844 });
       await page.goto(path);
       expect(await cumulativeLayoutShift(page)).toBeLessThan(0.05);
+    });
+  }
+});
+
+async function minTargetPx(page: Page, selector: string) {
+  return page.locator(selector).evaluateAll((elements) =>
+    Math.min(
+      ...elements.map((element) => {
+        const box = element.getBoundingClientRect();
+        return Math.min(box.width, box.height);
+      }),
+    ),
+  );
+}
+
+test.describe('control kit', () => {
+  test('arrow keys move the segmented choice and keep focus on it', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const sim = await openEstimator(page);
+    const group = sim.getByRole('radiogroup', { name: 'Scale' });
+    const checked = group.getByRole('radio', { checked: true });
+    const before = await checked.getAttribute('value');
+    await checked.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(checked).not.toHaveAttribute('value', before ?? '');
+    await expect(checked).toBeFocused();
+    await expect(sim.getByRole('combobox', { name: 'Scale', includeHidden: true })).toHaveValue(
+      (await checked.getAttribute('value')) ?? '',
+    );
+  });
+
+  test('Home, End and arrow keys update the slider value text', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const sim = await openEstimator(page);
+    const slider = sim.getByRole('slider', { name: 'New links per day' });
+    await slider.focus();
+    await slider.press('Home');
+    const min = await slider.getAttribute('aria-valuetext');
+    await expect(slider).toHaveValue((await slider.getAttribute('min')) ?? '');
+    await slider.press('ArrowRight');
+    await expect(slider).not.toHaveAttribute('aria-valuetext', min ?? '');
+    await slider.press('End');
+    await expect(slider).toHaveValue((await slider.getAttribute('max')) ?? '');
+    const max = await slider.getAttribute('aria-valuetext');
+    await expect(
+      sim
+        .locator('output')
+        .filter({ hasText: max ?? '' })
+        .first(),
+    ).toBeVisible();
+  });
+
+  test('speed is a radio group in a wide toolbar and a select in a narrow one', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('reliability/rate-limiting/');
+    const toolbar = page.getByRole('group', { name: 'Simulation controls' }).first();
+    await toolbar.scrollIntoViewIfNeeded();
+    const radios = toolbar.getByRole('radiogroup', { name: 'Speed' });
+    await expect(radios).toBeVisible();
+    await expect(toolbar.getByRole('combobox', { name: 'Speed' })).toBeHidden();
+    await radios.getByRole('radio', { name: '2×' }).check();
+    await expect(radios.getByRole('radio', { name: '2×' })).toBeChecked();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const select = toolbar.getByRole('combobox', { name: 'Speed' });
+    await expect(select).toBeVisible();
+    await expect(radios).toBeHidden();
+    await expect(select).toHaveValue('2');
+  });
+
+  for (const theme of ['dark', 'light'] as const) {
+    test(`a simulation with the kit passes axe in the ${theme} theme`, async ({ page }) => {
+      await useTheme(page, theme);
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.goto('reliability/rate-limiting/');
+      const toolbar = page.getByRole('group', { name: 'Simulation controls' }).first();
+      await toolbar.scrollIntoViewIfNeeded();
+      await expect(toolbar.getByRole('radio', { name: '1×' })).toBeEnabled();
+      const results = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+        .exclude('button[data-open-modal]')
+        .analyze();
+      expect(results.violations.map((violation) => violation.id)).toEqual([]);
+    });
+  }
+});
+
+test.describe('control kit on coarse pointers', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  for (const [path, selector] of [
+    ['foundations/what-happens-when-you-click/', '.sdv-segmented__options label:visible'],
+    ['reliability/observability/', '.sdv-segmented select:visible'],
+    ['foundations/what-happens-when-you-click/', '.sdv-toggle:visible'],
+    ['thinking/requirements-and-estimates/', '.sdv-select:visible'],
+  ] as const) {
+    test(`${selector.split(':')[0]} targets on ${path} are at least 44px`, async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.goto(path);
+      await expect(page.locator(selector).first()).toBeVisible();
+      expect(await minTargetPx(page, selector)).toBeGreaterThanOrEqual(44);
+      expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     });
   }
 });
