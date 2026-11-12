@@ -1,0 +1,67 @@
+---
+export type CalloutVariant =
+  | 'objectives'
+  | 'predict'
+  | 'analogy'
+  | 'note'
+  | 'warning'
+  | 'challenge'
+  | 'takeaways'
+  | 'recall';
+
+interface Props {
+  variant?: CalloutVariant;
+  /** Overline text. Defaults per variant. */
+  title?: string;
+  /** Accessible name of the landmark. Defaults to the title. */
+  label?: string;
+  as?: 'aside' | 'section';
+  class?: string;
+}
+
+const defaults: Record<CalloutVariant, { title: string; as: 'aside' | 'section'; icon: string }> = {
+  objectives: {
+    title: 'By the end of this lesson you can',
+    as: 'section',
+    icon: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8z M12 11.5v1',
+  },
+  predict: {
+    title: 'Predict first',
+    as: 'section',
+    icon: 'M9 9a3 3 0 1 1 4.2 2.75c-.7.3-1.2 1-1.2 1.75V15 M12 18.5v.5',
+  },
+  analogy: {
+    title: 'Analogy',
+    as: 'aside',
+    icon: 'M9 18h6 M10 21h4 M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z',
+  },
+  note: {
+    title: 'Note',
+    as: 'aside',
+    icon: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z M12 11v5 M12 7.5v.5',
+  },
+  warning: { title: 'Watch out', as: 'aside', icon: 'M12 4v9 M12 18v.5' },
+  challenge: { title: 'Design challenge', as: 'section', icon: 'M4 20l6-14l4 8l2-3l4 9z' },
+  takeaways: { title: 'Key takeaways', as: 'section', icon: 'M5 12l4 4l10-10' },
+  recall: {
+    title: 'Recall',
+    as: 'aside',
+    icon: 'M4 12a8 8 0 1 0 2.4-5.7 M4 4v4h4',
+  },
+};
+
+const { variant = 'note', title, label, as, class: className } = Astro.props;
+const preset = defaults[variant];
+const heading = title ?? preset.title;
+const Tag = as ?? preset.as;
+---
+
+<Tag class:list={['sdv-callout', `sdv-callout--${variant}`, className]} aria-label={label ?? heading}>
+  <p class="sdv-callout__title">
+    <svg class="sdv-callout__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d={preset.icon}></path>
+    </svg>
+    <span>{heading}</span>
+  </p>
+  <div class="sdv-callout__body"><slot /></div>
+</Tag>

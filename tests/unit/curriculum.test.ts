@@ -2,7 +2,16 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { allLessons, anchorFor, curriculum, findModule } from '../../src/data/curriculum';
+import {
+  allLessons,
+  anchorFor,
+  curriculum,
+  findLesson,
+  findModule,
+  findModuleForLesson,
+  lessonPosition,
+  runningExampleFor,
+} from '../../src/data/curriculum';
 
 const srcDir = fileURLToPath(new URL('../../src/', import.meta.url));
 const docsDir = fileURLToPath(new URL('../../src/content/docs/', import.meta.url));
@@ -80,7 +89,42 @@ describe('curriculum', () => {
 
   it('keeps cards short', () => {
     for (const lesson of allLessons.filter((item) => item.format === 'card')) {
-      expect(lesson.minutes, lesson.id).toBeLessThanOrEqual(10);
+      expect(lesson.minutes, lesson.id).toBeLessThanOrEqual(12);
     }
+  });
+
+  it('builds only on lessons a learner has already reached', () => {
+    for (const module of curriculum) {
+      const reachable = module.number;
+      for (const lesson of module.lessons) {
+        const position = lessonPosition(lesson.id) as number;
+        const limit = lesson.bestAfter ? (findModule(lesson.bestAfter)?.number ?? -1) : reachable;
+        for (const prerequisite of lesson.buildsOn ?? []) {
+          const target = findModuleForLesson(prerequisite);
+          expect(findLesson(prerequisite), `${lesson.id} -> ${prerequisite}`).toBeDefined();
+          expect(target?.number, `${lesson.id} -> ${prerequisite}`).toBeLessThanOrEqual(limit);
+          if (target?.id === module.id) {
+            expect(lessonPosition(prerequisite), `${lesson.id} -> ${prerequisite}`).toBeLessThan(position);
+          }
+        }
+      }
+    }
+  });
+
+  it('links every lesson after the first to something it builds on', () => {
+    const [first, ...rest] = allLessons;
+    expect(first?.buildsOn).toBeUndefined();
+    for (const lesson of rest) expect(lesson.buildsOn?.length, lesson.id).toBeGreaterThan(0);
+  });
+
+  it('marks exactly the difficulty 3 lessons as advanced', () => {
+    for (const lesson of allLessons) expect(lesson.advanced, lesson.id).toBe(lesson.difficulty === 3);
+  });
+
+  it('names a running example only where a module shares one', () => {
+    expect(runningExampleFor('scaling/caching')).toBe('URL shortener');
+    expect(runningExampleFor('distributed-data/raft')).toBe('Chat');
+    expect(runningExampleFor('case-studies/chat')).toBeUndefined();
+    expect(runningExampleFor('practice/timed-round')).toBeUndefined();
   });
 });

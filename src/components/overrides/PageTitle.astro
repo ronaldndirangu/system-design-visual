@@ -1,29 +1,86 @@
 ---
 import Default from '@astrojs/starlight/components/PageTitle.astro';
-import { allLessons, findLesson, findModuleForLesson, lessonPosition } from '../../data/curriculum';
+import {
+  allLessons,
+  anchorFor,
+  difficultyLabels,
+  findLesson,
+  findModuleForLesson,
+  type Lesson,
+  lessonPosition,
+  runningExampleFor,
+} from '../../data/curriculum';
+import { lessonStats } from '../../lib/minutes';
+import { lessonHref, withBase } from '../../lib/paths';
 
-const id = Astro.locals.starlightRoute.id;
+const { id, entry } = Astro.locals.starlightRoute;
 const lesson = findLesson(id);
 const module = findModuleForLesson(id);
 const position = lessonPosition(id);
+const example = runningExampleFor(id);
+const buildsOn = (lesson?.buildsOn ?? [])
+  .map((lessonId) => findLesson(lessonId))
+  .filter((found): found is Lesson => found !== undefined);
+const hasSim = lesson !== undefined && lessonStats(entry.body ?? '').sims > 0;
 ---
 
 {
   lesson && module && position ? (
-    <div class="sdv-lesson-meta not-content">
-      <p class="sdv-lesson-meta__module">
+    <div class="sdv-lesson-head not-content">
+      <a class="sdv-lesson-head__module" href={`${withBase('/curriculum/')}#${anchorFor(module.id)}`}>
         Module {module.number}: {module.title}
-      </p>
+      </a>
       <Default />
-      <p class="sdv-lesson-meta__facts">
-        <span>
-          Lesson {position} of {allLessons.length}
-        </span>
-        <span>About {lesson.minutes} minutes</span>
-        <span>Example: {module.example}</span>
-      </p>
+      <ul class="sdv-lesson-head__facts" aria-label="About this lesson">
+        <li class="sdv-lesson-head__position">
+          <span class="sdv-visually-hidden">Lesson</span>
+          {position}
+          <span aria-hidden="true">/</span>
+          <span class="sdv-visually-hidden">of</span>
+          {allLessons.length}
+        </li>
+        <li class="sdv-lesson-head__level" data-level={lesson.difficulty}>
+          <span class="sdv-lesson-head__dots" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+          {difficultyLabels[lesson.difficulty]}
+        </li>
+        <li>About {lesson.minutes} min</li>
+        {example && <li class="sdv-lesson-head__example">Example: {example}</li>}
+      </ul>
+      {buildsOn.length > 0 && (
+        <p class="sdv-lesson-head__builds">
+          <span class="sdv-lesson-head__label">Builds on</span>
+          {buildsOn.map((earlier) => (
+            <a class="sdv-lesson-head__chip" href={lessonHref(earlier.id)}>
+              {earlier.title}
+            </a>
+          ))}
+        </p>
+      )}
+      {hasSim && (
+        <a class="sdv-lesson-head__jump" href="#sdv-sim">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 5v14 M6 13l6 6l6-6" />
+          </svg>
+          Jump to simulation
+        </a>
+      )}
+      <div class="sdv-lesson-head__progress" aria-hidden="true" />
     </div>
   ) : (
     <Default />
   )
 }
+
+<script>
+  // Lessons place their main simulation anywhere in the body, so the first one gets the anchor.
+  const jump = document.querySelector<HTMLAnchorElement>('.sdv-lesson-head__jump');
+  const sim = document.querySelector<HTMLElement>('main section.sdv-sim');
+  if (jump && sim) {
+    if (!sim.id) sim.id = 'sdv-sim';
+    jump.hash = sim.id;
+  }
+</script>

@@ -7,13 +7,31 @@
 /** A card is a short reference page; a lesson follows the full seven-beat flow. */
 export type LessonFormat = 'lesson' | 'card';
 
+/** 1 foundational, 2 intermediate, 3 advanced. */
+export type Difficulty = 1 | 2 | 3;
+
+export const difficultyLabels: Record<Difficulty, string> = {
+  1: 'Foundational',
+  2: 'Intermediate',
+  3: 'Advanced',
+};
+
 export interface Lesson {
   /** Docs entry id, which is also the URL path, e.g. "scaling/caching". */
   id: string;
   title: string;
   summary: string;
+  /** Declared time. A unit test keeps it within 25% of the time computed from the MDX. */
   minutes: number;
-  advanced?: boolean;
+  difficulty: Difficulty;
+  /** True for difficulty 3, derived so the map badge and the lesson header always agree. */
+  advanced: boolean;
+  /** Earlier lessons this one assumes. The header links them and the Recall box quizzes them. */
+  buildsOn?: string[];
+  /** Running example when it differs from the module's, e.g. "Chat" inside a mixed module. */
+  example?: string;
+  /** Minutes of fixed-clock practice the lesson asks for, such as a timed drill. */
+  drillMinutes?: number;
   format?: LessonFormat;
   /** Id of the module a learner should finish first. Lets case studies interleave with the core path. */
   bestAfter?: string;
@@ -26,10 +44,15 @@ export interface CourseModule {
   summary: string;
   /** The system this module uses as its running example. */
   example: string;
+  /** False when each lesson brings its own system, so lesson headers show no example chip. */
+  sharedExample?: boolean;
   lessons: Lesson[];
 }
 
-export const curriculum: CourseModule[] = [
+type LessonInput = Omit<Lesson, 'advanced'>;
+type ModuleInput = Omit<CourseModule, 'lessons'> & { lessons: LessonInput[] };
+
+const modules: ModuleInput[] = [
   {
     id: 'thinking',
     number: 0,
@@ -41,13 +64,16 @@ export const curriculum: CourseModule[] = [
         id: 'thinking/requirements-and-estimates',
         title: 'Requirements and estimates',
         summary: 'Size a URL shortener on the back of an envelope before you draw a single box.',
-        minutes: 20,
+        minutes: 10,
+        difficulty: 1,
       },
       {
         id: 'thinking/design-checklist',
         title: 'The design checklist',
         summary: 'Seven questions to ask about any system. Every case study in this course reuses them.',
         minutes: 5,
+        difficulty: 1,
+        buildsOn: ['thinking/requirements-and-estimates'],
         format: 'card',
       },
       {
@@ -55,12 +81,16 @@ export const curriculum: CourseModule[] = [
         title: 'Access patterns and hot keys',
         summary: 'Learn who reads what, how often, and why a few keys get most of the traffic.',
         minutes: 20,
+        difficulty: 1,
+        buildsOn: ['thinking/requirements-and-estimates'],
       },
       {
         id: 'thinking/slos',
         title: 'SLOs and measurement',
         summary: 'Define "fast enough" with percentiles and error budgets, then find the real bottleneck.',
         minutes: 20,
+        difficulty: 1,
+        buildsOn: ['thinking/access-patterns'],
       },
     ],
   },
@@ -76,19 +106,25 @@ export const curriculum: CourseModule[] = [
         id: 'foundations/what-happens-when-you-click',
         title: 'What happens when you click a link',
         summary: 'Follow one click through DNS, TCP, TLS, and HTTP, and see where the time goes.',
-        minutes: 20,
+        minutes: 10,
+        difficulty: 1,
+        buildsOn: ['thinking/slos'],
       },
       {
         id: 'foundations/apis',
         title: 'APIs and contracts',
         summary: 'Design endpoints that are easy to call correctly and hard to call wrong.',
-        minutes: 20,
+        minutes: 28,
+        difficulty: 1,
+        buildsOn: ['foundations/what-happens-when-you-click'],
       },
       {
         id: 'foundations/data-modeling',
         title: 'Data modeling and storage choice',
         summary: 'Let the access pattern choose between tables, documents, and key-value stores.',
-        minutes: 20,
+        minutes: 22,
+        difficulty: 1,
+        buildsOn: ['thinking/access-patterns'],
       },
       {
         id: 'foundations/transactions',
@@ -96,26 +132,34 @@ export const curriculum: CourseModule[] = [
         summary:
           'Keep one database correct under concurrent writes with isolation, unique keys, and conditional updates.',
         minutes: 20,
+        difficulty: 1,
+        buildsOn: ['foundations/data-modeling'],
       },
       {
         id: 'foundations/indexes',
         title: 'Indexes',
         summary:
           'Find one row among billions without reading them all, and see what every index costs on write.',
-        minutes: 20,
+        minutes: 21,
+        difficulty: 1,
+        buildsOn: ['foundations/data-modeling', 'foundations/transactions'],
       },
       {
         id: 'foundations/real-time',
         title: 'Real-time transport',
         summary: 'Compare polling, long polling, server-sent events, and WebSockets.',
         format: 'card',
-        minutes: 8,
+        minutes: 12,
+        difficulty: 1,
+        buildsOn: ['foundations/what-happens-when-you-click'],
       },
       {
         id: 'foundations/security',
         title: 'Security basics',
         summary: 'Authenticate callers, authorize actions, encrypt traffic, and keep secrets out of code.',
         minutes: 20,
+        difficulty: 1,
+        buildsOn: ['foundations/apis', 'foundations/what-happens-when-you-click'],
       },
     ],
   },
@@ -131,30 +175,40 @@ export const curriculum: CourseModule[] = [
         title: 'The server melts',
         summary: 'Scale up, scale out, and spread traffic with a load balancer.',
         minutes: 25,
+        difficulty: 1,
+        buildsOn: ['thinking/requirements-and-estimates', 'foundations/what-happens-when-you-click'],
       },
       {
         id: 'scaling/caching',
         title: 'Caching',
         summary: 'Answer popular requests from memory and watch the database relax.',
         minutes: 20,
+        difficulty: 1,
+        buildsOn: ['scaling/load-balancing', 'thinking/access-patterns'],
       },
       {
         id: 'scaling/cdn',
         title: 'CDNs',
         summary: 'Move bytes closer to people so distance stops dominating latency.',
         minutes: 20,
+        difficulty: 1,
+        buildsOn: ['scaling/caching', 'foundations/what-happens-when-you-click'],
       },
       {
         id: 'scaling/read-replicas',
         title: 'Read replicas',
         summary: 'Copy the database to serve more reads, and handle the lag that copying creates.',
-        minutes: 20,
+        minutes: 12,
+        difficulty: 2,
+        buildsOn: ['scaling/caching', 'scaling/cdn'],
       },
       {
         id: 'scaling/sharding',
         title: 'Sharding and consistent hashing',
         summary: 'Split data across machines without reshuffling everything when you add one.',
-        minutes: 25,
+        minutes: 15,
+        difficulty: 2,
+        buildsOn: ['scaling/read-replicas', 'thinking/access-patterns'],
       },
     ],
   },
@@ -169,43 +223,57 @@ export const curriculum: CourseModule[] = [
         id: 'reliability/timeouts',
         title: 'Timeouts and cancellation',
         summary: 'Stop waiting forever on a dependency, and stop doing work nobody is waiting for.',
-        minutes: 20,
+        minutes: 30,
+        difficulty: 1,
+        buildsOn: ['thinking/slos', 'scaling/load-balancing'],
       },
       {
         id: 'reliability/queues-and-backpressure',
         title: 'Queues and backpressure',
         summary: 'Absorb bursts, push back when the queue fills, and shed load before the system tips over.',
-        minutes: 22,
+        minutes: 24,
+        difficulty: 2,
+        buildsOn: ['reliability/timeouts'],
       },
       {
         id: 'reliability/idempotency',
         title: 'Idempotency',
         summary: 'Make "do it again" safe so a repeated request never double charges anyone.',
-        minutes: 20,
+        minutes: 21,
+        difficulty: 2,
+        buildsOn: ['reliability/queues-and-backpressure', 'foundations/apis'],
       },
       {
         id: 'reliability/retries',
         title: 'Retries with backoff and jitter',
         summary: 'Retry without stampeding a service that is already struggling.',
-        minutes: 20,
+        minutes: 30,
+        difficulty: 2,
+        buildsOn: ['reliability/timeouts', 'reliability/idempotency'],
       },
       {
         id: 'reliability/rate-limiting',
         title: 'Rate limiting',
         summary: 'Share capacity fairly with token buckets and sliding windows.',
-        minutes: 20,
+        minutes: 30,
+        difficulty: 2,
+        buildsOn: ['reliability/retries', 'reliability/queues-and-backpressure'],
       },
       {
         id: 'reliability/circuit-breakers',
         title: 'Circuit breakers',
         summary: 'Fail fast when a dependency is down, then test it gently.',
-        minutes: 20,
+        minutes: 30,
+        difficulty: 2,
+        buildsOn: ['reliability/timeouts', 'reliability/retries'],
       },
       {
         id: 'reliability/observability',
         title: 'Observability',
         summary: 'Use logs, metrics, and traces to answer questions you did not plan for.',
-        minutes: 20,
+        minutes: 30,
+        difficulty: 2,
+        buildsOn: ['thinking/slos', 'reliability/circuit-breakers'],
       },
     ],
   },
@@ -221,6 +289,8 @@ export const curriculum: CourseModule[] = [
         title: 'Logs and pub/sub',
         summary: 'Partition a log, run consumer groups, and see why order holds only within a partition.',
         minutes: 20,
+        difficulty: 2,
+        buildsOn: ['scaling/sharding', 'reliability/queues-and-backpressure'],
       },
       {
         id: 'async/delivery-semantics',
@@ -228,6 +298,8 @@ export const curriculum: CourseModule[] = [
         summary:
           'At most once, at least once, and effectively once through idempotent consumers, plus the outbox that keeps events and data in step.',
         minutes: 20,
+        difficulty: 2,
+        buildsOn: ['async/logs-and-pubsub', 'reliability/idempotency'],
       },
       {
         id: 'async/event-driven-design',
@@ -235,13 +307,17 @@ export const curriculum: CourseModule[] = [
         summary:
           'Choose between thin and fat events, choreography and orchestration, evolve event schemas safely, and park poison messages in a dead-letter queue.',
         minutes: 25,
+        difficulty: 2,
+        buildsOn: ['async/delivery-semantics'],
       },
       {
         id: 'async/stream-processing',
         title: 'Stream processing',
         summary:
           'Count events in windows, handle late data with watermarks, and choose between batch and stream.',
-        minutes: 25,
+        minutes: 27,
+        difficulty: 2,
+        buildsOn: ['async/logs-and-pubsub', 'async/delivery-semantics'],
       },
     ],
   },
@@ -257,6 +333,9 @@ export const curriculum: CourseModule[] = [
         title: 'Consistency models',
         summary: 'From strong to eventual: what each promise lets a reader see.',
         minutes: 20,
+        difficulty: 2,
+        buildsOn: ['scaling/read-replicas'],
+        example: 'Chat',
       },
       {
         id: 'distributed-data/cap-and-pacelc',
@@ -264,33 +343,45 @@ export const curriculum: CourseModule[] = [
         summary:
           'See what a network partition forces you to choose, and what latency costs you the rest of the time.',
         minutes: 20,
+        difficulty: 2,
+        buildsOn: ['distributed-data/consistency-models'],
+        example: 'Shopping cart',
       },
       {
         id: 'distributed-data/quorums',
         title: 'Quorums on a replicated ring',
         summary: 'Tune N, R, and W, and watch reads and writes survive node loss.',
         minutes: 20,
+        difficulty: 2,
+        buildsOn: ['distributed-data/cap-and-pacelc', 'scaling/sharding'],
+        example: 'Shopping cart',
       },
       {
         id: 'distributed-data/raft',
         title: 'Consensus with Raft',
         summary: 'Watch nodes elect a leader and agree on a log.',
         minutes: 22,
-        advanced: true,
+        difficulty: 3,
+        buildsOn: ['distributed-data/quorums'],
+        example: 'Chat',
       },
       {
         id: 'distributed-data/sagas',
         title: 'Sagas',
         summary: 'Coordinate a multi-step business process with compensating steps instead of a global lock.',
         minutes: 22,
-        advanced: true,
+        difficulty: 3,
+        buildsOn: ['foundations/transactions', 'async/event-driven-design'],
+        example: 'Shopping cart checkout',
       },
       {
         id: 'distributed-data/cqrs',
         title: 'CQRS and event sourcing',
         summary: 'Split the write model from the read model when they want different shapes.',
         minutes: 25,
-        advanced: true,
+        difficulty: 3,
+        buildsOn: ['async/event-driven-design', 'scaling/read-replicas'],
+        example: 'Shopping cart',
       },
     ],
   },
@@ -301,20 +392,25 @@ export const curriculum: CourseModule[] = [
     summary:
       'Ten products, each chosen for one constraint that dominates its design. Start each one as soon as you finish the module it builds on.',
     example: 'A different system per lesson',
+    sharedExample: false,
     lessons: [
       {
         id: 'case-studies/search',
         title: 'Search',
         summary:
           'Keep a news index fresh, give each ranking signal its own clock, then add typeahead as an extension.',
-        minutes: 25,
+        minutes: 40,
+        difficulty: 3,
+        buildsOn: ['foundations/indexes', 'scaling/sharding', 'scaling/caching'],
         bestAfter: 'scaling',
       },
       {
         id: 'case-studies/news-feed',
         title: 'News feed',
         summary: 'Fan out on write or on read, and handle the celebrity whose post reaches millions.',
-        minutes: 20,
+        minutes: 22,
+        difficulty: 2,
+        buildsOn: ['scaling/caching', 'scaling/sharding', 'reliability/queues-and-backpressure'],
         bestAfter: 'reliability',
       },
       {
@@ -322,7 +418,9 @@ export const curriculum: CourseModule[] = [
         title: 'Video streaming',
         summary:
           'Store large files in object storage, upload them in parts, transcode a bitrate ladder, and pay for bandwidth wisely.',
-        minutes: 25,
+        minutes: 40,
+        difficulty: 3,
+        buildsOn: ['scaling/cdn', 'reliability/idempotency', 'reliability/queues-and-backpressure'],
         bestAfter: 'reliability',
       },
       {
@@ -330,6 +428,8 @@ export const curriculum: CourseModule[] = [
         title: 'Flash-sale ticketing',
         summary: 'Sell 10,000 seats to a million people without selling one seat twice.',
         minutes: 20,
+        difficulty: 2,
+        buildsOn: ['foundations/transactions', 'reliability/idempotency', 'reliability/rate-limiting'],
         bestAfter: 'reliability',
       },
       {
@@ -338,6 +438,8 @@ export const curriculum: CourseModule[] = [
         summary:
           'Move money exactly once, reconcile with banks, and compare the failure modes with ticketing.',
         minutes: 20,
+        difficulty: 2,
+        buildsOn: ['reliability/idempotency', 'async/delivery-semantics', 'foundations/transactions'],
         bestAfter: 'async',
       },
       {
@@ -345,6 +447,8 @@ export const curriculum: CourseModule[] = [
         title: 'Chat',
         summary: 'Keep connections alive, deliver messages in order, and sync devices that were offline.',
         minutes: 20,
+        difficulty: 2,
+        buildsOn: ['foundations/real-time', 'async/logs-and-pubsub'],
         bestAfter: 'async',
       },
       {
@@ -352,14 +456,18 @@ export const curriculum: CourseModule[] = [
         title: 'Notifications',
         summary:
           'Deliver through external providers with deadlines and preferences, and contrast it with chat.',
-        minutes: 20,
+        minutes: 22,
+        difficulty: 2,
+        buildsOn: ['reliability/queues-and-backpressure', 'reliability/retries', 'async/delivery-semantics'],
         bestAfter: 'async',
       },
       {
         id: 'case-studies/ride-sharing',
         title: 'Ride sharing',
         summary: 'Index fast-changing locations with one geospatial scheme and match riders to drivers.',
-        minutes: 25,
+        minutes: 40,
+        difficulty: 3,
+        buildsOn: ['scaling/sharding', 'foundations/indexes', 'foundations/real-time'],
         bestAfter: 'async',
       },
       {
@@ -367,14 +475,18 @@ export const curriculum: CourseModule[] = [
         title: 'Metrics and alerting',
         summary:
           'Ingest millions of writes per second, control label cardinality, downsample, and expire old data.',
-        minutes: 25,
+        minutes: 35,
+        difficulty: 3,
+        buildsOn: ['async/logs-and-pubsub', 'async/stream-processing', 'reliability/observability'],
         bestAfter: 'async',
       },
       {
         id: 'case-studies/collaborative-editor',
         title: 'Collaborative editor',
         summary: 'Merge concurrent edits so every copy of the document converges.',
-        minutes: 20,
+        minutes: 21,
+        difficulty: 3,
+        buildsOn: ['foundations/real-time', 'distributed-data/consistency-models'],
         bestAfter: 'distributed-data',
       },
     ],
@@ -392,27 +504,35 @@ export const curriculum: CourseModule[] = [
         summary:
           'Define the task, build an evaluation set, and set quality, latency, and cost budgets before choosing a model.',
         minutes: 20,
+        difficulty: 2,
+        buildsOn: ['thinking/requirements-and-estimates', 'thinking/slos'],
       },
       {
         id: 'ai-systems/gateway',
         title: 'The AI gateway',
         summary:
           'Route and cascade model calls, cache safely, enforce quotas, validate output, and fall back.',
-        minutes: 25,
+        minutes: 35,
+        difficulty: 2,
+        buildsOn: ['ai-systems/evaluation-and-budgets', 'scaling/load-balancing', 'scaling/caching'],
       },
       {
         id: 'ai-systems/retrieval',
         title: 'Retrieval',
         summary:
           'Ground answers in your documents with chunking, hybrid search, tenant scoping, and citations.',
-        minutes: 25,
+        minutes: 26,
+        difficulty: 2,
+        buildsOn: ['ai-systems/evaluation-and-budgets', 'ai-systems/gateway'],
       },
       {
         id: 'ai-systems/llm-serving',
         title: 'Serving models',
         summary:
           'See why prefill and decode behave differently, and how batching and KV cache memory set throughput.',
-        minutes: 25,
+        minutes: 35,
+        difficulty: 3,
+        buildsOn: ['ai-systems/gateway', 'scaling/load-balancing'],
       },
       {
         id: 'ai-systems/agents',
@@ -420,12 +540,16 @@ export const curriculum: CourseModule[] = [
         summary:
           'Let a model call tools with authorization, injection boundaries, budgets, and cancellation.',
         minutes: 25,
+        difficulty: 3,
+        buildsOn: ['ai-systems/gateway', 'ai-systems/retrieval'],
       },
       {
         id: 'ai-systems/recommendations',
         title: 'Recommendation systems',
         summary: 'Narrow millions of items to a handful with candidate generation, then ranking.',
-        minutes: 20,
+        minutes: 21,
+        difficulty: 2,
+        buildsOn: ['ai-systems/retrieval', 'ai-systems/evaluation-and-budgets'],
       },
       {
         id: 'ai-systems/support-assistant',
@@ -433,6 +557,8 @@ export const curriculum: CourseModule[] = [
         summary:
           'Design a multi-tenant assistant with citations, an abstention path, one approved action, and a fixed budget.',
         minutes: 25,
+        difficulty: 3,
+        buildsOn: ['ai-systems/retrieval', 'ai-systems/gateway', 'ai-systems/agents'],
       },
     ],
   },
@@ -442,22 +568,34 @@ export const curriculum: CourseModule[] = [
     title: 'Practice',
     summary: "Use the design checklist on your own, against a clock, and on someone else's design.",
     example: 'Any system',
+    sharedExample: false,
     lessons: [
       {
         id: 'practice/timed-round',
         title: 'Timed design round',
         summary: 'Design a system end to end with the checklist and a timer.',
-        minutes: 25,
+        minutes: 30,
+        difficulty: 2,
+        drillMinutes: 20,
+        buildsOn: ['thinking/design-checklist'],
       },
       {
         id: 'practice/design-review',
         title: 'Review a design',
         summary: 'Find the anti-patterns in a flawed design and explain how you would fix each one.',
         minutes: 20,
+        difficulty: 2,
+        buildsOn: ['thinking/design-checklist'],
       },
     ],
   },
 ];
+
+export const curriculum: CourseModule[] = modules.map((module) => ({
+  ...module,
+  lessons: module.lessons.map((lesson) => ({ ...lesson, advanced: lesson.difficulty === 3 })),
+}));
+
 export const allLessons: Lesson[] = curriculum.flatMap((module) => module.lessons);
 
 export function findLesson(id: string): Lesson | undefined {
@@ -482,6 +620,15 @@ export function lessonPosition(id: string): number | undefined {
 /** Anchor id used on the curriculum page for a module or lesson. */
 export function anchorFor(id: string): string {
   return id.replaceAll('/', '--');
+}
+
+/** The system a lesson's examples follow, or undefined when its module has no shared one. */
+export function runningExampleFor(id: string): string | undefined {
+  const lesson = findLesson(id);
+  const module = findModuleForLesson(id);
+  if (!lesson || !module) return undefined;
+  if (lesson.example) return lesson.example;
+  return module.sharedExample === false ? undefined : module.example;
 }
 
 function normalizeId(id: string): string {
