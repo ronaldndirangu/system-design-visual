@@ -274,7 +274,8 @@ The browser tests open every ready lesson, hydrate every widget, fail on console
 both light and dark color schemes. For a quick local subset, set `E2E_MODE=pr` and list the pages in `E2E_PAGES`, for
 example `E2E_PAGES=scaling/caching/`; `node scripts/e2e-scope.ts` prints the pages your branch changes. CI runs the
 full browser sweep, in three shards, on pull requests and `main` pushes that change code or config, and every night.
-Content-only pull requests run `pnpm verify` only.
+Content-only pull requests run `pnpm verify` only. The `CI result` job is the one required check: it passes when
+verify passes and every shard passes or skips, so `gh pr merge --auto --squash` merges as soon as CI is green.
 Also try the lesson with the keyboard only, in dark and light themes, at phone width, and with reduced motion turned
 on in your operating system.
 

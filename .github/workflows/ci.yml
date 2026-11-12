@@ -124,6 +124,23 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+  # The one required check for merging. It passes when verify passes and browser tests pass or skip, which lets
+  # auto-merge wait for the shards on code changes and merge content-only changes after verify.
+  result:
+    name: CI result
+    needs: [verify, playwright-version, e2e]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Needed jobs: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in success|skipped) ;; *) exit 1 ;; esac
+          done
+
   # Publishes the dist/ that verify built, so a commit that fails lint, type checks, unit tests, or the build never
   # deploys. On main, browser tests run alongside and report regressions without holding back content.
   deploy:
