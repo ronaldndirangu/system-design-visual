@@ -1,5 +1,5 @@
 ---
-import { anchorFor, curriculum, findModule } from '../../data/curriculum';
+import { anchorFor, curriculum, difficultyLabels, findModule } from '../../data/curriculum';
 import { lessonHref } from '../../lib/paths';
 
 interface Props {
@@ -45,7 +45,9 @@ const Heading = headingLevel === 2 ? 'h2' : 'h3';
                       Completed
                     </span>
                     {lesson.format === 'card' && <span class="sdv-badge sdv-badge--neutral">Quick card</span>}
-                    {lesson.advanced && <span class="sdv-badge sdv-badge--warn">Advanced</span>}
+                    <span class:list={['sdv-badge', lesson.advanced ? 'sdv-badge--warn' : 'sdv-badge--neutral']}>
+                      {difficultyLabels[lesson.difficulty]}
+                    </span>
                     {lesson.bestAfter && (
                       <span class="sdv-badge sdv-badge--neutral">
                         Best after module {findModule(lesson.bestAfter)?.number}

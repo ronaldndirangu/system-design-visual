@@ -207,29 +207,168 @@
 
 /* ---------- Lesson header and wrappers ---------- */
 
-.sdv-lesson-meta {
-  margin-bottom: 0.25rem;
+.sdv-lesson-head {
+  margin-bottom: var(--sdv-space-2);
 }
-.sdv-lesson-meta__module {
-  color: var(--sl-color-text-accent);
-  font-size: var(--sl-text-sm);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  margin: 0;
+.sdv-lesson-head h1 {
+  margin-top: var(--sdv-space-3);
+}
+.sdv-lesson-head__module {
+  align-items: center;
+  background: var(--sdv-accent-subtle);
+  border: 1px solid var(--sdv-accent-border);
+  border-radius: var(--sdv-radius-pill);
+  color: var(--sdv-accent-text);
+  display: inline-flex;
+  font-size: var(--sdv-text-2xs);
+  font-weight: var(--sdv-weight-heading);
+  letter-spacing: var(--sdv-tracking-overline);
+  line-height: var(--sdv-leading-ui);
+  min-height: 1.75rem;
+  padding: var(--sdv-space-1) var(--sdv-space-3);
+  text-decoration: none;
   text-transform: uppercase;
+  transition: border-color var(--sdv-duration-fast) var(--sdv-ease-out);
 }
-.sdv-lesson-meta__facts {
-  color: var(--sl-color-gray-3);
+.sdv-lesson-head__module:hover {
+  border-color: var(--sdv-accent-text);
+}
+.sdv-lesson-head__facts {
+  align-items: center;
+  color: var(--sdv-text-2);
   display: flex;
   flex-wrap: wrap;
-  font-size: var(--sl-text-sm);
-  gap: 0.25rem 1rem;
-  margin: 0.75rem 0 0;
+  font-size: var(--sdv-text-sm);
+  gap: var(--sdv-space-1) var(--sdv-space-5);
+  line-height: var(--sdv-leading-ui);
+  list-style: none;
+  margin: var(--sdv-space-3) 0 0;
+  padding: 0;
+}
+.sdv-lesson-head__position {
+  color: var(--sdv-text-1);
+  font-family: var(--sdv-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.sdv-lesson-head__position [aria-hidden="true"] {
+  color: var(--sdv-text-3);
+  margin-inline: 0.2em;
+}
+.sdv-lesson-head__level {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--sdv-space-2);
+}
+.sdv-lesson-head__dots {
+  display: inline-flex;
+  gap: 3px;
+}
+.sdv-lesson-head__dots > span {
+  border: 1.5px solid var(--sdv-border-control);
+  border-radius: var(--sdv-radius-pill);
+  height: 0.5rem;
+  width: 0.5rem;
+}
+.sdv-lesson-head__level[data-level="1"] .sdv-lesson-head__dots > span:nth-child(-n + 1),
+.sdv-lesson-head__level[data-level="2"] .sdv-lesson-head__dots > span:nth-child(-n + 2),
+.sdv-lesson-head__level[data-level="3"] .sdv-lesson-head__dots > span {
+  background: var(--sdv-accent);
+  border-color: var(--sdv-accent);
+}
+.sdv-lesson-head__builds {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sdv-space-2);
+  margin: var(--sdv-space-4) 0 0;
+}
+.sdv-lesson-head__label {
+  color: var(--sdv-text-2);
+  font-size: var(--sdv-text-2xs);
+  font-weight: var(--sdv-weight-heading);
+  letter-spacing: var(--sdv-tracking-overline);
+  margin-inline-end: var(--sdv-space-1);
+  text-transform: uppercase;
+}
+.sdv-lesson-head__chip,
+.sdv-lesson-head__jump {
+  align-items: center;
+  border: 1px solid var(--sdv-border-strong);
+  border-radius: var(--sdv-radius-pill);
+  color: var(--sdv-text-1);
+  display: inline-flex;
+  font-size: var(--sdv-text-sm);
+  font-weight: var(--sdv-weight-ui);
+  line-height: var(--sdv-leading-ui);
+  min-height: var(--sdv-target);
+  padding: 0 var(--sdv-space-4);
+  text-decoration: none;
+  transition:
+    border-color var(--sdv-duration-fast) var(--sdv-ease-out),
+    color var(--sdv-duration-fast) var(--sdv-ease-out);
+}
+.sdv-lesson-head__chip {
+  background: var(--sdv-surface-1);
+}
+.sdv-lesson-head__jump {
+  background: var(--sdv-accent-subtle);
+  border-color: var(--sdv-accent-border);
+  color: var(--sdv-accent-text);
+  gap: var(--sdv-space-2);
+  margin-top: var(--sdv-space-4);
+}
+.sdv-lesson-head__chip:hover,
+.sdv-lesson-head__jump:hover {
+  border-color: var(--sdv-accent-text);
+  color: var(--sdv-accent-text);
+}
+.sdv-lesson-head__jump svg {
+  fill: none;
+  flex: none;
+  height: 1rem;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  width: 1rem;
+}
+.sdv-lesson-head__progress {
+  display: none;
+}
+@supports (animation-timeline: scroll()) {
+  .sdv-lesson-head__progress {
+    animation: sdv-reading-progress linear both;
+    animation-timeline: scroll(root block);
+    background: var(--sdv-accent);
+    display: block;
+    height: 2px;
+    inset-inline: 0;
+    pointer-events: none;
+    position: fixed;
+    top: var(--sl-nav-height);
+    transform-origin: 0 50%;
+    z-index: var(--sdv-z-sticky);
+  }
+}
+@keyframes sdv-reading-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@media (prefers-reduced-motion: reduce), print {
+  .sdv-lesson-head__progress {
+    display: none;
+  }
+}
+main section.sdv-sim[id] {
+  scroll-margin-top: calc(var(--sl-nav-height, 4rem) + var(--sdv-space-4));
 }
 
-.sdv-objectives,
-.sdv-analogy,
-.sdv-challenge,
+.sdv-callout,
+.sdv-reading,
 .sdv-predict,
 .sdv-quiz,
 .sdv-complete,
@@ -239,56 +378,126 @@
   margin-block: 1.75rem;
 }
 
-.sdv-objectives {
-  background: color-mix(in oklab, var(--sl-color-text-accent) 8%, transparent);
-  border: 1px solid color-mix(in oklab, var(--sl-color-text-accent) 35%, transparent);
-  border-radius: var(--sdv-radius);
-  padding: 1rem 1.25rem;
-}
-.sdv-objectives__title,
-.sdv-analogy__title,
-.sdv-challenge__title {
-  align-items: center;
-  color: var(--sl-color-white);
-  display: flex;
-  font-size: var(--sl-text-base);
-  font-weight: 700;
-  gap: 0.5rem;
-  margin: 0 0 0.5rem;
-}
-.sdv-objectives__list > :first-child,
-.sdv-analogy > :nth-child(2),
-.sdv-challenge > :nth-child(2) {
-  margin-top: 0;
-}
-.sdv-objectives__list ul {
-  margin: 0;
-}
-
-.sdv-analogy {
+.sdv-callout {
+  --sdv-callout-tone: var(--sdv-text-2);
   background: var(--sdv-surface-2);
-  border-inline-start: 4px solid var(--sdv-border-control);
-  border-radius: 0 var(--sdv-radius) var(--sdv-radius) 0;
-  padding: 0.9rem 1.2rem;
+  border-radius: var(--sdv-radius-md);
+  color: var(--sdv-text-1);
+  padding: var(--sdv-space-4) var(--sdv-space-5);
 }
-.sdv-objectives__title svg,
-.sdv-analogy__title svg,
-.sdv-challenge__title svg {
-  flex: none;
-  height: 1.2rem;
-  width: 1.2rem;
+.sdv-callout--objectives,
+.sdv-callout--predict,
+.sdv-callout--challenge,
+.sdv-callout--takeaways {
+  --sdv-callout-tone: var(--sdv-accent-text);
 }
-.sdv-analogy__title svg {
-  color: var(--sdv-text-2);
+.sdv-callout--warning {
+  --sdv-callout-tone: var(--sdv-warn);
+  background: var(--sdv-warn-soft);
+}
+.sdv-callout__title {
+  align-items: center;
+  color: var(--sdv-callout-tone);
+  display: flex;
+  font-size: var(--sdv-text-2xs);
+  font-weight: var(--sdv-weight-heading);
+  gap: var(--sdv-space-2);
+  letter-spacing: var(--sdv-tracking-overline);
+  line-height: var(--sdv-leading-ui);
+  margin: 0;
+  text-transform: uppercase;
+}
+.sdv-callout__icon {
   fill: none;
+  flex: none;
+  height: 1.125rem;
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2;
+  width: 1.125rem;
 }
-.sdv-challenge__title svg {
-  color: var(--sl-color-text-accent);
-  fill: currentColor;
+.sdv-callout .sdv-callout__body {
+  margin-top: var(--sdv-space-2);
+}
+.sdv-callout__body > :first-child {
+  margin-top: 0;
+}
+.sdv-callout__body > :last-child {
+  margin-bottom: 0;
+}
+.sdv-callout__body li::marker {
+  color: var(--sdv-callout-tone);
+}
+
+.sdv-recall .sdv-quiz {
+  background: transparent;
+  border: 0;
+  margin-block: var(--sdv-space-3) 0;
+  padding: 0;
+}
+.sdv-recall__skip {
+  align-items: center;
+  display: inline-flex;
+  font-size: var(--sdv-text-sm);
+  min-height: var(--sdv-target);
+}
+.sdv-recall__end {
+  display: block;
+  scroll-margin-top: calc(var(--sl-nav-height, 4rem) + var(--sdv-space-4));
+}
+.sdv-recall__end:focus {
+  outline: none;
+}
+
+.sdv-challenge__details {
+  margin-top: var(--sdv-space-3);
+}
+.sdv-challenge__details summary {
+  color: var(--sdv-accent-text);
+  cursor: pointer;
+  font-weight: var(--sdv-weight-ui);
+  min-height: var(--sdv-target);
+  padding-block: var(--sdv-space-2);
+}
+.sdv-challenge__answer {
+  border-top: 1px solid var(--sdv-border-strong);
+  padding-top: var(--sdv-space-3);
+}
+.sdv-challenge__answer > :first-child {
+  margin-top: 0;
+}
+
+.sdv-reading {
+  border-top: 1px solid var(--sdv-border-subtle);
+  padding-top: var(--sdv-space-6);
+}
+.sdv-reading__title {
+  color: var(--sdv-text-1);
+  font-size: var(--sdv-text-lg);
+  font-weight: var(--sdv-weight-heading);
+  letter-spacing: var(--sdv-tracking-heading);
+  line-height: var(--sdv-leading-heading);
+  margin: 0 0 var(--sdv-space-3);
+}
+.sdv-reading__list {
+  display: grid;
+  gap: var(--sdv-space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-reading__list a {
+  color: var(--sdv-accent-text);
+  font-weight: var(--sdv-weight-ui);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.sdv-reading__note {
+  color: var(--sdv-text-3);
+  display: block;
+  font-size: var(--sdv-text-sm);
+  line-height: var(--sdv-leading-ui);
 }
 
 .sdv-tradeoffs {
@@ -301,26 +510,6 @@
 }
 .sdv-tradeoffs table {
   width: 100%;
-}
-
-.sdv-challenge {
-  background: var(--sdv-surface);
-  border: 1px dashed var(--sl-color-text-accent);
-  border-radius: var(--sdv-radius);
-  padding: 1rem 1.25rem;
-}
-.sdv-challenge details {
-  margin-top: 1rem;
-}
-.sdv-challenge summary {
-  color: var(--sl-color-text-accent);
-  cursor: pointer;
-  font-weight: 600;
-}
-.sdv-challenge__answer {
-  border-top: 1px solid var(--sdv-border);
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
 }
 
 /* ---------- Predict and quiz ---------- */
@@ -343,6 +532,17 @@
   letter-spacing: 0.08em;
   margin: 0 0 0.35rem;
   text-transform: uppercase;
+}
+.sdv-predict__figure {
+  margin-block: var(--sdv-space-3);
+  max-width: 100%;
+  overflow-x: auto;
+}
+.sdv-predict__why {
+  color: var(--sdv-text-2);
+  font-size: var(--sdv-text-sm);
+  line-height: var(--sdv-leading-ui);
+  margin: var(--sdv-space-2) 0 0;
 }
 .sdv-predict fieldset,
 .sdv-quiz fieldset {
@@ -908,11 +1108,21 @@ button[data-tone="bad"] {
   margin: 0;
   position: relative;
 }
-.sdv-segmented input {
-  height: 1px;
+/* Hidden inputs cover their whole label so every pointer hit lands on them at any sub-pixel offset. */
+.sdv-segmented input,
+.sdv-toggle input {
+  cursor: pointer;
+  height: 100%;
+  inset: 0;
+  margin: 0;
   opacity: 0;
   position: absolute;
-  width: 1px;
+  width: 100%;
+  z-index: 1;
+}
+.sdv-segmented input:disabled,
+.sdv-toggle input:disabled {
+  cursor: default;
 }
 .sdv-segmented span {
   border: 1px solid transparent;
@@ -925,7 +1135,7 @@ button[data-tone="bad"] {
   padding: 0.35rem 0.6rem;
   text-align: center;
 }
-.sdv-segmented span:hover {
+.sdv-segmented label:hover span {
   color: var(--sl-color-white);
 }
 .sdv-segmented input:checked + span {
@@ -944,12 +1154,6 @@ button[data-tone="bad"] {
   font-weight: 600;
   gap: 0.6rem;
   position: relative;
-}
-.sdv-toggle input {
-  height: 1px;
-  opacity: 0;
-  position: absolute;
-  width: 1px;
 }
 .sdv-toggle__track {
   background: var(--sl-color-gray-5);
@@ -1718,11 +1922,19 @@ a.sdv-map__link:hover {
   margin: 0;
   position: relative;
 }
+/* The invisible radio covers the whole chip so every pointer hit lands on it at any sub-pixel offset. */
 .sdv-chips__chip input {
-  height: 1px;
+  cursor: pointer;
+  height: 100%;
+  inset: 0;
+  margin: 0;
   opacity: 0;
   position: absolute;
-  width: 1px;
+  width: 100%;
+  z-index: 1;
+}
+.sdv-chips:disabled .sdv-chips__chip input {
+  cursor: default;
 }
 .sdv-chips__body {
   background: var(--sdv-surface-raised);

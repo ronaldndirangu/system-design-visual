@@ -29,13 +29,28 @@ End to end tests serve the build on port 4321. Set `E2E_PORT` to use another por
 
 ### 1. Register it in the curriculum
 
-Open `src/data/curriculum.ts`, find the module, and add the lesson with an estimate in `minutes`. The lesson `id` is
-also its URL and file path, for example `reliability/timeouts`.
+Open `src/data/curriculum.ts`, find the module, and add the lesson. The lesson `id` is also its URL and file path, for
+example `reliability/timeouts`.
 
-The sidebar, the course map, pagination, and progress tracking all read from this file. Unit tests fail if a lesson has
-no page, if a page in a module folder is missing from the curriculum, or if any source file says "coming soon".
+The sidebar, the course map, pagination, the lesson header, and progress tracking all read from this file. Unit tests
+fail if a lesson has no page, if a page in a module folder is missing from the curriculum, or if any source file says
+"coming soon".
 
-Two optional fields shape how the course map presents a lesson:
+Every lesson declares:
+
+- `minutes`: the time the header shows. A unit test keeps it within 25% of the time computed from the page (see
+  [Lesson template](#lesson-template)), so run `pnpm lint:lessons` and copy the computed value when unsure.
+- `difficulty`: `1` (Foundational), `2` (Intermediate) or `3` (Advanced). The header shows it as three dots plus the
+  word, and the course map marks level 3 lessons as advanced.
+
+Optional fields:
+
+- `buildsOn: ['<lesson id>', ...]` lists earlier lessons this one assumes. The header links them as "Builds on" chips,
+  `<Recall />` quizzes them, and a unit test checks that each one exists and comes earlier in the course.
+- `example: '<system>'` names the running example when it differs from the module's, for example `'Chat'`.
+- `drillMinutes` adds fixed time for a timed drill the page asks for, so the computed minutes stay honest.
+
+Two more optional fields shape how the course map presents a lesson:
 
 - `format: 'card'` marks a quick card: a short reference page of ten minutes or less. A unit test enforces the limit.
 - `bestAfter: '<module id>'` names an earlier module the lesson builds on, for example `bestAfter: 'reliability'` on a
@@ -49,15 +64,32 @@ Add `src/content/docs/<id>.mdx`, for example `src/content/docs/reliability/timeo
 ---
 title: Timeouts
 description: One sentence that says what the learner will be able to do.
+furtherReading:
+  - title: A primary source, such as a paper or official documentation
+    url: https://example.com/source
+    note: One line on what the learner gets from it.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
+
+export const recall = [
+  {
+    id: 'reliability/timeouts/recall-1',
+    prompt: 'A question on a lesson listed in buildsOn?',
+    options: [
+      { text: 'The right answer', correct: true, why: 'Why it is right.' },
+      { text: 'A tempting wrong answer', why: 'Why it is wrong.' },
+    ],
+  },
+];
 
 export const quiz = [
   {
@@ -69,6 +101,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 
@@ -84,26 +118,85 @@ export const quiz = [
   question="What happens next?"
   options={['A', 'B', 'C']}
   answer={1}
+  why={['Why A is wrong.', 'Why B is right.', 'Why C is wrong.']}
 >
+
+<div slot="figure">
+
+![A static picture of the failure, so the learner predicts from evidence.](./timeouts-failure.svg)
+
+</div>
 
 The reveal, shown after the learner locks in a guess.
 
 </Predict>
 
+<KeyTakeaways>
+
+- One sentence per idea the learner should keep.
+
+</KeyTakeaways>
+
 <Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+A small design problem in a new setting.
+
+<div slot="answer">
+
+One possible answer, with the trade-off it accepts.
+
+</div>
+
+</Challenge>
 ```
 
-Follow the lesson rhythm, in this order:
+#### Lesson template
 
-1. **Objectives** (`<Objectives>`): three or four outcomes.
-2. **Failure hook**: a short story of the system breaking.
-3. **Predict** (`<Predict client:visible>`): the learner commits to a guess before the reveal.
-4. **Step-by-step diagram** (`<StepDiagram client:visible>`) or a static `<ArcDiagram stage="...">`, plus an
-   `<Analogy>`.
-5. **Simulation**: a widget from `src/components/widgets/`, hydrated with `client:visible`.
-6. **Trade-offs** (`<TradeoffTable title="...">` wrapping a Markdown table).
-7. **Quiz** (`<Quiz client:visible>`): every option needs a `why`, including the right one.
-8. **Challenge** (`<Challenge>` with a `<div slot="answer">`): a small design problem in a new setting.
+The lesson header comes from the curriculum: module chip, position ("12 / 56"), level, minutes, the running example,
+"Builds on" chips, and a "Jump to simulation" link when the page has a simulation. The footer adds Mark complete, the
+next lesson, and the `furtherReading` sources from the frontmatter. Between them, a lesson follows this order:
+
+1. **Recall** (`<Recall />`): one or two questions on the `buildsOn` lessons, passed as `questions`. Learners can skip
+   it. Lessons with no `buildsOn` show nothing here.
+2. **Objectives** (`<Objectives>`): three or four "you will be able to" outcomes.
+3. **The failure**: a concrete story of the system breaking, then `<Predict client:visible>` so the learner commits to
+   a guess before the reveal. Put a static picture of the failure in the `figure` slot and one line per option in
+   `why`.
+4. **Mental model**: one `<StepDiagram client:visible>` (or a static `<ArcDiagram stage="...">`) plus an `<Analogy>`
+   that says where the analogy breaks.
+5. **Guided experiment**: a widget from `src/components/widgets/`, hydrated with `client:visible`, with baseline,
+   intervention and counterexample presets.
+6. **Deep dives**: two to four h3 sections. Put advanced material in a "Go deeper" `<details>` block, which the
+   minutes and word counts skip.
+7. **Trade-offs** (`<TradeoffTable title="...">` wrapping a Markdown table) and when not to use the idea.
+8. **Common mistakes**: three to five bullets.
+9. **Key takeaways** (`<KeyTakeaways>`): three to five bullets.
+10. **Check yourself** (`<Quiz client:visible>`): four questions covering an explanation, a calculation, a
+    misconception and a transfer to a new setting. Every option needs a `why`, including the right one.
+11. **Design challenge** (`<Challenge>` with a `<div slot="answer">`): a small design problem in a new setting.
+
+For other asides, use `<Callout variant="note">` or `<Callout variant="warning">` from
+`src/components/lesson/Callout.astro`. Each variant brings its own icon and overline; pass `title` to change the
+overline. Objectives, Analogy, KeyTakeaways and Challenge are Callout variants too, so all asides share one look.
+
+Computed minutes count 200 words per minute in the core path, plus 3 minutes per simulation, 1 per Predict, quiz
+or recall question, and any `drillMinutes`. The declared `minutes` must land within 25% of that value.
+
+`pnpm lint:lessons` checks every page against the template and prints each finding:
+
+| Rule       | Lesson                                                                                      | Quick card                     | Case study                                              |
+| ---------- | ------------------------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------- |
+| Components | Recall (with `buildsOn`), Objectives, Predict, KeyTakeaways, Quiz, Challenge, in that order | Objectives, KeyTakeaways, Quiz | Recall (with `buildsOn`), KeyTakeaways, Quiz, Challenge |
+| h2 count   | 5 to 8                                                                                      | any                            | 8 to 14                                                 |
+| Core sims  | at most 2                                                                                   | at most 1                      | at most 4                                               |
+| Core words | 1,200 to 2,500                                                                              | 500 to 900                     | 2,000 to 6,000                                          |
+| Links      | 3 or more to other lessons, one to a `buildsOn` lesson                                      | 1 or more                      | 3 or more                                               |
+
+Every page also needs unique, well-formed question ids and declared minutes that match the computed value. Lessons
+written before the template are listed in `scripts/lesson-lint-legacy.json` and report warnings; every other lesson
+fails `pnpm lint` on any finding. When a legacy lesson passes, the full report tells you to remove it from that list.
 
 Every quiz question and every `<Predict>` needs an `id` of the form `<lesson id>/qN` or `<lesson id>/predict-N`.
 Saved progress keys on it, so never change an `id` once published, even when you reorder or reword questions. A unit
