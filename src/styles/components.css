@@ -1152,7 +1152,7 @@ button[data-tone="bad"] {
 }
 /* A row of options wider than one cell takes the whole row, so it stays radios while the widget has room. */
 .sdv-sim__controls
-> .sdv-segmented[data-fit]:not([data-fit="8"], [data-fit="10"], [data-fit="12"], [data-fit="14"]) {
+  > .sdv-segmented[data-fit]:not([data-fit="8"], [data-fit="10"], [data-fit="12"], [data-fit="14"]) {
   grid-column: 1 / -1;
 }
 
