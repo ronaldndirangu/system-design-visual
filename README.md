@@ -8,8 +8,8 @@ what happens, then lets you play with an honest simulation until the fix makes s
 ## What is inside
 
 - **A full course of 52 lessons in nine modules**: thinking in systems, foundations, scaling, reliability, async and
-  event driven systems, distributed data, ten case studies, AI systems, and interview practice. Each case study names
-  the module it builds on.
+  event driven systems, distributed data, twelve case studies, AI systems, and interview practice. Each case study
+  names the module it builds on.
 - **One running example for the scaling arc**: a URL shortener grows from a single server to 100 million users, gaining
   one component per lesson (load balancers, caches, read replicas, shards). Later modules switch to examples that fit
   the workload: chat for ordering, news feed for fan out, payments for idempotency and sagas.
