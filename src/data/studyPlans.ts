@@ -27,10 +27,7 @@ export const studyPlans: StudyPlan[] = [
         label: 'Day 1: size the problem',
         lessons: ['thinking/requirements-and-estimates', 'thinking/design-checklist', 'thinking/slos'],
       },
-      {
-        label: 'Day 2: the request path and the data',
-        lessons: ['foundations/what-happens-when-you-click', 'foundations/apis', 'foundations/data-modeling'],
-      },
+      { label: 'Day 2: the API and the data', lessons: ['foundations/apis', 'foundations/data-modeling'] },
       { label: 'Day 3: spread the load', lessons: ['scaling/load-balancing', 'scaling/caching'] },
       { label: 'Day 4: scale the database', lessons: ['scaling/read-replicas', 'scaling/sharding'] },
       {
@@ -58,7 +55,6 @@ export const studyPlans: StudyPlan[] = [
           'thinking/requirements-and-estimates',
           'thinking/design-checklist',
           'thinking/access-patterns',
-          'foundations/what-happens-when-you-click',
           'foundations/data-modeling',
           'scaling/load-balancing',
           'scaling/caching',
@@ -87,8 +83,8 @@ export const studyPlans: StudyPlan[] = [
       'You prefer a steady habit. One short sitting a day takes you through the core path, one case study, and a practice round.',
     sessionMinutes: 30,
     sessions: [
-      { label: 'Day 1', lessons: ['thinking/requirements-and-estimates', 'thinking/design-checklist'] },
-      { label: 'Day 2', lessons: ['foundations/what-happens-when-you-click'] },
+      { label: 'Day 1', lessons: ['thinking/requirements-and-estimates'] },
+      { label: 'Day 2', lessons: ['thinking/design-checklist', 'foundations/what-happens-when-you-click'] },
       { label: 'Day 3', lessons: ['foundations/apis'] },
       { label: 'Day 4', lessons: ['foundations/data-modeling'] },
       { label: 'Day 5', lessons: ['scaling/load-balancing'] },

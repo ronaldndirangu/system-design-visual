@@ -1,11 +1,20 @@
 ---
 title: Access patterns and hot keys
 description: Find out who reads what and how often, then watch one viral link overload a single cache node while the rest sit idle.
+furtherReading:
+  - title: Best practices for designing and using partition keys effectively in DynamoDB (AWS)
+    url: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-partition-key-design.html
+    note: Why a design should spread activity evenly across keys, and the per-partition limits a hot key runs into.
+  - title: Scaling Memcache at Facebook (NSDI 2013)
+    url: https://www.usenix.org/conference/nsdi13/technical-sessions/presentation/nishtala
+    note: How a hash-partitioned cache tier serving billions of reads a second copes with skewed, read-heavy traffic.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
@@ -30,27 +39,48 @@ export const edges = [
 export const steps = [
   {
     title: 'Count who reads what',
-    text: 'Log every click for one second and group the clicks by short code. Most links get a click now and then. A few get far more. That uneven spread is the access pattern.',
+    text: 'Log every click for one second and group the clicks by short code. A few links get far more clicks than the rest. That uneven spread is part of the access pattern.',
     nodes: ['client', 'server'],
     flows: ['client>server'],
   },
   {
     title: 'Each code has one home',
-    text: 'The app server hashes the short code to pick a cache node, so abc123 always lands on Cache 2. With thousands of codes and no favorite, the hash spreads clicks evenly.',
+    text: 'The app server hashes the short code into a number that picks a cache node, so abc123 always lands on Cache 2. Thousands of codes with no favorite spread evenly.',
     nodes: ['server', 'c1', 'c2', 'c3', 'c4'],
     flows: ['server>c1', 'server>c2', 'server>c3', 'server>c4'],
   },
   {
     title: 'One code goes viral',
-    text: 'abc123 now draws about 240 of 400 clicks a second. Hashing sends all 240 to Cache 2, which serves 150. The other three nodes stay quiet.',
+    text: 'abc123 now draws about 240 of 400 clicks a second. Hashing sends all 240 to Cache 2, which serves 150. The other nodes stay quiet.',
     nodes: ['client', 'server', 'c2'],
     flows: ['client>server', 'server>c2'],
   },
   {
-    title: 'Copy the hot key',
-    text: 'The server notices abc123 passing 50 clicks a second and copies it to every node. Its clicks now take turns across all four, about 60 each.',
-    nodes: ['server', 'c1', 'c2', 'c3', 'c4'],
-    flows: ['server>c1', 'server>c2', 'server>c3', 'server>c4'],
+    title: 'Look node by node',
+    text: 'The tier has room for 600 clicks a second and gets 400. Cache 2 receives about 280 (abc123 plus its share of the rest) against its 150, and each other node gets about 40. Only per-node load shows it.',
+    nodes: ['c1', 'c2', 'c3', 'c4'],
+    flows: ['server>c2'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'thinking/access-patterns/recall-1',
+    prompt: 'The shortener gets 1 million new links a day, each clicked about 100 times. About how many reads a second is that?',
+    options: [
+      { text: 'About 12', why: 'That is the write rate, 1,000,000 ÷ 86,400. Each link is then read about 100 times.' },
+      { text: 'About 1,200', correct: true, why: 'About 12 writes a second times 100 clicks per link gives about 1,200 reads a second.' },
+      { text: 'About 120,000', why: 'That multiplies by 100 twice. 12 writes a second × 100 ≈ 1,200.' },
+    ],
+  },
+  {
+    id: 'thinking/access-patterns/recall-2',
+    prompt: 'The estimate counts servers as peak ÷ (one server’s capacity × 0.7). What is the 0.7 for?',
+    options: [
+      { text: 'It keeps each server at most 70% busy, so a spike or one lost server does not tip the rest over', correct: true, why: 'Headroom absorbs bursts. This lesson shows a tier under 70% busy where one node still overflows.' },
+      { text: 'Servers only reach 70% of their rated speed', why: 'Measured capacity already reflects real speed. The 0.7 is headroom on top.' },
+      { text: 'It reserves 30% of each server for writes', why: 'The peak already counts writes. The 0.7 is spare room for spikes and failures.' },
+    ],
   },
 ];
 
@@ -59,60 +89,74 @@ export const quiz = [
     id: 'thinking/access-patterns/q1',
     prompt: 'A shortener handles 4,000 reads and 40 writes a second. What should that ratio steer you toward first?',
     options: [
-      { text: 'Serve reads from a cache or replicas', correct: true, why: 'Reads outnumber writes 100 to 1, so making reads cheap pays off the most. Caches and read replicas both multiply read capacity.' },
-      { text: 'Shard the database to spread writes', why: '40 writes a second fit on one modest database. Sharding for writes solves a problem this ratio says you do not have yet.' },
-      { text: 'Pick a database built for heavy writes', why: 'Writes are 1% of the traffic. A write-optimized store would speed up the smallest part of the load.' },
-      { text: 'Nothing; only the total matters', why: 'The same 4,040 requests a second need very different designs when they are mostly writes. The mix decides where the load lands.' },
+      { text: 'Serve reads from a cache or replicas', correct: true, why: 'Reads outnumber writes 100 to 1, so making reads cheap pays off the most.' },
+      { text: 'Shard the database to spread writes', why: '40 writes a second fit on one modest database.' },
+      { text: 'Pick a database built for heavy writes', why: 'Writes are 1% of the traffic, the smallest part of the load.' },
+      { text: 'Nothing; only the total matters', why: 'The same 4,040 requests a second need a different design when they are mostly writes.' },
     ],
   },
   {
     id: 'thinking/access-patterns/q2',
     prompt: 'Four cache nodes serve 150 req/s each, 600 in total. Traffic is 400 req/s and one key gets 60% of it. What breaks first?',
     options: [
-      { text: 'The node that holds the hot key', correct: true, why: 'Hashing sends every read of a key to one node. That node gets 240 req/s for the hot key alone, well past its 150.' },
-      { text: 'Nothing, since 400 is less than 600', why: 'Total capacity only helps when the load spreads. Here 60% of it lands on a single node.' },
-      { text: 'All four nodes slow down equally', why: 'That happens when load rises evenly. With a hot key, three nodes stay mostly idle while one overflows.' },
-      { text: 'The database behind the cache', why: 'The hot key is cached, so the database sees almost none of its reads. The cache node in front of it is what fills up.' },
+      { text: 'The node that holds the hot key', correct: true, why: 'Hashing sends every read of a key to one node: 240 req/s for the hot key alone, against its 150.' },
+      { text: 'Nothing, since 400 is less than 600', why: 'Total capacity helps only when load spreads. Here 60% lands on one node.' },
+      { text: 'All four nodes slow down equally', why: 'That happens when load rises evenly. Here three nodes stay mostly idle.' },
+      { text: 'The database behind the cache', why: 'The hot key is cached, so its cache node fills up first.' },
     ],
   },
   {
     id: 'thinking/access-patterns/q3',
-    prompt: 'Which change relieves a hot read key on a hash-partitioned cache?',
+    prompt: 'abc123 overloads one of four cache nodes. A teammate doubles the tier to eight nodes. Why does that node barely improve?',
     options: [
-      { text: 'Add more cache nodes', why: 'The hot key still hashes to exactly one node. More nodes take cold keys away from it, yet its own reads stay put.' },
-      { text: 'Copy the key to several nodes and spread its reads', correct: true, why: 'Copies split one key\'s reads across many nodes, so no single node carries them all.' },
-      { text: 'Give the key a longer TTL', why: 'TTL decides how fresh the copy stays. Every read still goes to the same node.' },
-      { text: 'Switch to a different hash function', why: 'A new hash moves the key to some other single node. The overload moves with it.' },
+      { text: 'It does improve: each node now gets half the load', why: 'Halving holds for cold keys. One key’s 240 clicks a second stay on one node.' },
+      { text: 'New nodes start empty and need time to warm up', why: 'Warm-up takes seconds, and the hot node stays near 270 a second to the end.' },
+      { text: 'abc123 still hashes to one node, and its 240 clicks a second alone exceed 150', correct: true, why: 'More nodes take cold links away. The hot key’s own load stays on its home.' },
+      { text: 'Eight nodes cost more to coordinate than four', why: 'Hash routing needs no coordination between nodes.' },
     ],
   },
   {
     id: 'thinking/access-patterns/q4',
-    prompt: 'You copy hot links to every cache node. What new cost do you take on?',
+    prompt: 'The cache tier runs at 60% of its total capacity, yet users see errors. Which measurement finds the cause fastest?',
     options: [
-      { text: 'Deleting a link must reach every copy', correct: true, why: 'A scam link removed from one node can still redirect from the other copies. Invalidation now fans out to every node holding a copy.' },
-      { text: 'Reads of the hot link get slower', why: 'Each read still hits one node in memory. Reads get faster, because no node is queueing.' },
-      { text: 'Cold links can no longer be cached', why: 'Cold links keep their single home. Copies only use a little extra memory for the few hot keys.' },
-      { text: 'Hash routing stops working for other keys', why: 'Only reads of the copied keys change route. Every other key still goes to its home node.' },
+      { text: 'Average latency across all requests', why: 'An average blends the overloaded node with idle ones.' },
+      { text: 'The read to write ratio for the last day', why: 'The ratio looks the same with or without a viral link.' },
+      { text: 'Total requests per second, sampled more often', why: 'A sharper total is still a total, and 400 of 600 looks safe.' },
+      { text: 'Load per node, then the top keys on the busiest node', correct: true, why: 'Per-node load finds the node, and its top keys name the hot key.' },
+    ],
+  },
+  {
+    id: 'thinking/access-patterns/q5',
+    prompt: 'A ticket site keeps each concert’s seat map on one database shard, picked by hashing the concert id. A stadium tour opens sales at 10:00. What do you expect?',
+    options: [
+      { text: 'Load spreads across all shards, since many fans buy at once', why: 'All those fans want the same concert id, so they all reach one shard.' },
+      { text: 'That concert’s shard overloads while the others stay quiet', correct: true, why: 'Hashing gives each concert one home, the way every abc123 click hit one node.' },
+      { text: 'Nothing, if total shard capacity exceeds total traffic', why: 'Total capacity helps only when load spreads.' },
     ],
   },
 ];
 
+<Recall questions={recall} />
+
 <Objectives>
 
-- Describe an access pattern: who reads what, how often, and the read to write ratio.
+- Describe an access pattern: the operations, the read to write ratio, and how skewed the keys are.
 - Explain skew, and why a few keys can draw most of the traffic.
 - Predict what a hot key does to one cache node or shard, even when total capacity looks fine.
-- Choose a fix for hot reads and hot writes, and name what each costs.
+- Spot a hot key from load per node and reads per key, before you reach for a fix.
 
 </Objectives>
 
 ## The failure: plenty of capacity, one node on fire
 
-The shortener's cache tier has four nodes, and each serves 150 redirects a second. On a normal evening clicks arrive at
-40 a second, spread over a thousand links. Then a celebrity posts `sho.rt/abc123`. Clicks jump to 400 a second, and 60%
-of them want that one link.
+The shortener keeps its links in a **cache** (a small, fast copy of popular data held in memory; see
+[Caching](../../scaling/caching/)). The cache tier has four nodes, and each serves 150 redirects a second. Each link
+lives on one node, picked by **hashing** its short code (turning the code into a number that always points at the same
+node; see [Sharding](../../scaling/sharding/)).
 
-On paper the tier has 600 requests a second of room. In practice, people start getting errors.
+On a normal evening clicks arrive at 40 a second, spread over a thousand links. Then a celebrity posts
+`sho.rt/abc123`. Clicks jump to 400 a second, and 60% of them want that one link. On paper the tier has room for 600 a
+second. In practice, people start getting errors.
 
 <Predict
   client:visible
@@ -127,10 +171,9 @@ On paper the tier has 600 requests a second of room. In practice, people start g
   answer={2}
 >
 
-**One node overflows.** The cache hashes each short code to one node, so all 240 clicks a second for abc123 land on the
-same node, plus that node's share of every other link. In the toy run below it receives about 294 a second, nearly
-twice what it serves. The other three get about 40 to 46. The tier as a whole runs under 70% busy, yet one node turns
-away 2,049 of 6,952 clicks.
+**One node overflows.** All 240 clicks a second for abc123 land on its one node, plus that node's share of every other
+link. In the toy run below it receives about 294 a second, nearly twice what it serves, while the other three get about
+40 to 44. The tier runs under 70% busy, yet one node turns away 2,049 of 6,952 clicks.
 
 </Predict>
 
@@ -138,34 +181,35 @@ away 2,049 of 6,952 clicks.
 
 An **access pattern** describes how a system gets used. Before picking a design, answer four questions:
 
-- **What operations happen?** For the shortener: create a link (a write) and follow a link (a read).
-- **What is the read to write ratio?** Each link is created once and clicked many times, about 100 reads per write. In
-  [Requirements and estimates](../requirements-and-estimates/) that ratio turned 12 writes a second into 1,200 reads.
-- **How skewed is it?** Popularity follows a long tail. A handful of links draw most clicks, and most links are rarely
-  touched. The [caching lesson](../../scaling/caching/) uses this skew to answer 70% of clicks from 10% of links.
-- **How does it change over time?** Evenings, launches, and viral posts shift both the rate and the skew, sometimes in
-  seconds.
+- **What operations happen?** Create a link (a write) and follow a link (a read).
+- **What is the read to write ratio?** About 100 reads per write. In
+  [Requirements and estimates](../requirements-and-estimates/) that turned 12 writes a second into 1,200 reads.
+- **How skewed is it?** A handful of links draw most clicks. The caching lesson uses this skew to reach a 70% **hit
+  rate** (the share of reads the cache answers without the database) while holding 10% of links.
+- **How does it change over time?** Launches and viral posts shift the rate and the skew within seconds.
 
-Skew helps a cache and hurts a partition. A key that draws a large share of traffic is a **hot key**. Hashing gives each
-key one home, which spreads many keys evenly. A single key cannot be split by hashing, so its home node carries all of
-it. The same thing happens to a database shard: [sharding](../../scaling/sharding/) spreads many keys and leaves one viral
-link on one shard.
+Skew helps a cache and hurts a partition. A key that draws a large share of traffic is a **hot key**. Hashing spreads
+many keys evenly, yet each key has one home, so one hot key's node carries all of it. A database **shard** (one slice of
+the data on its own machine) has the same problem.
 
 <StepDiagram client:visible title="One hot key, one cache node" nodes={nodes} edges={edges} steps={steps} height={355} />
 
 <Analogy>
 
-A library shelves each book in exactly one spot, so anyone can find it. That works until one book becomes a bestseller
-and a line forms in one aisle while the rest of the library stays empty. More shelves do not shorten that line. The
-library buys extra copies of the bestseller and puts one on every floor.
+A library shelves each book in exactly one spot. That works until one book becomes a bestseller: a line forms in one
+aisle while the rest of the library stays empty. The counter at the door says the library is half full. Only a walk down
+the aisles shows the line.
+
+Where it breaks: a library sees bestsellers coming for weeks. A link goes viral in seconds and fades by evening, so the
+counts per key must run live.
 
 </Analogy>
 
 ## Try it
 
-Both lanes below get the exact same clicks from a seeded generator. The left lane routes every click by hash. The right
-lane does the same until a link passes 50 clicks a second, then copies that link to every node and spreads its clicks in
-turn.
+Both lanes get the same seeded clicks. The left lane routes every click by hash, like the tier in the story. The right
+lane previews a fix from the caching lesson: once a link passes 50 clicks a second, every node gets a copy. For now,
+watch the left lane and the access pattern panel.
 
 <Predict
   client:visible
@@ -179,42 +223,70 @@ turn.
   answer={2}
 >
 
-**No.** abc123 still hashes to one node, and its 240 clicks a second alone exceed that node's 150. Eight nodes take
-the cold links off it, so its rate drops only a little, to about 270 to 280 a second. The other seven fall to about 13 to
-31. In the toy run the hash only lane still turns away 1,724 clicks with a peak of 190%, while the copies lane turns
-away 2.
+**No.** abc123 still hashes to one node, and its 240 clicks a second alone exceed 150. Eight nodes take the cold links
+away, so the hot node drops only to about 270 a second while the other seven get about 16 to 28. The hash only lane
+still turns away 1,724 clicks and peaks at 190%. The copies lane turns away 2.
 
 </Predict>
 
 <HotKeyWidget client:visible />
 
-What to look for:
+What to notice:
 
-- **Busy, no hot key.** Traffic grows tenfold, yet both lanes match exactly: every node handles about 90 to 115 clicks a
-  second, nothing gets turned away, and the busiest node peaks at 86%. Even growth is a capacity question.
-- **Viral link.** The access pattern panel shows abc123's share jump from about 5% to about 60%. In the hash only lane
-  Node 2 runs near 200% and turns away about 2,000 clicks. In the copies lane every node settles near 105 clicks a
-  second.
-- **Detection lag.** Copies arrive one tick late. Node 2 fills up at 3.3 s in both lanes, so the copies lane still turns
-  away 6 clicks before it spreads abc123.
+- **Busy evening.** Traffic grows tenfold and both lanes match: every node handles about 90 to 115 clicks a second, none
+  are turned away, and the busiest node peaks at 86%.
+- **Viral link.** abc123's share jumps from about 5% to about 60%. In the hash only lane Node 2 runs near 200% and turns
+  away about 2,000 clicks while the other nodes stay near 40 a second.
+- **Detection lag.** Node 2 fills at 3.3 s in both lanes. Copies arrive a tick later, so even the copies lane turns away
+  6 clicks.
 
-This widget is a **toy model**. The node capacity, the 30 request queue, the 50 a second threshold, and the click mix
-are illustrative numbers picked so the effect is easy to see. Real caches serve far more, and the shape of the problem
-stays the same.
+This is a **toy model**: the node capacity, the 30 request queue, the 50 a second threshold, and the click mix are
+picked to make the effect easy to see. Real caches serve far more, and the shape stays the same.
 
-## Hot writes are harder
+## Reading the pattern
 
-Copies fix hot **reads**, because any copy can answer. Hot **writes** need something else, since every copy must change.
-Suppose the shortener counts clicks per link: abc123 now takes 240 counter increments a second, all on one key.
+### Read shape: one key, a range, or a scan
+
+Following a link is a **point read**: one short code, one answer. Listing a user's links is a **range read**: every link
+with one owner, newest first. A monthly click report is a **scan** over every click. Point reads spread well by hash,
+range reads want one owner's rows stored together, and scans belong on a separate copy so a report never slows a
+redirect.
+
+### Find the hot key: per node, then per key
+
+- **Load per node.** One node far above the rest means skew: about 294 clicks a second against about 40 on the others.
+- **Top keys by share.** Count reads per key on the busy node, or sample 1 request in 100. abc123 jumping from 5% to 60%
+  names the culprit.
+- **The hot key against one node.** If one key alone needs more than a node serves (240 against 150), moving other keys
+  away cannot save that node.
+
+### Hot writes look different
+
+If the shortener also counts clicks per link, abc123 takes 240 counter updates a second on one key. Find hot writes the
+same way, with writes per key and per node. They need different fixes from hot reads, collected below.
+
+<details>
+<summary>Revisit after caching and sharding: fixing a hot key</summary>
+
+Come back here after [Caching](../../scaling/caching/) and [Sharding](../../scaling/sharding/), which teach the parts
+these fixes are built from.
+
+**Hot reads: give more places a copy.** Any copy of a link can answer a read.
+
+- **Copy the hot key.** The widget's right lane does this. Once abc123 passes 50 clicks a second, every node gets a copy
+  and its reads take turns, about 60 per node, so each node settles near 105 clicks a second. The cost: deleting a scam
+  link must now reach every copy, or the leftover copies keep redirecting.
+- **Near cache.** Each app server keeps the hottest links in its own memory for a second or two. Hot reads never leave
+  the server, and the copies can disagree for up to that time.
+
+**Hot writes: spread or batch the changes.** Every write changes the value, so copies alone cannot absorb them.
 
 - **Split the key.** Store the count as eight parts, `abc123#0` to `abc123#7`. Each click adds to a random part, so the
   writes spread across nodes. Reading the total means adding up all eight.
 - **Batch the writes.** Each app server counts in memory and adds its total to the shared counter once a second. The
   count trails by a second, and a crash loses the unsent part.
 
-## Trade-offs
-
-<TradeoffTable title="Handling a hot key">
+<TradeoffTable title="Fixing a hot key">
 
 | Choice                               | What it buys                                        | What it costs                                              |
 | ------------------------------------ | --------------------------------------------------- | ---------------------------------------------------------- |
@@ -227,25 +299,69 @@ Suppose the shortener counts clicks per link: abc123 now takes 240 counter incre
 
 </TradeoffTable>
 
+</details>
+
+## Trade-offs
+
+<TradeoffTable title="Ways to see the access pattern">
+
+| Measurement               | What it shows                               | What it hides or costs                                  |
+| ------------------------- | ------------------------------------------- | ------------------------------------------------------- |
+| Total requests per second | Whether the tier has room overall           | One overloaded node: 400 of 600 looked safe             |
+| Load per node             | Which node is overloaded, and since when    | Which key caused it                                     |
+| Top keys by share         | The hot key by name, and how hot it is      | Memory to count keys; sampling misses short bursts      |
+| Read to write ratio       | Whether to make reads or writes cheap first | Skew: a quiet evening and a viral link share one ratio  |
+| Full request log          | Any question, after the fact                | Storage, and too slow to raise an alarm live            |
+
+</TradeoffTable>
+
+**When to skip it.** A prototype at 5 requests a second on one machine has no node to overload, so a total and a read to
+write ratio are enough. Per-key tracking pays off once data spreads across several nodes or shards and one item can go
+viral: links, celebrity posts, flash sales, live scores.
+
+## Common mistakes
+
+- **Sizing from the total alone.** 400 clicks against 600 of room looked safe while one node ran near twice its limit.
+- **Treating the ratio as the whole pattern.** The ratio stays 100 to 1 whether traffic is even or viral. Skew is a
+  separate measurement.
+- **Adding nodes to cool a hot key.** Hashing still sends the key to one node.
+- **Measuring once.** Skew changes in seconds. Track top keys continuously and alert when one node runs far above the
+  rest.
+- **Watching only reads.** A click counter on a viral link is a hot write key, even when every read hits a cache.
+
+<KeyTakeaways>
+
+- An access pattern has four parts: the operations, the read to write ratio, the skew, and how they change over time.
+- Hashing gives each key one home. It spreads many keys evenly and sends all of one hot key to one node or shard.
+- Totals hide hot keys. Watch load per node and the top keys by share, and compare the hottest key with one node.
+- More nodes take cold keys off the hot node and leave the hot key's own load in place.
+
+</KeyTakeaways>
+
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-A sports app shows a live score. During the final, the score key gets 50,000 reads a second and changes every few
-seconds. Each cache node serves 20,000 reads a second.
+A sports app shows a live score. During the final, the score key gets 50,000 reads a second, and fans tap "cheer" 5,000
+times a second, each tap adding to a counter stored with the score. The cache tier has 10 nodes, each serving 20,000
+requests a second.
 
-1. How many nodes does hashing put the score key on, and what happens to them?
-2. How would you spread the reads, and how stale can the score get?
-3. The app also counts "cheers" on the score at 5,000 writes a second. Does your fix for question 2 help? What would?
+1. Describe the access pattern: operations, read to write ratio, and skew.
+2. Is there enough capacity? What happens to the node holding the score key?
+3. Which measurements would show the problem live?
+
+A strong answer names the hot key, compares its load with one node, and picks per-node and per-key measurements over
+totals.
 
 <div slot="answer">
 
-1. **One node.** It receives 50,000 reads a second against a capacity of 20,000, so it queues and starts turning reads
-   away while the other nodes idle.
-2. **Copy the key or cache it near the app.** Copies on at least three nodes, or a near cache in each app server with a
-   one second TTL, both work. Fans tolerate a score that trails by a second, so the TTL sets the staleness.
-3. **No.** Copies spread reads, and each cheer must change the count. Split the counter into parts so writes land on
-   different nodes, or batch cheers in each app server and add them once a second.
+1. **Reads and writes on one key.** 50,000 reads and 5,000 writes a second, about 10 to 1, with extreme skew: one key
+   draws nearly all the traffic.
+2. **Enough in total, too much on one node.** The tier serves 200,000 a second, over three times the 55,000 it gets.
+   Hashing puts the score key on one node, which receives all 55,000 against its 20,000 and turns requests away while
+   nine nodes idle.
+3. **Load per node, then top keys.** One node pinned at its limit while nine idle points at skew. Reads and writes per
+   key on that node name the score key and its counter. The fixes are in the revisit section above.
 
 </div>
 
