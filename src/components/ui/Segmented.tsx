@@ -63,10 +63,9 @@ export function Segmented<T extends string>({
     <div className={['sdv-segmented', className].filter(Boolean).join(' ')} data-fit={fit}>
       <fieldset
         className="sdv-control sdv-segmented__group"
-        // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: ARIA in HTML permits radiogroup on fieldset, which keeps the legend and the disabled cascade.
+        // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: ARIA in HTML permits radiogroup on fieldset, which keeps the legend.
         role="radiogroup"
         aria-labelledby={legendId}
-        disabled={!hydrated}
       >
         <legend id={legendId} className={hideLabel ? 'sdv-visually-hidden' : undefined}>
           {label}

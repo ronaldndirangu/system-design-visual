@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { allLessons } from '../../src/data/curriculum';
+import { island } from './helpers';
 
 const pages = [
   { path: './', heading: /watching it break/i },
@@ -129,7 +130,7 @@ test('a quiz explains the chosen answer', async ({ page }) => {
   await page.goto('scaling/caching/');
   const quiz = page.getByRole('region', { name: 'Check your understanding' });
   await quiz.scrollIntoViewIfNeeded();
-  const firstQuestion = quiz.getByRole('group').first();
+  const firstQuestion = await island(quiz.getByRole('group').first());
   await firstQuestion.getByRole('radio').first().check();
   await quiz.getByRole('button', { name: 'Check answer' }).first().click();
   await expect(quiz.getByText(/Correct|Not quite/).first()).toBeVisible();
@@ -139,8 +140,7 @@ test('a quiz explains the chosen answer', async ({ page }) => {
 test('a simulation steps forward and updates its readout', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('scaling/load-balancing/');
-  const sim = page.getByRole('region', { name: /^Simulation:/ }).first();
-  await sim.scrollIntoViewIfNeeded();
+  const sim = await island(page.getByRole('region', { name: /^Simulation:/ }).first());
   const table = sim.getByRole('table');
   await expect(table).toBeVisible();
   const before = await table.textContent();
@@ -192,7 +192,7 @@ test('switching the duel scenario mid run pauses it and keeps focus', async ({ p
 
 test('marking a lesson complete updates the course map', async ({ page }) => {
   await page.goto('thinking/requirements-and-estimates/');
-  // The button hydrates on client:visible and stays disabled until then, so bring it into view first.
+  // The button hydrates on client:visible, so bring it into view; a click before hydration replays afterwards.
   const markComplete = page.getByRole('button', { name: 'Mark lesson complete' });
   await markComplete.scrollIntoViewIfNeeded();
   await markComplete.click();

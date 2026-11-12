@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
+import { island } from './helpers';
 
 async function openEstimator(page: Page) {
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -322,6 +323,7 @@ test.describe('control kit', () => {
     const radios = toolbar.getByRole('radiogroup', { name: 'Speed' });
     await expect(radios).toBeVisible();
     await expect(toolbar.getByRole('combobox', { name: 'Speed' })).toBeHidden();
+    await island(radios);
     await radios.getByRole('radio', { name: '2×' }).check();
     await expect(radios.getByRole('radio', { name: '2×' })).toBeChecked();
 
@@ -339,7 +341,7 @@ test.describe('control kit', () => {
       await page.goto('reliability/rate-limiting/');
       const toolbar = page.getByRole('group', { name: 'Simulation controls' }).first();
       await toolbar.scrollIntoViewIfNeeded();
-      await expect(toolbar.getByRole('radio', { name: '1×' })).toBeEnabled();
+      await island(toolbar);
       const results = await new AxeBuilder({ page })
         .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
         .exclude('button[data-open-modal]')

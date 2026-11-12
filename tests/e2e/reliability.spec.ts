@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
+import { island } from './helpers';
 
 function collectErrors(page: Page): string[] {
   const errors: string[] = [];
@@ -75,8 +76,7 @@ test.describe('Timeouts and cancellation', () => {
     const late = widget.getByRole('row', { name: /Work after the client gave up/ });
     await expect(late).toContainText('1540 ms');
 
-    const propagate = widget.getByRole('radio', { name: 'Pass the deadline along' });
-    await expect(propagate).toBeEnabled();
+    const propagate = await island(widget.getByRole('radio', { name: 'Pass the deadline along' }));
     await propagate.check();
     await expect(late).toContainText('None');
     await expect(widget.getByText('Gave up, and everything stopped')).toBeVisible();

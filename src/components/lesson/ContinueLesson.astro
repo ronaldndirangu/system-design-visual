@@ -1,0 +1,43 @@
+---
+import { allLessons } from '../../data/curriculum';
+import { lessonHref } from '../../lib/paths';
+
+const lessons = allLessons.map((lesson) => ({
+  id: lesson.id,
+  title: lesson.title,
+  href: lessonHref(lesson.id),
+}));
+---
+
+<p class="sdv-continue not-content" data-lessons={JSON.stringify(lessons)} hidden>
+  <a class="sdv-button sdv-button--primary" href={lessons[0]?.href}>
+    Continue: <span data-continue-title>{lessons[0]?.title}</span>
+  </a>
+</p>
+
+<script>
+  import { continueTarget, readProgress, subscribeProgress } from '../../lib/progress';
+
+  interface Target {
+    id: string;
+    title: string;
+    href: string;
+  }
+
+  function paint() {
+    const progress = readProgress();
+    for (const root of document.querySelectorAll<HTMLElement>('.sdv-continue[data-lessons]')) {
+      const target = continueTarget<Target>(progress, JSON.parse(root.dataset.lessons ?? '[]'));
+      const link = root.querySelector('a');
+      const title = root.querySelector('[data-continue-title]');
+      root.hidden = !target || !link || !title;
+      if (target && link && title) {
+        link.href = target.href;
+        title.textContent = target.title;
+      }
+    }
+  }
+
+  paint();
+  subscribeProgress(paint);
+</script>
