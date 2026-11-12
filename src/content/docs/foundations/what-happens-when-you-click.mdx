@@ -21,7 +21,6 @@ import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
-import StepDiagram from '../../../components/lesson/StepDiagram';
 import ArcDiagram from '../../../components/viz/ArcDiagram';
 import RequestJourneyWidget from '../../../components/widgets/RequestJourneyWidget';
 
@@ -88,61 +87,6 @@ export const recall = [
       { text: 'The app code', why: 'The app servers sit behind the load balancer too.' },
       { text: 'Nothing, since it sees every request', why: 'It sees each request only after it arrives.' },
     ],
-  },
-];
-
-export const dnsNodes = [
-  { id: 'browser', kind: 'client', x: 70, y: 90, label: 'Browser', sublabel: 'own cache' },
-  { id: 'os', kind: 'cache', x: 70, y: 260, label: 'OS cache' },
-  { id: 'resolver', kind: 'dns', x: 250, y: 175, label: 'Resolver', sublabel: 'recursive' },
-  { id: 'root', kind: 'dns', x: 440, y: 60, label: 'Root (.)' },
-  { id: 'tld', kind: 'dns', x: 440, y: 175, label: 'TLD (.rt)' },
-  { id: 'auth', kind: 'dns', x: 440, y: 290, label: 'Authoritative', sublabel: 'sho.rt' },
-];
-
-export const dnsEdges = [
-  { from: 'browser', to: 'os' },
-  { from: 'os', to: 'resolver' },
-  { from: 'resolver', to: 'root' },
-  { from: 'resolver', to: 'tld' },
-  { from: 'resolver', to: 'auth' },
-];
-
-export const dnsSteps = [
-  {
-    title: '1. Check the browser cache',
-    text: 'If the browser looked up sho.rt moments ago, it reuses that answer and the lookup costs nothing.',
-    nodes: ['browser'],
-  },
-  {
-    title: '2. Ask the operating system',
-    text: 'On a miss, the browser asks the operating system, which keeps a cache shared by every app on the machine.',
-    nodes: ['browser', 'os'],
-    flows: ['browser>os'],
-  },
-  {
-    title: '3. Ask the recursive resolver',
-    text: 'Next comes a recursive resolver, run by the ISP or a service such as 1.1.1.1. It caches answers for many people.',
-    nodes: ['os', 'resolver'],
-    flows: ['os>resolver'],
-  },
-  {
-    title: '4. Ask a root server',
-    text: 'With nothing cached, the resolver starts at the top. A root server names the servers for .rt. Resolvers keep that list for days, so this step is rare.',
-    nodes: ['resolver', 'root'],
-    flows: ['resolver>root'],
-  },
-  {
-    title: '5. Ask the TLD servers',
-    text: 'The .rt servers (for a real name, the .com servers) name the authoritative servers for sho.rt, which the domain owner controls.',
-    nodes: ['resolver', 'tld'],
-    flows: ['resolver>tld'],
-  },
-  {
-    title: '6. Ask the authoritative server',
-    text: 'It answers: sho.rt is 203.0.113.7, TTL 3600. The resolver, OS, and browser each keep it for up to 3,600 seconds.',
-    nodes: ['browser', 'os', 'resolver', 'auth'],
-    flows: ['resolver>auth', 'auth>resolver', 'resolver>os', 'os>browser'],
   },
 ];
 
@@ -230,16 +174,20 @@ What to notice:
 ### How DNS finds the server
 
 The DNS lookup in the widget is one fixed cost, 30 ms. Behind it sits a chain of caches and servers, and the lookup
-stops at the first one that knows the answer. Step through a lookup that misses every cache.
+stops at the first one that knows the answer. Here is a lookup for `sho.rt` that misses every cache.
 
-<StepDiagram
-  client:visible
-  title="Resolving sho.rt from an empty cache"
-  nodes={dnsNodes}
-  edges={dnsEdges}
-  steps={dnsSteps}
-  height={350}
-/>
+1. **Browser cache.** If the browser looked up `sho.rt` moments ago, it reuses that answer and the lookup costs
+   nothing.
+2. **Operating system.** On a miss, the browser asks the operating system, which keeps a cache shared by every app on
+   the machine.
+3. **Recursive resolver.** Next comes a resolver run by the ISP or a service such as 1.1.1.1. It caches answers for
+   many people.
+4. **Root server.** With nothing cached, the resolver starts at the top. A root server names the servers for `.rt`.
+   Resolvers keep that list for days, so this step is rare.
+5. **TLD servers.** The `.rt` servers (for a real name, the `.com` servers) name the authoritative servers for
+   `sho.rt`, which the domain owner controls.
+6. **Authoritative server.** It answers: `sho.rt` is `203.0.113.7`, TTL 3600. The resolver, the operating system and
+   the browser each keep that answer for up to 3,600 seconds.
 
 Each answer carries a time to live (TTL) in seconds, and every cache keeps it until the TTL runs out. That makes most
 lookups cheap, and it means a changed record reaches people only as their caches expire.

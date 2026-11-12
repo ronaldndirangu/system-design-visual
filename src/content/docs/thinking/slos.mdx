@@ -312,7 +312,7 @@ Write an SLO once people depend on the service and the team must choose between 
 
 - **Promising an average.** A 35 ms mean sat next to 1 redirect in 100 taking 140 ms or longer.
 - **Averaging percentiles across servers.** Merge histograms, then read the percentile.
-- **Reading a p99 from too few requests.** Over 100 requests it is just the slowest one.
+- **Reading a p99 from too few requests.** Over 100 requests it is nearly the slowest one.
 - **Choosing a fix by the mean.** Faster app code gave the lowest mean and still spent the whole budget.
 - **Measuring only fleet-wide.** One hot node can fail 1 request in 10 while the fleet SLI stays inside the SLO.
 
