@@ -1192,12 +1192,14 @@ button[data-tone="bad"] {
 }
 /*
  * Drawings shrink to fit narrow screens, which shrinks their text with them.
- * --sdv-dscale is how far the widest drawing is shrunk, so text sized by it keeps its real pixel size.
+ * --sdv-dscale is the inverse of that shrink, so text sized by it keeps its real pixel size.
  */
-.sdv-sim__stage .sdv-chart__label {
+.sdv-sim__stage .sdv-chart__label,
+.sdv-scroll-x .sdv-chart__label {
   font-size: calc(13px * var(--sdv-dscale, 1));
 }
-.sdv-sim__stage .sdv-axis text {
+.sdv-sim__stage .sdv-axis text,
+.sdv-scroll-x .sdv-axis text {
   font-size: calc(12px * var(--sdv-dscale, 1));
 }
 .sdv-sim__stage .sdv-trace__tick,

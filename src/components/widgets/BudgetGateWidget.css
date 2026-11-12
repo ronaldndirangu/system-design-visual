@@ -13,7 +13,7 @@
 }
 .sdv-gate__box-label {
   fill: var(--sl-color-gray-2);
-  font-size: 12px;
+  font-size: calc(12px * var(--sdv-dscale, 1));
   font-weight: 600;
 }
 .sdv-gate__point circle {
@@ -35,12 +35,12 @@
 }
 .sdv-gate__name {
   fill: var(--sl-color-white);
-  font-size: 13px;
+  font-size: calc(13px * var(--sdv-dscale, 1));
   font-weight: 700;
 }
 .sdv-gate__detail {
   fill: var(--sl-color-gray-2);
-  font-size: 11px;
+  font-size: calc(12px * var(--sdv-dscale, 1));
 }
 .sdv-gate__note {
   color: var(--sl-color-gray-2);

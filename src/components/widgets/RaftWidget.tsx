@@ -18,7 +18,7 @@ import { type StatRow, StatTable, type Tone } from '../sim/StatTable';
 import { useHydrated } from '../sim/useHydrated';
 import { usePrefersReducedMotion } from '../sim/usePrefersReducedMotion';
 import { DiagramScroll } from '../viz/DiagramScroll';
-import { lerp, link, type Vec } from '../viz/geometry';
+import { lerp, link, nodeSize, readableFont, textWidth, type Vec } from '../viz/geometry';
 import { UiIcon } from '../viz/icons';
 import { ArrowDefs, Edge, SystemNode, safeId } from '../viz/SystemNode';
 import './RaftWidget.css';
@@ -28,8 +28,8 @@ const scenarioIds: RaftScenarioId[] = ['crash', 'split', 'partition', 'old-entry
 const centers: Vec[] = [
   [300, 65],
   [443, 169],
-  [388, 336],
-  [212, 336],
+  [420, 336],
+  [180, 336],
   [157, 169],
 ];
 
@@ -107,6 +107,11 @@ export default function RaftWidget() {
   const arrowId = safeId(useId(), 'raft-arrow');
   const [scenarioId, setScenarioId] = useState<RaftScenarioId>('crash');
   const [unsafeCommit, setUnsafeCommit] = useState(false);
+  const [scale, setScale] = useState(1);
+  const [timelineScale, setTimelineScale] = useState(1);
+  const minFont = readableFont(scale);
+  const textPx = Math.max(13, minFont ?? 0);
+  const runPx = readableFont(timelineScale) ?? 12;
   const clusterRef = useRef<RaftCluster | null>(null);
   if (!clusterRef.current)
     clusterRef.current = new RaftCluster(raftScenarios[scenarioId].seed, { unsafeCommit });
@@ -188,6 +193,19 @@ export default function RaftWidget() {
 
   const centerLine =
     groups !== null ? 'Network split' : working === null ? 'No leader' : `Leader: ${nodeName(working)}`;
+  const box = (id: number) => {
+    const [x, y] = center(id);
+    return { x, y, ...nodeSize('server', nodeName(id), minFont) };
+  };
+  const nodeBox = box(0);
+  const panel = {
+    w: Math.max(120, textWidth('Leader: Node 5', textPx) + 24),
+    h: Math.max(50, textPx * 2.6 + 12),
+  };
+  // Enlarged side-node sublabels reach toward the center, so the panel drops below them.
+  const panelTop = minFont === undefined ? 192 : 169 + nodeBox.sublabelY + 14;
+  const timerOffset = nodeBox.sublabelY + 9;
+  const viewHeight = Math.max(410, Math.ceil(336 + timerOffset + 10));
 
   const diagramLabel = `Five servers. ${nodes
     .map((node) => `${nodeName(node.id)}: ${roleLabel(node, isCutOff(node))}`)
@@ -297,7 +315,7 @@ export default function RaftWidget() {
               <StatTable rows={rows} caption="Live readout" />
               <div className="sdv-raft__timeline">
                 <p className="sdv-trace__log-title">Who led, over time</p>
-                <DiagramScroll label="Leader timeline">
+                <DiagramScroll label="Leader timeline" onScale={setTimelineScale}>
                   <svg
                     viewBox="0 0 600 80"
                     role="img"
@@ -347,12 +365,18 @@ export default function RaftWidget() {
                           />
                         );
                       }
+                      const runLabel = `${nodeName(run.leader)}, T${run.term}`;
                       return (
                         <g key={`${run.start}-${run.leader}`}>
                           <rect className="sdv-raft__run" x={x} y={10} width={width} height={24} />
-                          {width >= 60 && (
-                            <text className="sdv-raft__run-label" x={x + 6} y={26}>
-                              {`${nodeName(run.leader)}, T${run.term}`}
+                          {width >= textWidth(runLabel, runPx) + 12 && (
+                            <text
+                              className="sdv-raft__run-label"
+                              x={x + 6}
+                              y={22 + runPx * 0.35}
+                              style={{ fontSize: `${runPx}px` }}
+                            >
+                              {runLabel}
                             </text>
                           )}
                         </g>
@@ -413,11 +437,11 @@ export default function RaftWidget() {
             }))}
             onChange={chooseScenario}
           />
-          <DiagramScroll label="Five servers and the messages between them">
-            <svg viewBox="0 0 600 410" role="img" aria-label={diagramLabel}>
+          <DiagramScroll label="Five servers and the messages between them" onScale={setScale}>
+            <svg viewBox={`0 0 600 ${viewHeight}`} role="img" aria-label={diagramLabel}>
               <ArrowDefs id={arrowId} />
               {pairs.map(([a, b]) => {
-                const ends = link({ x: center(a)[0], y: center(a)[1] }, { x: center(b)[0], y: center(b)[1] });
+                const ends = link(box(a), box(b));
                 const cut = !cluster.connected(a, b);
                 return (
                   <line
@@ -437,11 +461,30 @@ export default function RaftWidget() {
                 );
                 return <Edge key={`${from}>${to}`} from={ends.from} to={ends.to} marker={arrowId} active />;
               })}
-              <rect className="sdv-raft__panel" x={240} y={192} width={120} height={50} rx={8} />
-              <text className="sdv-chart__label" x={300} y={212} textAnchor="middle">
+              <rect
+                className="sdv-raft__panel"
+                x={300 - panel.w / 2}
+                y={panelTop}
+                width={panel.w}
+                height={panel.h}
+                rx={8}
+              />
+              <text
+                className="sdv-chart__label"
+                x={300}
+                y={panelTop + 6 + textPx * 1.1}
+                textAnchor="middle"
+                style={{ fontSize: `${textPx}px` }}
+              >
                 {`Term ${stats.term}`}
               </text>
-              <text className="sdv-chart__label" x={300} y={232} textAnchor="middle">
+              <text
+                className="sdv-chart__label"
+                x={300}
+                y={panelTop + 6 + textPx * 2.4}
+                textAnchor="middle"
+                style={{ fontSize: `${textPx}px` }}
+              >
                 {centerLine}
               </text>
               {nodes.map((node) => {
@@ -461,13 +504,14 @@ export default function RaftWidget() {
                       status={nodeStatus}
                       role={nodeRole(node)}
                       badge={leader ? `Leader, term ${node.term}` : undefined}
+                      minFontSize={minFont}
                     />
                     {showTimer && (
                       <g>
                         <rect
                           className="sdv-raft__timer"
                           x={x - 40}
-                          y={y + 56}
+                          y={y + timerOffset}
                           width={80}
                           height={6}
                           rx={3}
@@ -475,7 +519,7 @@ export default function RaftWidget() {
                         <rect
                           className="sdv-raft__timer-fill"
                           x={x - 40}
-                          y={y + 56}
+                          y={y + timerOffset}
                           width={80 * fraction}
                           height={6}
                           rx={3}
@@ -486,10 +530,7 @@ export default function RaftWidget() {
                 );
               })}
               {flights.map((flight) => {
-                const ends = link(
-                  { x: center(flight.from)[0], y: center(flight.from)[1] },
-                  { x: center(flight.to)[0], y: center(flight.to)[1] },
-                );
+                const ends = link(box(flight.from), box(flight.to));
                 const t = clamp01(
                   (ticks - flight.sentAt - 1) / Math.max(1, flight.deliverAt - flight.sentAt - 1),
                 );

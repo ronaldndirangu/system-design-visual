@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { MIN_SCALE } from './geometry';
 
 interface Overflow {
   measured: boolean;
@@ -20,8 +21,10 @@ function sameOverflow(a: Overflow, b: Overflow) {
  * only while the content is wider than the box, takes keyboard focus, fades the
  * edges that hide more content and shows a "see more" cue until the first scroll.
  * Server markup stays focusable because overflow is unknown until hydration.
- * For an SVG child it also publishes the rendered scale (screen px per viewBox
- * unit) as `--sdv-dscale` and through `onScale`, so text can counter-scale.
+ * For an SVG child it keeps the drawing at least MIN_SCALE of its viewBox width,
+ * scrolling below that. It reports the rendered scale (screen px per viewBox
+ * unit) through `onScale` and publishes its inverse as `--sdv-dscale`, the
+ * factor that keeps CSS sized SVG text at its real pixel size.
  */
 export function DiagramScroll({
   label,
@@ -46,12 +49,14 @@ export function DiagramScroll({
       const svg = el.firstElementChild;
       if (!(svg instanceof SVGSVGElement)) return;
       const viewWidth = svg.viewBox.baseVal?.width;
+      if (!viewWidth) return;
+      if (!svg.style.minWidth) svg.style.minWidth = `${Math.ceil(viewWidth * MIN_SCALE)}px`;
       const shown = svg.getBoundingClientRect().width;
-      if (!viewWidth || !shown) return;
+      if (!shown) return;
       const scale = Math.floor(Math.min(1, shown / viewWidth) * 100) / 100;
       if (scale === lastScale) return;
       lastScale = scale;
-      el.style.setProperty('--sdv-dscale', String(scale));
+      el.style.setProperty('--sdv-dscale', String(Math.ceil(Math.max(1, viewWidth / shown) * 100) / 100));
       onScaleRef.current?.(scale);
     };
     const measure = () => {

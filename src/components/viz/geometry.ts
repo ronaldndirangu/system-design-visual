@@ -6,6 +6,18 @@ export const NODE_H = 64;
 export const LABEL_PX = 14;
 export const SUBLABEL_PX = 13;
 
+/** Smallest on-screen text size for a semantic diagram label, in px. */
+export const MIN_TEXT_PX = 12;
+/** Narrowest a diagram may render, as screen px per viewBox unit, before its box scrolls instead. */
+export const MIN_SCALE = 0.62;
+/** Font size text reaches at MIN_SCALE, so the viewBox always has room for it. */
+export const MAX_FONT = MIN_TEXT_PX / MIN_SCALE;
+
+/** viewBox font size that renders at MIN_TEXT_PX for a drawing shown at `scale`, or undefined at full size. */
+export function readableFont(scale: number): number | undefined {
+  return scale < 1 ? Math.min(MAX_FONT, MIN_TEXT_PX / scale) : undefined;
+}
+
 export interface Positioned {
   x: number;
   y: number;

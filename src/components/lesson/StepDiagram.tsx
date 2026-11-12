@@ -4,7 +4,7 @@ import { autoplayBudget, useAutoplay } from '../../lib/useAutoplay';
 import { MotionRoot } from '../sim/MotionRoot';
 import { usePrefersReducedMotion } from '../sim/usePrefersReducedMotion';
 import { DiagramScroll } from '../viz/DiagramScroll';
-import { link, nodeSize, textWidth } from '../viz/geometry';
+import { link, MAX_FONT, MIN_SCALE, nodeSize, readableFont, textWidth } from '../viz/geometry';
 import { UiIcon } from '../viz/icons';
 import { type ComponentKind, kinds } from '../viz/kinds';
 import { ArrowDefs, Edge, SystemNode, safeId } from '../viz/SystemNode';
@@ -51,11 +51,6 @@ interface Props {
   layout?: 'flow' | 'stack';
 }
 
-const MIN_TEXT_PX = 12;
-/** Narrowest render, as a share of natural width. Below it the diagram scrolls sideways. */
-const MIN_SCALE = 0.62;
-/** Font size text reaches at MIN_SCALE, so the viewBox always has room for it. */
-const MAX_FONT = MIN_TEXT_PX / MIN_SCALE;
 const PAD = 16;
 /** Stacked rows sit closer than flow columns, so their old y gaps widen into x gaps. */
 const STACK_SPREAD = 1.3;
@@ -74,7 +69,7 @@ export default function StepDiagram({ title, nodes: given, edges, steps, width, 
   const hasFlows = steps.some((candidate) => (candidate.flows?.length ?? 0) > 0);
   if (!step) return null;
   const nodes = layout === 'stack' ? stack(given) : given;
-  const minFont = scale < 1 ? Math.min(MAX_FONT, MIN_TEXT_PX / scale) : undefined;
+  const minFont = readableFont(scale);
   const byId = new Map(
     nodes.map((node) => [node.id, { ...node, ...nodeSize(node.kind, labelOf(node), minFont) }]),
   );

@@ -264,6 +264,8 @@ Work each step on paper first. A reference answer sits under each step, folded a
 
 **The numbers**
 
+The 50,000 redirects a second are edge misses: the traffic that reaches the app servers after the CDN answers the rest.
+
 | Constraint        | Target                                                      |
 | ----------------- | ----------------------------------------------------------- |
 | Redirects         | 50,000 per second at peak, spread over 16 app servers       |
@@ -412,8 +414,9 @@ request gets while the first is still running.
 
 - **Client**: makes a random key when the form opens and sends it as an Idempotency-Key header on every try.
 - **Server**: inserts the key with status pending under a unique constraint, creates the link, then marks the key
-  done with the code, all on the primary. A duplicate that finds done gets the stored code. One that finds pending
-  gets 409 with Retry-After: 1. See
+  done with the code, all in one transaction on the primary. A duplicate that finds done gets the stored code. One
+  that finds pending gets 409 with Retry-After: 1. A pending key also carries a timeout of about 30 seconds, so a
+  server that crashes mid create cannot block the key forever. See
   [duplicates that arrive while the first is still running](../../reliability/idempotency/#duplicates-that-arrive-while-the-first-is-still-running).
 - **Retention**: keep keys 24 hours. 100 creates a second × 86,400 ≈ 8.6 million rows a day, about 1 GB at 120
   bytes each.

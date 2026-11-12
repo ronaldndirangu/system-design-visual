@@ -7,7 +7,7 @@ import { SimulationShell } from '../sim/SimulationShell';
 import type { Tone } from '../sim/StatTable';
 import { DiagramScroll } from '../viz/DiagramScroll';
 import { type Flow, FlowDots } from '../viz/FlowDots';
-import { link } from '../viz/geometry';
+import { link, nodeSize, readableFont } from '../viz/geometry';
 import { UiIcon } from '../viz/icons';
 import { ArrowDefs, Edge, SystemNode, safeId } from '../viz/SystemNode';
 
@@ -17,13 +17,16 @@ const STRIP_LENGTH = 30;
 const CHART_KEYS = 60;
 const KEYS = defaultCacheConfig.keys;
 
-const nodes = {
-  server: { x: 72, y: 64 },
-  cache: { x: 300, y: 64 },
-  database: { x: 528, y: 64 },
-};
-const toCache = link(nodes.server, nodes.cache);
-const toDatabase = link(nodes.cache, nodes.database);
+const centers = {
+  server: { x: 72, y: 64, kind: 'server', label: 'App server' },
+  cache: { x: 300, y: 64, kind: 'cache', label: 'Cache' },
+  database: { x: 528, y: 64, kind: 'database', label: 'Database' },
+} as const;
+type Spot = (typeof centers)[keyof typeof centers];
+const sized = (spot: Spot, minFont: number | undefined) => ({
+  ...spot,
+  ...nodeSize(spot.kind, spot.label, minFont),
+});
 
 const ttlOptions = [
   { value: '0', label: 'Never expire' },
@@ -57,6 +60,16 @@ export default function CacheWidget({ capacity = 0, skew = 1 }: Props) {
   const [strip, setStrip] = useState<CacheEvent[]>([]);
   const [stats, setStats] = useState(() => sim().stats());
   const [cached, setCached] = useState<Set<number>>(() => new Set());
+  const [scale, setScale] = useState(1);
+  const minFont = readableFont(scale);
+  const nodes = {
+    server: sized(centers.server, minFont),
+    cache: sized(centers.cache, minFont),
+    database: sized(centers.database, minFont),
+  };
+  const toCache = link(nodes.server, nodes.cache);
+  const toDatabase = link(nodes.cache, nodes.database);
+  const nodeTop = nodes.cache.y - Math.max(nodes.cache.h, nodes.database.h) / 2;
 
   const refresh = () => {
     setStats(sim().stats());
@@ -202,7 +215,7 @@ export default function CacheWidget({ capacity = 0, skew = 1 }: Props) {
           </>
         }
       >
-        <DiagramScroll label="Scrollable diagram">
+        <DiagramScroll label="Scrollable diagram" onScale={setScale}>
           <svg
             className="sdv-cache"
             viewBox="0 0 600 260"
@@ -212,7 +225,13 @@ export default function CacheWidget({ capacity = 0, skew = 1 }: Props) {
             <ArrowDefs id={arrow} />
             <Edge from={toCache.from} to={toCache.to} marker={arrow} />
             <Edge from={toDatabase.from} to={toDatabase.to} marker={arrow} dashed />
-            <SystemNode kind="server" x={nodes.server.x} y={nodes.server.y} label="App server" />
+            <SystemNode
+              kind="server"
+              x={nodes.server.x}
+              y={nodes.server.y}
+              label="App server"
+              minFontSize={minFont}
+            />
             <SystemNode
               kind="cache"
               x={nodes.cache.x}
@@ -220,6 +239,7 @@ export default function CacheWidget({ capacity = 0, skew = 1 }: Props) {
               label="Cache"
               sublabel={settings.capacity === 0 ? 'off' : `${settings.capacity} slots`}
               dim={settings.capacity === 0}
+              minFontSize={minFont}
             />
             <SystemNode
               kind="database"
@@ -227,20 +247,18 @@ export default function CacheWidget({ capacity = 0, skew = 1 }: Props) {
               y={nodes.database.y}
               label="Database"
               sublabel="1,000 links"
+              minFontSize={minFont}
             />
             <text
               className="sdv-chart__label"
               x={(toDatabase.from[0] + toDatabase.to[0]) / 2}
-              y={nodes.cache.y - 12}
+              y={nodeTop - 8}
               textAnchor="middle"
             >
               only on a miss
             </text>
             <FlowDots flows={flows} />
 
-            <text className="sdv-chart__label" x={chart.left} y={chart.top - 14}>
-              The {CHART_KEYS} most clicked links, most popular first. A filled square means cached.
-            </text>
             {weights.map((weight, k) => {
               const height = Math.max(2, (weight / top) * chart.height);
               const inCache = cached.has(k);
@@ -278,6 +296,9 @@ export default function CacheWidget({ capacity = 0, skew = 1 }: Props) {
             />
           </svg>
         </DiagramScroll>
+        <p className="sdv-sim__note">
+          Bottom chart: the {CHART_KEYS} most clicked links, most popular first. A filled square means cached.
+        </p>
         <div className="sdv-strip">
           <p className="sdv-strip__label" id={`${arrow}-strip`}>
             Last {STRIP_LENGTH} requests
