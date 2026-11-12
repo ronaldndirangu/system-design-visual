@@ -304,6 +304,15 @@ const modules: ModuleInput[] = [
         difficulty: 2,
         buildsOn: ['thinking/slos', 'reliability/circuit-breakers'],
       },
+      {
+        id: 'reliability/backups-and-recovery',
+        title: 'Backups and recovery',
+        summary:
+          'Undo a bad write that every replica already copied, within budgets for data lost and time down.',
+        minutes: 23,
+        difficulty: 2,
+        buildsOn: ['reliability/observability', 'scaling/read-replicas'],
+      },
     ],
   },
   {
@@ -402,6 +411,16 @@ const modules: ModuleInput[] = [
         minutes: 25,
         difficulty: 3,
         buildsOn: ['distributed-data/quorums'],
+        example: 'Chat',
+      },
+      {
+        id: 'distributed-data/multi-region',
+        title: 'Multi-region systems',
+        summary:
+          'Survive a region going dark: route users nearby, pick where writes live, and fail over without split brain.',
+        minutes: 20,
+        difficulty: 3,
+        buildsOn: ['distributed-data/raft', 'distributed-data/cap-and-pacelc'],
         example: 'Chat',
       },
       {

@@ -81,7 +81,7 @@ test.describe('/ai-systems/evaluation-and-budgets', () => {
   test('budget presets move the ship decision', async ({ page }) => {
     await page.goto('ai-systems/evaluation-and-budgets/');
     const gate = page.getByRole('region', { name: 'Interactive: Set the budgets, then see who fits' });
-    await gate.scrollIntoViewIfNeeded();
+    await island(gate);
     const ship = row(gate, 'Ship');
     await expect(ship).toContainText('Medium');
 

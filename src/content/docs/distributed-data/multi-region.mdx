@@ -1,0 +1,450 @@
+---
+title: Multi-region systems
+description: The chat app runs in one region, and that region goes dark for hours. Send users to nearby regions, decide where writes live, and fail over without split brain or silent message loss.
+furtherReading:
+  - title: Summary of the AWS service event in the Northern Virginia (US-EAST-1) Region (AWS, December 2021)
+    url: https://aws.amazon.com/message/12721/
+    note: Congestion in one region's internal network impaired many services for hours, including the monitoring engineers used to find the cause.
+  - title: What is anycast? (Cloudflare Learning Center)
+    url: https://www.cloudflare.com/learning/cdn/glossary/anycast-network/
+    note: One IP address announced from many sites, with internet routing sending each user to a nearby one.
+  - title: AWS Regions (AWS Fault Isolation Boundaries whitepaper)
+    url: https://docs.aws.amazon.com/whitepapers/latest/aws-fault-isolation-boundaries/regions.html
+    note: How regions isolate failures from each other, and what that means for designs that span more than one.
+---
+
+import Recall from '../../../components/lesson/Recall.astro';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+
+export const nodes = [
+  { id: 'dns', kind: 'dns', x: 100, y: 60, label: 'GeoDNS', sublabel: '60 s TTL' },
+  { id: 'phone', kind: 'client', x: 100, y: 260, label: 'Phone', sublabel: 'in Berlin' },
+  { id: 'lbVa', kind: 'loadBalancer', x: 260, y: 60, label: 'LB Virginia' },
+  { id: 'chatVa', kind: 'server', x: 420, y: 60, label: 'Chat Virginia' },
+  { id: 'dbVa', kind: 'database', x: 580, y: 60, label: 'DB Virginia', sublabel: 'primary' },
+  { id: 'lbFr', kind: 'loadBalancer', x: 260, y: 260, label: 'LB Frankfurt' },
+  { id: 'chatFr', kind: 'server', x: 420, y: 260, label: 'Chat Frankfurt' },
+  { id: 'dbFr', kind: 'database', x: 580, y: 260, label: 'DB Frankfurt', sublabel: 'replica' },
+];
+
+export const edges = [
+  { from: 'phone', to: 'dns' },
+  { from: 'phone', to: 'lbVa' },
+  { from: 'phone', to: 'lbFr' },
+  { from: 'lbVa', to: 'chatVa' },
+  { from: 'chatVa', to: 'dbVa' },
+  { from: 'lbFr', to: 'chatFr' },
+  { from: 'chatFr', to: 'dbVa' },
+  { from: 'chatFr', to: 'dbFr' },
+  { from: 'dbVa', to: 'dbFr', dashed: true },
+];
+
+export const steps = [
+  {
+    title: 'Normal: the phone reaches a nearby region',
+    text: 'GeoDNS sends the phone in Berlin to Frankfurt. Its conversation lives in Virginia, so each send goes to the Virginia primary, which streams it to the Frankfurt replica 0.5 s later.',
+    nodes: ['phone', 'dns', 'lbFr', 'chatFr', 'dbVa', 'dbFr'],
+    flows: ['phone>dns', 'phone>lbFr', 'lbFr>chatFr', 'chatFr>dbVa', 'dbVa>dbFr'],
+  },
+  {
+    title: 'Virginia goes dark',
+    text: 'Probes fail three times, 10 s apart, so the alarm fires after 30 s. The phone keeps its timed out sends as pending.',
+    nodes: ['lbVa', 'chatVa', 'dbVa', 'chatFr'],
+  },
+  {
+    title: 'Promote Frankfurt, fence Virginia',
+    text: 'Virginia’s lease expires without a majority to renew it, so it stops taking writes. With 2 of 3 votes, a controller then promotes Frankfurt under a higher epoch. If Virginia homes half the conversations, its last 0.5 s of sends, about 5,800 acknowledged messages, never left it.',
+    nodes: ['dbFr', 'dbVa'],
+  },
+  {
+    title: 'Reroute the phones',
+    text: 'GeoDNS drops Virginia. Phones reconnect to Frankfurt with their cursor and retry pending sends with the same client ID.',
+    nodes: ['phone', 'dns', 'lbFr', 'chatFr'],
+    flows: ['phone>dns', 'phone>lbFr', 'lbFr>chatFr'],
+  },
+  {
+    title: 'Frankfurt carries everything',
+    text: 'Frankfurt now stores every message. It copes because it ran at half its capacity or less.',
+    nodes: ['phone', 'lbFr', 'chatFr', 'dbFr'],
+    flows: ['phone>lbFr', 'lbFr>chatFr', 'chatFr>dbFr'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'distributed-data/multi-region/recall-1',
+    prompt: 'The chat log runs on five Raft servers spread over three zones: two, two, and one. A zone with two servers loses power. Can the chat still commit messages?',
+    options: [
+      {
+        text: 'Yes, because three of five servers remain, which is a majority',
+        correct: true,
+        why: 'Three of five is a majority, and with servers spread 2, 2, 1, losing any one zone leaves at least three.',
+      },
+      {
+        text: 'No, because a commit needs a server in every zone',
+        why: 'Raft counts servers. Three survivors of five are a majority, wherever they sit.',
+      },
+      {
+        text: 'Only if the leader sat in a surviving zone',
+        why: 'If the leader died, the survivors elect a new one and keep committing.',
+      },
+      {
+        text: 'No, because no cluster survives losing two servers',
+        why: 'Five servers survive two failures. Seven survive three.',
+      },
+    ],
+  },
+  {
+    id: 'distributed-data/multi-region/recall-2',
+    prompt: 'A store’s cart is PA/EL and its checkout is PC/EC. The link between its two datacenters breaks. Which operation refuses requests on the cut off side?',
+    options: [
+      {
+        text: 'Checkout',
+        correct: true,
+        why: 'PC means it refuses during a partition, so it never sells the last unit twice.',
+      },
+      {
+        text: 'Adding to the cart',
+        why: 'PA means the cart accepts adds on both sides and merges them when the link heals.',
+      },
+      {
+        text: 'Both',
+        why: 'The cart is PA, so it keeps answering locally.',
+      },
+      {
+        text: 'Neither',
+        why: 'Staying consistent across a cut means refusing on one side. Checkout chose that.',
+      },
+    ],
+  },
+];
+
+export const quiz = [
+  {
+    id: 'distributed-data/multi-region/q1',
+    prompt: 'Virginia fails, and GeoDNS drops it within a minute with a 60 s TTL. Ten minutes later, some phones still try Virginia. Why?',
+    options: [
+      {
+        text: 'Some resolvers and apps keep answers longer than the TTL',
+        correct: true,
+        why: 'Caches decide how long they keep the answer, and a minority hold it past the TTL.',
+      },
+      {
+        text: 'GeoDNS ignores its own TTL',
+        why: 'GeoDNS sets the TTL. Caches between it and the phone may ignore it.',
+      },
+      {
+        text: 'Phones always stick to the region they first used',
+        why: 'The app connects to whatever address it resolves. Stale caches hand it the old one.',
+      },
+      {
+        text: 'DNS changes take 48 hours to reach anyone',
+        why: 'Most caches respect a 60 s TTL. Only the tail lags.',
+      },
+    ],
+  },
+  {
+    id: 'distributed-data/multi-region/q2',
+    prompt: 'Chat peaks at 69,444 sends per second, spread evenly over three regions. How many sends per second must each region handle so the chat survives losing one?',
+    options: [
+      {
+        text: '34,722',
+        correct: true,
+        why: 'Two survivors split the whole peak: 69,444 ÷ 2. On a normal day each region runs at two thirds of that.',
+      },
+      {
+        text: '23,148',
+        why: 'That is each region’s share of the peak on a normal day. After a loss, two regions carry all of it.',
+      },
+      {
+        text: '69,444',
+        why: 'That lets one region carry everything, which only a design that survives losing two regions needs.',
+      },
+      {
+        text: '46,296',
+        why: 'That is what two regions carry together on a normal day. After a loss, each survivor carries half the peak.',
+      },
+    ],
+  },
+  {
+    id: 'distributed-data/multi-region/q3',
+    prompt: 'Why give each conversation one home region, when every region could accept sends for every conversation?',
+    options: [
+      {
+        text: 'One region numbers each conversation’s messages, so members see one order, and most sends stay local',
+        correct: true,
+        why: 'A single numbering point keeps order, and a home near most members keeps their sends local.',
+      },
+      {
+        text: 'It removes all cross-region traffic',
+        why: 'Far members still pay a round trip on each send, and replicas still copy every message.',
+      },
+      {
+        text: 'A home region never fails',
+        why: 'It fails like any region. Its conversations then fail over to their replica region.',
+      },
+      {
+        text: 'Two regions accepting sends would double storage',
+        why: 'Storage barely changes. The danger is two regions assigning the same sequence number.',
+      },
+    ],
+  },
+  {
+    id: 'distributed-data/multi-region/q4',
+    prompt: 'The link between Virginia and Frankfurt breaks while both stay up. Each side sees the other as dead and promotes its own database. What prevents this?',
+    options: [
+      {
+        text: 'A witness in a third region, so only a side with 2 of 3 votes promotes, plus leases and epochs',
+        correct: true,
+        why: 'At most one side reaches a majority. The cut off primary stops writing when its lease expires, and servers refuse routes with an older epoch.',
+      },
+      {
+        text: 'Shorter health check intervals',
+        why: 'Faster checks spot the cut sooner, and both sides still promote.',
+      },
+      {
+        text: 'Synchronous replication between the two regions',
+        why: 'That protects acknowledged writes. Each side can still promote itself and accept new ones.',
+      },
+      {
+        text: 'Promoting the side with more users',
+        why: 'Each side counts only the users it can see, so both may decide they win.',
+      },
+    ],
+  },
+];
+
+<Recall questions={recall} />
+
+<Objectives>
+
+- Explain why zones cannot survive a region loss, and what distance between regions costs.
+- Route users to a nearby region, and handle reconnects when the route changes.
+- Choose where writes live, and walk through a failover without split brain.
+- Size the data lost and the spare capacity a failover needs.
+
+</Objectives>
+
+## The failure: one region goes dark
+
+The [chat app](../../case-studies/chat/) serves 50 million daily users from one region in Virginia. Its gateways,
+servers, and [sharded](../../scaling/sharding/) message store run in three zones there, with each shard's primary in
+one zone and replicas in the other two.
+
+Zones guard against a fire or a power cut in one building. In December 2021, network congestion inside
+AWS's us-east-1 region in Virginia impaired many services for hours.
+
+<Predict
+  client:visible
+  id="distributed-data/multi-region/predict-1"
+  question="A fault in the network that ties Virginia’s three zones together cuts every zone off from the others and from the internet. What do chat users see?"
+  options={[
+    'Chat keeps working from whichever zone holds each shard’s primary',
+    'Chat slows down, but only for users near Virginia',
+    'Chat stops for every user in the world until the region recovers',
+    'Chat stops only for conversations whose primary sat in one zone',
+  ]}
+  answer={2}
+>
+
+**Chat stops for everyone.** Zones share the region's network, the cloud's control systems, and your deploy pipeline.
+With every server in one region, users in Tokyo lose chat too.
+
+</Predict>
+
+To survive the loss of a region, the chat needs a second one.
+
+## Zones, regions, and the speed of light
+
+A **zone** is one or more datacenters with their own power, about 1 ms from the other zones in its region: close enough
+for synchronous replication. A **region** is a group of zones in one metro area. Regions sit hundreds to thousands of
+km apart, and light in fiber covers about 200 km per ms.
+
+Illustrative round trips:
+
+| From     | To        | Round trip  |
+| -------- | --------- | ----------- |
+| Virginia | Frankfurt | about 90 ms |
+| Virginia | Singapore | about 230 ms |
+| Frankfurt | Singapore | about 160 ms |
+
+Every cross-region step in a request adds one of these. Teams go multi-region for three reasons:
+
+- **Survive a region loss.** Another region takes over within minutes.
+- **Serve far users faster.** A user in Singapore reaches a nearby region in a few ms, against 230 ms to Virginia.
+- **Keep data in place.** Some data must stay in a given country or group of countries.
+
+## Send each user to a nearby region
+
+**GeoDNS** answers a lookup with a region near the resolver that asked. A 60 s TTL should move users within a minute, yet some resolvers and apps keep old answers far longer.
+
+**Anycast** announces one IP address from many sites, and internet routing (BGP) carries each user to a nearby one, as
+[CDNs](../../scaling/cdn/) do for their edges. When routes shift, an open connection can land at a site that never saw
+it, and the socket breaks.
+
+Chat sockets break during a failover either way. The phone reconnects, sends its cursor (the last sequence it holds),
+and fetches everything after it.
+
+<details>
+<summary>Go deeper: where GeoDNS thinks you are</summary>
+
+GeoDNS sees the resolver, which may sit far from the user: a company VPN, or a public resolver in another country. The
+**EDNS Client Subnet** extension lets a resolver pass part of the user's address, so the answer fits the user. Many
+privacy focused resolvers send no subnet. Apps can also time a request to each region and pick the fastest themselves.
+
+</details>
+
+## Where the writes go
+
+Reads are easy: copy the data to every region and read locally. Writes decide the design.
+
+- **One home region.** Every write goes to Virginia, and other regions hold [read replicas](../../scaling/read-replicas/).
+  A user in Berlin pays about 90 ms per send, and may miss her own message on a lagging replica, as in [consistency
+  models](../consistency-models/).
+- **A home region per conversation.** Each conversation lives in one region near most of its members, which numbers its
+  messages. The store is already sharded by conversation, so a shard map records each home.
+- **Active-active.** Every region accepts writes for every conversation. Two regions can write the same thing at once,
+  and last writer wins throws one away: a PA/EL choice from [CAP and PACELC](../cap-and-pacelc/).
+- **Consensus across regions.** A [Raft](../raft/) group spanning three regions loses no commit in a region loss, and
+  every commit waits 90 ms or more. Keep it for small, critical data, such as the map from conversation to home region.
+
+<Predict
+  client:visible
+  id="distributed-data/multi-region/predict-2"
+  question="Both Virginia and Frankfurt accept sends for a conversation, each numbering messages from its own counter. Alice in Berlin and Bob in Boston send at the same moment, and both counters stand at 41. What goes wrong?"
+  options={[
+    'Nothing, because the counters advance in step',
+    'Both messages get sequence 42, and the two regions show different histories',
+    'The region rejects the later message',
+    'Each send waits a round trip, then succeeds',
+  ]}
+  answer={1}
+>
+
+**Both get 42.** Each region assigns the next number before it hears from the other, so Europe and America show
+different messages at 42. One home region per conversation, assigning every number, prevents this.
+
+</Predict>
+
+For chat, a home region per conversation wins: most sends stay local, and each conversation keeps one order. A
+conversation between Boston and Berlin picks a side, and the other side pays the round trip. Phones retry pending sends
+with the same client message ID, so each lands once, as in [idempotency](../../reliability/idempotency/).
+
+## Failover, failback, and evacuation
+
+Failover for Virginia's conversations runs in five steps:
+
+1. **Detect.** Probes from other regions fail three times, 10 s apart: 30 s.
+2. **Decide.** Confirm the region is down, and the probes' own path is fine.
+3. **Promote.** Virginia’s primary holds a lease that a majority renews, and stops writing when it expires.
+   Then Frankfurt’s replica becomes primary for those conversations.
+4. **Fence.** Frankfurt takes a higher epoch in the shard map, and chat servers refuse routes with an older one, as in
+   [time, leases, and fencing](../time-leases-fencing/).
+5. **Reroute.** GeoDNS drops Virginia, and phones reconnect with their cursors.
+
+Cross-region replication runs asynchronously, so lag becomes data loss. At 23,148 messages per second, with half the
+conversations homed in Virginia, 0.5 s of lag strands about 5,800 acknowledged messages. That lag is the failover's
+RPO, as in [backups and recovery](../../reliability/backups-and-recovery/).
+
+Survivors also need room. With N regions sharing traffic evenly, run each at no more than (N−1)/N of its capacity: half
+with two regions, two thirds with three.
+
+<StepDiagram client:visible title="Failing over the chat from Virginia to Frankfurt" nodes={nodes} edges={edges} steps={steps} height={320} />
+
+**Split brain.** If the link between Virginia and Frankfurt breaks while both stay up, each may promote itself. Put a
+witness in a third region and promote only with 2 of 3 votes, as in Raft. The lease and epoch above stop the losing
+side from writing.
+
+**Evacuation.** A region can turn slow or flaky while its health checks pass, a **gray failure**. Drain it: move its
+users elsewhere on purpose, then fix it. Drain regions on a schedule, so failover becomes routine.
+
+<details>
+<summary>Go deeper: failing back</summary>
+
+When Virginia returns, rebuild its database as a replica of Frankfurt. Writes it took that never replicated live only
+on the old primary: find them and copy back the ones you want, as with a side copy after a restore. Then move traffic
+back a few percent at a time.
+
+</details>
+
+<Analogy>
+
+A newspaper prints in several cities, but one newsroom sets each page. When its city floods, a bureau elsewhere takes
+over. Stories filed in the last minute never reached the bureau, and some vans keep driving to the flooded plant.
+
+</Analogy>
+
+## Data that must stay put
+
+Some laws and contracts require certain personal data to stay in a country or group of countries. Pin the home region
+of that data to an allowed region, and keep its replicas, backups, logs, caches, and failover targets inside the same
+set. A jurisdiction with one region has nowhere local to fail over, so it needs two.
+
+## Trade-offs
+
+<TradeoffTable title="What a region loss costs each design">
+
+| Choice                           | What it buys                             | What it costs                               |
+| -------------------------------- | ---------------------------------------- | ------------------------------------------- |
+| One region, three zones          | Simple, fast synchronous writes          | A region loss takes everything down         |
+| One home region, remote replicas | Fast local reads                         | Far writes pay a round trip                 |
+| Home region per conversation     | Local sends, one order per conversation  | A shard map, and mixed conversations wait   |
+| Active-active                    | Local writes everywhere                  | Conflicting writes to merge or lose         |
+| Consensus across three regions   | No acknowledged write lost               | Every commit waits 90 ms or more            |
+| Witness plus fencing             | Automatic failover without split brain   | A third region to run                       |
+
+</TradeoffTable>
+
+## Common mistakes
+
+- Counting three zones as protection from a region loss.
+- Running each region near full, so the survivors fall over during a failover.
+- Promoting automatically on both sides of a partition, with no witness.
+- Letting replicas, backups, or failover targets sit outside the regions the data may live in.
+- Never draining a region until the day one fails.
+
+<KeyTakeaways>
+
+- Zones share a region's network and control systems. Surviving a region loss takes a second region.
+- Every cross-region step costs a round trip: about 90 ms between Virginia and Frankfurt.
+- A home region per conversation keeps one order and keeps most writes local.
+- Replication lag is a failover's RPO. Promote only after the old primary's lease expires, and use a witness to avoid
+  split brain.
+- With N regions, run each at no more than (N−1)/N, and drain regions on a schedule to prove it.
+
+</KeyTakeaways>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+The chat grows, and 40% of its users live in the EU. The company promises that any conversation with an EU member stays
+in EU regions. A region loss may lose at most 5 s of messages and keep chat down at most 10 minutes. Conversations
+whose members all live in one jurisdiction must keep their sends inside it.
+
+1. Which regions do you run, and where does each conversation live?
+2. How do you fail over within budget, and without split brain?
+3. How much capacity does each region need, and how do you prove the design works?
+
+<div slot="answer">
+
+- **Pairs per jurisdiction.** Run Virginia and Oregon for the US, and Frankfurt and Ireland for the EU. US only
+  conversations live in the US pair. Any conversation with an EU member lives in the EU pair, and its US members pay
+  about 90 ms per send.
+- **Failover.** Replicate asynchronously within each pair, and alert when lag passes 2 s, inside the 5 s RPO. A witness
+  in a third region breaks ties. The old primary stops writing when its lease expires, and the standby promotes only
+  after that, under a higher epoch. Detection takes 30 s, leaving most of the 10
+  minutes for promotion and rerouting.
+- **Capacity and drills.** Run each region at no more than half its capacity. Drain one region a month and compare the
+  messages lost with the lag at the moment of the drain.
+
+</div>
+
+</Challenge>
