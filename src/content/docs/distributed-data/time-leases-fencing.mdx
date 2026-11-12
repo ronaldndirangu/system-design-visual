@@ -1,0 +1,427 @@
+---
+title: Time, leases, and fencing
+description: Give one chat server a lease to number a conversation, then freeze it, slow its network, and slow its clock. See why clocks cannot keep a stale owner out, and how a fencing token checked by storage does.
+furtherReading:
+  - title: How to do distributed locking (Martin Kleppmann, 2016)
+    url: https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html
+    note: The garbage collection pause story, and why a lock needs a fencing token that storage checks.
+  - title: Time, Clocks, and the Ordering of Events in a Distributed System (Lamport, 1978)
+    url: https://lamport.azurewebsites.net/pubs/time-clocks.pdf
+    note: The paper that introduced logical clocks and the happened-before order.
+  - title: The Chubby lock service for loosely coupled distributed systems (Burrows, 2006)
+    url: https://research.google/pubs/the-chubby-lock-service-for-loosely-coupled-distributed-systems/
+    note: Google's lock service, whose sequencers are fencing tokens that servers check on every request.
+---
+
+import Recall from '../../../components/lesson/Recall.astro';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import FencingWidget from '../../../components/widgets/FencingWidget';
+
+export const nodes = [
+  { id: 'lock', kind: 'database', x: 330, y: 50, label: 'Lock service', sublabel: 'grants tokens' },
+  { id: 'a', kind: 'server', x: 120, y: 160, label: 'Server A', sublabel: 'token 1' },
+  { id: 'b', kind: 'server', x: 540, y: 160, label: 'Server B', sublabel: 'token 2' },
+  { id: 'log', kind: 'database', x: 330, y: 270, label: 'Chat log', sublabel: 'checks tokens' },
+];
+
+export const edges = [
+  { from: 'a', to: 'lock' },
+  { from: 'b', to: 'lock' },
+  { from: 'a', to: 'log' },
+  { from: 'b', to: 'log' },
+];
+
+export const steps = [
+  {
+    title: 'A holds the lease and writes with token 1',
+    text: 'The lock service grants server A a 10 second lease on the conversation with token 1. A renews every 3 seconds and appends seq 1 and seq 2, each tagged with token 1.',
+    nodes: ['a', 'lock', 'log'],
+    flows: ['a>lock', 'a>log'],
+  },
+  {
+    title: 'A freezes, and the lease runs out',
+    text: 'At 5 s, A picks seq 3 and freezes in a garbage collection pause. No renewal arrives, so the lease expires in the lock service at 13 s.',
+    nodes: ['a', 'lock'],
+    flows: [],
+  },
+  {
+    title: 'B takes over with token 2',
+    text: 'Server B gets the lease with token 2. Before its first append, it registers token 2 with the log, so the log now refuses anything older.',
+    nodes: ['b', 'lock', 'log'],
+    flows: ['b>lock', 'b>log'],
+  },
+  {
+    title: 'A wakes and sends a stale write',
+    text: 'At 17.5 s, A wakes, still sure it owns the chat, and sends seq 3 with token 1. B already wrote seq 3. Token 1 is below token 2, so the log rejects it.',
+    nodes: ['a', 'log'],
+    flows: ['a>log'],
+  },
+  {
+    title: 'A learns it lost',
+    text: 'The rejection tells A that someone newer owns the chat, so A steps down. Phones see one message per sequence number.',
+    nodes: ['a', 'lock'],
+    flows: ['a>lock'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'distributed-data/time-leases-fencing/recall-1',
+    prompt: 'A cart has N = 3 copies. Which setting makes every read see the latest acknowledged write?',
+    options: [
+      {
+        text: 'R = 1, W = 1',
+        why: 'R + W = 2 does not exceed 3, so a read can miss the write.',
+      },
+      {
+        text: 'R = 2, W = 2',
+        correct: true,
+        why: 'Right. R + W = 4 exceeds N = 3, so every read set overlaps every write set.',
+      },
+      {
+        text: 'R = 1, W = 2',
+        why: 'R + W = 3 equals N, so the one copy read can be the one the write missed.',
+      },
+      {
+        text: 'Any setting, as long as all three copies are up',
+        why: 'Copies that are up can still lag.',
+      },
+    ],
+  },
+  {
+    id: 'distributed-data/time-leases-fencing/recall-2',
+    prompt: 'A payment server paused past its claim lease, and recovery took the claim with token 2. The paused server wakes and saves its receipt with WHERE token = 1. What happens?',
+    options: [
+      {
+        text: 'The save overwrites the recovery receipt',
+        why: 'The row now holds token 2, so a condition on token 1 matches nothing.',
+      },
+      {
+        text: 'The save matches no row, and the paused server drops its result',
+        correct: true,
+        why: 'Right. The token check turns a stale save into a no-op.',
+      },
+      {
+        text: 'The database waits until the lease of token 2 expires',
+        why: 'An update with a WHERE condition runs at once.',
+      },
+      {
+        text: 'The provider refunds the second charge',
+        why: 'The idempotency key already kept the provider to one charge.',
+      },
+    ],
+  },
+];
+
+export const quiz = [
+  {
+    id: 'distributed-data/time-leases-fencing/q1',
+    prompt: 'A server checks that its lease has 6 seconds left, then appends a message. Why can the append still land after the lease has passed to another server?',
+    options: [
+      {
+        text: 'The lock service lies about expiry times',
+        why: 'The lock service reports its own view correctly. The trouble sits between check and append.',
+      },
+      {
+        text: 'A pause or a slow network can delay the append by more than 6 seconds after the check',
+        correct: true,
+        why: 'Right. Pauses and network queues have no upper bound, so a check proves nothing about when the write arrives.',
+      },
+      {
+        text: 'Checking a lease always takes longer than the lease',
+        why: 'A check takes milliseconds. The danger is a rare long gap after it.',
+      },
+      {
+        text: 'Appends always arrive in a different order from the checks',
+        why: 'Usually they arrive quickly and in order.',
+      },
+    ],
+  },
+  {
+    id: 'distributed-data/time-leases-fencing/q2',
+    prompt: 'Which clock reading should a lease holder use to decide how much of its lease is left?',
+    options: [
+      {
+        text: 'The wall clock, compared with the expiry time in the grant',
+        why: 'NTP can step the wall clock, and the expiry came from a machine with its own skew.',
+      },
+      {
+        text: 'A Lamport clock',
+        why: 'A Lamport clock orders events and counts no seconds.',
+      },
+      {
+        text: 'A monotonic clock, counted from when it sent the request the lock service granted',
+        correct: true,
+        why: 'Right. It never jumps, and the send time errs early, since the grant came later.',
+      },
+      {
+        text: 'The timestamp on the last message in the chat log',
+        why: 'That time carries the skew of whichever server wrote it.',
+      },
+    ],
+  },
+  {
+    id: 'distributed-data/time-leases-fencing/q3',
+    prompt: 'Where must the fencing token check happen for it to stop a stale owner?',
+    options: [
+      {
+        text: 'In the lock service, when it grants a lease',
+        why: 'The stale write never goes through the lock service.',
+      },
+      {
+        text: 'In the old owner, before each write',
+        why: 'The old owner is the server that is wrong about its own state.',
+      },
+      {
+        text: 'In the storage that accepts the write, in the same step as the write',
+        correct: true,
+        why: 'Right. Every write passes through storage, so it can refuse an old token.',
+      },
+      {
+        text: 'In the phone, when it sorts messages',
+        why: 'By then the stale message already sits in the log.',
+      },
+    ],
+  },
+  {
+    id: 'distributed-data/time-leases-fencing/q4',
+    prompt: 'You cut the chat lease from 10 seconds to 2 seconds. What changes?',
+    options: [
+      {
+        text: 'Takeover after a crash gets faster, and short pauses now cost the lease more often',
+        correct: true,
+        why: 'Right. A dead owner is replaced within about 2 seconds, and any hiccup over 2 seconds also triggers a takeover.',
+      },
+      {
+        text: 'Fencing tokens are no longer needed',
+        why: 'A pause longer than 2 seconds still lets a stale owner write.',
+      },
+      {
+        text: 'Nothing, because the lock service decides expiry',
+        why: 'Lease length sets how fast the lock service gives up on an owner.',
+      },
+      {
+        text: 'Clock skew matters less, so wall clocks become safe',
+        why: 'A fixed skew becomes a larger share of a shorter lease.',
+      },
+    ],
+  },
+];
+
+<Recall questions={recall} />
+
+<Objectives>
+
+- Explain why a lease holder can act after its lease has passed to another server.
+- Name the ways clocks mislead: drift, NTP steps, and pauses, and say which clock to use for timeouts.
+- Describe how a fencing token checked by storage turns a stale write into a rejected one.
+- Choose a lease length by weighing failover speed against false takeovers.
+
+</Objectives>
+
+## The failure: two servers number one chat
+
+In the [chat case study](../../case-studies/chat/), the server gives each message in a conversation the next sequence
+number, and phones sort by it. Exactly one server may hand out numbers for a conversation, or two messages share a
+number. A common way to pick that server is a **lease**: a lock that expires on its own. Server A asks a lock service
+such as etcd or ZooKeeper for the conversation, gets it for 10 seconds, and renews every 3 seconds. If A dies, the
+lease runs out and server B takes over.
+
+A checks its lease before every write, so this looks safe. Here is the story that breaks it.
+
+<Predict
+  client:visible
+  id="distributed-data/time-leases-fencing/predict-1"
+  question="At 5 s, server A checks its lease (8 s left), picks seq 3, and then freezes in a 12.5 s garbage collection pause. The lease expires at 13 s, and server B takes over and writes its own seq 3. What happens when A wakes at 17.5 s?"
+  options={[
+    'A notices its lease expired and drops seq 3',
+    'A sends seq 3, and the log stores it next to B’s seq 3',
+    'The lock service blocks A’s write',
+    'A’s connection timed out during the pause, so the write never leaves',
+  ]}
+  answer={1}
+>
+
+**The log stores two messages numbered 3.** A checked its lease before the pause, and from inside A the pause is
+invisible: the next line of code simply runs. The log knows nothing about leases, so it accepts the write. Garbage
+collection, a migrating virtual machine, or swapping to disk can each freeze a program for seconds.
+
+</Predict>
+
+The [payment recovery story](../../reliability/idempotency/) had the same failure: a paused server woke and saved its
+receipt after recovery took over. A lease tells you when to start recovery. It cannot stop an old owner that does not
+know it is old.
+
+## Clocks you cannot trust
+
+A lease is a promise about time, so it is only as good as the clocks involved. Machine clocks disagree in three ways:
+
+- **Drift.** A quartz clock runs a little fast or slow. At 200 parts per million, that is 17 seconds a day.
+- **Steps.** NTP corrects drift and can jump the clock forward or back. A timeout measured as the difference of two
+  wall clock readings can come out negative.
+- **Skew.** Even with NTP, two servers often differ by a millisecond or more, and far more when one loses its time
+  source.
+
+Two rules follow. Measure durations with a **monotonic clock** (`CLOCK_MONOTONIC`, `System.nanoTime()`,
+`performance.now()`), which never jumps. And count the lease from when the holder **sent** the renewal request, since
+the grant happened later, so the holder errs toward stopping early. When you only need the order of events, logical
+clocks skip physical time altogether.
+
+<details>
+<summary>Go deeper: logical clocks</summary>
+
+A **Lamport clock** is a counter: each server bumps it on every event, stamps it on every message, and on receipt sets
+its own counter past the one it received. If one event caused another, the cause gets the smaller number. **Vector
+clocks**, one counter per server, also detect writes that happened concurrently, which is how the
+[quorum cart](../quorums/) kept both versions of a conflicting cart. Hybrid logical clocks in CockroachDB pair wall time
+with a counter, and Google Spanner's TrueTime returns an interval of a few milliseconds and waits it out before a commit
+becomes visible. None of these make a paused server notice that it paused.
+
+</details>
+
+## The idea: a lease plus a token the storage checks
+
+The fix moves the final decision to the one place every write passes through: storage. Each time the lock service
+grants the lease, it also hands out a **fencing token**, a number that grows with every grant. The writer sends its
+token with every write. Storage remembers the highest token it has seen and refuses any write with a lower one.
+
+<Analogy>
+
+A hotel issues a key card to each guest. When a new guest checks into the room, the front desk encodes a newer card,
+and the door lock remembers the newest card it has seen. The previous guest's card stops working at the first swipe of
+the new one, no matter what time the old guest thinks it is. The lock decides, at the door.
+
+</Analogy>
+
+For the chat, the conversation row holds the owner's token, and each append locks and checks it:
+
+```sql
+UPDATE conversations SET owner_token = $2 WHERE id = $1 AND owner_token < $2;
+
+INSERT INTO messages (conversation_id, seq, body, token)
+SELECT $1, $3, $4, $2 FROM conversations WHERE id = $1 AND owner_token = $2 FOR SHARE;
+```
+
+The first statement runs once at takeover and registers the new token. The second runs on every append and inserts
+nothing when the token is stale. `FOR SHARE` makes the takeover wait for appends already in flight. ZooKeeper's
+transaction id and etcd's revision both grow with every change, so either can serve as the token. Raft does the same
+with its [term numbers](../raft/): every follower refuses a leader with an old term.
+
+<StepDiagram client:visible title="A paused owner meets a fenced log" nodes={nodes} edges={edges} steps={steps} height={320} />
+
+## Try it
+
+Two lanes run the same chat with the same fault. Server A writes a message every 2 seconds, and server B takes over when
+the lease expires. The left log accepts every write, and the right log checks tokens.
+
+<FencingWidget client:visible />
+
+What to look for:
+
+- **Long pause.** A wakes at 17.5 s with a stale seq 3. The left log stores it next to B's seq 3. The right log
+  rejects it, and A steps down.
+- **Slow clock.** A's clock runs at 60% speed and A loses the lock service at 4 s. B takes over at 13.5 s, but A's slow
+  timer still shows time left, so A keeps writing until 21 s. The left log accepts seq 8, 9, and 10 from A, each a
+  duplicate of B's. The right log rejects the first one and A stops.
+- **Slow network.** Watch the counter of stale writes.
+- **No faults.** Both lanes hold 15 messages. Fencing costs one comparison per write.
+
+<Predict
+  client:visible
+  id="distributed-data/time-leases-fencing/predict-2"
+  question="In the Slow network fault, A sends a message at 7 s, 9 s, and 11 s, and each takes 8 s to arrive. A's own timer ends its lease at 13 s and it stops writing. B takes over at 13.5 s. In the lease only lane, how many stale writes reach the log?"
+  options={['None, because A stopped on time', 'One', 'Three', 'Six']}
+  answer={2}
+>
+
+**Three.** A stopped the moment its own timer said the lease ended, but three messages were already on the wire. They
+land at 15 s, 17 s, and 19 s, after B started numbering from seq 4, so each takes a number B also used. Nothing can
+call back a message in flight, so the check has to happen where it lands. The fenced lane rejects all three.
+
+</Predict>
+
+## Safety margins and what they cannot fix
+
+Teams often add a margin: the holder treats a 10 second lease as 8 seconds. A margin covers slow clocks, because drift
+has a known bound. Pauses and slow networks have no bound, so a 12.5 second pause beats an 8 second margin just as it
+beats a 10 second one.
+
+Lease length then trades two failures. A long lease means a long outage when the owner crashes: nobody numbers the
+conversation until it runs out. A short lease means a takeover after every hiccup longer than the lease, which moves the
+conversation and makes phones reconnect. Fencing lets you pick the length for failover speed alone, because correctness
+no longer depends on it.
+
+<details>
+<summary>Go deeper: typical lease settings</summary>
+
+Values from 5 to 30 seconds are common, with renewals every third of the lease so that one lost renewal does not cost
+it. Holders that run garbage collected languages often pick the upper end, because a collector pause of a few seconds
+is routine under memory pressure. Lock services usually also expose a session timeout separate from each lease. Keep
+the two consistent, or a session can expire while the lease still looks valid.
+
+</details>
+
+## Trade-offs
+
+<TradeoffTable title="Ways to keep one owner">
+
+| Choice                          | What it buys                                    | What it costs                                         |
+| ------------------------------- | ----------------------------------------------- | ----------------------------------------------------- |
+| Lease alone                     | Automatic failover, simple to add               | A paused or slow owner can still write                |
+| Lease plus fencing token        | Stale writes refused by storage                 | Storage must store and check the token on every write |
+| Longer lease                    | Fewer false takeovers                           | Longer outage when the owner crashes                  |
+| Shorter lease                   | Faster failover                                 | More takeovers and renewal traffic                    |
+| Safety margin on the holder     | Covers drift and skew                           | Shorter usable lease, no help against pauses          |
+| Consensus log for every write   | One agreed order with no separate lock          | A majority round trip on every write                  |
+
+</TradeoffTable>
+
+## Common mistakes
+
+- Treating "I checked my lease" as "my write is safe". The write can land any time after the check.
+- Measuring timeouts with the wall clock, which NTP can move in either direction.
+- Fencing with a number the writer makes up, such as its own timestamp. The token must come from the grant.
+- Relying on a unique key on sequence numbers alone. It rejects whichever copy arrives second, which can be the new
+  owner's message.
+- Guarding a data change with a lock that has no token, such as a Redis lock with a timeout. Such locks suit only work
+  where a rare double run wastes time and nothing else.
+
+<KeyTakeaways>
+
+- A lease decides when someone else may take over. It cannot stop the old owner, who may not know it paused.
+- Clocks drift, jump, and disagree. Use monotonic clocks for durations, and logical clocks when you only need order.
+- A fencing token grows with every grant, and storage refuses writes with an older token.
+- Pick the lease length for failover speed. Fencing keeps it safe whatever the length.
+
+</KeyTakeaways>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+The chat service spreads 2 million conversations over 50 servers in shards of 40,000. Each server holds one etcd lease
+per shard and stores messages in a sharded database.
+
+1. What do you use as the fencing token, and where does storage keep it?
+2. A server takes over a shard. How does it choose the next sequence number for each conversation?
+3. Server 12 freezes for 15 seconds while phones keep sending to it. Walk through what those phones see.
+
+<div slot="answer">
+
+- **One token per shard.** Use the etcd revision of the lease key. Store it in a shard row, and have each append lock
+  and check that row, as in the SQL above.
+- **Register first, then read.** The new owner writes its token to the shard row, which waits for appends in flight,
+  then reads the highest sequence number per conversation. Reading first lets the old owner append after the read.
+- **A short stall, then a retry.** Sends to server 12 time out. Each phone retries with the same client message id and
+  reaches the new owner. When server 12 wakes, its leftover appends fail the token check, and it drops the shard.
+
+</div>
+
+</Challenge>
