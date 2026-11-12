@@ -216,6 +216,14 @@ describe('timed round helpers', () => {
     }
   });
 
+  it('draws from the preferred prompts when one other than the current is free', () => {
+    for (let seed = 0; seed < 200; seed += 1) {
+      expect([1, 3]).toContain(drawPromptIndex(seed, 4, 0, [1, 3]));
+      expect(drawPromptIndex(seed, 4, 1, [1, 3])).toBe(3);
+      expect(drawPromptIndex(seed, 4, 2, [2])).not.toBe(2);
+    }
+  });
+
   it('formats the clock in minutes and seconds', () => {
     expect(formatClock(0)).toBe('0:00');
     expect(formatClock(59_999)).toBe('0:59');

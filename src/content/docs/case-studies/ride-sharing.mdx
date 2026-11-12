@@ -564,12 +564,11 @@ Next, the matcher offers the ride to the driver app with that version and starts
 the length of the lease. The [Timeouts and cancellation](../../reliability/timeouts/) lesson covers why every wait needs
 a deadline.
 
-The trap is a stale message. Networks delay replies, and processes pause for garbage collection or a slow disk. The
-driver's accept can arrive after the lease expired and another ride reserved the same driver, and a paused matcher can
-wake up and fire its old timer. So every message names the ride and the version it answers, and the update matches
-both. The version works as a fencing token, which the [Time, leases, and
-fencing](../../distributed-data/time-leases-fencing/) lesson covers. The driver's accept also needs the lease to still
-be running:
+The trap is a stale message. Networks delay replies, and processes pause for garbage collection. A late accept can
+follow an expired lease, and a paused matcher can fire its old timer. So every message names the ride and the version
+it answers, and the update matches both. The check sits in the `WHERE` clause because a sender that read first and
+wrote second could pause between the steps. The database compares the version as it changes the row, so a stale
+message changes zero rows. The driver's accept also needs the lease to still be running:
 
 ```sql
 UPDATE drivers
@@ -592,6 +591,8 @@ Zero rows changed means the message was stale, and the sender drops it: the driv
 the matcher moves to its next candidate. A matcher that needs more time renews with the accept's conditions and pushes
 `expires_at` forward. The database checks every expiry against its own clock, `now()`, so the clocks on phones and
 matchers never decide who holds a driver.
+
+Further reading: [Time, leases, and fencing](../../distributed-data/time-leases-fencing/).
 
 This timeline comes from the lesson's reservation model. One driver, d7, meets two rides:
 

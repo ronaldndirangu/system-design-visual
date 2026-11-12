@@ -257,7 +257,7 @@ pulls megabits per second over a changing network.
 
 </Objectives>
 
-**Route:** Advanced, case 8 of 12 on the beginner route through Module 6. Next on the route:
+**Route:** Advanced, case 8 of 12 on the beginner route through Module 6. After you finish the async module:
 [Search](../search/).
 
 ## The failure: a train, three tunnels, one fixed file
@@ -355,12 +355,10 @@ the transcode job in one transaction. A retried complete gets the same 202 and n
 | `outbox`     | `id`               | Video id, the owed transcode job, and whether the relay sent it        |
 
 The video bytes live in object storage, which is cheap per gigabyte and answers no queries, so "which videos belong to
-this creator?" goes to the database. [Data modeling](../../foundations/data-modeling/) compares these stores.
+this creator?" goes to the database. [Data modeling](../../foundations/data-modeling/) compares these stores, and
+[Object storage](../../scaling/object-storage/) covers buckets, immutable objects, and presigned uploads.
 
-<details>
-<summary>Go deeper: object storage keys, and how object storage differs from a database</summary>
-
-The video lives in object storage under keys like these:
+The video-specific part is the key layout:
 
 ```text
 sources/{videoId}/original.mp4
@@ -369,20 +367,8 @@ videos/{videoId}/720p/playlist.m3u8
 videos/{videoId}/720p/seg_00012.ts
 ```
 
-- **Buckets and keys.** A bucket is a named container, and a key is a path-like string inside it. You `PUT` an object
-  under a key and `GET` it back by that key. The slashes are only part of the name; there are no folders, rows, or
-  indexes.
-- **Whole, immutable objects.** You write an object in one go and replace it whole. You cannot edit a few bytes in the
-  middle. Reads can ask for a byte range, which players use for some formats.
-- **Cheap and durable per gigabyte.** The service either copies each object to several disks or splits it with erasure
-  coding into fragments plus parity, spread across machines, so a dead disk or a dead machine loses nothing. A terabyte
-  here costs far less than a terabyte on database disks.
-- **Slow per request, with no queries.** Each request carries far more latency than a lookup in a well-indexed
-  database, and listing keys by prefix is the closest thing to a query.
-- **One key that changes.** Segments and media playlists never change once written. The master playlist is the
-  exception: it is rewritten whole as rungs join, so it gets a short cache lifetime.
-
-</details>
+Segments and media playlists never change once written, so the CDN can cache them for a long time. The master playlist
+is the exception: it is rewritten whole as rungs join, so it gets a short cache lifetime.
 
 ## High-level design
 

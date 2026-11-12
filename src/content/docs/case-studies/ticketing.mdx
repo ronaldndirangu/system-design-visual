@@ -226,7 +226,7 @@ export const recall = [
 
 </Objectives>
 
-**Route:** Intermediate, case 5 of 12 on the beginner route through Module 6. Next on the route:
+**Route:** Intermediate, case 5 of 12 on the beginner route through Module 6. After you finish the async module:
 [Payments](../payments/).
 
 ## The failure: two buyers, one seat
@@ -342,9 +342,14 @@ A buyer who claims a seat gets a **hold**: the seat is theirs while they type a 
 They close the tab, their card fails, or they change their mind. If a hold lasts until the buyer pays, an abandoned seat
 stays locked for the rest of the sale while people in line are told it is sold out.
 
-So every hold gets a deadline, and the deadline binds every buyer, including one whose payment is still at the bank. A
-hold is a lease, and [Time, leases, and fencing](../../distributed-data/time-leases-fencing/) explains why the check
-belongs in the write. A seat moves through a small state machine, and each move is one conditional write on its row:
+So every hold gets a deadline, and the deadline binds every buyer, including one whose payment is still at the bank. The
+deadline check belongs inside the write. A server that reads the row, sees a live hold, and writes a moment later can
+stall between those steps, and by then the hold may have lapsed and another buyer may own the seat. With `hold_id` and
+`expires > now()` in the `WHERE` clause, the database judges the claim against its own clock at the instant it changes
+the row, so a late writer changes zero rows. Further reading: [Time, leases, and
+fencing](../../distributed-data/time-leases-fencing/) treats a hold as a lease and extends this check to fencing tokens.
+
+A seat moves through a small state machine, and each move is one conditional write on its row:
 
 1. **Held.** The claim from step 6 sets `status = 'held'`, the holder, a fresh `hold_id`, and a deadline. The server
    keeps that `hold_id` with the checkout, and every later step names it.

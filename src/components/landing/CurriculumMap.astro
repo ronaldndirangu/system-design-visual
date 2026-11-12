@@ -47,6 +47,7 @@ const Heading = headingLevel === 2 ? 'h2' : 'h3';
                       Completed
                     </span>
                     {lesson.format === 'card' && <span class="sdv-badge sdv-badge--neutral">Quick card</span>}
+                    {lesson.optional && <span class="sdv-badge sdv-badge--neutral">Optional deep dive</span>}
                     <span class:list={['sdv-badge', lesson.advanced ? 'sdv-badge--warn' : 'sdv-badge--neutral']}>
                       {difficultyLabels[lesson.difficulty]}
                     </span>
