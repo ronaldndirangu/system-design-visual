@@ -59,23 +59,69 @@
   height: 0.85rem;
   width: 0.85rem;
 }
-.sdv-eval__lanes {
-  margin-bottom: 0.75rem;
+.sdv-eval__rows {
+  display: grid;
+  gap: var(--sdv-space-2);
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
 }
-.sdv-eval__lane-meta {
-  color: var(--sl-color-gray-2);
-  font-size: var(--sl-text-xs);
-  margin: 0.4rem 0 0;
+.sdv-eval__row {
+  align-items: center;
+  display: grid;
+  gap: var(--sdv-space-1) var(--sdv-space-3);
+  grid-template-areas: "name strip meta";
+  grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+  margin: 0;
+}
+.sdv-eval__row-name {
+  color: var(--sdv-text-1);
+  font-size: var(--sdv-text-sm);
+  font-weight: 600;
+  grid-area: name;
+}
+.sdv-eval__row .sdv-strip__items {
+  grid-area: strip;
+}
+.sdv-eval__row-meta {
+  color: var(--sdv-text-2);
+  font-size: var(--sdv-text-xs);
+  font-variant-numeric: tabular-nums;
+  grid-area: meta;
+  text-align: end;
+}
+@media (max-width: 30rem) {
+  .sdv-eval__row {
+    grid-template-areas: "name meta" "strip strip";
+    grid-template-columns: auto 1fr;
+  }
+}
+.sdv-eval__plot {
+  position: relative;
 }
 .sdv-eval__track {
   display: block;
   height: auto;
   width: 100%;
 }
-.sdv-eval__row-label {
-  fill: var(--sl-color-white);
-  font-size: 13px;
+.sdv-eval__row-labels {
+  inset: 0 auto 0 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+  position: absolute;
+}
+.sdv-eval__row-labels li {
+  color: var(--sdv-text-1);
+  font-size: var(--sdv-text-xs);
   font-weight: 600;
+  left: 0.25rem;
+  line-height: 1;
+  margin: 0;
+  position: absolute;
+  transform: translateY(-50%);
+  white-space: nowrap;
 }
 .sdv-eval__row-rule {
   stroke: var(--sdv-border);
@@ -100,7 +146,7 @@
 }
 .sdv-eval__budget-label {
   fill: var(--sl-color-gray-2);
-  font-size: 11px;
+  font-size: calc(12px * var(--sdv-dscale, 1));
 }
 .sdv-eval__p95 {
   stroke: var(--sl-color-white);
@@ -108,7 +154,7 @@
 }
 .sdv-eval__p95-label {
   fill: var(--sl-color-white);
-  font-size: 11px;
+  font-size: calc(12px * var(--sdv-dscale, 1));
   font-weight: 700;
 }
 .sdv-eval__legend-p95 {

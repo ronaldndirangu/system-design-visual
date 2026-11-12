@@ -15,8 +15,9 @@ import {
 } from '../../lib/models/evalBudget';
 import { MotionRoot } from '../sim/MotionRoot';
 import { ScenarioChips } from '../sim/ScenarioChips';
-import { SimulationShell } from '../sim/SimulationShell';
+import { SimulationShell, TOY_MODEL_ASSUMPTIONS } from '../sim/SimulationShell';
 import { ToneBadge } from '../sim/StatTable';
+import { TranscriptScroll } from '../sim/TranscriptScroll';
 import { useHydrated } from '../sim/useHydrated';
 import { usePrefersReducedMotion } from '../sim/usePrefersReducedMotion';
 import { DiagramScroll } from '../viz/DiagramScroll';
@@ -42,6 +43,8 @@ const PLOT_LEFT = 92;
 const PLOT_RIGHT = 620;
 const ROW_Y = [40, 88, 136] as const;
 const AXIS_Y = 166;
+const VIEW_WIDTH = 640;
+const VIEW_HEIGHT = 196;
 const xFor = (seconds: number) =>
   PLOT_LEFT + (Math.min(seconds, AXIS_MAX) / AXIS_MAX) * (PLOT_RIGHT - PLOT_LEFT);
 
@@ -61,75 +64,86 @@ function LatencyTrack({ run, summaries }: { run: EvalRun; summaries: LaneSummary
   const budgetX = xFor(DEFAULT_BUDGETS.maxP95Seconds);
   return (
     <DiagramScroll label="Latency of every graded answer, scrollable">
-      <svg
-        className="sdv-eval__track"
-        viewBox="0 0 640 196"
-        role="img"
-        aria-label={`Latency of each graded answer per candidate, 0 to ${AXIS_MAX} seconds, with the p95 budget line at ${DEFAULT_BUDGETS.maxP95Seconds} s. The readout table below lists the same numbers.`}
-      >
-        <line className="sdv-eval__budget" x1={budgetX} x2={budgetX} y1={16} y2={AXIS_Y} />
-        <text className="sdv-eval__budget-label" x={budgetX + 4} y={14}>
-          p95 budget {DEFAULT_BUDGETS.maxP95Seconds} s
-        </text>
-        {run.lanes.map((lane, row) => {
-          const y = ROW_Y[row] ?? 0;
-          const summary = summaries[row];
-          const p95X = xFor(summary?.p95Seconds ?? 0);
-          const graded = (summary?.graded ?? 0) > 0;
-          return (
-            <g key={lane.candidate.id}>
-              <text className="sdv-eval__row-label" x={8} y={y + 4}>
-                {lane.candidate.label}
-              </text>
-              <line className="sdv-eval__row-rule" x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={y} y2={y} />
-              {lane.results.map((result, index) => {
-                const x = xFor(result.latencySeconds);
-                const dy = ((index % 3) - 1) * 7;
-                return result.pass ? (
-                  <m.circle
-                    key={result.caseId}
-                    className="sdv-eval__dot"
-                    cx={x}
-                    cy={y + dy}
-                    r={4.5}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={reduced ? { duration: 0 } : { duration: 0.3 }}
-                  />
-                ) : (
-                  <m.path
-                    key={result.caseId}
-                    className="sdv-eval__fail"
-                    d={`M${x - 5} ${y + dy - 5}L${x + 5} ${y + dy + 5}M${x + 5} ${y + dy - 5}L${x - 5} ${y + dy + 5}`}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={reduced ? { duration: 0 } : { duration: 0.3 }}
-                  />
-                );
-              })}
-              {graded && (
-                <m.g initial={false} animate={{ x: p95X }} transition={move}>
-                  <line className="sdv-eval__p95" x1={0} x2={0} y1={y - 16} y2={y + 16} />
-                  <text className="sdv-eval__p95-label" x={4} y={y - 12}>
-                    p95
-                  </text>
-                </m.g>
-              )}
-            </g>
-          );
-        })}
-        <g className="sdv-axis">
-          <line x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={AXIS_Y} y2={AXIS_Y} />
-          {[0, 1, 2, 3, 4].map((tick) => (
-            <g key={tick}>
-              <line x1={xFor(tick)} x2={xFor(tick)} y1={AXIS_Y} y2={AXIS_Y + 5} />
-              <text x={xFor(tick)} y={AXIS_Y + 18} textAnchor="middle">
-                {tick} s
-              </text>
-            </g>
+      <div className="sdv-eval__plot">
+        <svg
+          className="sdv-eval__track"
+          viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
+          role="img"
+          aria-label={`Latency of each graded answer per candidate, 0 to ${AXIS_MAX} seconds, with the p95 budget line at ${DEFAULT_BUDGETS.maxP95Seconds} s. The readout table below lists the same numbers.`}
+        >
+          <line className="sdv-eval__budget" x1={budgetX} x2={budgetX} y1={16} y2={AXIS_Y} />
+          <text className="sdv-eval__budget-label" x={budgetX + 4} y={14}>
+            p95 budget {DEFAULT_BUDGETS.maxP95Seconds} s
+          </text>
+          {run.lanes.map((lane, row) => {
+            const y = ROW_Y[row] ?? 0;
+            const summary = summaries[row];
+            const p95X = xFor(summary?.p95Seconds ?? 0);
+            const graded = (summary?.graded ?? 0) > 0;
+            return (
+              <g key={lane.candidate.id}>
+                <line className="sdv-eval__row-rule" x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={y} y2={y} />
+                {lane.results.map((result, index) => {
+                  const x = xFor(result.latencySeconds);
+                  const dy = ((index % 3) - 1) * 7;
+                  return result.pass ? (
+                    <m.circle
+                      key={result.caseId}
+                      className="sdv-eval__dot"
+                      cx={x}
+                      cy={y + dy}
+                      r={4.5}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={reduced ? { duration: 0 } : { duration: 0.3 }}
+                    />
+                  ) : (
+                    <m.path
+                      key={result.caseId}
+                      className="sdv-eval__fail"
+                      d={`M${x - 5} ${y + dy - 5}L${x + 5} ${y + dy + 5}M${x + 5} ${y + dy - 5}L${x - 5} ${y + dy + 5}`}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={reduced ? { duration: 0 } : { duration: 0.3 }}
+                    />
+                  );
+                })}
+                {graded && (
+                  <m.g initial={false} animate={{ x: p95X }} transition={move}>
+                    <line className="sdv-eval__p95" x1={0} x2={0} y1={y - 16} y2={y + 16} />
+                    <text className="sdv-eval__p95-label" x={4} y={y - 12}>
+                      p95
+                    </text>
+                  </m.g>
+                )}
+              </g>
+            );
+          })}
+          <g className="sdv-axis">
+            <line x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={AXIS_Y} y2={AXIS_Y} />
+            {[0, 1, 2, 3, 4].map((tick) => (
+              <g key={tick}>
+                <line x1={xFor(tick)} x2={xFor(tick)} y1={AXIS_Y} y2={AXIS_Y + 5} />
+                <text x={xFor(tick)} y={AXIS_Y + 18} textAnchor="middle">
+                  {tick} s
+                </text>
+              </g>
+            ))}
+          </g>
+        </svg>
+        {/* Row names are HTML so they keep their real size when the drawing shrinks on a phone. */}
+        <ul
+          className="sdv-eval__row-labels"
+          aria-hidden="true"
+          style={{ width: `${(PLOT_LEFT / VIEW_WIDTH) * 100}%` }}
+        >
+          {run.lanes.map((lane, row) => (
+            <li key={lane.candidate.id} style={{ top: `${((ROW_Y[row] ?? 0) / VIEW_HEIGHT) * 100}%` }}>
+              {lane.candidate.label}
+            </li>
           ))}
-        </g>
-      </svg>
+        </ul>
+      </div>
     </DiagramScroll>
   );
 }
@@ -192,6 +206,13 @@ export default function EvalRunWidget({
   const markerEvents = run.events.filter((event) => event.marker);
   const notes = run.events.filter((event) => !event.marker);
   const anyDeclines = summaries.some((s) => s.declineCases > 0);
+  const keyStats = [
+    { label: 'Questions graded', value: `${run.ticks} / ${run.length}` },
+    {
+      label: `Passed: ${run.lanes.map((lane) => lane.candidate.label).join(' / ')}`,
+      value: summaries.map((s) => s.passed).join(' / '),
+    },
+  ];
 
   const rows: { label: string; cells: string[] }[] = [
     { label: 'Questions graded', cells: summaries.map((s) => String(s.graded)) },
@@ -230,6 +251,10 @@ export default function EvalRunWidget({
       finished={run.done}
       resetKey={scenarioId}
       ticksPerSecond={2}
+      assumptions={TOY_MODEL_ASSUMPTIONS}
+      keyStats={keyStats}
+      readoutCount={rows.length + 1}
+      started={started}
       controls={
         <div className="sdv-duel__extra">
           <button type="button" className="sdv-button" onClick={skipToEnd} disabled={!hydrated || run.done}>
@@ -329,40 +354,37 @@ export default function EvalRunWidget({
             <p className="sdv-trace__empty">Press Play or Step to grade the first question.</p>
           )}
         </div>
-        <div className="sdv-duel__lanes sdv-eval__lanes">
+        <ul className="sdv-eval__rows" aria-label="Grades per candidate, in order">
           {run.lanes.map((lane, index) => {
             const s = summaries[index];
             const stripId = `${baseId}-${lane.candidate.id}`;
             return (
-              <section key={lane.candidate.id} className="sdv-duel__lane" aria-label={lane.candidate.label}>
-                <h4 className="sdv-duel__lane-title">{lane.candidate.label}</h4>
-                <div className="sdv-strip">
-                  <p className="sdv-strip__label" id={stripId}>
-                    Grades, in order
-                  </p>
-                  <ol className="sdv-strip__items" aria-labelledby={stripId}>
-                    {lane.results.map((result) => (
-                      <li
-                        key={result.caseId}
-                        className={result.pass ? 'sdv-strip__hit' : 'sdv-strip__bad'}
-                        title={`${result.caseId.toUpperCase()}: ${result.pass ? 'pass' : 'fail'}`}
-                      >
-                        <span className="sdv-visually-hidden">
-                          {`${result.caseId.toUpperCase()} ${result.pass ? 'pass' : 'fail'}`}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-                <p className="sdv-eval__lane-meta">
+              <li key={lane.candidate.id} className="sdv-eval__row">
+                <span className="sdv-eval__row-name" id={stripId}>
+                  {lane.candidate.label}
+                </span>
+                <ol className="sdv-strip__items" aria-labelledby={stripId}>
+                  {lane.results.map((result) => (
+                    <li
+                      key={result.caseId}
+                      className={result.pass ? 'sdv-strip__hit' : 'sdv-strip__bad'}
+                      title={`${result.caseId.toUpperCase()}: ${result.pass ? 'pass' : 'fail'}`}
+                    >
+                      <span className="sdv-visually-hidden">
+                        {`${result.caseId.toUpperCase()} ${result.pass ? 'pass' : 'fail'}`}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+                <span className="sdv-eval__row-meta">
                   {s && s.graded > 0
                     ? `${s.passed} of ${s.graded} passed, p95 ${seconds(s.p95Seconds)}`
-                    : 'Waiting for the first question'}
-                </p>
-              </section>
+                    : 'none yet'}
+                </span>
+              </li>
             );
           })}
-        </div>
+        </ul>
         <LatencyTrack run={run} summaries={summaries} />
       </MotionRoot>
       <ul className="sdv-legend" aria-label="How to read the grades">
@@ -385,16 +407,18 @@ export default function EvalRunWidget({
           <p className="sdv-trace__empty">Failed answers appear here as the run grades them.</p>
         )}
         {markerEvents.length > 0 && (
-          <ol>
-            {markerEvents.map((event, index) => (
-              <li key={`${event.tick}-${event.text}`}>
-                <span className="sdv-trace__num" aria-hidden="true">
-                  {index + 1}
-                </span>
-                <time>Question {event.tick}</time> {event.text}
-              </li>
-            ))}
-          </ol>
+          <TranscriptScroll label="What happened">
+            <ol>
+              {markerEvents.map((event, index) => (
+                <li key={`${event.tick}-${event.text}`}>
+                  <span className="sdv-trace__num" aria-hidden="true">
+                    {index + 1}
+                  </span>
+                  <time>Question {event.tick}</time> {event.text}
+                </li>
+              ))}
+            </ol>
+          </TranscriptScroll>
         )}
         {notes.map((event) => (
           <p key={`${event.tick}-${event.text}`} className="sdv-trace__note">
