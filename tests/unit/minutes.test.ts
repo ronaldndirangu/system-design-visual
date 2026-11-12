@@ -70,7 +70,7 @@ describe('lesson minutes', () => {
   });
 
   it('skips Go deeper details blocks', () => {
-    const deeper = '<details>\n<summary>Go deeper</summary>\n\n' + 'word '.repeat(600) + '\n</details>';
+    const deeper = `<details>\n<summary>Go deeper</summary>\n\n${'word '.repeat(600)}\n</details>`;
     expect(corePath('a <details>b <details>c</details> d</details> e')).toBe('a  e');
     expect(computeMinutes(`Read this.\n\n${deeper}`)).toBe(computeMinutes('Read this.'));
   });
