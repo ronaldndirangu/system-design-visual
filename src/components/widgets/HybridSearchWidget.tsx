@@ -21,8 +21,9 @@ import { SCENARIOS, type ScenarioId, TENANTS } from '../../lib/models/retrievalC
 import { Segmented } from '../sim/controls';
 import { MotionRoot } from '../sim/MotionRoot';
 import { ScenarioChips } from '../sim/ScenarioChips';
-import { SimulationShell } from '../sim/SimulationShell';
+import { SimulationShell, TOY_MODEL_ASSUMPTIONS } from '../sim/SimulationShell';
 import { type Tone, ToneBadge } from '../sim/StatTable';
+import { TranscriptScroll } from '../sim/TranscriptScroll';
 import { useHydrated } from '../sim/useHydrated';
 import { usePrefersReducedMotion } from '../sim/usePrefersReducedMotion';
 import { DiagramScroll } from '../viz/DiagramScroll';
@@ -341,6 +342,14 @@ export default function HybridSearchWidget({
       finished={run.done}
       resetKey={`${scenarioId}-${mode}`}
       ticksPerSecond={2}
+      assumptions={TOY_MODEL_ASSUMPTIONS}
+      keyStats={[
+        { label: 'Searchable chunks', value: `${result.searchable.length} of 20` },
+        { label: 'Fused rows', value: `${run.fusedShown} of ${result.fused.length}` },
+        { label: 'Answer', value: run.done ? verdict.text : 'not yet' },
+      ]}
+      readoutCount={run.done ? 3 : stats.length}
+      started={started}
       controls={
         <>
           <Segmented
@@ -507,25 +516,27 @@ export default function HybridSearchWidget({
           {run.events.length === 0 ? (
             <p className="sdv-trace__empty">Press Play or Step to run the first stage.</p>
           ) : (
-            <ol>
-              {run.events.map((event) => (
-                <li key={event.tick}>
-                  <span className="sdv-trace__num" aria-hidden="true">
-                    {event.tick}
-                  </span>
-                  <time>Step {event.tick}</time>
-                  <span>
-                    {event.text}
-                    {event.tone !== 'info' && (
-                      <>
-                        {' '}
-                        <ToneBadge tone={stageTones[event.tone]}>{stageNotes[event.tone]}</ToneBadge>
-                      </>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ol>
+            <TranscriptScroll label="What happened">
+              <ol>
+                {run.events.map((event) => (
+                  <li key={event.tick}>
+                    <span className="sdv-trace__num" aria-hidden="true">
+                      {event.tick}
+                    </span>
+                    <time>Step {event.tick}</time>
+                    <span>
+                      {event.text}
+                      {event.tone !== 'info' && (
+                        <>
+                          {' '}
+                          <ToneBadge tone={stageTones[event.tone]}>{stageNotes[event.tone]}</ToneBadge>
+                        </>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </TranscriptScroll>
           )}
         </div>
       </div>
