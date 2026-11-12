@@ -179,7 +179,7 @@ function RunChart({ duel, markers }: ChartProps) {
       ' ',
     );
 
-  const xStep = plotWidth < 420 ? 15 : 10;
+  const xStep = plotWidth < 280 ? 30 : plotWidth < 420 ? 15 : 10;
   const xTicks = Array.from({ length: Math.floor(STREAM_SECONDS / xStep) + 1 }, (_, index) => index * xStep);
   const topTicks = Array.from(
     { length: Math.round(scale.max / scale.step) + 1 },
@@ -231,7 +231,7 @@ function RunChart({ duel, markers }: ChartProps) {
       <div ref={frameRef} className="sdv-trace__frame">
         <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={summary}>
           <text className="sdv-abr__panel-title" x={pad.left} y={topY - 6}>
-            Bandwidth and bitrate fetched (Mbps)
+            {plotWidth < 280 ? 'Bandwidth and bitrate (Mbps)' : 'Bandwidth and bitrate fetched (Mbps)'}
           </text>
           <text className="sdv-abr__panel-title" x={pad.left} y={bottomY - 6}>
             Buffer (seconds of video ready)

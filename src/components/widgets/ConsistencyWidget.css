@@ -26,12 +26,12 @@
 }
 .sdv-consistency__lane-label {
   fill: var(--sl-color-white);
-  font-size: 13px;
+  font-size: max(13px, var(--sdv-text-floor));
   font-weight: 600;
 }
 .sdv-consistency__row-label {
   fill: var(--sl-color-gray-2);
-  font-size: 10px;
+  font-size: max(12px, var(--sdv-text-floor));
 }
 .sdv-consistency__band {
   stroke: var(--sdv-db);

@@ -41,7 +41,7 @@ import { usePrefersReducedMotion } from '../sim/usePrefersReducedMotion';
 import { useTicker } from '../sim/useTicker';
 import { WidgetFrame } from '../sim/WidgetFrame';
 import { DiagramScroll } from '../viz/DiagramScroll';
-import { link } from '../viz/geometry';
+import { link, readableFont } from '../viz/geometry';
 import { StatusBadge, UiIcon } from '../viz/icons';
 import { ArrowDefs, Edge, SystemNode, safeId } from '../viz/SystemNode';
 import './DesignReviewWidget.css';
@@ -249,6 +249,8 @@ function ItemMarker({
 export default function DesignReviewWidget() {
   const [state, setState] = useState<ReviewState>(initialReview);
   const [showQuestions, setShowQuestions] = useState(false);
+  const [scale, setScale] = useState(1);
+  const minFont = readableFont(scale);
   const hydrated = useHydrated();
   const reduced = usePrefersReducedMotion();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -399,7 +401,7 @@ export default function DesignReviewWidget() {
           statsCaption="Review readout"
         >
           <div className="sdv-review">
-            <DiagramScroll label="Scrollable diagram">
+            <DiagramScroll label="Scrollable diagram" onScale={setScale}>
               <svg viewBox={`0 0 644 ${VIEW_HEIGHT}`} role="img" aria-label={DIAGRAM_LABEL}>
                 <ArrowDefs id={arrowId} />
                 {EDGES.map(([from, to]) => {
@@ -431,6 +433,7 @@ export default function DesignReviewWidget() {
                       status={kind === 'incident' ? 'bad' : kind === 'held' ? 'ok' : undefined}
                       highlight={node.item !== null && node.item === currentItem}
                       dim={false}
+                      minFontSize={minFont}
                     />
                   );
                 })}

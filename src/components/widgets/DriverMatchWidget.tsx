@@ -177,7 +177,7 @@ function CityMap({ duel, lane, variant }: { duel: RideMatchDuel; lane: 0 | 1; va
           return (
             <g key={cell.hash}>
               <rect className="sdv-ride__cell" x={x} y={y} width={CELL_W} height={CELL_H} />
-              <text className="sdv-ride__label" x={x + 2} y={y + 8}>
+              <text className="sdv-ride__label" x={x + 2} y={y + 2}>
                 {cell.label}
               </text>
             </g>

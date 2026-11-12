@@ -296,8 +296,13 @@ function LatencyLane({ run }: { run: RecRun }) {
         role="img"
         aria-label={`Time spent so far: ${formatMs(elapsed)} against a ${REC_BUDGET_MS} ms budget. The axis runs from 0 to ${LAT_MAX} ms${overflow ? ', and the bar runs off the end' : ''}.`}
       >
-        <text className="sdv-rec-lat__label" x={8} y={34}>
-          Time so far
+        <text className="sdv-rec-lat__label" x={8} y={30}>
+          <tspan x={8} dy="-0.2em">
+            Time
+          </tspan>
+          <tspan x={8} dy="1.1em">
+            so far
+          </tspan>
         </text>
         <rect
           className="sdv-rec-lat__track"

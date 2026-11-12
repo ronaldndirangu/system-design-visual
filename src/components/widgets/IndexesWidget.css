@@ -96,7 +96,7 @@
 }
 .sdv-ix__tree-label {
   fill: var(--sl-color-gray-2);
-  font-size: 11px;
+  font-size: max(12px, var(--sdv-text-floor));
 }
 .sdv-ix__page {
   fill: var(--sdv-surface);
@@ -113,7 +113,7 @@
 }
 .sdv-ix__page-step {
   fill: var(--sl-color-white);
-  font-size: 12px;
+  font-size: max(12px, var(--sdv-text-floor));
   font-weight: 700;
   text-anchor: middle;
 }

@@ -1,14 +1,7 @@
-import {
-  type CSSProperties,
-  type ReactNode,
-  type RefObject,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Button, IconButton } from '../ui/Button';
 import { type Speed, SpeedControl } from '../ui/SpeedControl';
+import { useStageScale } from '../viz/drawingScale';
 import { type Playback, PlaybackContext } from './playback';
 import { type StatRow, StatTable, type Tone, ToneBadge } from './StatTable';
 import { useAnnouncer } from './useAnnouncer';
@@ -69,42 +62,6 @@ export interface SimulationShellProps {
   announceState?: string;
   /** Result of a learner action outside the run controls, such as a crash. A new `id` speaks `text`. */
   notice?: { id: number; text: string };
-}
-
-/**
- * How much the widest stage drawing is shrunk on screen, from 1 (full size) up.
- * Stage CSS multiplies SVG text sizes by it so labels keep their real pixel size
- * on a phone. A DiagramScroll inside the stage publishes the same factor for its
- * own drawing, which takes precedence there.
- */
-function useStageScale(stageRef: RefObject<HTMLDivElement | null>, resetKey?: string): number {
-  const [scale, setScale] = useState(1);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new scenario can swap the drawing without resizing the stage
-  useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage || typeof ResizeObserver === 'undefined') return;
-    const root: HTMLDivElement = stage;
-    const observer = new ResizeObserver(() => measure());
-    function measure() {
-      let widest: SVGSVGElement | undefined;
-      let widestViewBox = 0;
-      for (const svg of root.querySelectorAll<SVGSVGElement>('svg[viewBox]')) {
-        const viewBoxWidth = svg.viewBox.baseVal?.width ?? 0;
-        if (svg.clientWidth > 0 && viewBoxWidth > widestViewBox) {
-          widest = svg;
-          widestViewBox = viewBoxWidth;
-        }
-      }
-      if (widest) observer.observe(widest);
-      const next = widest ? Math.max(1, widestViewBox / widest.clientWidth) : 1;
-      const rounded = Math.ceil(next * 100) / 100;
-      setScale((current) => (current === rounded ? current : rounded));
-    }
-    observer.observe(root);
-    measure();
-    return () => observer.disconnect();
-  }, [stageRef, resetKey]);
-  return scale;
 }
 
 /**

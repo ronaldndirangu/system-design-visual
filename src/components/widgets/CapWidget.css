@@ -16,7 +16,7 @@
 }
 .sdv-cap__cut text {
   fill: var(--sl-color-white);
-  font-size: 12px;
+  font-size: max(12px, var(--sdv-text-floor));
   font-weight: 700;
 }
 

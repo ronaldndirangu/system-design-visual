@@ -133,7 +133,13 @@ function StageMap({ run, markerId }: { run: CapstoneRun; markerId: string }) {
 
   return (
     <DiagramScroll label="Request paths through both pipelines, scrollable">
-      <svg className="sdv-cap__map" viewBox="0 0 592 272" role="img" aria-label={label}>
+      <svg
+        className="sdv-cap__map"
+        viewBox="0 0 592 272"
+        style={{ minWidth: 592 }}
+        role="img"
+        aria-label={label}
+      >
         <ArrowDefs id={markerId} />
         {run.lanes.map((lane, index) => {
           const y = ROW_Y[lane.id];

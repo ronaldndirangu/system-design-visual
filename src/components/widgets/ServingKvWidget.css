@@ -16,7 +16,7 @@
   fill: color-mix(in oklab, var(--sdv-model, var(--sdv-server)) 70%, transparent);
 }
 .sdv-serve-svg .sdv-serve-kv__owner {
-  font-size: 9.5px;
+  font-size: max(12px, var(--sdv-text-floor));
   font-weight: 700;
   paint-order: stroke;
   stroke: var(--sdv-surface);

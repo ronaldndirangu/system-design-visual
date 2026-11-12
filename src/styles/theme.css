@@ -351,13 +351,13 @@ body {
 .sdv-node__label {
   fill: var(--sdv-text-1);
   font-family: var(--sl-font);
-  font-size: 14px;
+  font-size: max(14px, var(--sdv-text-floor));
   font-weight: 600;
 }
 .sdv-node__sublabel {
   fill: var(--sdv-text-2);
   font-family: var(--sl-font);
-  font-size: 13px;
+  font-size: max(13px, var(--sdv-text-floor));
 }
 .sdv-node--highlight .sdv-node__shape {
   stroke-width: 3.5;
@@ -393,7 +393,7 @@ body {
 .sdv-node__badge text {
   fill: var(--sdv-on-accent);
   font-family: var(--sl-font);
-  font-size: 12px;
+  font-size: max(12px, var(--sdv-text-floor));
   font-weight: 600;
 }
 .sdv-node--down .sdv-node__shape {

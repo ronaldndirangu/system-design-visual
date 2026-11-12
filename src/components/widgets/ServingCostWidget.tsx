@@ -57,7 +57,7 @@ const CHART_W = 320;
 const CHART_H = 170;
 const PLOT_X0 = 44;
 const PLOT_X1 = 310;
-const PLOT_TOP = 16;
+const PLOT_TOP = 34;
 const PLOT_BOTTOM = 140;
 const Y_MAX = 7000;
 const curveBatches = Array.from({ length: 65 }, (_, index) => Math.max(1, index * 4));
@@ -198,7 +198,7 @@ export default function ServingCostWidget({
                   <line x1="0" y1="0" x2="0" y2="5" className="sdv-serve-cost__hatch" />
                 </pattern>
               </defs>
-              <text x={BAR_X0} y={12} className="sdv-serve-svg__label">
+              <text x={BAR_X0} y={14} className="sdv-serve-svg__label">
                 One step: {ms(total)}, {bound}
               </text>
               <text x={BAR_X0} y={MEMORY_Y - 5}>
@@ -303,7 +303,7 @@ export default function ServingCostWidget({
               >
                 requests decoding together
               </text>
-              <text x={PLOT_X0 + 4} y={PLOT_TOP + 4} className="sdv-serve-svg__muted">
+              <text x={PLOT_X0 - 4} y={14} className="sdv-serve-svg__muted">
                 decode tok/s, no prompt
               </text>
             </svg>

@@ -1,3 +1,6 @@
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { expect, type Page, test } from '@playwright/test';
 import { documentOverflow, hydrateAll } from './helpers';
 
@@ -9,6 +12,16 @@ const pages = [
 ];
 
 const MIN_PX = 12;
+
+// Every built page whose HTML draws SVG text gets one check at the narrowest supported screen.
+const distDir = fileURLToPath(new URL('../../dist/', import.meta.url));
+const labelPages = existsSync(distDir)
+  ? readdirSync(distDir, { recursive: true, encoding: 'utf8' })
+      .filter((file) => file.endsWith('index.html'))
+      .filter((file) => /<text\b/.test(readFileSync(join(distDir, file), 'utf8')))
+      .map((file) => file.replace(/\\/g, '/').replace(/index\.html$/, ''))
+      .sort()
+  : [];
 
 interface Finding {
   text: string;
@@ -79,3 +92,19 @@ for (const width of [390, 320]) {
     });
   }
 }
+
+test('the build contains pages with SVG labels', () => {
+  expect(labelPages.length, `no SVG labels found under ${distDir}; run pnpm build first`).toBeGreaterThan(0);
+});
+
+test.describe('every SVG label at 320px', () => {
+  test.use({ viewport: { width: 320, height: 900 }, isMobile: true, hasTouch: true });
+
+  for (const path of labelPages) {
+    test(`/${path} keeps every SVG label at ${MIN_PX}px or more`, async ({ page }) => {
+      await page.goto(path);
+      await hydrateAll(page);
+      await expectReadable(page);
+    });
+  }
+});

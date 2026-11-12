@@ -156,7 +156,7 @@
 
 .sdv-abr__panel-title {
   fill: var(--sl-color-gray-2);
-  font-size: 11px;
+  font-size: max(12px, var(--sdv-text-floor));
   font-weight: 600;
 }
 

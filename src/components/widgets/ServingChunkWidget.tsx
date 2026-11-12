@@ -35,7 +35,7 @@ const budgetOptions = CHUNK_BUDGETS.map((budget) => ({
 }));
 const WIDTH = 320;
 const HEIGHT = 158;
-const PLOT_X0 = 30;
+const PLOT_X0 = 44;
 const PLOT_X1 = 314;
 const PLOT_TOP = 30;
 const PLOT_BOTTOM = 134;
@@ -125,7 +125,13 @@ function StepChart({ lane, variant, axes }: { lane: ServeLane; variant: SeriesVa
           </text>
         </g>
       ))}
-      <text x={0} y={PLOT_TOP - 8} className="sdv-serve-svg__muted">
+      <text
+        x={12}
+        y={(PLOT_TOP + PLOT_BOTTOM) / 2}
+        textAnchor="middle"
+        transform={`rotate(-90 12 ${(PLOT_TOP + PLOT_BOTTOM) / 2})`}
+        className="sdv-serve-svg__muted"
+      >
         ms per step
       </text>
       <text x={PLOT_X0} y={HEIGHT - 6} className="sdv-serve-svg__muted">

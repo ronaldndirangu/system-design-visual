@@ -208,7 +208,13 @@ function RingDiagram({ run, now }: { run: QuorumRun; now: number }) {
   const label = `Ring diagram. Sam's cart key sits on the ring between replicas C and A. Walking clockwise from the key, the cart service keeps ${setting.n} copies on ${listReplicas(set)}. ${views.map(replicaPhrase).join('. ')}. Confirmed to Sam: ${confirmed === 0 ? 'nothing yet' : `v${confirmed}`}.`;
   return (
     <DiagramScroll label="Replica ring diagram, scrolls sideways">
-      <svg className="sdv-quorum__svg" viewBox="46 10 396 380" role="img" aria-label={label}>
+      <svg
+        className="sdv-quorum__svg"
+        viewBox="46 10 396 380"
+        style={{ minWidth: 396 }}
+        role="img"
+        aria-label={label}
+      >
         <circle className="sdv-quorum__track" cx={RING.cx} cy={RING.cy} r={RING.r} />
         <path className="sdv-quorum__arc" d={arcPath(KEY_AT, arcEnd(last))} />
         <Edge from={samLink.from} to={samLink.to} active={samBusy} />

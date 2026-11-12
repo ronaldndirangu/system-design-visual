@@ -10,6 +10,7 @@ import {
 import { Segmented } from '../sim/controls';
 import type { Tone } from '../sim/StatTable';
 import { WidgetFrame } from '../sim/WidgetFrame';
+import { DiagramScroll } from '../viz/DiagramScroll';
 import './AlertRuleWidget.css';
 
 type ForId = 'none' | 'one' | 'two' | 'five';
@@ -27,7 +28,7 @@ const FOR_OPTIONS = (Object.keys(FOR_CHOICES) as ForId[]).map((value) => ({
 }));
 
 const WIDTH = 560;
-const LEFT = 44;
+const LEFT = 64;
 const RIGHT = 548;
 const TOP = 22;
 const BOTTOM = 150;
@@ -106,75 +107,88 @@ export default function AlertRuleWidget({ initial = 'none' }: { initial?: ForId 
             {forSeconds > 0 ? ` for ${choiceLabel}` : ''}
           </code>
         </p>
-        <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label={chartLabel}>
-          {[0, 0.1, 0.2, 0.3].map((tick) => (
-            <g key={tick} className="sdv-alert__tick">
-              <line x1={LEFT} x2={RIGHT} y1={yOf(tick)} y2={yOf(tick)} />
-              <text x={LEFT - 6} y={yOf(tick) + 4} textAnchor="end">
-                {percent(tick)}
-              </text>
-            </g>
-          ))}
-          {ALERT_ERROR_RATES.map((rate, index) => (
-            <rect
-              // biome-ignore lint/suspicious/noArrayIndexKey: the rates are a fixed list in time order
-              key={index}
-              className="sdv-alert__bar"
-              x={xOf(index) + slot * 0.15}
-              y={yOf(rate)}
-              width={slot * 0.7}
-              height={BOTTOM - yOf(rate)}
+        <DiagramScroll label="Alert chart">
+          <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label={chartLabel}>
+            {[0, 0.1, 0.2, 0.3].map((tick) => (
+              <g key={tick} className="sdv-alert__tick">
+                <line x1={LEFT} x2={RIGHT} y1={yOf(tick)} y2={yOf(tick)} />
+                <text x={LEFT - 6} y={yOf(tick)} textAnchor="end" dominantBaseline="central">
+                  {percent(tick)}
+                </text>
+              </g>
+            ))}
+            {ALERT_ERROR_RATES.map((rate, index) => (
+              <rect
+                // biome-ignore lint/suspicious/noArrayIndexKey: the rates are a fixed list in time order
+                key={index}
+                className="sdv-alert__bar"
+                x={xOf(index) + slot * 0.15}
+                y={yOf(rate)}
+                width={slot * 0.7}
+                height={BOTTOM - yOf(rate)}
+              />
+            ))}
+            <line
+              className="sdv-alert__threshold"
+              x1={LEFT}
+              x2={RIGHT}
+              y1={yOf(ALERT_THRESHOLD)}
+              y2={yOf(ALERT_THRESHOLD)}
             />
-          ))}
-          <line
-            className="sdv-alert__threshold"
-            x1={LEFT}
-            x2={RIGHT}
-            y1={yOf(ALERT_THRESHOLD)}
-            y2={yOf(ALERT_THRESHOLD)}
-          />
-          <line
-            className="sdv-alert__incident"
-            x1={xOf(ALERT_INCIDENT_INDEX)}
-            x2={xOf(ALERT_INCIDENT_INDEX)}
-            y1={TOP - 8}
-            y2={STRIP_TOP + STRIP_HEIGHT}
-          />
-          <text className="sdv-alert__label" x={xOf(ALERT_INCIDENT_INDEX) + 4} y={TOP - 1}>
-            incident starts
-          </text>
-          <text className="sdv-alert__label" x={LEFT - 6} y={STRIP_TOP + 14} textAnchor="end">
-            state
-          </text>
-          {run.states.map((state, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: one cell per evaluation, in time order
-            <g key={index} className="sdv-alert__state" data-state={state}>
-              <rect x={xOf(index) + 1} y={STRIP_TOP} width={slot - 2} height={STRIP_HEIGHT} rx={3} />
-              <text x={xOf(index) + slot / 2} y={STRIP_TOP + 14} textAnchor="middle">
-                {STATE_LETTER[state]}
-              </text>
-            </g>
-          ))}
-          {run.pages.map((index) => (
-            <g key={index} className="sdv-alert__page">
-              <path d={`M ${xOf(index) + slot / 2} ${STRIP_TOP + STRIP_HEIGHT + 3} l 6 9 h -12 z`} />
-              <text x={xOf(index) + slot / 2} y={STRIP_TOP + STRIP_HEIGHT + 24} textAnchor="middle">
-                page
-              </text>
-            </g>
-          ))}
-          {[0, 4, 8, 12, 16, 20, 24].map((index) => (
-            <text
-              key={index}
-              className="sdv-alert__label"
-              x={xOf(index) + slot / 2}
-              y={HEIGHT - 4}
-              textAnchor="middle"
-            >
-              {index === 0 ? '0 min' : minutesAt(index)}
+            <line
+              className="sdv-alert__incident"
+              x1={xOf(ALERT_INCIDENT_INDEX)}
+              x2={xOf(ALERT_INCIDENT_INDEX)}
+              y1={TOP - 8}
+              y2={STRIP_TOP + STRIP_HEIGHT}
+            />
+            <text className="sdv-alert__label" x={xOf(ALERT_INCIDENT_INDEX) + 4} y={TOP - 1}>
+              incident starts
             </text>
-          ))}
-        </svg>
+            <text
+              className="sdv-alert__label"
+              x={LEFT - 6}
+              y={STRIP_TOP + STRIP_HEIGHT / 2}
+              textAnchor="end"
+              dominantBaseline="central"
+            >
+              state
+            </text>
+            {run.states.map((state, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: one cell per evaluation, in time order
+              <g key={index} className="sdv-alert__state" data-state={state}>
+                <rect x={xOf(index) + 1} y={STRIP_TOP} width={slot - 2} height={STRIP_HEIGHT} rx={3} />
+                <text
+                  x={xOf(index) + slot / 2}
+                  y={STRIP_TOP + STRIP_HEIGHT / 2}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                >
+                  {STATE_LETTER[state]}
+                </text>
+              </g>
+            ))}
+            {run.pages.map((index) => (
+              <g key={index} className="sdv-alert__page">
+                <path d={`M ${xOf(index) + slot / 2} ${STRIP_TOP + STRIP_HEIGHT + 3} l 6 9 h -12 z`} />
+                <text x={xOf(index) + slot / 2} y={STRIP_TOP + STRIP_HEIGHT + 24} textAnchor="middle">
+                  page
+                </text>
+              </g>
+            ))}
+            {[0, 4, 8, 12, 16, 20, 24].map((index) => (
+              <text
+                key={index}
+                className="sdv-alert__label"
+                x={xOf(index) + slot / 2}
+                y={HEIGHT - 4}
+                textAnchor="middle"
+              >
+                {index === 0 ? '0 min' : minutesAt(index)}
+              </text>
+            ))}
+          </svg>
+        </DiagramScroll>
         <ul className="sdv-qtracks__legend" aria-label="How to read the alert chart">
           <li>
             <span className="sdv-alert__swatch sdv-alert__swatch--threshold" aria-hidden="true" />
