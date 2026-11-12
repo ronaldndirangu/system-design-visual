@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CacheSim, topShare } from '../../src/lib/models/cache';
+import { CacheSim, defaultCacheConfig, topShare } from '../../src/lib/models/cache';
 
 function warm(sim: CacheSim, ticks = 200) {
   for (let i = 0; i < ticks; i += 1) sim.step();
@@ -11,10 +11,24 @@ describe('CacheSim', () => {
     expect(warm(new CacheSim({ capacity: 0 })).hitRatio).toBe(0);
   });
 
-  it('reaches roughly the 69% hit ratio the lesson quotes for 100 of 1,000 links', () => {
-    const { hitRatio } = warm(new CacheSim({ capacity: 100 }), 400);
-    expect(hitRatio).toBeGreaterThan(0.6);
-    expect(hitRatio).toBeLessThan(0.75);
+  it('settles near the 58% LRU hit ratio the lesson quotes, below the 69% ideal top-100 share', () => {
+    const sim = new CacheSim({ capacity: 100 });
+    warm(sim, 100);
+    let sum = 0;
+    const windows = 100;
+    for (let i = 0; i < windows; i += 1) sum += warm(sim, 20).hitRatio;
+    const lru = sum / windows;
+    expect(lru).toBeGreaterThan(0.55);
+    expect(lru).toBeLessThan(0.61);
+    expect(topShare(1_000, 100, 1)).toBeGreaterThan(lru + 0.08);
+  });
+
+  it('charges a miss the cache check plus an indexed database read of 1 to 5 ms', () => {
+    const { hitMs, missMs } = defaultCacheConfig;
+    expect(hitMs).toBeGreaterThanOrEqual(0.5);
+    expect(hitMs).toBeLessThanOrEqual(1);
+    expect(missMs - hitMs).toBeGreaterThanOrEqual(1);
+    expect(missMs - hitMs).toBeLessThanOrEqual(5);
   });
 
   it('hits more with a bigger cache and with more skew', () => {

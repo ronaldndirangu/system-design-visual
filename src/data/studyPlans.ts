@@ -27,18 +27,9 @@ export const studyPlans: StudyPlan[] = [
         label: 'Day 1: size the problem',
         lessons: ['thinking/requirements-and-estimates', 'thinking/design-checklist', 'thinking/slos'],
       },
-      {
-        label: 'Day 2: the request path',
-        lessons: ['foundations/what-happens-when-you-click', 'foundations/apis'],
-      },
-      {
-        label: 'Day 3: model the data and spread the load',
-        lessons: ['foundations/data-modeling', 'scaling/load-balancing'],
-      },
-      {
-        label: 'Day 4: cache and scale the database',
-        lessons: ['scaling/caching', 'scaling/read-replicas', 'scaling/sharding'],
-      },
+      { label: 'Day 2: the API and the data', lessons: ['foundations/apis', 'foundations/data-modeling'] },
+      { label: 'Day 3: spread the load', lessons: ['scaling/load-balancing', 'scaling/caching'] },
+      { label: 'Day 4: scale the database', lessons: ['scaling/read-replicas', 'scaling/sharding'] },
       {
         label: 'Day 5: survive overload',
         lessons: ['reliability/queues-and-backpressure', 'reliability/retries'],
@@ -64,7 +55,6 @@ export const studyPlans: StudyPlan[] = [
           'thinking/requirements-and-estimates',
           'thinking/design-checklist',
           'thinking/access-patterns',
-          'foundations/what-happens-when-you-click',
           'foundations/data-modeling',
           'scaling/load-balancing',
           'scaling/caching',

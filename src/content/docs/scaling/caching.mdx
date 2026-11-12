@@ -1,11 +1,26 @@
 ---
 title: Caching
 description: Put the hottest links in memory and watch database load collapse. Learn hit ratios, eviction, expiry, write strategies, and the cold cache trap.
+furtherReading:
+  - title: Key eviction (Redis documentation)
+    url: https://redis.io/docs/latest/develop/reference/eviction/
+    note: The eviction policies a real cache offers, including LRU and LFU, and how to pick one.
+  - title: HTTP caching (MDN)
+    url: https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching
+    note: How Cache-Control and Expires decide when a browser or CDN may reuse a response.
+  - title: Scaling Memcache at Facebook (NSDI 2013)
+    url: https://www.usenix.org/conference/nsdi13/technical-sessions/presentation/nishtala
+    note: Leases, stampedes and invalidation at very large scale, told by the team that ran it.
+  - title: Caching best practices (AWS)
+    url: https://aws.amazon.com/caching/best-practices/
+    note: Cache-aside, TTLs, thundering herds and write strategies in one short guide.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
@@ -14,15 +29,38 @@ import ArcDiagram from '../../../components/viz/ArcDiagram';
 import CacheWidget from '../../../components/widgets/CacheWidget';
 import WriteStrategyWidget from '../../../components/widgets/WriteStrategyWidget';
 
+export const recall = [
+  {
+    id: 'scaling/caching/recall-1',
+    prompt: 'A shortener handles 4,000 reads and 40 writes a second. Where should you spend effort first?',
+    options: [
+      { text: 'Make reads cheap, with a cache or copies of the data', correct: true, why: 'Reads outnumber writes 100 to 1, so cheaper reads pay off the most.' },
+      { text: 'Make writes faster', why: 'Forty writes a second fit on one modest database.' },
+      { text: 'Split the database to spread the writes', why: 'This ratio says writes are not the problem yet.' },
+    ],
+  },
+  {
+    id: 'scaling/caching/recall-2',
+    prompt: 'Three stateless app servers share one database, and the database runs out of CPU. What does a fourth app server do?',
+    options: [
+      { text: 'Takes a third of the database load', why: 'The servers keep no links of their own. Every request still reads the shared database.' },
+      { text: 'Very little, since every server still reads the same database', correct: true, why: 'More servers spread the app work. The database stays the bottleneck.' },
+      { text: 'Crashes, since stateless servers cannot share a database', why: 'Sharing one database is what lets stateless servers answer any request.' },
+    ],
+  },
+];
+
 export const nodes = [
   { id: 'server', kind: 'server', x: 80, y: 140, label: 'App server' },
-  { id: 'cache', kind: 'cache', x: 420, y: 60, label: 'Cache', sublabel: 'memory, about 1 ms' },
-  { id: 'db', kind: 'database', x: 420, y: 216, label: 'Database', sublabel: 'disk, about 10 ms' },
+  { id: 'cache', kind: 'cache', x: 420, y: 60, label: 'Cache', sublabel: 'memory, under 1 ms' },
+  { id: 'db', kind: 'database', x: 420, y: 216, label: 'Database', sublabel: 'indexed read, 3 ms' },
 ];
+
 export const edges = [
   { from: 'server', to: 'cache' },
   { from: 'server', to: 'db' },
 ];
+
 export const steps = [
   {
     title: 'Ask the cache first',
@@ -32,13 +70,13 @@ export const steps = [
   },
   {
     title: 'Hit: answer from memory',
-    text: 'The cache has it. The server gets the long URL back in about a millisecond, and the database never hears about it.',
-    nodes: ['server', 'cache'],
+    text: 'The cache has it. The long URL comes back in under a millisecond, and the database never hears about it.',
+    nodes: ['cache', 'server'],
     flows: ['cache>server'],
   },
   {
     title: 'Miss: go to the database',
-    text: 'The cache does not have it. The server reads the link from the database, which takes about 10 times longer.',
+    text: 'The cache does not have it. The server reads the database, which takes 3 to 4 times longer than a hit.',
     nodes: ['server', 'db'],
     flows: ['server>db', 'db>server'],
   },
@@ -50,8 +88,46 @@ export const steps = [
   },
   {
     title: 'Full? Evict the least recently used',
-    text: 'Memory is small. When the cache runs out of room, it drops the link nobody has clicked for the longest time (LRU).',
+    text: 'When the cache runs out of room, it drops the link nobody has clicked for the longest time (LRU).',
     nodes: ['cache'],
+  },
+];
+
+export const herdNodes = [
+  { id: 'servers', kind: 'server', x: 80, y: 140, label: 'App servers', sublabel: '500 requests' },
+  { id: 'cache', kind: 'cache', x: 420, y: 60, label: 'Cache' },
+  { id: 'db', kind: 'database', x: 420, y: 216, label: 'Database' },
+];
+
+export const herdEdges = [
+  { from: 'servers', to: 'cache' },
+  { from: 'servers', to: 'db' },
+];
+
+export const herdSteps = [
+  {
+    title: 'A hot link expires',
+    text: 'A viral link reaches its TTL. In the next second, 500 requests for it all miss.',
+    nodes: ['servers', 'cache'],
+    flows: ['servers>cache'],
+  },
+  {
+    title: 'Stampede: every miss reads the database',
+    text: 'All 500 misses read the same row at once. The database queues them, and every other query slows down.',
+    nodes: ['servers', 'db'],
+    flows: ['servers>db'],
+  },
+  {
+    title: 'Single-flight: one reader per key',
+    text: 'The first miss claims the key and reads the database. The other 499 wait for its answer.',
+    nodes: ['servers', 'db'],
+    flows: ['servers>db', 'db>servers'],
+  },
+  {
+    title: 'Refill once, answer everyone',
+    text: 'The reader refills the cache and every waiting request gets its answer. The next clicks hit.',
+    nodes: ['servers', 'cache'],
+    flows: ['servers>cache', 'cache>servers'],
   },
 ];
 
@@ -60,77 +136,87 @@ export const quiz = [
     id: 'scaling/caching/q1',
     prompt: 'Why can a cache that holds 10% of all links answer most of the reads?',
     options: [
-      { text: 'Memory compresses the links', why: 'Compression only changes how much fits. The win comes from which links people click.' },
-      { text: 'A few popular links get most of the clicks', correct: true, why: 'Real traffic follows a long tail. Keep the head of that tail in memory and most reads never reach the database.' },
-      { text: 'The cache predicts which links people will click', why: 'LRU only remembers what was clicked recently. It works because popular links get clicked again and again.' },
-      { text: 'It cannot. A 10% cache answers 10% of reads', why: 'That holds only when every link is equally popular. Set the popularity slider to 0 in the simulation to see it.' },
+      { text: 'Memory compresses the links', why: 'Compression changes how much fits. The win comes from which links people click.' },
+      { text: 'A few popular links get most of the clicks', correct: true, why: 'Traffic follows a long tail. Keep its head in memory and most reads skip the database.' },
+      { text: 'The cache predicts which links people will click', why: 'LRU only remembers recent clicks. It works because popular links get clicked again and again.' },
+      { text: 'It cannot. A 10% cache answers 10% of reads', why: 'That holds only when every link is equally popular. Set the popularity slider to 0 to see it.' },
     ],
   },
   {
     id: 'scaling/caching/q2',
     prompt: 'The cache restarts and comes back empty during peak traffic. What happens first?',
     options: [
-      { text: 'Nothing, since the database still has every link', why: 'The database has the data, but it was sized for cache misses only. Now it gets every request at once.' },
-      { text: 'Every request misses at once and the database load spikes', correct: true, why: 'A cold cache sends all traffic to the database until it warms up. Teams warm caches gradually or protect the database with limits.' },
-      { text: 'Users see stale links', why: 'An empty cache cannot serve old data. Every answer comes fresh from the database.' },
-      { text: 'Requests get faster, since the cache has free room', why: 'Free room does not help until popular links fill it. Until then every request pays the slow database path.' },
+      { text: 'Every request misses at once and the database load spikes', correct: true, why: 'A cold cache sends all traffic to the database until it warms up.' },
+      { text: 'Nothing, since the database still has every link', why: 'The database was sized for cache misses only. Now it gets every request.' },
+      { text: 'Users see stale links', why: 'An empty cache cannot serve old data.' },
+      { text: 'Requests get faster, since the cache has free room', why: 'Until popular links fill it, every request pays the slow database path.' },
     ],
   },
   {
     id: 'scaling/caching/q3',
     prompt: 'You delete a scam link, yet it keeps redirecting for 10 minutes. What is the most likely cause?',
     options: [
-      { text: 'The database failed to delete it', why: 'The database delete worked. The old answer still sits in the cache.' },
-      { text: 'A cached copy with a 10 minute TTL', correct: true, why: 'The cache keeps serving its copy until it expires. Delete the cache entry along with the database row (invalidation).' },
-      { text: 'The browser blocks the change', why: 'With a 302 redirect the browser asks the server every time, and the server answers from its cache.' },
+      { text: 'The database failed to delete it', why: 'The delete worked. The old answer still sits in the cache.' },
+      { text: 'The browser keeps its own copy of the redirect', why: 'A browser reuses a 302 only when Cache-Control or Expires allows it. The shortener sends neither.' },
       { text: 'The load balancer remembers it', why: 'A load balancer forwards requests. It stores no link data.' },
+      { text: 'A cached copy with a 10 minute TTL', correct: true, why: 'The cache serves its copy until it expires. Delete the cache entry along with the row (invalidation).' },
     ],
   },
   {
     id: 'scaling/caching/q4',
     prompt: 'The shortener counts clicks with write-behind and saves to the database every 2 seconds. The cache server loses power. What happens to the click counts?',
     options: [
-      { text: 'Nothing, since the database has every click', why: 'The database has clicks up to the last save. Every click since then lived only in the cache.' },
-      { text: 'Up to 2 seconds of clicks vanish, even though each one was confirmed', correct: true, why: 'Write-behind confirms a write as soon as the cache has it. Unsaved writes die with the cache. A few lost clicks may be fine; lost payments are not.' },
-      { text: 'The cache replays the missing clicks when it restarts', why: 'An in-memory cache restarts empty. Replaying writes needs a durable log, which is extra machinery to build and run.' },
-      { text: 'Every count resets to zero', why: 'The database keeps the totals from earlier saves. Only the unsaved clicks disappear.' },
+      { text: 'Nothing, since the database has every click', why: 'Every click since the last save lived only in the cache.' },
+      { text: 'Up to 2 seconds of clicks vanish, even though each one was confirmed', correct: true, why: 'Write-behind confirms a write once the cache has it. Unsaved writes die with the cache.' },
+      { text: 'The cache replays the missing clicks when it restarts', why: 'An in-memory cache restarts empty. Replaying writes needs a durable log.' },
+      { text: 'Every count resets to zero', why: 'The database keeps the totals from earlier saves.' },
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 
 - Explain cache hits, misses, and hit ratio, and why skewed popularity makes small caches powerful.
 - Walk through the cache-aside pattern, LRU eviction, and expiry (TTL).
-- Predict what happens when a cache restarts empty, and how stale data creeps in.
+- Predict what happens when many requests miss at once, and pick a defense.
 - Compare write-through, write-behind, and write-around, and pick one for a given workload.
 
 </Objectives>
 
 ## The failure: the database does all the work
 
-The shortener now runs on three servers behind a load balancer. Every click still asks the database for the same few
-viral links, thousands of times a second. The database's disk and CPU max out, and redirects slow to a crawl.
+The shortener now runs on three servers behind a [load balancer](../load-balancing/). Every click still asks the
+database for the same few viral links, thousands of times a second. The database's disk and CPU max out, and redirects
+slow to a crawl. The [access pattern](../../thinking/access-patterns/) already told us where to look: reads outnumber
+writes 100 to 1, and a few links get most of the reads.
 
 <Predict
   client:visible
   id="scaling/caching/predict-1"
-  ordered
   question="People click 1,000 different links, and a few are far more popular than the rest. A cache holds 100 of them (10%). About what share of clicks can it answer?"
   options={['About 10%', 'About 30%', 'About 70%', 'All of them']}
   answer={2}
+  why={[
+    'That holds only when every link is equally popular.',
+    'The head of the long tail carries far more than 30% of the clicks.',
+    'The 100 most popular links carry about 70% of all clicks, so a cache that holds them answers that share.',
+    'The other 900 links still get clicks, and those miss.',
+  ]}
 >
 
-About **70%**. Click popularity follows a long tail: the top link gets twice the clicks of the second, three times the
-clicks of the third, and so on. The 100 most popular links cover about 70% of all clicks, so the database sees fewer than
-a third of the reads it saw before.
+About **70%**. Clicks follow a long tail: the top link gets twice the clicks of the second, three times those of the
+third, and so on. The top 100 links cover about 70% of clicks, the ceiling for a perfect cache. A real LRU cache also
+holds links clicked once and never again, so in the lab it settles near 58%.
 
 </Predict>
 
 ## The idea: keep hot answers in memory
 
-A **cache** is a small, fast store (usually memory) that keeps copies of popular answers. Reading memory takes about a
-millisecond over the network, while a database that reads from disk takes around ten.
+A **cache** is a small, fast store (usually memory) that keeps copies of popular answers. Reading a cache over the
+network takes 0.5 to 1 ms. An indexed database read takes 1 to 5 ms, and much longer once the database is busy. The lab
+below uses 1 ms for a hit and 4 ms for a miss (the cache check plus a 3 ms database read).
 
 <ArcDiagram stage="cache" caption="A cache sits beside the servers. The database sees only the misses." />
 
@@ -147,6 +233,20 @@ basement.
 
 </Analogy>
 
+### Where caches live
+
+Copies can sit at every hop. A layer closer to the user saves more work and is harder to clear.
+
+- **Browser.** It reuses a response only when `Cache-Control` or `Expires` allows it. The shortener sends neither on its
+  302 redirects, so every click reaches the server and the counts stay honest.
+- **CDN.** Edge servers near users, covered in the [next lesson](../cdn/).
+- **In-process.** A map in each server's memory: the fastest read, but each server warms alone and copies can disagree.
+- **Shared.** Redis or Memcached on their own machines, as in this lesson. Every server sees the same hot links.
+- **Database buffer pool.** Recently read pages in the database's own memory.
+
+An **object cache** keeps one record by key. A **query cache** keeps a whole result, such as "my 20 newest links", and
+goes stale when any row in it changes.
+
 ## Try it
 
 Start with no cache, then give it room. Change how uneven popularity is, set an expiry time, and restart the cache in
@@ -161,30 +261,46 @@ What to look for:
 - **Restarting the cache** sends every request to the database until the popular links come back. This is a cold cache.
 - **A short TTL** lowers the hit ratio, since even popular links expire and must be fetched again.
 
+## When the cache misses at once
+
+The restart you just tried is the extreme case of a common outage: many requests miss together, and the database was
+sized for a warm cache. Three things trigger it. A cache restarts empty. A viral link expires while thousands click it,
+so they all miss in the same second (a **stampede**, or thundering herd). Or people request links that do not exist,
+which never get cached.
+
+<StepDiagram client:visible title="A stampede, and how single-flight stops it" nodes={herdNodes} edges={herdEdges} steps={herdSteps} height={290} />
+
+The defenses each cut a different trigger:
+
+- **Single-flight** (request coalescing). The first miss on a key reads the database, and later misses wait for its
+  answer.
+- **TTL jitter.** Add a random few seconds to each TTL so entries filled together do not expire together.
+- **Stale-while-revalidate.** Serve the expired copy while one request refreshes it in the background.
+- **Negative caching.** Cache "no such link" for a short time, so a flood of bad codes reads the database once per code.
+- **Warming.** Load the most popular keys before a fresh cache takes traffic, or shift traffic to it gradually.
+
 ## Stale data and invalidation
 
-A cache holds copies, and copies can go out of date. For the shortener this is mostly easy: links never change after
-creation. Deletion is the exception. If you remove a scam link from the database but not from the cache, the cache
-keeps redirecting people to the scam until the entry expires.
-
-Two tools keep caches honest:
+People can edit and delete links. Say you delete `sho.rt/xyz789` as a scam. The database row is gone, but the cache
+keeps redirecting people to the scam until its copy expires. An edit fails the same way: clicks keep going to the old
+address.
 
 - **Expiry (TTL)** puts an upper bound on how old a cached answer can get.
-- **Invalidation** deletes the cache entry whenever the source data changes.
+- **Invalidation** deletes the cache entry whenever the source data changes. Every edit and every delete must clear the
+  cached copy, and one forgotten code path brings the stale answer back.
 
 ## Write strategies
 
-So far the cache only handles reads. The dashboard adds writes: people edit their links, and every click adds 1 to a
-click count. Each write now has to reach the cache, the database, or both, and the order decides speed, load, and what a
-crash destroys.
+The dashboard adds writes: people edit their links, and every click adds 1 to a count. Each write must reach the cache,
+the database, or both, and the order decides speed, load, and what a crash destroys.
 
-- **Write-through.** Each write updates the database and the cache before it returns. A read right after the write
-  finds the new value in the cache. Every write waits for the database.
-- **Write-behind** (also called write-back). Each write updates only the cache and returns in about a millisecond. Every
-  2 seconds the cache saves its changed links to the database, and several changes to one link merge into one database
-  write. Until that save, the cache holds the only copy.
-- **Write-around.** Each write updates the database and deletes the cached copy. The next read misses and loads the
-  fresh value, so written data enters the cache only when someone reads it.
+- **Write-through.** Each write updates the database and the cache before it returns, so every write waits for the
+  database.
+- **Write-behind** (write-back). Each write updates only the cache and returns in about a millisecond. Every 2 seconds
+  the cache saves its changes, and several changes to one link merge into one database write. Until then, the cache
+  holds the only copy.
+- **Write-around.** Each write updates the database and deletes the cached copy, so written data enters the cache only
+  when someone reads it.
 
 <Predict
   client:visible
@@ -192,14 +308,19 @@ crash destroys.
   question="Every click now adds 1 to a click count: 200 writes per second, mostly to popular links. Which strategy sends the fewest writes to the database?"
   options={['Write-through', 'Write-behind', 'Write-around', 'All three send the same number']}
   answer={1}
+  why={[
+    'Write-through saves every click to the database the moment it happens.',
+    'Several clicks on one link inside each 2 second window merge into one database write.',
+    'Write-around writes each click straight to the database.',
+    'Only write-behind waits, so only it can merge clicks.',
+  ]}
 >
 
 **Write-behind**. A popular link gets clicked many times in each 2 second window, and the cache saves only its latest
-count. With seed 42, 4,015 click writes reach the database as 1,501 under write-behind, while write-through and
-write-around send all 4,015, one database write per click. The count lives under its own key, apart from the redirect it
-counts, so write-around never touches a cached redirect: its hit ratio holds at 84%, the same as with no counting.
-Write-through and write-behind put every counter they update in the cache, the counters push links out, and their hit
-ratio falls to 69%.
+count. With seed 42, write-behind turns 4,015 click writes into 1,501 database writes; the other two send all 4,015.
+Each count lives under its own key, so write-around never touches a cached redirect and its hit ratio holds at 84%.
+Write-through and write-behind cache every counter they update, the counters push links out, and their hit ratio falls
+to 69%.
 
 </Predict>
 
@@ -207,39 +328,54 @@ ratio falls to 69%.
 
 What to look for:
 
-- **Count every click** rewards write-behind: frequent writes to the same few keys merge before they reach the
-  database. Write-around pays one database write per click and keeps the best hit ratio, because the counters never
-  enter the cache.
-- **Bulk import** punishes write-through and write-behind. Both put each imported link in the cache, and those links push
-  the popular ones out. Write-around keeps the popular links, and its hit ratio for the run ends near 84% against 62%.
+- **Count every click** rewards write-behind: writes to the same few keys merge before they reach the database.
+  Write-around pays one database write per click and keeps the best hit ratio.
+- **Bulk import** punishes write-through and write-behind. Both cache each imported link, which pushes the popular ones
+  out. Write-around ends the run near 84% against 62%.
 - **Cache crashes** shows the price of write-behind. With seed 42 it loses 38 writes that callers already saw succeed.
-  Write-through and write-around lose none, because the database already had every write.
+  The other two lose none.
 
-A fourth strategy works on the read side. **Refresh-ahead** reloads a popular entry from the database shortly before its
-TTL runs out, so readers keep getting fresh answers without ever paying for the miss. It costs database reads for
+<details>
+<summary>Go deeper: refresh-ahead and durable write-behind</summary>
+
+A fourth strategy works on the read side. **Refresh-ahead** reloads a popular entry from the database shortly before
+its TTL runs out, so readers keep getting fresh answers without ever paying for the miss. It costs database reads for
 entries nobody asks for again, and it helps only when the cache can guess which entries people will read next.
 
 Teams that use write-behind for data they cannot lose put the buffer in a replicated cache or a durable log. Click
 counts can tolerate a few lost seconds. Payments cannot.
 
+</details>
+
 ## Trade-offs
 
 <TradeoffTable title="Tuning a cache">
 
-| Choice                       | What it buys                                       | What it costs                                              |
-| ---------------------------- | -------------------------------------------------- | ---------------------------------------------------------- |
-| Bigger cache                 | Higher hit ratio, less database load               | Memory is pricier than disk, and gains shrink as it grows   |
-| Long TTL                     | More hits                                          | Changes and deletes take longer to show                    |
-| Short TTL                    | Fresher answers                                    | More misses and more database reads                        |
-| Invalidate on every write    | Fresh data without a short TTL                     | Extra code on every write path, and easy to forget one     |
-| Shared cache (such as Redis) | Every server sees the same hot links               | One more network hop and one more system to run            |
-| Cache inside each server     | Fastest reads, nothing extra to run                | Each server warms up alone, and copies can disagree        |
-| Write-through                | Fresh reads after a write, database always current | Every write waits for the database, and writes fill the cache |
-| Write-behind                 | Fast writes, and repeated writes merge into one    | A cache crash loses confirmed writes                       |
-| Write-around                 | Writes never push hot links out of the cache       | The first read after each write misses                     |
-| Refresh-ahead                | Popular entries stay fresh with no miss            | Extra database reads for entries nobody reads again        |
+| Choice                       | What it buys                                        | What it costs                                                 |
+| ---------------------------- | --------------------------------------------------- | ------------------------------------------------------------- |
+| Bigger cache                 | Higher hit ratio, less database load                | Memory is pricier than disk, and gains shrink as it grows     |
+| Long TTL                     | More hits                                           | Changes and deletes take longer to show                       |
+| Short TTL                    | Fresher answers                                     | More misses and more database reads                           |
+| Invalidate on every write    | Fresh data without a short TTL                      | Extra code on every write path, and easy to forget one        |
+| Shared cache (such as Redis) | Every server sees the same hot links                | One more network hop and one more system to run               |
+| Write-through                | Fresh reads after a write, database always current  | Every write waits for the database, and writes fill the cache |
+| Write-behind                 | Fast writes, and repeated writes merge into one     | A cache crash loses confirmed writes                          |
+| Write-around                 | Writes never push hot links out of the cache        | The first read after each write misses                        |
 
 </TradeoffTable>
+
+**When not to cache.** Skip the cache when reads spread evenly across far more data than memory holds, when every read
+must see the latest write (a balance before a payment), or when the database is already fast enough.
+
+<KeyTakeaways>
+
+- Skewed popularity lets a cache that holds 10% of the links answer well over half of the clicks.
+- Cache-aside reads the cache first, falls back to the database, and fills the cache on a miss.
+- Many misses at once (a restart, a hot key expiring, unknown keys) can flatten a database sized for a warm cache.
+- Every edit and delete must invalidate the cached copy, and the TTL bounds how long a missed one lingers.
+- Write-behind merges writes and risks losing them; write-through and write-around never lose a confirmed write.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
@@ -254,12 +390,10 @@ it, and with what TTL?
 
 <div slot="answer">
 
-1. **Cache it for a long time** (hours or days). Links never change, so invalidate the entry only when a link gets
-   deleted.
-2. **Cache it briefly** (30 to 60 seconds). Nobody minds a count that trails by a minute, and it saves a database query
-   on every dashboard view.
-3. **Skip the cache or invalidate on write.** People expect to see the link they just made. Showing an old list looks
-   like a bug. The [read replicas](../read-replicas/) lesson calls this read-your-writes consistency.
+1. **Cache it for a long time** (hours or days). Invalidate the entry on every edit or delete, and let the TTL catch any
+   invalidation that slips through.
+2. **Cache it briefly** (30 to 60 seconds). Nobody minds a count that trails by a minute.
+3. **Skip the cache or invalidate on write.** People expect to see the link they just made. The [read replicas](../read-replicas/) lesson calls this read-your-writes consistency.
 
 </div>
 

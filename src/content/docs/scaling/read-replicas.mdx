@@ -1,11 +1,24 @@
 ---
-title: Read replicas
-description: Copy the database to spread reads, then meet replication lag, stale reads, and read-your-writes consistency.
+title: Replication
+description: Copy the database to more machines. Learn how replicas multiply read capacity, what synchronous, semi-synchronous and asynchronous replication lose in a failover, how fencing prevents split brain, and how log positions give read your own writes and monotonic reads.
+furtherReading:
+  - title: Designing Data-Intensive Applications, chapter 5 (Replication)
+    url: https://dataintensive.net/
+    note: The standard reference on leaders and followers, replication lag, failover, and multi-leader and leaderless designs.
+  - title: High Availability, Load Balancing, and Replication (PostgreSQL documentation)
+    url: https://www.postgresql.org/docs/current/high-availability.html
+    note: Streaming replication, synchronous standbys, and how a standby is promoted after a failure.
+  - title: Semisynchronous Replication (MySQL documentation)
+    url: https://dev.mysql.com/doc/refman/8.0/en/replication-semisync.html
+    note: Waiting for one replica to confirm each commit, and the timeout that falls back to asynchronous replication.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
+import Callout from '../../../components/lesson/Callout.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
@@ -13,12 +26,34 @@ import StepDiagram from '../../../components/lesson/StepDiagram';
 import ArcDiagram from '../../../components/viz/ArcDiagram';
 import ReplicationWidget from '../../../components/widgets/ReplicationWidget';
 
+export const recall = [
+  {
+    id: 'scaling/read-replicas/recall-1',
+    prompt: 'A scam link sits in edge caches worldwide with a one-day TTL. You delete it at the origin. What removes it from the edges right away?',
+    options: [
+      { text: 'A purge of its path from every edge and the shield', correct: true, why: 'A purge deletes every cached copy now. Each edge refetches on its next miss.' },
+      { text: 'The next request at each edge', why: 'An edge with a fresh copy keeps answering from it for up to a day.' },
+      { text: 'A restart of the origin', why: 'The copies live at the edges, which never ask the origin while fresh.' },
+    ],
+  },
+  {
+    id: 'scaling/read-replicas/recall-2',
+    prompt: 'The cache answers 90% of clicks, and that hit ratio holds when clicks double. What happens to the reads that reach the database?',
+    options: [
+      { text: 'They stay the same', why: 'Twice the clicks bring twice the misses.' },
+      { text: 'They double', correct: true, why: 'At a steady hit ratio, misses grow with traffic.' },
+      { text: 'They halve', why: 'The cache answers the same share, so misses cannot shrink.' },
+    ],
+  },
+];
+
 export const nodes = [
   { id: 'app', kind: 'server', x: 70, y: 150, label: 'App server' },
   { id: 'primary', kind: 'database', x: 300, y: 150, label: 'Primary', sublabel: 'takes writes' },
   { id: 'r1', kind: 'database', x: 530, y: 50, label: 'Replica 1' },
   { id: 'r2', kind: 'database', x: 530, y: 250, label: 'Replica 2' },
 ];
+
 export const edges = [
   { from: 'app', to: 'primary' },
   { from: 'primary', to: 'r1', dashed: true },
@@ -26,6 +61,7 @@ export const edges = [
   { from: 'app', to: 'r1' },
   { from: 'app', to: 'r2' },
 ];
+
 export const steps = [
   {
     title: 'Every write goes to the primary',
@@ -59,52 +95,123 @@ export const steps = [
   },
 ];
 
+export const failNodes = [
+  { id: 'app', kind: 'server', x: 70, y: 150, label: 'App servers' },
+  { id: 'old', kind: 'database', x: 300, y: 50, label: 'Old primary' },
+  { id: 'new', kind: 'database', x: 300, y: 250, label: 'Replica 1', sublabel: 'most caught up' },
+  { id: 'watch', kind: 'server', x: 530, y: 150, label: 'Monitors', sublabel: '3 voters' },
+];
+
+export const failEdges = [
+  { from: 'app', to: 'old' },
+  { from: 'app', to: 'new' },
+  { from: 'old', to: 'new', dashed: true },
+  { from: 'watch', to: 'old', dashed: true },
+  { from: 'watch', to: 'new', dashed: true },
+];
+
+export const failSteps = [
+  {
+    title: 'One primary, watched by a majority',
+    text: 'The primary streams changes to Replica 1. Three monitors check its heartbeat every second.',
+    nodes: ['app', 'old', 'new', 'watch'],
+    flows: ['app>old', 'old>new'],
+  },
+  {
+    title: 'The network splits',
+    text: 'A fault cuts the primary off from the monitors. It keeps running, and some app servers still reach it.',
+    nodes: ['old', 'watch'],
+  },
+  {
+    title: 'A majority promotes Replica 1',
+    text: 'Two of three monitors agree the primary is gone and promote the most caught up replica.',
+    nodes: ['app', 'new', 'watch'],
+    flows: ['watch>new', 'app>new'],
+  },
+  {
+    title: 'Without fencing: split brain',
+    text: 'Both primaries take writes and hand out the next id from the same counter, so code k9x means a recipe on one and a scam page on the other.',
+    nodes: ['app', 'old', 'new'],
+    flows: ['app>old', 'app>new'],
+  },
+  {
+    title: 'With fencing: one primary',
+    text: 'The old primary could not renew its lease from a majority, so it stopped taking writes before the promotion.',
+    nodes: ['app', 'new'],
+    flows: ['app>new'],
+  },
+];
+
 export const quiz = [
   {
     id: 'scaling/read-replicas/q1',
     prompt: 'Which workload gains the most from adding read replicas?',
     options: [
-      { text: 'A read-heavy one, like a URL shortener', correct: true, why: 'Replicas multiply read capacity. With 100 reads per write, almost all the load can move off the primary.' },
-      { text: 'A write-heavy one, like a sensor logger', why: 'Every write still goes to the primary, and every replica must replay it too. Replicas add work for writes.' },
+      { text: 'A read-heavy one, like a URL shortener', correct: true, why: 'Replicas multiply read capacity, so almost all the load can move off the primary.' },
+      { text: 'A write-heavy one, like a sensor logger', why: 'Every replica must replay every write, so replicas add work for writes.' },
       { text: 'Any workload equally', why: 'Replicas only share reads. The more a workload writes, the less they help.' },
-      { text: 'One where every read must see the latest write', why: 'Replicas lag behind the primary, so strict freshness pushes reads back to the primary.' },
+      { text: 'One where every read must see the latest write', why: 'Replicas lag, so strict freshness pushes reads back to the primary.' },
     ],
   },
   {
     id: 'scaling/read-replicas/q2',
     prompt: 'A replica answers "not found" for a link that exists. What is the most likely cause?',
     options: [
-      { text: 'The replica lost the data', why: 'Replicas keep everything they receive. This one has not received the write yet.' },
-      { text: 'Replication lag: the copy has not arrived yet', correct: true, why: 'The read reached the replica inside the lag window. A moment later the same read succeeds.' },
-      { text: 'The cache expired', why: 'An expired cache entry falls back to the database, which would still find the link on the primary.' },
-      { text: 'The load balancer sent it to the wrong server', why: 'Every replica holds the same data. The question is only whether the copy has arrived.' },
+      { text: 'The replica lost the data', why: 'This replica has not received the write yet.' },
+      { text: 'Replication lag: the copy has not arrived yet', correct: true, why: 'The read landed inside the lag window. A moment later it succeeds.' },
+      { text: 'The cache expired', why: 'An expired entry falls back to the database, which still holds the link.' },
+      { text: 'The load balancer sent it to the wrong server', why: 'Every replica holds the same data once the copy arrives.' },
     ],
   },
   {
     id: 'scaling/read-replicas/q3',
     prompt: 'With asynchronous replication, the primary crashes and you promote a replica. What can go wrong?',
     options: [
-      { text: 'Nothing, since replicas hold every write', why: 'Replicas trail the primary. Writes inside the lag window never reached them.' },
-      { text: 'The last few writes can be lost', correct: true, why: 'Anything the primary accepted but had not yet copied disappears with it. Synchronous replication avoids this at the cost of slower writes.' },
-      { text: 'All reads fail until the old primary returns', why: 'The promoted replica takes over reads and writes. That is the point of failover.' },
-      { text: 'The replicas become read only forever', why: 'Promotion turns a replica into the new primary, which accepts writes.' },
+      { text: 'Nothing, since replicas hold every write', why: 'Writes inside the lag window never reached them.' },
+      { text: 'The last few writes can be lost', correct: true, why: 'Anything the primary accepted but had not yet copied disappears with it.' },
+      { text: 'All reads fail until the old primary returns', why: 'The promoted replica takes over reads and writes.' },
+      { text: 'The replicas become read only forever', why: 'Promotion turns a replica into the new primary.' },
+    ],
+  },
+  {
+    id: 'scaling/read-replicas/q4',
+    prompt: 'A network split cuts the primary off from the monitors, and they promote a replica. The old primary is still running. What keeps it from taking writes?',
+    options: [
+      { text: 'It hears about the promotion and steps down', why: 'A cut-off primary hears nothing from the other side.' },
+      { text: 'Its lease expires when it cannot reach a majority', correct: true, why: 'A primary that cannot renew its lease stops taking writes, and the new primary waits out the old lease.' },
+      { text: 'The replicas stop copying from it', why: 'A primary accepts writes without any replica.' },
+      { text: 'Clients pick whichever primary answers faster', why: 'That is split brain itself: two primaries taking writes.' },
+    ],
+  },
+  {
+    id: 'scaling/read-replicas/q5',
+    prompt: 'A user has seen data up to log position 1,042. Replica A has applied up to 1,045, Replica B up to 1,030. Where can their next read go under monotonic reads?',
+    options: [
+      { text: 'Replica A', correct: true, why: 'It holds everything the user has seen.' },
+      { text: 'Replica B', why: 'It trails the user, so a link they opened could answer Not found.' },
+      { text: 'Either replica', why: 'Reading from the one behind the user sends them back in time.' },
+      { text: 'Only the primary', why: 'That works and adds load. Any replica at or past 1,042 is safe.' },
     ],
   },
 ];
 
+<Recall questions={recall} />
+
 <Objectives>
 
-- Explain how a primary and its replicas split writes and reads.
-- Describe replication lag and why it causes stale reads.
-- Apply read-your-writes consistency to hide lag from the person who made a change.
-- Weigh asynchronous against synchronous replication.
+- Explain how a primary streams writes to replicas, and why replicas add read capacity and leave write capacity alone.
+- Choose synchronous, semi-synchronous, or asynchronous replication by what each one loses in a failover.
+- Walk through a failover, and fence the old primary so split brain cannot happen.
+- Use log positions to give people read your own writes and monotonic reads.
+- Size a replica fleet from the read rate, node capacity, and write replay cost.
 
 </Objectives>
 
 ## The failure: one database, too many reads
 
-The cache answers most clicks, and the [CDN](../cdn/) answers many before they reach a server, but at 10 million users the misses alone keep one database pinned at 100% busy. Reads now
-queue behind each other, and the occasional write waits behind them.
+The cache answers most clicks, and the [CDN](../cdn/) answers many before they reach a server, but at 10 million users
+the misses alone keep one database pinned at 100% busy. Reads now queue behind each other, and the occasional write
+waits behind them.
 
 <Predict
   client:visible
@@ -119,9 +226,9 @@ queue behind each other, and the occasional write waits behind them.
   answer={1}
 >
 
-**Sometimes a Not found error.** The read lands on a replica that has not received the new link yet. Wait half a
-second and it works. The data was never lost; the person just looked too early. This is a **stale read**, and the
-fix is to send people's reads of their own fresh data to the primary.
+**Sometimes a Not found error.** The read lands on a replica that has not received the new link yet. Wait half a second
+and it works. The data was never lost; the person just looked too early. This is a **stale read**, and the fix is to
+send people's reads of their own fresh data to the primary.
 
 </Predict>
 
@@ -142,74 +249,174 @@ a change may still see the old version for a moment.
 
 </Analogy>
 
-## Try it
+## Try it: add replicas
 
-Press Play. One database cannot keep up. Add replicas until the load bars calm down, then raise the writes and watch
-every replica's share of the load grow. Raise the lag and watch the stale reads (squares with a cross) appear, along
-with reads that go back in time. Finally, turn on read your own writes.
+Press Play. One database cannot keep up. Add replicas until the load bars calm down, then raise the writes. Raise the
+lag and watch stale reads (squares with a cross) appear, then turn on read your own writes.
 
 <ReplicationWidget client:visible />
 
 What to look for:
 
-- **Read capacity depends on where reads go.** With no replicas, the primary serves reads with whatever time writes
-  leave it. With replicas, only the replicas serve reads, and each one spends part of its capacity replaying every
-  write. Raise the writes and the read capacity of every replica falls at once.
+- **Every replica replays every write.** With replicas, only the replicas serve reads. Raise the writes and the read
+  capacity of every replica falls at once.
 - **Stale reads come from fresh links.** A link created long ago is already on every replica. Only reads inside the lag
   window go wrong.
-- **Each replica lags by its own amount, so reads can go back in time.** One read finds a new link on a quick replica,
-  and the next lands on a slower one that answers Not found. The person saw the link, then lost it. **Monotonic reads**
-  prevent this: pin each user to one replica, or carry the highest log position they have seen and skip replicas
-  behind it.
-- **Read your own writes** moves those few reads to the primary. The app carries each write's log position, and a
-  replica that has not applied it hands the read on. Stale reads of a person's own links vanish, and the primary takes
-  a little extra load. [Consistency models](../../distributed-data/consistency-models/) covers the full family of
-  guarantees.
+- **Reads can go back in time.** Each replica lags by its own amount. One read finds a new link on a quick replica, and
+  the next lands on a slower one that answers Not found.
+- **Read your own writes** sends a person's reads of their own fresh links to the primary. Their stale reads vanish,
+  and the primary takes a little extra load.
+- **Writes lost if the primary crashed now** counts acknowledged writes each replica has not received yet.
 
-## When the primary dies
+## Synchronous, semi-synchronous, or asynchronous
 
-If the primary crashes, you **promote** a replica to become the new primary, point writes at it, and **fence** the old
-primary so it cannot accept writes if it comes back. With **asynchronous** replication (the default almost everywhere),
-the primary acknowledged writes that never reached the replicas, and those writes are lost. A replica that trails by
-half a second at 40 writes per second loses about 40 × 0.5 = 20 links. Promote the replica with the highest applied log
-position to lose the fewest. The widget shows the loss for each choice once you add replicas.
+The real choice is when the primary tells the app "saved". Each answer trades write speed against what a failover
+loses.
 
-**Synchronous** replication makes the primary wait until a replica has durably stored each write before it
-acknowledges the write. That protects acknowledged writes only when failover promotes a replica that confirmed them.
-Promote a lagging asynchronous replica instead, and the acknowledged writes vanish anyway. Every write also gets
-slower, and a slow replica stalls the primary.
+- **Asynchronous** (the default almost everywhere). The primary acknowledges once the write is on its own disk, and
+  replicas copy it later. Writes stay fast. A crash loses the lag window: a replica trailing by half a second at 40
+  writes per second misses about 40 × 0.5 = **20 links**.
+- **Synchronous.** The primary waits until every replica in its sync set confirms. Promote any of them and no
+  acknowledged write is lost. Every write waits for the slowest confirmation, and a replica that stops answering stops
+  all writes.
+- **Semi-synchronous.** The primary waits for **any one** replica to confirm, so writes wait only for the fastest
+  replica. Failover must promote the replica that holds every acknowledged write: the one with the highest log
+  position. MySQL falls back to asynchronous replication when no replica confirms within a timeout (10 seconds by
+  default), so a replica outage quietly removes the guarantee.
+
+<details>
+<summary>Go deeper: distance, and what "confirmed" means</summary>
+
+Distance sets the price. A replica in the same data center confirms in about a millisecond, so semi-synchronous
+replication costs little there. A replica in another region sits 70 ms or more away, and a synchronous write waits for
+that round trip every time. Many teams keep one semi-synchronous replica nearby and replicate to other regions
+asynchronously.
+
+"Confirmed" usually means the replica stored the change in its log, which can happen before it applies the change to
+its tables. A synchronous replica can still answer a read from before the write. Durability and freshness are separate
+guarantees.
+
+</details>
+
+## Failover and split brain
+
+When the primary dies, a **failover** moves its job to a replica:
+
+1. **Detect.** Monitors declare the primary dead after several missed heartbeats, for example three checks one second
+   apart. A shorter timeout fails over on a brief pause, such as a long garbage collection; a longer one keeps writes
+   down longer.
+2. **Promote.** Pick the replica with the highest applied log position, so the fewest writes are lost, and point the
+   other replicas at it.
+3. **Redirect.** Move the app's writes to it through a proxy, service discovery, or DNS.
+
+The dangerous case is a primary that is alive and unreachable:
+
+<StepDiagram client:visible title="A failover with and without fencing" nodes={failNodes} edges={failEdges} steps={failSteps} height={300} />
+
+Two primaries taking writes at once is **split brain**. Their histories drift apart, and merging them means discarding
+one side's writes. **Fencing** prevents it:
+
+- **Quorum.** An odd number of monitors (3 or 5) vote, and only a majority can promote, so a cut-off minority cannot
+  elect a second primary.
+- **Lease.** The primary renews a lease of a few seconds from a majority of a coordination service such as etcd. A
+  primary that cannot renew stops taking writes, and the new primary waits out the old lease, which adds to every
+  failover.
+- **Epoch number.** Each promotion raises a number that tags every write. Replicas and storage reject writes with an
+  older number, so a stale primary's late writes fail.
+
+[Raft](../../distributed-data/raft/) builds terms and majority votes into a leader election protocol.
+
+<details>
+<summary>Go deeper: multi-leader and leaderless replication</summary>
+
+Everything above uses one primary. Two other designs let more than one node accept writes.
+
+**Multi-leader** replication runs a primary in each region, and each one streams its writes to the others. Writes stay
+local and fast, and a region keeps writing during a network split. Two regions can then change the same row at once,
+so the system needs a conflict rule. "Last write wins" picks the later timestamp and silently drops the other change.
+Safer rules merge both changes, or avoid conflicts by routing each user's writes to one home region.
+
+**Leaderless** replication, used by Dynamo-style stores such as Cassandra, sends each write to several replicas and
+each read to several replicas. With N copies, a write that W nodes confirm and a read that R nodes answer overlap when
+W + R > N, so the read sees the latest write. [Quorums](../../distributed-data/quorums/) covers this in depth.
+
+</details>
+
+## Freshness tokens: read your writes and monotonic reads
+
+The primary numbers every change in its log: a **log sequence number** (LSN) in PostgreSQL, a global transaction id in
+MySQL. Each replica reports the highest position it has applied, which turns "fresh enough?" into a comparison.
+
+- **Read your own writes.** The create response carries the write's position, say 1,042, and the app sends it with the
+  person's next reads. A replica at 1,042 or later answers. One behind it waits a few milliseconds or hands the read to
+  the primary.
+- **Monotonic reads.** The app tracks the highest position each person has seen. A replica at 1,045 can answer, and one
+  at 1,030 is skipped, so a link they already opened never vanishes. Pinning each user to one replica also works, and
+  it spreads load less evenly.
+
+A token in a browser cookie covers one device, so a link created on a phone can still look missing on a laptop. Keep
+it in a server-side session to cover both. [Consistency models](../../distributed-data/consistency-models/) covers the
+full family of guarantees.
 
 ## Trade-offs
 
 <TradeoffTable title="Replication choices">
 
-| Choice                    | What it buys                                                                | What it costs                                                         |
-| ------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| More replicas             | More read capacity, more copies of the data                                 | Every replica replays every write, and more lag to watch              |
-| Asynchronous replication  | Fast writes                                                                 | Stale reads, and acknowledged writes can vanish in a failover         |
-| Synchronous replication   | No lost acknowledged writes, if you promote the replica that confirmed them | Slower writes, and a slow replica stalls the primary                  |
-| Read your own writes      | People see their own changes, even when lag runs long                       | Extra primary load, and the app must carry each write's log position  |
-| Monotonic reads           | Nobody sees data appear and then vanish                                     | Pinned users spread load less evenly, or the app tracks log positions |
-| Replicas in other regions | Fast reads near users, survives a region loss                               | Lag of 100 ms or more across oceans                                   |
+| Choice                     | What it buys                                                    | What it costs                                                   |
+| -------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------- |
+| More replicas              | More read capacity, more copies of the data                     | Every replica replays every write                               |
+| Asynchronous replication   | Fast writes                                                     | Stale reads, and acknowledged writes can vanish in a failover   |
+| Synchronous replication    | No lost acknowledged writes                                     | Slower writes, and a slow replica stalls the primary            |
+| Read your own writes       | People see their own changes, even when lag runs long           | Extra primary load, and the app carries log positions           |
+| Monotonic reads            | Nobody sees data appear and then vanish                         | Uneven load from pinning, or log positions to track             |
+| Replicas in other regions  | Fast reads near users, survives a region loss                   | Lag of 100 ms or more across oceans                             |
 
 </TradeoffTable>
+
+**When not to replicate for reads.** A cache node answers far more reads than a database replica, so let the cache
+take what it can first. Replicas help little when the workload writes heavily, since each one replays every write, or
+when every read must see the latest write, since those reads go to the primary anyway. One standby for failover is
+still worth running.
+
+<Callout variant="warning" title="Common mistakes">
+
+- **Reading a fresh write from a replica,** so a person creates a link and then sees Not found.
+- **Promoting whichever replica answers first.** The most caught up replica loses the fewest writes, so compare log
+  positions first.
+- **Failing over without fencing,** so a cut-off primary keeps taking writes and two histories drift apart.
+- **Treating replicas as backups.** A bad delete reaches every replica in milliseconds. Keep point-in-time backups too.
+
+</Callout>
+
+<KeyTakeaways>
+
+- Replicas multiply read capacity. Every write still goes to the primary, and every replica replays it.
+- Asynchronous replication keeps writes fast and loses the lag window in a failover. Semi-synchronous and synchronous
+  replication spend write latency to keep acknowledged writes.
+- Fail over to the most caught up replica, and fence the old primary with a quorum, a lease, or an epoch number.
+- Log positions turn freshness into a comparison for read your own writes and monotonic reads.
+- Replicas copy mistakes as fast as data, so keep backups.
+
+</KeyTakeaways>
+
+Replicas copy every link to every machine, so the primary still takes every write and each replica still stores
+everything. [Sharding](../sharding/), the next lesson, splits the links so each machine holds and writes only a slice.
 
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-At 10 million users, the shortener sees 100 new links and 50,000 clicks per second. The cache answers 90% of clicks.
-One database node handles 2,000 queries per second, and you keep each node under 70% busy. How many replicas do you
-need? And what breaks if a new feature pushes writes to 5,000 per second?
+At 10 million users, the shortener sees 100 new links and 50,000 clicks per second. The cache answers 90% of clicks. One
+database node handles 2,000 queries per second, and you keep each node under 70% busy. How many replicas do you need?
+And what breaks if a new feature pushes writes to 5,000 per second?
 
 <div slot="answer">
 
-- Cache misses reach the database: 50,000 × 10% = **5,000 reads per second**.
-- Each replica takes 2,000 × 0.7 = 1,400 queries per second, and replaying 100 writes per second leaves 1,300 for
-  reads. 5,000 ÷ 1,300 ≈ 3.8, which rounds up to **4 replicas**, plus one spare to survive a crash: **5**.
-- At 5,000 writes per second, replicas stop helping. The single primary must accept every write, and every replica must
-  replay all 5,000 of them on top of its reads. To grow past one machine's write limit, you split the data itself across
-  machines. That is [sharding](../../scaling/sharding/), the next lesson.
+- 50,000 × 10% = **5,000 reads per second**.
+- 2,000 × 0.7 = 1,400, and replaying 100 writes leaves 1,300. 5,000 ÷ 1,300 ≈ 3.8, which rounds up to **4 replicas**,
+  plus a spare: **5**.
+- At 5,000 writes, replicas stop helping. The primary must accept every write and every replica replays all 5,000.
+  Split the data: [sharding](../sharding/), the next lesson.
 
 </div>
 

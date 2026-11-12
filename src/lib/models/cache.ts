@@ -26,7 +26,8 @@ export const defaultCacheConfig: CacheConfig = {
   requestsPerTick: 40,
   ttlTicks: 0,
   hitMs: 1,
-  missMs: 12,
+  /** The cache check plus an indexed database read of about 3 ms. */
+  missMs: 4,
   seed: 7,
 };
 

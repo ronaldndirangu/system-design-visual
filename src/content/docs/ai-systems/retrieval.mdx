@@ -1,11 +1,26 @@
 ---
 title: Retrieval
 description: Ground answers in your documents with chunking, hybrid search, tenant scoping, and citations, and abstain when the evidence is weak.
+furtherReading:
+  - title: "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks"
+    url: https://arxiv.org/abs/2005.11401
+    note: Lewis et al. (2020), the paper that named RAG and paired a document retriever with a generator.
+  - title: "Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods"
+    url: https://cormack.uwaterloo.ca/cormacksigir09-rrf.pdf
+    note: Cormack, Clarke, and Buettcher (2009), the paper that introduced RRF and its k of 60.
+  - title: Passage Re-ranking with BERT
+    url: https://arxiv.org/abs/1901.04085
+    note: Nogueira and Cho (2019), a cross-encoder that reads the query and a passage together to rescore a short list.
+  - title: "Precise Zero-Shot Dense Retrieval without Relevance Labels"
+    url: https://arxiv.org/abs/2212.10496
+    note: Gao et al. (2022), the HyDE paper, which embeds an answer drafted by a language model in place of the question.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
@@ -38,114 +53,115 @@ export const edges = [
 export const steps = [
   {
     title: 'Chunk every store\u2019s documents',
-    text: 'Split each policy into short chunks. Every chunk keeps a label for its store and for who may read it: customers, or staff only.',
+    text: 'Split each policy into short chunks labeled with store and reader.',
     nodes: ['docs', 'chunker'],
     flows: ['docs>chunker'],
   },
   {
     title: 'Index each chunk twice',
-    text: 'The keyword index records the words in each chunk. The vector index stores an embedding, a list of numbers that places similar meanings close together. An embedding model computes it.',
+    text: 'A keyword index records words. A vector index stores an embedding that places similar meanings close.',
     nodes: ['chunker', 'kwIndex', 'vecIndex'],
     flows: ['chunker>kwIndex', 'chunker>vecIndex'],
   },
   {
     title: 'Scope the question first',
-    text: 'The question arrives with the customer\u2019s store and role. The filter limits both searches to chunks this customer may read, before anything is ranked.',
+    text: 'Limit both searches to chunks this store and role may read.',
     nodes: ['query', 'filter'],
     flows: ['query>filter'],
   },
   {
     title: 'Search both indexes',
-    text: 'Keyword search catches exact tokens such as the promo code TRAIL25. Vector search catches paraphrases such as send it back for return. Each returns its top 5.',
+    text: 'Keyword search catches TRAIL25. Vector search catches paraphrases. Each returns its top 5.',
     nodes: ['filter', 'kwIndex', 'vecIndex'],
     flows: ['filter>kwIndex', 'filter>vecIndex'],
   },
   {
     title: 'Fuse the lists by rank',
-    text: 'Reciprocal rank fusion gives each chunk 1/(60 + rank) for every list it appears in and adds them up. A chunk high in both lists wins, and a chunk found by only one list still counts.',
+    text: 'Add 1/(60 + rank) from each list, so agreement wins.',
     nodes: ['kwIndex', 'vecIndex', 'fuse'],
     flows: ['kwIndex>fuse', 'vecIndex>fuse'],
   },
   {
     title: 'Send the top 3 with their ids',
-    text: 'The model receives the three best chunks, each labeled with its id. The answer cites the ids it relied on, so anyone can check it against the source.',
+    text: 'The model gets the top 3 with ids and cites the ids it used.',
     nodes: ['fuse', 'llm'],
     flows: ['fuse>llm'],
   },
   {
     title: 'Abstain when the evidence is weak',
-    text: 'If no sent chunk clears the evidence bar, the assistant says it could not find the answer in the store policy and offers to connect a person.',
+    text: 'If no chunk clears the evidence bar, offer a person.',
     nodes: ['llm'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'ai-systems/retrieval/recall-1',
+    prompt: 'You set quality, must decline, p95 latency, and cost budgets before any run. Two candidates meet all four. Which do you ship?',
+    options: [
+      { text: 'The cheaper one', correct: true, why: 'Both fit every budget, so cost decides.' },
+      { text: 'The one with the higher quality score', why: 'Quality past the budget buys nothing.' },
+      { text: 'The one that looked best in a demo', why: 'A demo cannot separate candidates.' },
+    ],
+  },
+  {
+    id: 'ai-systems/retrieval/recall-2',
+    prompt: 'The model server turns on prefix (KV) caching for the shared system prompt. What does it reuse?',
+    options: [
+      { text: 'A stored answer to a repeated question', why: 'That is a response cache. A prefix cache writes a fresh answer.' },
+      {
+        text: 'The prefill work for the shared prompt, so the first token arrives sooner',
+        correct: true,
+        why: 'Decode still runs one token at a time for every answer.',
+      },
+      { text: 'Answers across stores', why: 'It stores no answers.' },
+    ],
   },
 ];
 
 export const quiz = [
   {
     id: 'ai-systems/retrieval/q1',
-    prompt: 'A Harbor customer asks about the promo code TRAIL25. Vector search ranks the promo chunk only fourth. Why?',
+    prompt: 'A Harbor customer asks about code TRAIL25. Vector search ranks the promo chunk only fourth. Why?',
     options: [
-      {
-        text: 'The promo chunk is too long to embed well',
-        why: 'The promo chunk is one short sentence. Length is not the problem here.',
-      },
+      { text: 'The promo chunk is too long to embed well', why: 'It is one short sentence.' },
       {
         text: 'A made-up code carries little meaning, so the question\u2019s embedding sits near every discount chunk',
         correct: true,
-        why: 'Embeddings capture meaning, and TRAIL25 adds almost none, so three other chunks land closer to the question. Keyword search matches the exact token and ranks the promo chunk first.',
+        why: 'Keyword search matches the exact token and ranks it first.',
       },
-      {
-        text: 'The store filter removed the promo chunk',
-        why: 'The promo chunk belongs to Harbor and customers may read it, so the filter keeps it. It is in the vector list, just ranked fourth.',
-      },
-      {
-        text: 'Vector search only works on long questions',
-        why: 'Vector search handles short questions well when they carry meaning, such as the paraphrase about sending shoes back.',
-      },
+      { text: 'The store filter removed the promo chunk', why: 'It sits at rank 4, so it passed the filter.' },
+      { text: 'Vector search only works on long questions', why: 'It handled the short paraphrase well.' },
     ],
   },
   {
     id: 'ai-systems/retrieval/q2',
-    prompt: 'Chunk A ranks 1st in the keyword list and is missing from the vector list. Chunk B ranks 2nd in both lists. With RRF and k = 60, which ranks higher?',
+    prompt: 'Chunk A ranks 1st in the keyword list only. Chunk B ranks 2nd in both lists. With RRF and k = 60, which ranks higher?',
     options: [
-      {
-        text: 'A, because a first place beats any second place',
-        why: 'A scores 1/61, about 0.0164. B scores 1/62 twice, about 0.0323, so B ranks higher.',
-      },
-      {
-        text: 'It depends on the raw keyword and cosine scores',
-        why: 'RRF never reads raw scores. That is why it can combine a keyword score and a cosine similarity without tuning weights.',
-      },
+      { text: 'A, because first place beats second place', why: 'A scores 1/61, about 0.0164. B scores about 0.0323.' },
+      { text: 'It depends on the raw scores', why: 'RRF reads only ranks.' },
       {
         text: 'B, because it scores in both lists',
         correct: true,
-        why: 'B earns 1/62 from each list, about 0.0323, nearly double A\u2019s 1/61. Agreement between the lists counts for more than one top spot.',
+        why: 'B earns 1/62 twice, nearly double A\u2019s score.',
       },
-      {
-        text: 'They tie, because RRF ignores ranks',
-        why: 'RRF uses only ranks. Each list adds 1/(60 + rank), and a list the chunk is missing from adds 0.',
-      },
+      { text: 'They tie', why: 'RRF adds 1/(60 + rank) per list, so they differ.' },
     ],
   },
   {
     id: 'ai-systems/retrieval/q3',
-    prompt: 'Harbor and Pine share one index. Which design keeps Pine\u2019s chunks away from a Harbor customer and still fills all three slots?',
+    prompt: 'Harbor and Pine share one index. Which design keeps Pine\u2019s chunks from a Harbor customer and fills all three slots?',
     options: [
+      { text: 'Tell the model in the prompt to use only Harbor documents', why: 'The Pine text still reaches the model.' },
       {
-        text: 'Tell the model in the prompt to use only Harbor documents',
-        why: 'The Pine text still reaches the model, and an instruction is a request the model can ignore. Enforce the scope in the search.',
+        text: 'Search everything, take the top 3, then drop unreadable chunks',
+        why: 'Nothing leaks, and the empty slots can force an abstain.',
       },
-      {
-        text: 'Search everything, take the top 3, then drop the chunks the customer may not read',
-        why: 'This post-filter never leaks, but the dropped chunks leave empty slots. For the paraphrase only one chunk remains, and the assistant abstains although the answer existed.',
-      },
-      {
-        text: 'Add a bonus to the score of chunks from the customer\u2019s store',
-        why: 'A bonus changes the order, yet a strong Pine chunk can still win a slot. Isolation needs a hard filter.',
-      },
+      { text: 'Give the customer\u2019s store a score bonus', why: 'A strong Pine chunk can still win a slot.' },
       {
         text: 'Filter by store and role before ranking, then take the top 3',
         correct: true,
-        why: 'Every slot goes to a chunk this customer may read, so nothing leaks and no slot is wasted.',
+        why: 'Every slot goes to a readable chunk.',
       },
     ],
   },
@@ -155,21 +171,15 @@ export const quiz = [
     options: [
       {
         text: 'Nothing, because the same question always has the same answer',
-        why: 'Harbor and Pine give different answers to the same words. Harbor allows returns for 30 days, and Pine for 14.',
+        why: 'Harbor allows 30 days, and Pine 14.',
       },
       {
         text: 'A Pine customer can receive Harbor\u2019s cached answer, and a customer can receive an answer built from staff-only notes',
         correct: true,
-        why: 'The key must include every input that changes the answer: the store, the permission scope, the model, the prompt version, and the sampling settings.',
+        why: 'The key must include every input that changes the answer: the store, the permission scope, the model, the prompt version, the sampling settings, the index version, and the earlier turns in the conversation.',
       },
-      {
-        text: 'The cache fills up faster',
-        why: 'A question-only key makes fewer entries. The problem is that it shares answers across stores and roles.',
-      },
-      {
-        text: 'Cached answers lose their citations',
-        why: 'Citations can be stored with the answer. The problem is who receives the cached answer.',
-      },
+      { text: 'The cache fills up faster', why: 'A question-only key makes fewer entries.' },
+      { text: 'Cached answers lose their citations', why: 'Citations can be stored with the answer.' },
     ],
   },
   {
@@ -179,55 +189,54 @@ export const quiz = [
       {
         text: 'The last wrong answer disappears, and one more answerable question is abstained',
         correct: true,
-        why: 'Wrong answers drop from 1 to 0, and correct answers drop from 7 to 6. The new abstention is the back-ordered brake pads question, which the policy could answer.',
+        why: 'Wrong answers drop from 1 to 0 and correct from 7 to 6: the brake pads question now abstains.',
       },
-      {
-        text: 'Every count improves',
-        why: 'Abstentions rise from 4 to 6, and one of the new ones had an answer. A higher bar trades some correct answers for fewer wrong ones.',
-      },
+      { text: 'Every count improves', why: 'Abstentions rise from 4 to 6.' },
       {
         text: 'Nothing changes, because the RRF scores stay the same',
-        why: 'The threshold applies to the support score. RRF scores encode rank only and cannot tell a weak match from a strong one.',
+        why: 'The threshold applies to the support score.',
       },
+      { text: 'The assistant cites more chunks', why: 'A higher bar never adds citations.' },
+    ],
+  },
+  {
+    id: 'ai-systems/retrieval/q6',
+    prompt: 'A legal assistant searches 2 million contract clauses with hybrid search. Where does a cross-encoder reranker fit?',
+    options: [
       {
-        text: 'The assistant cites more chunks',
-        why: 'A citation needs support at or above the threshold, so a higher bar gives the same or fewer citations.',
+        text: 'After fusion, rescoring the top 20 to 100 candidates',
+        correct: true,
+        why: 'It reads question and clause together, affordable only on a short list.',
       },
+      { text: 'In place of both indexes, scoring every clause', why: 'A model pass per clause per question is far too slow.' },
+      { text: 'Before the permission filter', why: 'Scope comes first.' },
+      { text: 'At index time, scoring each clause once', why: 'Its score depends on the question.' },
     ],
   },
 ];
 
+<Recall questions={recall} />
+
 <Objectives>
 
-- Explain why keyword search and vector search miss different questions, and fuse their ranked lists with reciprocal
-  rank fusion.
-- Choose a chunk size and overlap that keep a rule with its exception, and scope retrieval and caches to the asking
-  store and the user's permissions.
-- Make answers cite their chunks, and set an evidence threshold that abstains and hands off when support is weak.
+- Explain why keyword and vector search miss different questions, and fuse their lists with reciprocal rank fusion.
+- Place a reranker and a query rewrite in the pipeline, and weigh their latency and cost.
+- Chunk so a rule keeps its exception, and scope retrieval and caches to the store and the user's permissions.
+- Make answers cite their chunks, and abstain when the evidence is weak.
 
 </Objectives>
 
 ## The failure: a confident answer with no source
 
 Two stores share the support assistant: Harbor Bikes and Pine Street Books. A Harbor customer asks, "Can I return a
-sale item?" The model has never seen Harbor's policies, so it writes something plausible:
+sale item?" The model has never seen Harbor's policies, so it invents an answer:
 
 > **Fixture answer:** Yes! Sale items can be returned within 60 days for a full refund.
 
-It reads like a policy, and none of it is true. Harbor's policy says final sale items cannot be returned. With no
-documents to work from, the model filled the gap with a fluent guess.
-
-So the team adds retrieval: find the relevant policy text and put it in the prompt. Three new failures show up at once.
-
-- **Chunking splits the rule.** The policy is cut every 16 words. The chunk that ranks first ends with "Items can be
-  returned within 30 days of", and "except final sale items" sits in the next chunk. The assistant answers "Yes" from a
-  true sentence.
-- **Keyword search misses a paraphrase.** "Can I send back cycling shoes I never wore?" shares no word with the return
-  policy. Keyword search returns a note about back ordered parts instead, because it contains "send" and "back".
-- **Vector search misses an exact code.** "Can I use code TRAIL25?" means little beyond "discount", so vector search
-  ranks the promo chunk fourth and answers from the sale policy.
-
-And with one index for both stores, nothing stops Pine Street's return rule from answering a Harbor customer.
+Harbor's final sale items cannot be returned. So the team adds retrieval, which puts relevant policy text in the prompt,
+and new failures appear. "Can I send back cycling shoes I never wore?" shares no word with the return policy. "Can I use
+code TRAIL25?" means little beyond "discount". And with one index for both stores, Pine's return rule can answer a
+Harbor customer.
 
 <Predict
   client:visible
@@ -237,72 +246,118 @@ And with one index for both stores, nothing stops Pine Street's return rule from
   answer={3}
 >
 
-**Both lists, fused by rank.** Keyword search never finds the return rule for the paraphrase. Vector search ranks the
-promo chunk fourth, outside the top 3 it sends. Fusing the two lists keeps the vector search's top hit for the
-paraphrase and the keyword search's top hit for the code, so the right chunk reaches the model both times. The corpus
-and scores are fixtures, and every number is illustrative.
+<div slot="figure">
+
+| Retriever | Ranks chunks by | Sent to the model |
+| --- | --- | --- |
+| Keyword search | Shared rare words | Top 3 |
+| Vector search | Closeness of meaning | Top 3 |
+| Both, fused | Rank in each list | Top 3 |
+
+</div>
+
+**Both lists, fused by rank.** Keyword search misses the paraphrase, and vector search ranks the promo chunk fourth.
+Fusion keeps each search's top hit, so the right chunk reaches the model both times. The corpus and scores are
+fixtures, and every number is illustrative.
 
 </Predict>
 
-## Try it: hybrid search, step by step
-
-Pick a query and a filter mode, predict which list finds the right chunk, then press Play. Each step reveals one stage:
-the store filter (pre-filter only), the keyword list, the vector list, one fused row at a time, the top 3, the dropped
-chunks (post-filter only), and the answer.
-
-<HybridSearchWidget client:visible />
-
-What to look for:
-
-- **Paraphrase.** The keyword list holds one chunk, the back order note, matched on "send" and "back". The vector list
-  ranks the return rule first. Fusion keeps both, so the return rule reaches the model and the fixture answer cites it.
-- **Exact code.** Keyword search ranks the TRAIL25 promo first and vector search ranks it fourth. Fused, it scores
-  1/61 + 1/64, about 0.0320, and stays on top.
-- **No filter.** Run **Sale item return** with **No filter**. Pine Street's return rule (14 days, sale books are final
-  sale) ranks second and gets cited for a Harbor customer. The "Another store" badge flags the leak.
-- **Post-filter.** Run **Paraphrase** with **Post-filter**. A Pine chunk and a staff-only chunk take two of the top 3
-  slots. Dropping them after ranking leaves only the back order note, so the assistant abstains although the answer
-  existed.
-
-This is a **toy model**. The 20 policy chunks are written for this lesson, and the toy embeddings are hand-assigned for
-teaching; real systems compute embeddings with an embedding model. Each toy vector has six dimensions: returns,
-discounts, shipping, payment, care, and price match. The keyword score is simplified: it adds up the rarity (inverse
-document frequency) of each question word a chunk contains, a cut-down cousin of BM25. Fixture answers are written by
-hand, no model runs in your browser, and every number is illustrative.
-
 ## The idea: two searches, one ranking
 
-Keyword search and vector search fail on different questions, so a hybrid system runs both and merges the results. The
-merge is the hard part: a keyword score of 4.2 and a cosine similarity of 0.93 sit on different scales, and adding them
-lets one search drown out the other.
+Keyword and vector search fail on different questions, so a hybrid system runs both and merges the results. Their
+scores sit on different scales (a keyword score of 4.2, a cosine of 0.93), so adding them lets one drown out the other.
 
-**Reciprocal rank fusion** (RRF) sidesteps the scales by using only ranks. A chunk at rank r in a list earns
-1/(k + r), with ranks starting at 1, and its fused score is the sum over both lists. A chunk missing from a list gets
-0 from that list. The usual k is 60, the value used in the paper that introduced RRF. A large k keeps one first
-place from dominating, and the exact value matters much less than the decision to fuse by rank.
-
-For the sale item question at Harbor, both searches rank the main return rule first, so it scores 1/61 + 1/61, about
-0.0328. The gift card chunk ranks second for keywords (it mentions sale items) and is missing from the vector list, so
-it scores only 1/62, about 0.0161. Agreement between the lists beats one strong placement.
+**Reciprocal rank fusion** (RRF) uses only ranks: a chunk at rank r earns 1/(k + r) from each list, with k usually 60.
+For Harbor's sale item question, both searches rank the return rule first: 1/61 + 1/61, about 0.0328. The gift card
+chunk ranks second for keywords only: 1/62, about 0.0161. Agreement beats one strong placement.
 
 <StepDiagram client:visible title="From documents to a cited answer" nodes={nodes} edges={edges} steps={steps} height={300} />
 
 <Analogy>
 
-Two librarians at one desk. The first knows the card catalog by heart: name an exact title or code and she walks
-straight to it, but a vague description gets a shrug. The second knows every subject: describe what you mean and he
-finds books about it, though he may hand you the wrong edition when you needed an exact code. Ask both, and trust the
-books near the top of both lists. Before either one searches, the desk checks your library card, so nobody brings you
-a book from a wing you may not enter.
+Two librarians share a desk. One knows the catalog: name an exact code and she walks straight to it, while a vague
+description gets a shrug. The other knows every subject and finds books by meaning, though he may miss a code. Ask both
+and trust the books near the top of both lists. Where it breaks: a librarian reads the book first, while the searches
+only match words and meanings, so a separate evidence check decides whether a chunk answers.
 
 </Analogy>
 
+### Rerank and rewrite
+
+Two optional stages sharpen this pipeline. A **cross-encoder reranker** runs after fusion: a model reads the question
+and each passage together and rescores the top 20 to 100 candidates. It is more precise than either first search, and
+it typically costs tens of milliseconds per batch on a GPU, so it only runs on a short list. A **query rewrite** runs
+before search: a model rewrites the question, or drafts a hypothetical answer (HyDE) that the system embeds. That adds
+one model call of latency and cost, and the rewrite can drift from what the user asked. This lesson's widgets model
+neither stage.
+
+<details>
+<summary>Go deeper: cross-encoder rerank and HyDE</summary>
+
+**Why rerank only a short list.** The first-stage searches compare the question with word lists and vectors computed
+ahead of time, so they scale to millions of chunks. A cross-encoder (Nogueira and Cho, 2019, in Further reading) reads
+the question and the passage as one input, so nothing can be computed ahead: every candidate costs a full model pass per
+question. Run it on the top 20 to 100 fused candidates and keep the 3 it scores highest. Its score is also a stronger
+evidence signal than RRF, which encodes rank only.
+
+**Bi-encoder and cross-encoder.** The vector index uses a bi-encoder: the question and the chunk are embedded
+separately, and similarity is a cheap dot product. The cross-encoder sees both texts at once, so it can notice that
+"except final sale items" flips the answer. That attention across both texts buys the precision, and it is also why
+the cost grows with every candidate.
+
+**Query rewrite.** A rewrite can turn "and for sale items?" into a standalone question using the earlier turns, expand
+abbreviations, or split a two-part question into two searches. HyDE (Gao et al., 2022) asks a model to draft a plausible
+answer and embeds that draft, because an answer sits closer to answer-shaped chunks than a short question does. The
+draft may contain invented facts. Only its embedding drives the search, and the final answer still comes from the
+retrieved chunks.
+
+**The costs.** A rewrite adds one model call before search starts, so it adds directly to time to first token and
+spends tokens on every question. It can also drift: it may add a product, a store, or a constraint the user never
+mentioned. Log the rewritten query next to the original, evaluate retrieval with and without it, and apply the store and
+permission filter from the original request, never from anything the rewrite produced.
+
+</details>
+
+## Try it: hybrid search, step by step
+
+Pick a query and a filter mode, predict which list finds the right chunk, then press Play to step through each stage.
+
+<HybridSearchWidget client:visible />
+
+What to look for:
+
+- **Paraphrase.** Keyword search finds only the back order note. Vector search ranks the return rule first, and fusion
+  sends it.
+- **Exact code.** TRAIL25 ranks first for keywords and fourth for vectors. Fused, it scores 1/61 + 1/64, about 0.0320,
+  and stays on top.
+- **No filter.** Run **Sale item return** with **No filter**: Pine's return rule is cited for a Harbor customer.
+- **Post-filter.** Run **Paraphrase** with **Post-filter**: only the back order note survives, so the assistant abstains.
+
+The corpus, embeddings, and answers are fixtures, and every number is illustrative.
+
+<details>
+<summary>Go deeper: how the toy model scores chunks</summary>
+
+This is a **toy model**. The 20 policy chunks are written for this lesson, and the toy embeddings are hand-assigned for
+teaching; real systems compute embeddings with an embedding model. Each toy vector has six dimensions: returns,
+discounts, shipping, payment, care, and price match. The keyword score is simplified: it adds up the rarity (inverse
+document frequency) of each question word a chunk contains, a cut-down cousin of BM25. Fixture answers are written by
+hand, and no model runs in your browser.
+
+The widget's stages run in order: the store filter (pre-filter only), the keyword list, the vector list, one fused row
+at a time, the top 3, the dropped chunks (post-filter only), and the answer.
+
+For the paraphrase, keyword search matches the back order note on "send" and "back". With no filter, a cited chunk from
+the wrong store carries an "Another store" badge. With a post-filter, the paraphrase loses a Pine chunk and a
+staff-only chunk after ranking, which leaves only the back order note.
+
+</details>
+
 ## Chunking: keep the rule with its exception
 
-Retrieval can only send what a chunk holds. Harbor's return policy is 45 words. Split it every 16 words with no
-overlap, and the first chunk ends at "within 30 days of" while the exception, "except final sale items", lands in the
-next one. The first chunk matches the question best, so the model gets the rule without the exception and answers
-"Yes" with confidence.
+Retrieval can only send what a chunk holds. Harbor's 45-word return policy, split every 16 words with no overlap, breaks
+after "within 30 days of", and "except final sale items" lands in the next chunk. The first chunk matches best, so the
+model answers "Yes" from a true sentence cut short.
 
 <Predict
   client:visible
@@ -313,12 +368,17 @@ next one. The first chunk matches the question best, so the model gets the rule 
   answer={2}
 >
 
-**16 words, overlap 8.** Each chunk starts 8 words after the previous one, so one chunk spans the old boundary and holds
-both clauses. Chunks of 8 or 12 words are shorter than the 13 words from the rule to the end of its exception, so no
-overlap can save them. Larger chunks also work on this policy: every setting from 24 words up keeps the clauses
-together. The policy and the matching rule are fixtures, and the results are illustrative.
+**16 words, overlap 8.** Each chunk starts 8 words after the last, so one chunk spans the old boundary. Chunks of 8 or
+12 words are shorter than the 13 words from the rule to the end of its exception. The policy is a fixture, and the
+results are illustrative.
 
 </Predict>
+
+In practice, split on structure first (headings, paragraphs, sentences), fall back to fixed windows with overlap, and
+test on the eval questions.
+
+<details>
+<summary>Go deeper: try chunk sizes and overlap</summary>
 
 <ChunkingWidget client:visible />
 
@@ -328,63 +388,83 @@ What to look for:
   yes. A true sentence, cut short, produces a wrong answer.
 - **Overlap costs storage.** 16 words with overlap 8 makes 5 chunks where no overlap makes 3. Every repeated word is
   indexed and embedded twice.
-- **Big chunks blur topics.** 24 words makes 2 chunks and keeps the clauses together. On a longer document, chunks this
-  size mix several topics, which dilutes each embedding and fills the prompt with words the question did not need.
+- **Big chunks blur topics.** 24 words makes 2 chunks and keeps the clauses together. Every setting from 24 words up
+  does. On a longer document, chunks this size mix several topics, which dilutes each embedding and fills the prompt
+  with words the question did not need.
 
-In practice, split on the document's structure first: headings, paragraphs, and sentences. A rule and its exception
-usually share a sentence, so a splitter that respects sentences keeps them together without guessing a size. Fixed
-windows with overlap are the fallback for text without structure. Whatever you choose, test it on the eval questions:
-the chunking only matters through the answers it produces.
+A rule and its exception usually share a sentence, so a splitter that respects sentences keeps them together without
+guessing a size. Fixed windows with overlap are the fallback for text without structure. Whatever you choose, the
+chunking only matters through the answers it produces.
+
+</details>
 
 ## Tenant scoping: filter before you rank
 
-Harbor and Pine share one assistant and one index. Every chunk carries its store and who may read it. A Harbor customer
-must never see Pine's policies, and no customer may see staff-only notes. There are three places to enforce that.
+Every chunk carries its store and who may read it. With no filter, Pine's return rule gets cited for a Harbor customer.
+A post-filter drops unreadable chunks after the top 3: nothing leaks, yet the empty slots can force a needless abstain.
+A **pre-filter** limits both searches to readable chunks before ranking, so every slot counts.
+
+Enforce scope in the search, since a prompt instruction is a request the model can ignore. Treat retrieved chunks as
+data, never instructions: indirect prompt injection arrives through retrieved documents, and
+[Agents and tools](../agents/) builds that boundary. A large store with its own index is
+[sharding](../../scaling/sharding/) by tenant.
+
+<details>
+<summary>Go deeper: the three filter modes</summary>
 
 - **No filter.** Search every chunk. For the sale item question, Pine's return rule ranks second and is cited for a
-  Harbor customer. Ask Harbor "Do you match a lower price from another shop?" and the fixture answer comes
-  from Pine's price match policy, a promise Harbor never made.
-- **Post-filter.** Search every chunk, take the top 3, then drop the ones this customer may not read. Nothing leaks, but
+  Harbor customer. Ask Harbor "Do you match a lower price from another shop?" and the fixture answer comes from Pine's
+  price match policy, a promise Harbor never made.
+- **Post-filter.** Search every chunk, take the top 3, then drop the ones this customer may not read. Nothing leaks, and
   the dropped chunks leave empty slots. For the price match question both Pine chunks drop and one chunk remains. For
   the paraphrase only the back order note remains, and the assistant abstains although Harbor's return rule answers it.
 - **Pre-filter.** Limit both searches to chunks this customer may read, then rank. All three slots go to readable
   chunks. The paraphrase finds the return rule, and the price match question abstains correctly because Harbor has no
   such policy.
 
-Enforce the scope in the search itself. An instruction in the prompt such as "use only Harbor documents" is a request
-the model can ignore, and the other store's text has already reached it. Retrieved text is also an attack surface:
-indirect prompt injection arrives through external content such as files and retrieved documents, so treat every
-chunk as data, never as instructions. [Agents and tools](../agents/) builds that boundary. When one store grows large, giving it its own index is
-[sharding](../../scaling/sharding/) by tenant, and the filter becomes a routing decision.
+When one store grows large, its own index turns the filter into a routing decision.
+
+</details>
 
 ### Caches need the same scope
 
 A cache in front of retrieval or answers must respect the same boundaries. Key the answer cache on the question text
 alone, and Pine's cached answer to "Can I return a sale item?" can reach a Harbor customer. An exact cache key must
-include every input that changes the answer: the store, the user's permission scope, the model, the prompt version, and
-the sampling settings. The hybrid search widget shows the key it would use, with the store and scope first.
+include every input that changes the answer: the store, the user's permission scope, the model, the prompt version,
+the sampling settings, the index (corpus) version, and the earlier turns in the conversation. A reindex bumps the corpus
+version, so every answer built on the old chunks stops matching. That bump is the invalidation step. The earlier turns
+keep "and for sale items?" from reusing an answer to a different first question. The hybrid search widget shows the key
+it would use, with the store and scope first.
+
+<details>
+<summary>Go deeper: semantic caches</summary>
 
 A semantic cache, which reuses an answer for a question that looks similar, adds a second risk. Two questions can look
 alike and need different answers, and no fixed similarity threshold guarantees that a reused answer is right. The
 general rules for keys, freshness, and invalidation are in [caching](../../scaling/caching/), and
 [the AI gateway](../gateway/) shows where an answer cache sits and what its key must hold.
 
+</details>
+
 ## Citations and abstention
 
-Each chunk goes to the model with its id, and the answer cites the ids it relied on. Citations let a reader, a support
-agent, or an automated check confirm every claim against the source. In this lesson a sent chunk counts as a citation
-only when it clears the evidence threshold.
-
-The fused RRF score cannot serve as evidence. It encodes rank only: a chunk that tops both lists scores 2/61 whether it
-answers the question or not. Evidence needs its own check. The toy model uses a simplified **support** score, the larger
-of the cosine similarity and the share of the question's keyword weight that the chunk contains. Real systems often use
-a reranking model or a check that asks whether the chunk supports the answer. When the best sent chunk falls below the
-threshold, the assistant abstains: "I could not find this in the store policy. Want me to connect you with a person?"
+Each chunk goes to the model with its id, and the answer cites the ids it used, so a reader or a check can verify every
+claim. The RRF score is no evidence: a chunk topping both lists scores 2/61 whether it answers or not. The toy model
+checks a separate **support** score, and below the threshold the assistant abstains: "I could not find this in the
+store policy. Want me to connect you with a person?"
 
 <RetrievalAbstainWidget client:visible />
 
-The fixture eval has 12 questions across both stores. Four of them have no answer in the policies, so the right
-response is to abstain.
+On 12 fixture questions, 4 of them unanswerable, a 0.50 bar gets 4 wrong, the default 0.80 gets 1 wrong, and 0.85 gets
+none while abstaining on one answerable question. Pick the bar with an eval set, as in
+[evaluation and budgets](../evaluation-and-budgets/), and count both kinds of miss.
+
+<details>
+<summary>Go deeper: the support score and the counts</summary>
+
+The toy **support** score is the larger of the cosine similarity and the share of the question's keyword weight that the
+chunk contains. Real systems often use a reranking model, such as the cross-encoder above, or a check that asks whether
+the chunk supports the answer. In this lesson a sent chunk counts as a citation only when it clears the threshold.
 
 - **At 0.50** the assistant answers everything: 8 correct and 4 wrong, one wrong answer for every question the policies
   cannot answer.
@@ -394,12 +474,12 @@ response is to abstain.
 - **At 0.85** the wrong answers reach 0. Correct answers drop to 6 and abstentions rise to 6, because the back ordered
   brake pads question now falls below the bar too.
 
-A higher bar trades wrong answers for handoffs. A wrong refund answer costs money and trust; a handoff costs a person's
-time. Pick the threshold with an eval set, as in [evaluation and budgets](../evaluation-and-budgets/), and count both
-kinds of miss. All of these counts come from the fixture and are illustrative.
+A wrong refund answer costs money and trust, and a handoff costs a person's time. All of these counts come from the
+fixture and are illustrative.
 
-The next lesson, [Serving models](../llm-serving/), follows the prompt into the model: how it reads the long prompt that retrieval builds,
-and why writing the answer one token at a time behaves so differently.
+</details>
+
+Next, [Serving models](../llm-serving/) follows the long prompt that retrieval builds.
 
 ## Trade-offs
 
@@ -407,17 +487,34 @@ and why writing the answer one token at a time behaves so differently.
 
 | Choice | What it buys | What it costs |
 | --- | --- | --- |
-| Small chunks | Precise matches and short prompts | Rules split from their exceptions, and more chunks to index |
-| Large chunks or overlap | Related clauses stay together | Blurred embeddings, longer prompts, and repeated text to store |
-| Keyword search only | Exact codes, names, and rare terms | Misses paraphrases |
-| Vector search only | Paraphrases and related meaning | Misses exact tokens, and needs an embedding model and a vector index |
-| Hybrid with RRF | Both kinds of match, with no score weights to tune | Two indexes to build and keep in sync, and two searches per question |
-| Pre-filter by store and role | No leaks, and every slot holds a readable chunk | Every chunk needs store and permission labels, and the index must filter fast |
-| Post-filter after top-k | Easy to add to an existing search | Can leave too few chunks, and the answer that existed never arrives |
-| High abstain threshold | Fewer confident wrong answers | More handoffs, including some questions the policy could answer |
-| Low abstain threshold | Fewer handoffs | More wrong answers built from weak matches |
+| Small chunks | Precise matches, short prompts | Rules split from exceptions |
+| Hybrid with RRF | Both kinds of match, no weights | Two indexes, two searches |
+| Cross-encoder rerank | Precision on the top 20 to 100 | Tens of milliseconds per GPU batch |
+| Query rewrite or HyDE | Matches for vague and follow-up questions | One more model call, and drift |
+| Pre-filter by store and role | No leaks, full slots | Labels on every chunk |
+| High abstain threshold | Fewer wrong answers | More handoffs |
 
 </TradeoffTable>
+
+Skip retrieval when the facts are few and stable enough to fit in the prompt.
+
+## Common mistakes
+
+- **Scoping tenants in the prompt.** Filter in the search.
+- **Fixed windows with no overlap.** The exception lands in the next chunk.
+- **Treating RRF as evidence.** Abstain on a separate support check.
+- **Keying the cache on the question alone.** Include every input that changes the answer.
+- **Reranking the whole corpus.** Give the cross-encoder a short list.
+
+<KeyTakeaways>
+
+- Keyword search finds exact tokens and vector search finds meaning. Fuse their ranks with RRF.
+- A reranker sharpens a short list and a query rewrite helps vague questions. Each adds latency and cost.
+- Chunk on structure so a rule keeps its exception.
+- Filter by store and role before ranking, and key caches on the same scope.
+- Cite chunk ids, and abstain below an evidence bar chosen with an eval set.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
@@ -429,16 +526,13 @@ before shipping.
 
 <div slot="answer">
 
-- **Filter:** the manager's scope is staff, so the pre-filter admits Harbor's customer chunks and staff-only chunks.
-  The staff return note (a manager may approve a return up to 45 days after delivery for members) becomes searchable.
-  Pine's chunks stay out, staff or not.
-- **Cache key:** the key already includes the scope, so a staff answer never reaches a customer. Without the scope, a
-  customer could receive "a manager may approve 45 days" from the cache.
-- **Citations:** mark staff-only sources in the answer, so a manager does not paste an internal rule into a reply to a
-  customer.
-- **Abstain path:** a staff handoff goes to a store manager or the policy owner instead of the customer support queue.
-- **Eval questions:** staff questions with staff-only answers; customer questions whose only answer is a staff-only note
-  (the right response is to abstain); and a Pine policy question asked by a Harbor manager (also abstain).
+- **Filter:** the staff scope admits Harbor's staff-only chunks, such as the note that a manager may approve a return up
+  to 45 days after delivery for members. Pine stays out.
+- **Cache key:** scope is in the key, so staff answers never reach customers.
+- **Citations:** mark staff-only sources so they stay out of customer replies.
+- **Abstain path:** hand off to a store manager or the policy owner.
+- **Eval questions:** staff questions with staff-only answers, customer questions whose only answer is staff-only
+  (abstain), and a Pine question from a Harbor manager (abstain).
 
 </div>
 

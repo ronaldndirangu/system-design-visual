@@ -79,6 +79,14 @@ describe('WriteDuel', () => {
     expect(around.writeMs).toBe(DB_MS + CACHE_MS);
   });
 
+  it('uses cited latencies: a memory cache at 0.5 to 1 ms, an indexed database read at 1 to 5 ms', () => {
+    expect(CACHE_MS).toBeGreaterThanOrEqual(0.5);
+    expect(CACHE_MS).toBeLessThanOrEqual(1);
+    expect(DB_MS).toBeGreaterThanOrEqual(1);
+    expect(DB_MS).toBeLessThanOrEqual(5);
+    expect(DB_MS).toBeGreaterThan(CACHE_MS);
+  });
+
   it('serves fresh edits from cache except with write-around', () => {
     for (let seed = 1; seed <= 12; seed += 1) {
       const { through, behind, around } = play('steady', seed);

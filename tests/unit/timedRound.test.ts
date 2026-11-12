@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { findModule } from '../../src/data/curriculum';
 import { checklistSteps, practicePrompts } from '../../src/data/practicePrompts';
 import {
   drawPromptIndex,
@@ -20,6 +21,7 @@ import {
   startRound,
   stepReports,
   tickRound,
+  weakestSteps,
 } from '../../src/lib/models/timedRound';
 
 const drill = paceConfig('drill', true);
@@ -37,6 +39,14 @@ describe('timed round content', () => {
       expect(prompt.outline).toHaveLength(STEP_COUNT);
       for (const section of prompt.outline) expect(section.length).toBeGreaterThanOrEqual(2);
     }
+  });
+
+  it('points every prompt at a real module before practice, with unique ids', () => {
+    const practice = findModule('practice');
+    for (const prompt of practicePrompts) {
+      expect(findModule(prompt.bestAfter)?.number ?? 99, prompt.id).toBeLessThan(practice?.number ?? 0);
+    }
+    expect(new Set(practicePrompts.map((prompt) => prompt.id)).size).toBe(practicePrompts.length);
   });
 
   it('adds up to the pace names', () => {
@@ -183,6 +193,13 @@ describe('timed round self-assessment', () => {
     const finished = finishRound(startRound(initialRound()));
     expect(scoreCriterion(finished, 7, 2)).toBe(finished);
     expect(scoreCriterion(finished, -1, 2)).toBe(finished);
+  });
+
+  it('names the lowest scored steps, and none when every scored step is solid', () => {
+    expect(weakestSteps([null, null, null, null, null, null, null])).toEqual([]);
+    expect(weakestSteps([2, null, 2, 2, null, 2, 2])).toEqual([]);
+    expect(weakestSteps([2, 1, 2, null, 1, 2, 2])).toEqual([1, 4]);
+    expect(weakestSteps([1, 0, 2, 2, 1, 0, null])).toEqual([1, 5]);
   });
 });
 

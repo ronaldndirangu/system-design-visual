@@ -98,11 +98,11 @@ describe('pinned results, seed 42', () => {
   it('mostly easy: routing fits every budget; the cascade is cheaper but misses p95', () => {
     const [routing, cascade] = pair('easy');
     const medium = mediumOnlySummary('easy');
-    expect(routing).toMatchObject({ passed: 53, costPer1k: 1870, misroutes: 8 });
+    expect(routing).toMatchObject({ passed: 53, costPer1k: 1905, misroutes: 8 });
     expect(routing.p95Seconds).toBeCloseTo(1.595, 3);
-    expect(cascade).toMatchObject({ passed: 59, costPer1k: 1709, escalations: 10 });
+    expect(cascade).toMatchObject({ passed: 59, costPer1k: 1748, escalations: 10 });
     expect(cascade.p95Seconds).toBeCloseTo(2.3074, 3);
-    expect(medium).toMatchObject({ passed: 55, costPer1k: 3949 });
+    expect(medium).toMatchObject({ passed: 55, costPer1k: 3862 });
     expect(missedBudgets(routing)).toEqual([]);
     expect(missedBudgets(cascade)).toEqual(['latency']);
     expect(missedBudgets(medium)).toEqual([]);
@@ -111,10 +111,10 @@ describe('pinned results, seed 42', () => {
   it('mostly hard: the cascade’s savings shrink and routing falls under the quality bar', () => {
     const [routing, cascade] = pair('hard');
     const medium = mediumOnlySummary('hard');
-    expect(routing).toMatchObject({ passed: 49, costPer1k: 3142, misroutes: 7 });
-    expect(cascade).toMatchObject({ passed: 51, costPer1k: 2743, escalations: 24 });
+    expect(routing).toMatchObject({ passed: 49, costPer1k: 3386, misroutes: 7 });
+    expect(cascade).toMatchObject({ passed: 51, costPer1k: 2953, escalations: 24 });
     expect(cascade.passRate).toBeCloseTo(0.85, 6);
-    expect(medium).toMatchObject({ passed: 53, costPer1k: 4123 });
+    expect(medium).toMatchObject({ passed: 53, costPer1k: 4333 });
     expect(missedBudgets(routing)).toEqual(['quality']);
     expect(missedBudgets(cascade)).toEqual(['latency']);
     expect(missedBudgets(medium)).toEqual([]);

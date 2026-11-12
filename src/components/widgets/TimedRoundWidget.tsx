@@ -1,5 +1,6 @@
 import { m } from 'motion/react';
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { findModule } from '../../data/curriculum';
 import { checklistSteps, practicePrompts, rubricLevels } from '../../data/practicePrompts';
 import {
   drawPromptIndex,
@@ -25,6 +26,7 @@ import {
   stepReports,
   tickRound,
   totalBudgetMs,
+  weakestSteps,
 } from '../../lib/models/timedRound';
 import {
   clearPractice,
@@ -53,6 +55,11 @@ function stepTitle(index: number): string {
 
 function promptTitle(id: string): string {
   return practicePrompts.find((prompt) => prompt.id === id)?.title ?? id;
+}
+
+function moduleLabel(id: string): string {
+  const module = findModule(id);
+  return module ? `${module.number}. ${module.title}` : id;
 }
 
 function reportLabel(report: StepReport): string {
@@ -113,7 +120,10 @@ export default function TimedRoundWidget() {
   // Reads the stored copy so clearing history, here or in another tab, also clears the saved mark.
   const savedRecord =
     savedAt === null ? undefined : practice?.rounds.find((entry) => entry.finishedAt === savedAt);
-  const savedUpToDate = savedRecord !== undefined && savedRecord.rubricTotal === savableTotal;
+  const savedUpToDate =
+    savedRecord !== undefined &&
+    savedRecord.rubricTotal === savableTotal &&
+    round.scores.every((value, index) => savedRecord.scores?.[index] === value);
   const current = reports[round.step];
   const step = checklistSteps[round.step];
   const locked = round.phase !== 'ready';
@@ -182,6 +192,7 @@ export default function TimedRoundWidget() {
       budgetSeconds: Math.round(totalBudgetMs(config) / 1000),
       rubricTotal: savableTotal,
       rubricMax: score.max,
+      scores: [...round.scores],
     });
     setSavedAt(finishedAt);
   }
@@ -332,7 +343,7 @@ export default function TimedRoundWidget() {
           options={practicePrompts.map((option) => ({
             value: option.id,
             label: option.title,
-            diff: option.scale,
+            diff: `${option.scale}. Best after ${moduleLabel(option.bestAfter)}`,
           }))}
           onChange={(id) =>
             setPromptIndex(
@@ -688,6 +699,11 @@ export default function TimedRoundWidget() {
                         {entry.rubricTotal === null
                           ? 'Not scored'
                           : `${entry.rubricTotal} of ${entry.rubricMax}`}
+                        {entry.scores && weakestSteps(entry.scores).length > 0 && (
+                          <span className="sdv-round__sub">
+                            Work on {weakestSteps(entry.scores).map(stepTitle).join(', ')}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );
