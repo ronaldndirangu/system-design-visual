@@ -210,3 +210,24 @@ test('the landing page offers a clear start', async ({ page }) => {
   await start.click();
   await expect(page).toHaveURL(/\/system-design-visual\/(start-here|thinking)/);
 });
+
+for (const { path, selector } of [
+  { path: 'ai-systems/retrieval/', selector: '.sdv-chips__chip input' },
+  { path: 'reliability/observability/', selector: '.sdv-segmented input' },
+  { path: 'foundations/what-happens-when-you-click/', selector: '.sdv-toggle input' },
+]) {
+  test(`every ${selector} on ${path} is its own pointer target`, async ({ page }) => {
+    await page.goto(path);
+    const inputs = page.locator(selector);
+    await expect(inputs.first()).toBeAttached();
+    const misses = await inputs.evaluateAll((elements) =>
+      elements.flatMap((input) => {
+        input.scrollIntoView({ block: 'center' });
+        const box = input.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        return hit === input ? [] : [input.outerHTML];
+      }),
+    );
+    expect(misses).toEqual([]);
+  });
+}

@@ -1108,11 +1108,21 @@ button[data-tone="bad"] {
   margin: 0;
   position: relative;
 }
-.sdv-segmented input {
-  height: 1px;
+/* Hidden inputs cover their whole label so every pointer hit lands on them at any sub-pixel offset. */
+.sdv-segmented input,
+.sdv-toggle input {
+  cursor: pointer;
+  height: 100%;
+  inset: 0;
+  margin: 0;
   opacity: 0;
   position: absolute;
-  width: 1px;
+  width: 100%;
+  z-index: 1;
+}
+.sdv-segmented input:disabled,
+.sdv-toggle input:disabled {
+  cursor: default;
 }
 .sdv-segmented span {
   border: 1px solid transparent;
@@ -1125,7 +1135,7 @@ button[data-tone="bad"] {
   padding: 0.35rem 0.6rem;
   text-align: center;
 }
-.sdv-segmented span:hover {
+.sdv-segmented label:hover span {
   color: var(--sl-color-white);
 }
 .sdv-segmented input:checked + span {
@@ -1144,12 +1154,6 @@ button[data-tone="bad"] {
   font-weight: 600;
   gap: 0.6rem;
   position: relative;
-}
-.sdv-toggle input {
-  height: 1px;
-  opacity: 0;
-  position: absolute;
-  width: 1px;
 }
 .sdv-toggle__track {
   background: var(--sl-color-gray-5);
@@ -1918,11 +1922,19 @@ a.sdv-map__link:hover {
   margin: 0;
   position: relative;
 }
+/* The invisible radio covers the whole chip so every pointer hit lands on it at any sub-pixel offset. */
 .sdv-chips__chip input {
-  height: 1px;
+  cursor: pointer;
+  height: 100%;
+  inset: 0;
+  margin: 0;
   opacity: 0;
   position: absolute;
-  width: 1px;
+  width: 100%;
+  z-index: 1;
+}
+.sdv-chips:disabled .sdv-chips__chip input {
+  cursor: default;
 }
 .sdv-chips__body {
   background: var(--sdv-surface-raised);
