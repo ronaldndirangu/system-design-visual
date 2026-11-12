@@ -230,6 +230,17 @@
   text-transform: uppercase;
   transition: border-color var(--sdv-duration-fast) var(--sdv-ease-out);
 }
+@media (pointer: coarse) {
+  .sdv-lesson-head__module {
+    position: relative;
+  }
+  /* Grows the tap area to the target height without changing the pill's visual size. */
+  .sdv-lesson-head__module::after {
+    content: "";
+    inset: min(0px, calc((100% - var(--sdv-target)) / 2)) 0;
+    position: absolute;
+  }
+}
 .sdv-lesson-head__module:hover {
   border-color: var(--sdv-accent-text);
 }
@@ -2149,7 +2160,9 @@ button[data-tone="bad"] {
   gap: 0.2rem 1rem;
   grid-template-columns: 1fr auto;
   margin: 0;
+  min-block-size: var(--sdv-target);
   padding: 0.65rem 0.85rem;
+  position: relative;
   scroll-margin-top: calc(var(--sl-nav-height, 4rem) + 1rem);
 }
 .sdv-map__lesson:hover {
@@ -2164,6 +2177,16 @@ button[data-tone="bad"] {
 }
 a.sdv-map__link {
   text-decoration: none;
+}
+/* Stretched link: the whole lesson card is the tap target. */
+a.sdv-map__link::after {
+  border-radius: inherit;
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+.sdv-map__lesson:has(a.sdv-map__link):hover {
+  cursor: pointer;
 }
 a.sdv-map__link:hover {
   color: var(--sl-color-text-accent);
