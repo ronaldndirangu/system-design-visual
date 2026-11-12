@@ -238,6 +238,38 @@ describe('Raft safety', () => {
       expect(cluster.stats().lost).toBe(2);
     }
   });
+
+  it('erases no committed entry in the Figure 8 scenario, for every seed', () => {
+    const scenario = raftScenarios['old-entry'];
+    for (const seed of seeds) {
+      const cluster = playChecked(
+        new RaftCluster(seed),
+        scenario.schedule,
+        scenario.length,
+        `old-entry seed ${seed}`,
+      );
+      expect(cluster.stats().committedErased).toBe(0);
+      expect(cluster.committedLog().map((entry) => entry.text)).toEqual(['hi', 'tacos?', 'see you']);
+    }
+  });
+
+  it('breaks safety in the Figure 8 scenario once a leader counts copies of older-term entries', () => {
+    const scenario = raftScenarios['old-entry'];
+    for (const seed of seeds) {
+      const options = { unsafeCommit: true };
+      expect(runScenario(scenario, seed, scenario.length, options).stats().committedErased).toBeGreaterThan(
+        0,
+      );
+      expect(() =>
+        playChecked(
+          new RaftCluster(seed, options),
+          scenario.schedule,
+          scenario.length,
+          `unsafe seed ${seed}`,
+        ),
+      ).toThrow(/broken at tick/);
+    }
+  });
 });
 
 describe('Raft numbers the lesson quotes', () => {
@@ -325,6 +357,39 @@ describe('Raft numbers the lesson quotes', () => {
       'sure',
       'see you',
     ]);
+  });
+
+  it('old entry on a majority: Node 1 holds "pizza?" at 1.04 s and Node 5 erases it at 1.32 s', () => {
+    const scenario = raftScenarios['old-entry'];
+    const safe = runScenario(scenario);
+    expect(safe.wins.map((win) => [win.term, win.node + 1, formatSeconds(win.tick)])).toEqual([
+      [1, 2, '0.05 s'],
+      [2, 1, '0.44 s'],
+      [3, 5, '0.72 s'],
+      [4, 1, '0.92 s'],
+      [5, 5, '1.26 s'],
+    ]);
+    const hold = safe.events.find((event) => event.kind === 'hold');
+    expect(hold && [hold.node, formatSeconds(hold.tick)]).toEqual([0, '1.04 s']);
+    expect(hold?.text).toContain('on 3 of 5 servers');
+    expect(commitTimes(safe)).toEqual(['0.24 s', '1.74 s']);
+    expect(safe.stats().committedErased).toBe(0);
+
+    const unsafe = runScenario(scenario, scenario.seed, scenario.length, { unsafeCommit: true });
+    expect(commitTimes(unsafe)).toEqual(['0.24 s', '1.04 s', '1.38 s', '1.74 s']);
+    expect(unsafe.events.find((event) => event.kind === 'erase')?.text).toContain(
+      'committed message ("pizza?")',
+    );
+    expect(formatSeconds(unsafe.events.find((event) => event.kind === 'erase')?.tick ?? 0)).toBe('1.32 s');
+    expect(unsafe.stats().committedErased).toBe(4);
+    expect(() =>
+      playChecked(
+        new RaftCluster(scenario.seed, { unsafeCommit: true }),
+        scenario.schedule,
+        scenario.length,
+        'unsafe',
+      ),
+    ).toThrow('Leader completeness broken at tick 127');
   });
 
   it('runs every scenario to a single agreed chat log', () => {

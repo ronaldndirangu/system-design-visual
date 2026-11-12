@@ -185,6 +185,7 @@ export const quiz = [
 
 - Explain how randomized election timeouts, terms, and one vote per term give each term at most one leader.
 - Trace how a leader replicates a chat message and commits it once a majority of servers store it.
+- Explain why a leader counts copies only for entries from its own term.
 - Predict what a split vote does, and why a cut-off old leader cannot commit anything.
 - Weigh cluster size and timeout settings against failover time and write latency.
 
@@ -248,7 +249,9 @@ some of them crash or get cut off. It rests on five rules.
   after the match that conflicts and copies the entries of the leader.
 - **Commit on a majority.** Once a majority stores an entry from the current term of the leader, the leader commits
   it: the chat shows the message as sent, and the leader passes the new commit point to followers on its next message.
-  A committed entry never changes. Older-term entries commit along with the first current-term entry after them.
+  A committed entry never changes. Older-term entries commit along with the first current-term entry after them,
+  because counting copies of an older-term entry is unsafe, as
+  [Why a leader counts only its own term](#why-a-leader-counts-only-its-own-term) shows.
 
 Majorities do the heavy lifting. Any two groups of 3 out of 5 share at least one server, the overlap from
 [Quorums](../quorums/). So two candidates cannot both win a term, and every winning candidate collects a vote from at
@@ -271,7 +274,8 @@ down as an ordinary member.
 
 Pick a scenario and press Play. The widget runs a toy, **simplified Raft**: five servers, ticks of 10 ms, and messages
 that take 20 or 30 ms. Every number is illustrative and seeded, so each scenario replays the same way every time. Start
-with Leader crash, then try Split vote and Old leader cut off.
+with Leader crash, then try Split vote, Old leader cut off, and Old entry on a majority. The unsafe rule toggle swaps
+the commit rule of Raft for a naive one, so you can watch it break.
 
 <RaftWidget client:visible />
 
@@ -285,6 +289,8 @@ What to look for:
   cut off, entries stay unchecked however long you wait.
 - **The numbered transcript.** Every vote, append, commit, and erase appears there with its time, so you can match the
   diagram to the logs.
+- **Committed copies erased.** Under the rule of Raft this row stays at 0 in every scenario. Turn on the unsafe rule in
+  Old entry on a majority and it turns red.
 
 ## Commit on a majority
 
@@ -298,7 +304,7 @@ In Leader crash, Node 2 wins term 1 at 0.19 s, and the first three chat messages
 
 Waiting for 3 copies is what makes the commit safe. Any future leader needs 3 votes, and at least one of those voters
 stores “noon?” and refuses a candidate whose log lacks it. So a committed message shows up in the log of every later
-leader. The unit tests of the model check this after every tick, in all three scenarios with 50 seeds each, along with
+leader. The unit tests of the model check this after every tick, in all four scenarios with 50 seeds each, along with
 at most one leader per term.
 
 ## When the old leader is cut off
@@ -323,6 +329,58 @@ each message needs an ID the server can check for duplicates, which the [Idempot
 The minority side stayed consistent by refusing to commit: it gave up availability for writes during the partition.
 That is the choice [CAP and PACELC](../cap-and-pacelc/) describes, and Raft always makes it the same way.
 
+## Why a leader counts only its own term
+
+The commit rule carries a qualifier: a leader counts copies only for entries from its own term. Old entry on a majority
+replays Figure 8 of the Raft paper with chat messages to show why. “hi” commits at 0.24 s, and Node 1 wins term 2 at
+0.44 s.
+
+1. At 0.60 s the network splits into Nodes 1 and 2 on one side and Nodes 3, 4, and 5 on the other. Node 1 adds
+   “pizza?” as entry 2, which reaches only Node 2, and Node 1 crashes at 0.62 s.
+2. Node 5 wins term 3 at 0.72 s with votes from Nodes 3 and 4. Node 2 refuses, because its log holds “pizza?” and the
+   log of Node 5 does not. At 0.80 s Node 5 adds “tacos?” as entry 2, then the network cuts it off and it crashes, so
+   only Node 5 stores “tacos?”.
+3. Node 1 recovers at 0.76 s and wins term 4 at 0.92 s. It copies “pizza?” to Node 3, and at 1.04 s 3 of 5 servers
+   store the entry.
+
+<Predict
+  client:visible
+  id="distributed-data/raft/predict-2"
+  question="Node 1 leads term 4 and sees its term 2 entry “pizza?” on 3 of 5 servers. Should it commit the entry and show the message as sent?"
+  options={[
+    'Yes: 3 of 5 is a majority, and every later leader needs a vote from one of those servers',
+    'No: a candidate whose log ends in a newer term can still win and overwrite it, so Node 1 waits for an entry from term 4 to reach a majority',
+    'Yes, but only once all 5 servers store it',
+    'No: an entry from an earlier term can never commit',
+  ]}
+  answer={1}
+>
+
+**No, it waits.** The vote check compares the term of the last entry first. Node 5 holds “tacos?” from term 3, which
+is newer than the term 2 of “pizza?”, so servers that store “pizza?” still count Node 5 as up to date and vote for it.
+An entry from term 4 on a majority would stop Node 5, because those servers would refuse a log that ends in term 3. So
+“pizza?” commits only along with a later entry from the term of its leader, never on its own copy count.
+
+</Predict>
+
+The rest of the run plays out the same way under both rules, and only the meaning changes.
+
+1. Node 1 crashes at 1.10 s, and Node 5 recovers at 1.11 s. Node 5 wins term 5 at 1.26 s with votes from Nodes 2 and
+   4, both of which store “pizza?”.
+2. Node 5 overwrites entry 2 everywhere: “pizza?” disappears from Node 4 at 1.32 s, from Nodes 2 and 3 at 1.35 s, and
+   from Node 1 at 1.57 s, after Node 1 recovers.
+
+Under the rule of Raft, Node 1 held “pizza?” at 1.04 s, so the four erased copies were never committed, and no user
+lost a confirmed message. Node 5 holds “tacos?” at 1.38 s for the same reason, then commits it along with “see you”,
+its first entry from term 5, at 1.74 s. Under the unsafe rule, Node 1 commits “pizza?” at 1.04 s and the chat shows it
+as sent. The erase at 1.32 s then removes a message that users already saw, Committed copies erased reads 4, and the
+safety check of the model fails. The unit tests run this scenario with 50 seeds: the unsafe rule breaks safety on every
+seed, and the rule of Raft on none.
+
+Real Raft closes the gap with the no-op entry: each new leader appends an empty entry from its own term at once. Had
+Node 1 done that in term 4, the no-op would have travelled with “pizza?” to the same three servers and committed both,
+and Node 5 could no longer collect 3 votes.
+
 ## What this simplified Raft leaves out
 
 Real Raft, as used in etcd (the store behind Kubernetes), Consul, and CockroachDB, adds pieces this model skips:
@@ -331,7 +389,9 @@ Real Raft, as used in etcd (the store behind Kubernetes), Consul, and CockroachD
 - **Membership changes.** Adding or removing a server safely takes a special two-step configuration change.
 - **Pre-vote.** A server returning from a partition can bump the term and disrupt a healthy leader. Pre-vote asks
   first whether it could win.
-- **The no-op entry.** A new leader appends an empty entry at the start of its term, so older entries commit promptly.
+- **The no-op entry.** A new leader appends an empty entry at the start of its term, so older entries commit promptly
+  and safely, as [Why a leader counts only its own term](#why-a-leader-counts-only-its-own-term) shows. In the model,
+  older entries wait for the next chat message.
 - **Client retries and safe reads.** Clients resend after a timeout, and a leader confirms it still leads before it
   answers a read, so a cut-off leader never serves stale chat. [Consistency models](../consistency-models/) explains
   what those reads promise.

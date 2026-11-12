@@ -44,7 +44,7 @@ export const steps = [
   },
   {
     title: 'Park and move on',
-    text: 'After the last try, or right away for a permanent error, the consumer writes the click to the dead-letter queue with the error, the try count, the partition, and the offset. Then it commits the offset, so the partition moves again.',
+    text: 'After the last try, or right away for a permanent error, the consumer writes the click to the dead-letter queue with the error, the try count, the partition, and the offset. It waits for the dead-letter queue to confirm a durable write, and only then commits the offset, so the partition moves again.',
     nodes: ['consumer', 'dlq'],
     flows: ['consumer>dlq'],
   },
@@ -300,6 +300,25 @@ Three things the widget leaves out matter in production:
 - **Retry topics keep the partition moving.** Many teams send a failed event to a retry topic with a delay, such as 10
   s, then 5 minutes, before the dead-letter queue. The main partition never waits, and order breaks the same way.
 
+Parking is two writes: the click goes to the dead-letter queue, and the offset commit goes to the log. A crash can land
+between them, the same gap the outbox in the [delivery semantics lesson](../delivery-semantics/) closes. Order the
+writes so a crash can only repeat work:
+
+- **Confirm the park, then commit.** Wait until the dead-letter queue acknowledges a durable write, then commit the
+  source offset. Commit first, and a crash between the two writes loses the click from both places.
+- **Expect a duplicate park.** A crash after the dead-letter write and before the commit makes the restarted consumer
+  fail the same click and park it a second time. Each copy carries the click id, so the replay tool and an idempotent
+  consumer treat the two copies as one click. Where the dead-letter topic lives in the same broker and the broker
+  supports transactions, as Kafka does, the consumer can write the park and commit the offset in one transaction, and
+  the duplicate disappears.
+- **When the dead-letter queue is down, stop.** If the park write fails or times out, the consumer leaves the offset
+  where it is and retries the park with backoff. The partition stalls like the retry lane, so alert on it. A consumer
+  that commits the offset without a confirmed park loses the click.
+- **Retention bounds every replay.** The source log, the dead-letter queue, and the consumer's record of seen click ids
+  each delete old data on their own schedule. A replay that arrives after its click id left the seen record can count
+  a click twice. Pick one recovery horizon and keep all three at least that long, as
+  [delivery semantics](../delivery-semantics/) explains.
+
 Replay sends events through the consumer a second time, and some of them may have half finished the first time. That
 is the same duplicate problem the [delivery semantics lesson](../delivery-semantics/) solved: make the consumer
 idempotent, keyed by click id, and replay is safe. Idempotency covers the technique in depth.
@@ -435,7 +454,7 @@ The rules that follow from it:
 | Choice | What it buys | What it costs |
 | --- | --- | --- |
 | Retry forever | No event skipped, order kept | One poison message stalls the partition, and lag grows without limit |
-| Dead-letter queue after a few tries | The partition keeps moving, and bad events wait for a fix | Per-key order breaks, and it needs an owner, an alert, a replay tool, and an idempotent consumer |
+| Dead-letter queue after a few tries | The partition keeps moving, and bad events wait for a fix | Per-key order breaks, a park must be durable before the offset commit, and it needs an owner, an alert, a replay tool, and an idempotent consumer |
 | Thin events | Small messages, fresh data, private data stays home | Every consumer calls the producer back, and replay sees today's data |
 | Fat events | Consumers work alone, and replay sees the event as it was | Bigger messages, more fields to keep forever, personal data in every topic |
 | Choreography | Loose coupling, and new consumers need no upstream change | The flow lives nowhere, and event chains get hard to trace |
@@ -462,8 +481,9 @@ click service ships the new field.
 - **Or degrade.** If counts matter more than geo data, write the click without a country during the outage and
   backfill it later from a separate topic. Analytics keeps its pace either way.
 - **Own the dead-letter queue.** Store the error, try count, partition, and offset with each parked click. Alert on
-  the first one and on growth, name an owning team, and keep a replay tool. Key the enrichment writes by click id so a
-  replay changes nothing twice.
+  the first one and on growth, name an owning team, and keep a replay tool. Commit the source offset only after the
+  park is durable, and key the enrichment writes by click id so a duplicate park or a replay changes nothing twice.
+  Keep the click topic, the dead-letter queue, and the seen click ids for the same recovery horizon.
 - **Ship utm_campaign additively.** Make it optional with an empty default. Fix the strict reader first, or have it
   ignore unknown fields, and add a registry compatibility check to the build so the next breaking change fails there.
 - **Keep the event lean.** The enrichment consumer needs the IP, which is personal data. Keep the IP in a topic only

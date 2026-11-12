@@ -58,7 +58,7 @@ export const steps = [
   },
   {
     title: 'Publish once, subscribe many',
-    text: 'A second group, the spam check, reads the same events with its own offsets and its own pace. Adding a subscriber never slows the redirect service or the other group.',
+    text: 'A second group, the spam check, reads the same events with its own offsets and its own pace. No group waits for another group\'s offsets, though every group shares the brokers\' disks, network, and CPU.',
     nodes: ['topic', 'spam'],
     flows: ['topic>spam'],
   },
@@ -154,6 +154,11 @@ reader in the group at a time.
 
 This is **publish/subscribe** (pub/sub): the producer publishes once, and any number of groups subscribe. Each group sees
 every event and keeps its own offsets.
+
+Groups advance independently, and they still share the brokers' disks, network, and CPU. A group that replays a week of
+history reads old segments from disk and can slow every other reader and the producers on those brokers. Brokers such
+as Kafka let you set a byte-rate **quota** per client, and teams move a heavy reader, such as a bulk backfill, onto its
+own cluster or a mirrored copy of the topic.
 
 <Analogy>
 

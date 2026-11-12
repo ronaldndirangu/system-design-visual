@@ -8,7 +8,9 @@ import { stepScheduled } from './adapter';
  * log through leader election with randomized timeouts, terms, log
  * replication, and commit on a majority. It leaves out snapshots, membership
  * changes, pre-vote, the no-op entry a new leader usually writes, and
- * client retries. One tick stands for an illustrative 10 ms.
+ * client retries. One tick stands for an illustrative 10 ms. An opt-in unsafe
+ * mode drops the rule that a leader counts copies only for entries from its
+ * own term, so the Figure 8 scenario can show a committed entry being erased.
  */
 
 export const NODE_COUNT = 5;
@@ -76,8 +78,20 @@ export type RaftCommand =
   /** Cuts the current leader and the next server off from the other three. */
   | { type: 'isolate-leader' }
   | { type: 'heal' }
-  /** A chat message from a client. `via: 'isolated'` comes from a user stuck on the cut-off side. */
-  | { type: 'send'; text: string; via?: 'isolated' };
+  /** Splits the network: servers reach only servers with the same group number. The client sits in group 0. */
+  | { type: 'partition'; groups: number[] }
+  /** Runs out one server's election timer now, so a scripted run can choose who stands. */
+  | { type: 'elect'; node: number }
+  /**
+   * A chat message from a client. `via: 'isolated'` comes from a user stuck on the cut-off side;
+   * `to` hands it straight to one server, which accepts it only while it leads.
+   */
+  | { type: 'send'; text: string; via?: 'isolated'; to?: number };
+
+export interface RaftOptions {
+  /** Commits any entry a majority stores, skipping Raft's rule that counts only the leader's own term. Unsafe. */
+  unsafeCommit?: boolean;
+}
 
 export type RaftEventKind =
   | 'election'
@@ -86,6 +100,7 @@ export type RaftEventKind =
   | 'step-down'
   | 'accept'
   | 'commit'
+  | 'hold'
   | 'erase'
   | 'crash'
   | 'recover'
@@ -141,6 +156,8 @@ export interface RaftState {
   electionsStarted: number;
   leaderlessTicks: number;
   erasedCopies: number;
+  /** Erased copies of entries the server had already marked committed. Raft keeps this at 0. */
+  committedErased: number;
   sent: number;
   messages: number;
   runs: LeaderRun[];
@@ -162,6 +179,7 @@ export interface RaftStats {
   splitTerms: number;
   leaderlessTicks: number;
   erasedCopies: number;
+  committedErased: number;
   /** Accepted chat messages that no server stores any more. */
   lost: number;
   messages: number;
@@ -198,8 +216,13 @@ export class RaftCluster implements ModelAdapter<RaftCommand, RaftTick, RaftChec
   private readonly rng: SeededRng;
   private current: RaftEvent[] = [];
   private now = 0;
+  private readonly unsafeCommit: boolean;
 
-  constructor(readonly seed: number) {
+  constructor(
+    readonly seed: number,
+    options: RaftOptions = {},
+  ) {
+    this.unsafeCommit = options.unsafeCommit ?? false;
     this.rng = createRng(seed);
     this.state = {
       ticks: 0,
@@ -231,6 +254,7 @@ export class RaftCluster implements ModelAdapter<RaftCommand, RaftTick, RaftChec
       electionsStarted: 0,
       leaderlessTicks: 0,
       erasedCopies: 0,
+      committedErased: 0,
       sent: 0,
       messages: 0,
       runs: [],
@@ -360,6 +384,7 @@ export class RaftCluster implements ModelAdapter<RaftCommand, RaftTick, RaftChec
       splitTerms: s.electionTerms.filter((t) => !won.has(t) && t < term).length,
       leaderlessTicks: s.leaderlessTicks,
       erasedCopies: s.erasedCopies,
+      committedErased: s.committedErased,
       lost: s.texts.filter((_, id) => !stored.has(id)).length,
       messages: s.messages,
     };
@@ -452,9 +477,29 @@ export class RaftCluster implements ModelAdapter<RaftCommand, RaftTick, RaftChec
         this.emit('heal', 'The network healed, so every server can reach every other again.', null, 0, true);
         return;
       }
+      case 'partition': {
+        s.groups = IDS.map((id) => command.groups[id] ?? 0);
+        s.isolated = null;
+        const sides = [...new Set(s.groups)].map((group) => IDS.filter((id) => s.groups?.[id] === group));
+        const names = sides.map((side) => `(${nameList(side)})`);
+        this.emit(
+          'partition',
+          `The network split into ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}; each side reaches only itself.`,
+          null,
+          0,
+          true,
+        );
+        return;
+      }
+      case 'elect': {
+        const node = this.node(command.node);
+        if (node.up && node.role !== 'leader') this.startElection(node, true);
+        return;
+      }
       case 'send': {
         s.sent += 1;
-        const target = command.via === 'isolated' && s.isolated !== null ? this.node(s.isolated) : null;
+        const id = command.to ?? (command.via === 'isolated' ? s.isolated : null);
+        const target = id === null ? null : this.node(id);
         if (target?.up && target.role === 'leader') this.accept(target, command.text);
         else s.pending.push(command.text);
         return;
@@ -509,7 +554,8 @@ export class RaftCluster implements ModelAdapter<RaftCommand, RaftTick, RaftChec
     }
   }
 
-  private startElection(node: RaftNode) {
+  /** `early` marks a scripted election whose timer the scenario ran out ahead of the others. */
+  private startElection(node: RaftNode, early = false) {
     const s = this.state;
     const retry = node.role === 'candidate';
     const previousVotes = node.votes.length;
@@ -522,9 +568,14 @@ export class RaftCluster implements ModelAdapter<RaftCommand, RaftTick, RaftChec
     s.electionsStarted += 1;
     if (!s.electionTerms.includes(node.term)) s.electionTerms.push(node.term);
     const name = nodeName(node.id);
+    const shortfall = `${name} got ${previousVotes} of ${NODE_COUNT} votes in term ${node.term - 1}, short of a majority, so`;
     const text = retry
-      ? `${name} got ${previousVotes} of ${NODE_COUNT} votes in term ${node.term - 1}, short of a majority, so after a fresh random ${waited} ms it asked again in term ${node.term}.`
-      : `${name} heard nothing from a leader for ${waited} ms and asked for votes in term ${node.term}.`;
+      ? early
+        ? `${shortfall} it asked again in term ${node.term}.`
+        : `${shortfall} after a fresh random ${waited} ms it asked again in term ${node.term}.`
+      : early
+        ? `${name}'s election timer ran out first, so it asked for votes in term ${node.term}.`
+        : `${name} heard nothing from a leader for ${waited} ms and asked for votes in term ${node.term}.`;
     this.emit('election', text, node.id, node.term, true);
     const request: RaftMessage = {
       type: 'vote',
@@ -633,19 +684,31 @@ export class RaftCluster implements ModelAdapter<RaftCommand, RaftTick, RaftChec
       return;
     }
     const erased: LogEntry[] = [];
+    let cutAt = node.log.length;
     message.entries.forEach((entry, k) => {
       const position = prevIndex + k;
       const existing = node.log[position];
       if (existing && existing.term === entry.term) return;
-      if (existing) erased.push(...node.log.splice(position));
+      if (existing) {
+        cutAt = position;
+        erased.push(...node.log.splice(position));
+      }
       node.log.push(entry);
     });
     if (erased.length > 0) {
       this.state.erasedCopies += erased.length;
+      const wasCommitted = Math.max(0, node.commitIndex - cutAt);
+      if (wasCommitted > 0) {
+        // Only an unsafe commit rule gets here: the server had promised these entries were permanent.
+        this.state.committedErased += wasCommitted;
+        node.commitIndex = cutAt;
+      }
       const noun = erased.length === 1 ? 'message' : 'messages';
+      const status = wasCommitted === erased.length ? 'committed ' : wasCommitted === 0 ? 'uncommitted ' : '';
+      const mixed = status === '' ? ` It had marked ${wasCommitted} of them committed.` : '';
       this.emit(
         'erase',
-        `${nodeName(node.id)} erased ${erased.length} uncommitted ${noun} (${quoteList(erased)}) that conflicted with the term ${message.term} leader's log.`,
+        `${nodeName(node.id)} erased ${erased.length} ${status}${noun} (${quoteList(erased)}) that conflicted with the term ${message.term} leader's log.${mixed}`,
         node.id,
         node.term,
         true,
@@ -677,6 +740,7 @@ export class RaftCluster implements ModelAdapter<RaftCommand, RaftTick, RaftChec
       leader.matchIndex[from] = Math.max(matched, message.match);
       leader.nextIndex[from] = (leader.matchIndex[from] ?? 0) + 1;
       this.advanceCommit(leader);
+      this.noteHeldBack(leader, matched, leader.matchIndex[from] ?? 0);
       return;
     }
     const next = leader.nextIndex[from] ?? 1;
@@ -687,7 +751,7 @@ export class RaftCluster implements ModelAdapter<RaftCommand, RaftTick, RaftChec
   private advanceCommit(leader: RaftNode) {
     for (let index = leader.log.length; index > leader.commitIndex; index -= 1) {
       // Raft counts replicas only for entries from the leader's own term; older entries commit with them.
-      if (leader.log[index - 1]?.term !== leader.term) return;
+      if (!this.unsafeCommit && leader.log[index - 1]?.term !== leader.term) return;
       const stored = leader.matchIndex.filter((match) => match >= index).length;
       if (stored < MAJORITY) continue;
       const fresh = leader.log.slice(leader.commitIndex, index);
@@ -698,6 +762,25 @@ export class RaftCluster implements ModelAdapter<RaftCommand, RaftTick, RaftChec
       this.emit(
         'commit',
         `${nodeName(leader.id)} committed ${span} (${quoteList(fresh)}): ${stored} of ${NODE_COUNT} servers store ${pronoun}.`,
+        leader.id,
+        leader.term,
+        false,
+      );
+      return;
+    }
+  }
+
+  /** Explains, once per leader term, an older entry that just reached a majority yet stays uncommitted. */
+  private noteHeldBack(leader: RaftNode, before: number, after: number) {
+    if (this.unsafeCommit) return;
+    for (let index = after; index > Math.max(before, leader.commitIndex); index -= 1) {
+      const entry = leader.log[index - 1];
+      if (!entry || entry.term === leader.term) continue;
+      const stored = leader.matchIndex.filter((match) => match >= index).length;
+      if (stored !== MAJORITY) continue;
+      this.emit(
+        'hold',
+        `${nodeName(leader.id)} sees entry ${index} ("${entry.text}") on ${stored} of ${NODE_COUNT} servers and still leaves it uncommitted: the entry comes from term ${entry.term}, and a leader counts copies only for entries from its own term (${leader.term}).`,
         leader.id,
         leader.term,
         false,
@@ -773,7 +856,7 @@ export class RaftCluster implements ModelAdapter<RaftCommand, RaftTick, RaftChec
   }
 }
 
-export type RaftScenarioId = 'crash' | 'split' | 'partition';
+export type RaftScenarioId = 'crash' | 'split' | 'partition' | 'old-entry';
 
 export interface RaftScenario {
   id: RaftScenarioId;
@@ -835,15 +918,45 @@ export const raftScenarios: Record<RaftScenarioId, RaftScenario> = {
       { at: 230, command: { type: 'send', text: 'see you' } },
     ],
   },
+  'old-entry': {
+    id: 'old-entry',
+    label: 'Old entry on a majority',
+    diff: 'scripted elections and crashes replay Figure 8 of the Raft paper',
+    seed: 1,
+    length: 280,
+    schedule: [
+      { at: 1, command: { type: 'elect', node: 1 } },
+      { at: 20, command: { type: 'send', text: 'hi', to: 1 } },
+      { at: 40, command: { type: 'elect', node: 0 } },
+      { at: 60, command: { type: 'partition', groups: [0, 0, 1, 1, 1] } },
+      { at: 60, command: { type: 'send', text: 'pizza?', to: 0 } },
+      { at: 62, command: { type: 'crash', node: 0 } },
+      { at: 65, command: { type: 'heal' } },
+      { at: 66, command: { type: 'elect', node: 4 } },
+      { at: 76, command: { type: 'recover', node: 0 } },
+      { at: 80, command: { type: 'send', text: 'tacos?', to: 4 } },
+      { at: 80, command: { type: 'partition', groups: [0, 0, 0, 0, 1] } },
+      { at: 80, command: { type: 'crash', node: 4 } },
+      { at: 85, command: { type: 'heal' } },
+      { at: 86, command: { type: 'elect', node: 0 } },
+      { at: 110, command: { type: 'crash', node: 0 } },
+      { at: 111, command: { type: 'recover', node: 4 } },
+      { at: 111, command: { type: 'elect', node: 4 } },
+      { at: 120, command: { type: 'elect', node: 4 } },
+      { at: 150, command: { type: 'recover', node: 'all' } },
+      { at: 170, command: { type: 'send', text: 'see you' } },
+    ],
+  },
 };
 
-/** Runs a scenario from a fresh cluster, optionally with another seed. */
+/** Runs a scenario from a fresh cluster, optionally with another seed or the unsafe commit rule. */
 export function runScenario(
   scenario: RaftScenario,
   seed = scenario.seed,
   ticks = scenario.length,
+  options: RaftOptions = {},
 ): RaftCluster {
-  const cluster = new RaftCluster(seed);
+  const cluster = new RaftCluster(seed, options);
   while (cluster.ticks < ticks) stepScheduled(cluster, scenario.schedule);
   return cluster;
 }

@@ -173,6 +173,7 @@ export const quiz = [
 <Objectives>
 
 - Name five consistency promises, from eventual up to linearizable, and the anomalies each one rules out.
+- Tell sequential consistency from linearizable, and name the four session guarantees.
 - Read a replica timeline and spot a stale read, a missing own message, a read that goes backwards, and a reply shown
   before its question.
 - Explain why a stronger promise costs waiting time and pulls traffic toward fewer replicas.
@@ -278,6 +279,32 @@ chat existed, and every read sees the latest confirmed write.
 | Causal           | own message missing, going backwards, reply before question | stale reads                                                            |
 | Linearizable     | all four anomalies                                          | none of the four                                                       |
 
+## Sequential consistency and the four session guarantees
+
+The widget runs five promises, and design reviews use a few more names on the same ladder.
+
+**Sequential consistency** sits between causal and linearizable. Every replica shows all messages in one agreed order,
+and that order keeps each person’s messages in the order they sent them. It sets no deadline: a phone may show the
+agreed order a few seconds late, even after Ana’s send was confirmed. Linearizable adds that deadline: once a write is
+confirmed, every later read on any phone shows it. ZooKeeper works this way. One leader orders every write, and a
+follower answers reads from its own copy, which can lag. A client that needs the newest value calls `sync` first, which
+makes its follower catch up with the leader.
+
+Monotonic reads and read your writes belong to a set of four **session guarantees**. Each one protects what a single
+person’s session sees, and causal consistency gives all four at once. The widget’s reply-before-question rule is the
+fourth one, writes follow reads.
+
+| Session guarantee   | Promise to one session                                                | In the chat                                                          |
+| ------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Read your writes    | A read shows every write this session made earlier.                   | Ana sees “Lunch at noon?” right after she sends it.                  |
+| Monotonic reads     | A read never shows less than an earlier read in this session.         | A message Ben saw never disappears from his phone.                   |
+| Monotonic writes    | Every replica applies this session’s writes in the order it made them. | Ana’s “Booked a table for two” never lands before her “Lunch at noon?”. |
+| Writes follow reads | A write lands after every write this session read before making it.   | No replica shows Ben’s reply until it holds Ana’s question.          |
+
+Causal is the strongest promise on this ladder that still answers on both sides of a network partition, as long as each
+phone keeps talking to the same replica. Sequential and linearizable both need one agreed order of writes, so a replica
+cut off from the rest cannot accept new ones. The [CAP and PACELC](../cap-and-pacelc/) lesson picks up that choice.
+
 ## Causal still allows stale reads
 
 <Predict
@@ -327,6 +354,7 @@ Many databases let you pick the promise per request. Use that: pay for a strong 
 | Monotonic reads  | Nobody loses a message they already saw.                                      | Reads wait for a lagging replica or stick to one; own writes and message order stay unprotected.                     |
 | Read your writes | People always see what they just sent.                                        | Reads wait after a write or go to the replica that took it; other readers still see anomalies.                      |
 | Causal           | Replies never appear before questions, plus both session promises.            | Every write carries dependency metadata, replicas hold messages back, and stale reads remain.                        |
+| Sequential       | Every phone shows the same order, and each person’s messages keep the order they were sent in. | One leader orders every write, so a cut-off minority cannot take writes, and follower reads can still trail a confirmed write. |
 | Linearizable     | The system acts like a single copy; every read sees the latest confirmed write. | Every request travels to the leader, and every write waits for a majority; a read of an unconfirmed write returns the last confirmed state. One replica carries the load, a real leader confirms it still leads before each read, and a cut-off minority cannot answer. |
 
 </TradeoffTable>
