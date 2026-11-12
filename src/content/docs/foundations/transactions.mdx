@@ -299,8 +299,7 @@ The isolation level decides which **anomalies** slip through:
 - **Non-repeatable read:** a report reads the `launch` destination twice and gets two URLs.
 - **Phantom:** a quota check counts a user's links twice and gets 49, then 50.
 - **Lost update:** two handlers read `clicks = 1` and both write 2.
-- **Write skew:** two people check that `launch` is free and both insert it. No existing row changed, so only a unique
-  key on `alias` or Serializable stops it.
+- **Write skew:** two requests each see 49 links under a 50-link quota and each insert one, so the user ends with 51.
 
 <TradeoffTable title="Which anomalies each isolation level allows">
 
@@ -314,9 +313,9 @@ The isolation level decides which **anomalies** slip through:
 </TradeoffTable>
 
 Read Committed, the PostgreSQL default, blocks only dirty reads. The SQL standard defines only the first three
-anomalies, so engines differ on the last two. Stronger levels block more by aborting one of the conflicting
-transactions, so the app must catch the error and rerun the whole transaction. Unique keys and atomic statements work
-at every level.
+anomalies, so engines differ on the last two. Repeatable Read catches two writes to the same row and misses write skew:
+Serializable or `FOR UPDATE` on the user's row stops it. Stronger levels abort one conflicting transaction, so the app
+must catch the error and rerun it. Unique keys and atomic statements work at every level.
 
 <details>
 <summary>Go deeper: how PostgreSQL and MySQL implement the levels</summary>

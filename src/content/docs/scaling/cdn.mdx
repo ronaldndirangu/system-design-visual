@@ -95,6 +95,16 @@ export const quiz = [
       { text: 'Purges are no longer needed', why: 'The shield holds copies too. A purge must clear the shield along with every edge.' },
     ],
   },
+  {
+    id: 'scaling/cdn/q4',
+    prompt: 'The sho.rt dashboard page at /dashboard lists each user\'s own links. It returns Cache-Control: public, max-age=300, and the CDN keys on host and path. What happens?',
+    options: [
+      { text: 'Each user gets a fast, cached copy of their own dashboard', why: 'The key has no user in it, so every user shares one copy.' },
+      { text: 'For 5 minutes, users can see the dashboard of whoever loaded it first', correct: true, why: 'public lets the edge share one copy under /dashboard. Send Cache-Control: private or no-store for per-user pages.' },
+      { text: 'The CDN refuses to cache it, since the page has user data', why: 'The CDN cannot tell the page is personal. It follows the header, and public allows sharing.' },
+      { text: 'Only the browser keeps a copy', why: 'That is what private means. public lets shared caches such as edges keep it too.' },
+    ],
+  },
 ];
 
 <Objectives>
@@ -215,6 +225,20 @@ of a year. A release ships new names, so edges fetch the new files on their firs
 **Purge.** When a link must disappear now, such as a scam, delete it at the origin and call the CDN's purge API for its
 path. Most CDNs clear every edge within seconds. A purge has a cost: the purged edges go cold, and the origin absorbs the
 refill, as the Purge at 10 s scenario shows. Purge only the paths that changed, and save a full purge for emergencies.
+
+### What the edge treats as the same request
+
+An edge files each copy under a **cache key**, by default the host, path, and query string. Two requests with the same
+key get the same bytes, so the key and the headers decide who can see what:
+
+- **Per-user pages** such as the sho.rt dashboard send `Cache-Control: private` (only the browser may keep a copy) or
+  `no-store` (nobody keeps one). `public` lets edges share a copy across users.
+- **Credentials.** Many CDNs skip the cache when a request carries `Authorization` or a response sets `Set-Cookie`, yet
+  defaults differ by vendor. Check yours, and mark per-user responses `private` anyway.
+- **`Vary`** adds request headers to the key. `Vary: Accept-Encoding` keeps gzip and plain copies apart. `Vary: Cookie`
+  gives every user a separate copy, so the hit ratio collapses.
+- **Noise in the key.** Strip tracking parameters such as `utm_source` from the key, or one link turns into dozens of
+  cold copies.
 
 ## Hit ratio: every edge warms up alone
 

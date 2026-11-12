@@ -226,6 +226,9 @@ redirect takes 140 ms, and visitors wait 1 s: 50 × (1 s minus 0.14 s) ≈ 43, s
 2. Pick **Steady traffic** and press **Skip to the end**. Both lanes answer the same 800 requests, so a limit costs
    nothing below capacity.
 
+Waits still climb steeply as workers near 100% busy, long before the line overflows; [load
+balancing](../../scaling/load-balancing/) puts numbers on that curve.
+
 <details>
 <summary>Go deeper: why have a line at all</summary>
 

@@ -288,7 +288,25 @@ address.
 
 - **Expiry (TTL)** puts an upper bound on how old a cached answer can get.
 - **Invalidation** deletes the cache entry whenever the source data changes. Every edit and every delete must clear the
-  cached copy, and one forgotten code path brings the stale answer back.
+  cached copy, and one forgotten code path brings the stale answer back. Delete the entry instead of setting a new
+  value, since two quick sets can land out of order.
+
+<details>
+<summary>Go deeper: the race between a delete and a refill</summary>
+
+Deleting has a race of its own. A reader misses, reads the old row, and stalls for a moment. An edit commits and
+deletes the entry. The reader wakes and fills the cache with the old row, and nothing is left to clear it. A rule such
+as "fill only if the cached copy is older" cannot help, because the delete removed the copy it would compare against.
+Two guards work:
+
+- **Generation or tombstone.** The delete leaves a small marker holding the row's version, such as `xyz789: v8`. A
+  fill that carries v7 sees the newer marker and drops itself. Keep the marker longer than any read can stall.
+- **Fill lease.** On a miss, the cache hands the reader a lease token. The delete atomically invalidates every open
+  lease on that key, so the stale fill bounces. Memcache at Facebook works this way.
+
+A TTL only bounds how long a stale fill survives.
+
+</details>
 
 ## Write strategies
 
