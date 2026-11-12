@@ -59,6 +59,7 @@ test.describe('Timeouts and cancellation', () => {
   test('cancelling the query frees database connections', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('reliability/timeouts/');
+    await page.getByText('Go deeper: timing out without cancelling').click();
     const duel = page.getByRole('region', { name: 'Simulation: Timing out without cancelling' });
     await duel.scrollIntoViewIfNeeded();
     const skip = duel.getByRole('button', { name: 'Skip to the end' });
@@ -127,6 +128,7 @@ test.describe('Queues and backpressure', () => {
   test('a queue absorbs the bursts that a server with no line turns away', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('reliability/queues-and-backpressure/');
+    await page.getByText('Go deeper: why have a line at all').click();
     const duel = page.getByRole('region', { name: 'Simulation: A short burst, with and without a line' });
     await duel.scrollIntoViewIfNeeded();
     const skip = duel.getByRole('button', { name: 'Skip to the end' });
@@ -234,6 +236,7 @@ test.describe('Retries', () => {
     await expect(calm).toBeFocused();
     await expect(duel.getByText('Ready', { exact: true })).toBeVisible();
 
+    await page.getByText('Go deeper: forty senders and a thundering herd').click();
     const herd = page.getByRole('region', { name: 'Simulation: Forty senders reconnect after a restart' });
     await herd.scrollIntoViewIfNeeded();
     const herdSkip = herd.getByRole('button', { name: 'Skip to the end' });
@@ -279,6 +282,7 @@ test.describe('Circuit breakers', () => {
     await expect(calm).toBeFocused();
     await expect(duel.getByText('Ready', { exact: true })).toBeVisible();
 
+    await page.getByText('Go deeper: when the dependency fails fast').click();
     const refused = page.getByRole('region', { name: 'Simulation: Ingest refuses connections' });
     await refused.scrollIntoViewIfNeeded();
     await refused.getByRole('button', { name: 'Skip to the end' }).click();

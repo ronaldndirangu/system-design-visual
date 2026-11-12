@@ -1,11 +1,23 @@
 ---
 title: Rate limiting
 description: Watch one noisy client starve everyone else, then share capacity fairly with token buckets, sliding windows, and 429 responses that well-behaved clients respect.
+furtherReading:
+  - title: 'RFC 6585: Additional HTTP Status Codes'
+    url: https://www.rfc-editor.org/rfc/rfc6585
+    note: Defines 429 Too Many Requests and how a server can send Retry-After with it.
+  - title: Handling overload (Google SRE book, chapter 21)
+    url: https://sre.google/sre-book/handling-overload/
+    note: Per-customer quotas, client-side throttling, and why a service must still protect itself when every client stays within its quota.
+  - title: Fairness in multi-tenant systems (Amazon Builders' Library)
+    url: https://aws.amazon.com/builders-library/fairness-in-multi-tenant-systems/
+    note: How AWS layers token buckets, quotas, and admission control so one tenant cannot starve the rest.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
@@ -27,39 +39,62 @@ export const edges = [
 export const steps = [
   {
     title: 'A request arrives',
-    text: 'Client A sends POST /links with its API key. The gateway looks up the bucket for key a_123: 20 tokens of 20, last refilled 0.4 s ago.',
+    text: 'Client A sends POST /links with API key a_123. The gateway looks up that key\u2019s bucket: 20 of 20 tokens.',
     nodes: ['client', 'gateway', 'store'],
     flows: ['client>gateway', 'gateway>store'],
   },
   {
     title: 'Refill, then take one token',
-    text: 'The bucket earns 10 tokens per second, capped at 20. It is already full, so the refill adds nothing. The request spends one token, leaving 19.',
+    text: 'The bucket earns 10 tokens per second, capped at 20. It is full, so the request spends one token and leaves 19.',
     nodes: ['gateway', 'store'],
     flows: ['gateway>store'],
   },
   {
     title: 'Forward the request',
-    text: 'A token was available, so the gateway passes the request to the Link API. The API never learns that a limiter exists.',
+    text: 'A token was there, so the gateway passes the request to the Link API.',
     nodes: ['gateway', 'api'],
     flows: ['gateway>api'],
   },
   {
     title: 'A burst drains the bucket',
-    text: 'Client A jumps to 30 requests per second. It spends 30 tokens a second and earns back 10, so the 20 stored tokens last about one second.',
+    text: 'A jumps to 30 requests per second. It spends 30 tokens a second and earns 10, so the 20 stored tokens last about one second.',
     nodes: ['client', 'gateway', 'store'],
     flows: ['client>gateway', 'gateway>store'],
   },
   {
     title: 'An empty bucket answers 429',
-    text: 'The next request finds 0 tokens. The gateway answers 429 Too Many Requests with Retry-After: 1, and the request never reaches the API.',
+    text: 'The next request finds 0 tokens. The gateway answers 429 with Retry-After: 1, and the Link API never sees it.',
     nodes: ['client', 'gateway'],
     flows: ['gateway>client'],
   },
   {
     title: 'Everyone else is untouched',
-    text: 'Clients B, C, and D have their own buckets. Their requests keep flowing, and the API stays well under its 300 req/s capacity.',
+    text: 'Clients B, C, and D have their own buckets, so their requests keep flowing.',
     nodes: ['gateway', 'api'],
     flows: ['gateway>api'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'reliability/rate-limiting/recall-1',
+    prompt: 'After an outage, thousands of redirect servers retry their analytics calls with doubling backoff and no jitter. What happens when the service recovers?',
+    options: [
+      { text: 'The retries spread out as the waits grow', why: 'Every server doubles the same wait, so they stay in step.' },
+      { text: 'Nothing bad, since backoff keeps load low', why: 'Backoff lowers the average, yet every server still returns in the same instant.' },
+      { text: 'Synchronized waves of retries can knock it over again', correct: true, why: 'Identical waits keep the servers in lockstep. Jitter spreads each wave out.' },
+      { text: 'The service drops the retries as duplicates', why: 'Deduplication stops double counting. It does nothing about load.' },
+    ],
+  },
+  {
+    id: 'reliability/rate-limiting/recall-2',
+    prompt: 'The Link API serves 300 requests per second. Traffic hits 450 per second for a minute, and its queue has no size limit. What do clients see?',
+    options: [
+      { text: 'The queue absorbs the spike and every request is on time', why: 'A queue only delays work. While arrivals beat the drain rate, waits keep growing.' },
+      { text: 'The line grows by 150 a second, so waits climb until most requests time out', correct: true, why: 'A bounded queue would reject the excess fast instead of making every request wait.' },
+      { text: 'Only the newest requests wait', why: 'In a first in, first out line, every new request waits behind all the older ones.' },
+      { text: 'The API speeds up to match', why: 'Capacity stays at 300 per second, so the extra 150 piles up.' },
+    ],
   },
 ];
 
@@ -67,12 +102,12 @@ export const quiz = [
   {
     id: 'reliability/rate-limiting/q1',
     ordered: true,
-    prompt: 'A token bucket refills 10 tokens per second and holds 20. The client has been idle for a minute, then sends 50 requests in one instant. How many get through?',
+    prompt: 'A token bucket refills 10 tokens per second and holds 20. After a quiet minute, the client sends 50 requests at once. How many get through?',
     options: [
-      { text: '10, the refill rate', why: 'The refill rate caps the long run average. After a quiet minute the bucket is full, so the client can spend all 20 stored tokens at once.' },
-      { text: '20, the bucket size', correct: true, why: 'The bucket size is the largest burst a client can send. The other 30 requests get 429 until tokens refill.' },
-      { text: '50, because the client was idle long enough to earn 600 tokens', why: 'Tokens stop accumulating at the bucket size. A long quiet period never buys a bigger burst than 20.' },
-      { text: 'None, because 50 is above the limit', why: 'A token bucket rejects only the requests it has no tokens for. The first 20 find tokens waiting.' },
+      { text: '10, the refill rate', why: 'After a quiet minute the bucket is full with 20 tokens.' },
+      { text: '20, the bucket size', correct: true, why: 'The bucket size caps the burst. The other 30 get 429 until tokens refill.' },
+      { text: '50, because the client earned 600 tokens while idle', why: 'Tokens stop at the bucket size, so idling never buys more than 20.' },
+      { text: 'None, because 50 is above the limit', why: 'The first 20 requests find tokens.' },
     ],
   },
   {
@@ -80,64 +115,66 @@ export const quiz = [
     ordered: true,
     prompt: 'A fixed window allows 100 requests per calendar second. What is the most a client can send in any 0.2 s stretch?',
     options: [
-      { text: '20, the limit scaled to 0.2 s', why: 'A fixed window checks only the count inside each calendar second. It never spreads the 100 requests evenly.' },
-      { text: '100, the limit', why: 'Two windows can meet inside that 0.2 s. The client can spend the last 100 of one window and the first 100 of the next.' },
-      { text: '200, by straddling the boundary between two windows', correct: true, why: 'This is the boundary burst. A sliding window closes the gap by counting the last full second at every moment.' },
-      { text: 'Unlimited, because the counter resets', why: 'Each window still stops at 100, so two windows give at most 200.' },
+      { text: '20, the limit scaled to 0.2 s', why: 'A fixed window only counts per calendar second. It never spreads requests evenly.' },
+      { text: '100, the limit', why: 'Two windows can meet inside 0.2 s, and each allows 100.' },
+      { text: '200, by straddling the boundary between two windows', correct: true, why: 'This is the boundary burst, which a sliding window closes.' },
+      { text: 'Unlimited, because the counter resets', why: 'Each window still stops at 100, so two give at most 200.' },
     ],
   },
   {
     id: 'reliability/rate-limiting/q3',
     prompt: 'Your client gets 429 with Retry-After: 2. What should it do?',
     options: [
-      { text: 'Retry at once, since the limit may have reset', why: 'An instant retry almost always meets an empty bucket. It burns a retry and adds load to a limiter that already said no.' },
-      { text: 'Wait at least 2 seconds plus a little random jitter, then retry, and give up after a few tries', correct: true, why: 'Waiting lets tokens refill, jitter keeps many clients from retrying in the same instant, and a retry cap bounds the extra load.' },
-      { text: 'Retry exactly 2 seconds later', why: 'Close, but every client that got the same header retries at the same instant and collides again. Add jitter.' },
-      { text: 'Treat it as a permanent failure', why: 'A 429 is temporary by design. The header tells you when to come back.' },
+      { text: 'Retry at once, since the limit may have reset', why: 'An instant retry almost always meets an empty bucket and wastes a try.' },
+      { text: 'Wait at least 2 seconds plus random jitter, retry, and give up after a few tries', correct: true, why: 'Waiting lets tokens refill, jitter spreads clients out, and a cap bounds the extra load.' },
+      { text: 'Retry exactly 2 seconds later', why: 'Every client with the same header returns in the same instant. Add jitter.' },
+      { text: 'Treat it as a permanent failure', why: 'A 429 is temporary, and the header says when to come back.' },
     ],
   },
   {
     id: 'reliability/rate-limiting/q4',
-    prompt: 'Six gateway instances each keep their own local token bucket, and each enforces one sixth of a 600 req/min limit. The load balancer sends one client\u2019s long-lived connection to a single instance. What happens?',
+    prompt: 'Six gateways each enforce one sixth of a 600 req/min limit with local buckets. The load balancer pins one client\u2019s long-lived connection to a single gateway. What happens?',
     options: [
-      { text: 'The client gets its full 600 req/min', why: 'Only one instance sees this client, and that instance allows 100 req/min.' },
-      { text: 'The client gets about 100 req/min, a sixth of its limit', correct: true, why: 'Local limits assume traffic spreads evenly over instances. Sticky or uneven traffic breaks that assumption, which is why exact limits need a shared counter.' },
-      { text: 'The client gets 3,600 req/min', why: 'That would happen only if each instance enforced the full 600 and traffic spread over all six.' },
-      { text: 'Requests fail with 503', why: 'The limiter answers 429 for requests over the limit. Nothing here overloads the API.' },
+      { text: 'The client gets its full 600 req/min', why: 'Only one gateway sees this client, and it allows 100 req/min.' },
+      { text: 'The client gets about 100 req/min, a sixth of its limit', correct: true, why: 'Local limits assume traffic spreads evenly. Exact limits need a shared counter.' },
+      { text: 'The client gets 3,600 req/min', why: 'Each gateway allows only 100.' },
+      { text: 'Requests fail with 503', why: 'Requests over the limit get 429. Nothing here overloads the API.' },
     ],
   },
   {
     id: 'reliability/rate-limiting/q5',
-    prompt: 'The shared counter store behind your rate limiter goes down. The limit protects a free tier from abuse. Which choice keeps most users happy?',
+    prompt: 'The counter store behind your free tier rate limiter goes down. Which choice keeps most users happy?',
     options: [
-      { text: 'Fail closed: reject every request until the store returns', why: 'That turns a limiter outage into a full outage for every client, including the polite ones.' },
-      { text: 'Fail open: allow requests, ideally with a local fallback limit per instance', correct: true, why: 'A short window of looser limits hurts far less than rejecting everyone. A local fallback limit still blocks the worst floods.' },
-      { text: 'Queue every request until the store returns', why: 'The queue grows without bound and every request waits. Clients time out anyway.' },
-      { text: 'It makes no difference', why: 'The choice decides whether a store outage takes down your API. Decide it before it happens.' },
+      { text: 'Fail closed: reject every request until the store returns', why: 'That turns a limiter outage into a full outage for every client.' },
+      { text: 'Fail open: allow requests, ideally with a local fallback limit per gateway', correct: true, why: 'Briefly looser limits beat rejecting everyone, and the fallback still blocks floods.' },
+      { text: 'Queue every request until the store returns', why: 'The queue grows without bound, and clients time out anyway.' },
+      { text: 'It makes no difference', why: 'The choice decides whether a store outage takes down your API.' },
     ],
   },
 ];
 
+<Recall questions={recall} />
+
 <Objectives>
 
-- Explain why a shared service needs per-client limits, using a noisy neighbor.
-- Trace how a token bucket allows a short burst and then holds a client to its refill rate.
-- Compare token buckets, fixed windows, and sliding windows, and spot the fixed window boundary burst.
-- Answer with 429 and Retry-After, and retry the way a well-behaved client should.
-- Choose where to enforce a limit and how to count across many gateway instances.
+- Explain why a shared service needs per-client limits.
+- Trace how a token bucket allows a burst, then holds a client to its refill rate.
+- Choose a token bucket for an average rate and a sliding window for a hard quota.
+- Answer with 429 and Retry-After, and retry like a well-behaved client.
+- Layer limits from the edge to the service, and share counts across gateways.
 
 </Objectives>
 
 ## The failure: one client starves everyone
 
-The URL shortener sells API access to four partner apps. Each partner, A through D, sends about 50 requests per second.
-The Link API can serve 300 requests per second and queues up to 60 more. Then partner A ships a bug: a retry loop that
-pushes its traffic from 50 to 400 requests per second.
+The URL shortener sells API access to four partner apps, A through D, at about 50 requests per second each. The Link
+API serves 300 requests per second and queues up to 60 more. Then a retry bug pushes A from 50 to 400 requests per
+second.
 
 <Predict
   client:visible
   id="reliability/rate-limiting/predict-1"
-  question="Partners B, C, and D keep sending 50 requests per second each, well under any fair share. What happens to their requests after A jumps to 400?"
+  question="B, C, and D still send 50 requests per second each. What happens to their requests after A jumps to 400?"
   options={[
     'Nothing, because their own traffic never changed',
     'A large share of their requests fail or wait, because A fills the queue',
@@ -146,10 +183,8 @@ pushes its traffic from 50 to 400 requests per second.
   answer={1}
 >
 
-The server cannot tell a polite request from a noisy one. A sends 400 of every 550 requests, so the queue fills with A's
-traffic and the server sheds whatever arrives next, from any partner. In this toy model with seed 42, the polite partners
-get only 2,001 of their 2,992 requests served (67%), and 983 fail with 503. A per-client token bucket answers A with 429
-before its excess reaches the server, and the polite partners get all 2,992 served.
+A fills the queue, and the server sheds whatever comes next, from anyone. With seed 42, the polite partners get only
+2,001 of 2,992 requests served (67%). A per-client token bucket answers A with 429, and all 2,992 get through.
 
 </Predict>
 
@@ -161,43 +196,37 @@ before its excess reaches the server, and the polite partners get all 2,992 serv
   instructions="Press Play and watch the polite clients' bars in each lane. Then pick Calm traffic: when nobody exceeds a limit, the two lanes tie exactly."
 />
 
-This is a **toy model**: four clients with random (Poisson) arrivals, one server that drains a fixed number of requests
-every 0.1 s, and a queue with a hard limit. The numbers are illustrative. Both lanes replay the identical stream of
-requests, so every difference comes from the limiter.
+This **toy model** replays one stream of random arrivals through both lanes, so every difference comes from the limiter.
 
-A rate limit protects two things. It protects **fairness**, so one client cannot spend capacity that others need. It
-protects the **service**, so a bug or an attacker cannot push it past its capacity. A single global limit of 300
-requests per second would protect the service and still leave A holding most of those 300 slots. The fix is a limit
-**per client**, keyed by API key, user, or IP address.
+A rate limit protects **fairness**. A global limit of 300 per second keeps the server up and still lets A take most
+slots, so limit **per client**, keyed by API key, user, or IP address. Each limit caps one share and never the total:
+many clients under their limits can still outrun the server, which is the job of
+[queues and backpressure](../queues-and-backpressure/).
 
 ## The token bucket
 
-The most common limiter is the **token bucket**. Each client gets a bucket that holds up to `burst` tokens and refills
-at `rate` tokens per second. Every request spends one token. A request that finds the bucket empty gets **429 Too Many
-Requests**. Two numbers describe the policy:
-
-- **Rate**: the long run average a client may send.
-- **Burst**: how many requests a client may send at once after a quiet spell.
-
-The bucket never stores more than `burst` tokens, so a client cannot save up for a giant burst. In practice the limiter
-stores only two values per client: the token count and the time of the last refill. It computes the refill lazily when
-the next request arrives.
+The most common limiter is the **token bucket**. Each client's bucket holds up to `burst` tokens and refills at `rate`
+tokens per second. Every request spends one token, and a request that finds the bucket empty gets **429 Too Many
+Requests**. `rate` is the long run average, and `burst` is how many requests may arrive at once after a quiet spell.
+The limiter stores just a token count and a timestamp per client.
 
 <StepDiagram client:visible title="One request through a token bucket" nodes={nodes} edges={edges} steps={steps} height={300} />
 
 <Analogy>
 
-A token bucket is an arcade card that earns 10 credits per second and holds at most 20. Every game costs one credit.
-Walk in after lunch and you can play 20 games back to back, then you play at the pace the card earns. Nobody can hoard
-a thousand credits, and your card never spends anyone else's credits.
+A token bucket is an arcade card that earns 10 credits per second and holds at most 20. Each game costs one credit.
+After lunch you can play 20 games back to back, then only as fast as the card earns. The analogy breaks at the
+machines: the arcade has one per player, while every client shares the Link API's 300 requests per second.
 
 </Analogy>
+
+## Try it: drain the bucket
 
 <Predict
   client:visible
   id="reliability/rate-limiting/predict-2"
   ordered
-  question="Client A sends 6 requests per second into a bucket that refills 10 tokens per second and holds 20. From 4 s to 6 s, A bursts to 30 requests per second, about 60 requests in total. Roughly how many get 429?"
+  question="A bucket refills 10 tokens per second and holds 20. Client A sends 6 requests per second, then 30 per second from 4 s to 6 s, about 60 in all. Roughly how many get 429?"
   options={[
     'None: the bucket absorbs the whole burst',
     'About 20',
@@ -207,14 +236,12 @@ a thousand credits, and your card never spends anyone else's credits.
   answer={1}
 >
 
-About 20. The bucket starts the burst full, with 20 tokens, and earns 20 more during the two seconds. Those 40 tokens
-cover 40 of the 60 requests. In this toy model with seed 42, 22 requests get 429 and 93 of 115 are served over the whole
-run. The first 429 arrives at 4.7 s, and the bucket is full again at 9.6 s.
+About 20. The full bucket holds 20 tokens and earns 20 more during the burst, which covers 40 of the 60 requests. With
+seed 42, 22 requests get 429.
 
 </Predict>
 
-The tokens below are physics balls. Each request takes one ball, and a request that finds no ball bounces off as a 429.
-Press Play to check your prediction, then change the refill rate or bucket size and run it again.
+The tokens below are physics balls: each request takes one, and a request that finds none bounces off as a 429.
 
 <TokenBucketWidget
   client:visible
@@ -223,24 +250,32 @@ Press Play to check your prediction, then change the refill rate or bucket size 
   instructions="Press Play. Each request spends one token, and an empty bucket answers 429. Try Sustained overload, then raise the refill rate to 15 tokens per second."
 />
 
-Under **Sustained overload**, A sends 15 requests per second from 4 s on. The bucket drains slowly, runs dry, and from
-then on A gets exactly the refill rate: 10 per second. With seed 42, the first 429 arrives at 8.9 s, and 20 of 138
-requests get 429.
+Under **Sustained overload**, A sends 15 per second, the bucket runs dry at 8.9 s, and from then on A gets exactly the
+refill rate of 10 per second.
 
-## Windows: counting requests per second
+## Windows: averages and hard quotas
 
-Some limiters count requests in a time window instead of tracking tokens.
+A token bucket enforces an **average rate plus a burst**, so a client with a full bucket can send `burst + rate × period`
+requests in one period. When a requirement reads "at most 1,000 per hour", count requests in a window instead.
 
-- A **fixed window** keeps one counter per client per calendar second (or minute). It allows requests until the counter
-  reaches the limit, then rejects the rest until the next window starts. One counter per client makes it cheap.
+- A **fixed window** keeps one counter per calendar minute or hour. It is cheap, and a client can spend a full window
+  just before the boundary and another just after it.
+- A **sliding window** counts the requests in the last full period at every moment, so no stretch of that length ever
+  holds more than the limit. It fits a hard quota.
+
+Pick by what the requirement says. "10 per second, short bursts are fine" is a token bucket. "At most 1,000 in any
+rolling hour" is a sliding window.
+
+<details>
+<summary>Go deeper: fixed and sliding windows</summary>
+
+Two designs implement a sliding window.
+
 - A **sliding window log** stores the timestamp of every allowed request and counts those in the last full second. It is
   exact, and it stores one entry per request.
 - A **sliding window counter** splits the window into small slots and adds them up, or blends the current and previous
   window counts by how much of each overlaps the last second. It stays close to exact with a few counters per client.
   The model below uses ten 100 ms slots.
-
-The fixed window has a famous flaw. Its counter resets on the boundary, so a client can spend a full window just before
-the boundary and a full window just after it.
 
 <Predict
   client:visible
@@ -268,20 +303,21 @@ requests: half of every pair of bursts.
 A token bucket with a burst of 100 would also let 100 requests through at once, then only the refill rate after that.
 Pick the burst size on purpose: it is the largest spike you are willing to send downstream.
 
+</details>
+
 ## Telling clients to slow down
 
-A limiter should reject with a clear, cheap answer:
+Reject with a clear, cheap answer. **429 Too Many Requests** means "you are sending too fast", while **503 Service
+Unavailable** means the service is overloaded for everyone (see the [APIs lesson](../../foundations/apis/)). Add a
+**Retry-After** header with the seconds to wait. A well-behaved client waits that long plus random jitter and stops
+after a few tries, as the [retries lesson](../retries/) explains.
 
-- Status **429 Too Many Requests**, which means "you, specifically, are sending too fast". Keep **503 Service
-  Unavailable** for "the service is overloaded for everyone". The [APIs lesson](../../foundations/apis/) covers status
-  codes in more depth.
-- A **Retry-After** header with the number of seconds to wait.
-- Optionally, headers that show the remaining allowance, so clients can slow down before they hit the limit. The IETF
-  draft standard names them `RateLimit` and `RateLimit-Policy`; many APIs use older `X-RateLimit-Remaining` style names.
+<details>
+<summary>Go deeper: what clients do with a 429</summary>
 
-The client decides what happens next. A careless client retries at once. A well-behaved one waits for Retry-After, adds
-a little random jitter so many clients do not return in the same instant, and stops after a few tries. The
-[retries lesson](../../reliability/retries/) covers backoff and jitter in depth.
+Optional headers show the remaining allowance, so clients can slow down before they hit the limit. The IETF draft
+names them `RateLimit` and `RateLimit-Policy`, and many APIs use older `X-RateLimit-Remaining` style names. A careless
+client ignores all of this and retries at once.
 
 <Predict
   client:visible
@@ -309,82 +345,90 @@ of 1,814 requests and triggers 927 responses with 429. Waiting for Retry-After g
   instructions="Press Play and compare the 429 chart: the impatient client keeps hitting the empty bucket."
 />
 
+</details>
+
 ## Where to enforce limits
 
-Limits work best in layers, each keyed by what that layer knows.
+Layer limits, each keyed by what its layer knows.
 
-- **At the edge** (a CDN or web application firewall): limit by IP address. It stops floods before they cost you
-  anything. It knows nothing about users, and many users can share one IP behind a corporate network.
-- **At the gateway**: limit by API key, user, or plan. One place sets policy for every service behind it. The
-  [AI gateway lesson](../../ai-systems/gateway/) applies the same idea to token budgets for model calls.
-- **In the service**: limit expensive operations by their real cost, for example 5 bulk exports per hour per account.
-  Only the service knows that one request can cost a thousand times another.
+- **Edge** (a CDN or firewall): limit by IP address. That stops one loud machine, yet a botnet spreads over hundreds
+  of IPs that each stay under the limit.
+- **Gateway**: limit by API key, user, or plan, as the [AI gateway lesson](../../ai-systems/gateway/) does for token
+  budgets.
+- **Service**: limit expensive operations by their real cost, such as 5 bulk exports per hour.
 
-Rate limits keep clients fair. When every client stays under its limit and the sum still exceeds capacity, the service
-has to shed load on its own; the [queues and backpressure](../../reliability/queues-and-backpressure/) lesson covers that. Set the limits themselves from measured
-capacity and your latency goal. The [SLOs lesson](../../thinking/slos/) shows how to define that goal.
+Per-client limits never cap the total, so the service also needs an **aggregate budget** that sheds or queues the
+excess. Size every limit from measured capacity and your [latency goal](../../thinking/slos/).
 
-## Limits across many gateways
+### Counting across many gateways
 
-The shortener runs six gateway instances behind a [load balancer](../../scaling/load-balancing/). Requests from one
-client land on different instances, so who keeps the count?
+Six gateways sit behind a [load balancer](../../scaling/load-balancing/), so who keeps each client's count?
 
-- **A central counter store**, such as Redis, holds every bucket. Each gateway updates the bucket with one atomic
-  operation (a Lua script or an increment with expiry). Limits stay exact. Every request pays a network round trip of
-  about a millisecond, and the store becomes a dependency every request needs.
-- **Local limits** give each of the six instances one sixth of the limit and no shared state. They are fast and survive
-  any store outage. They also assume the load balancer spreads each client evenly: a client pinned to one instance gets
-  a sixth of its limit.
-- **A hybrid** keeps local buckets and syncs counts with the store every 100 ms or so. It trades a little accuracy for
-  far fewer round trips, and most large APIs use some version of it.
+- A **central store** such as Redis updates each bucket atomically: exact limits, with a round trip per request to a
+  store everything now depends on.
+- **Local limits** give each gateway a sixth of the limit: fast and storeless, though a client pinned to one gateway
+  gets only a sixth.
+- A **hybrid** syncs local buckets with the store every 100 ms or so.
 
-Decide in advance what happens when the store fails. **Fail open** allows requests, perhaps with a local fallback
-limit. **Fail closed** rejects them. For most public APIs, a short spell of looser limits hurts far less than an outage.
+When the store fails, **fail open** (allow, perhaps with a local fallback) or **fail closed** (reject). For most public
+APIs, briefly looser limits beat an outage.
 
 ## Trade-offs
 
 <TradeoffTable title="Which limiter, and where does the count live?">
 
-| Choice                    | What it buys                                      | What it costs                                                    |
-| ------------------------- | ------------------------------------------------- | ---------------------------------------------------------------- |
-| Token bucket              | Allows short bursts, then holds the average rate  | Two numbers to tune, and a full burst can still spike the server |
-| Fixed window              | One counter per client, simple to explain         | Up to twice the limit across a window boundary                   |
-| Sliding window log        | Exact count over any one second                   | Stores one timestamp per request                                 |
-| Sliding window counter    | Close to exact with a few counters                | A small error near slot edges                                    |
-| Central counter store     | Exact limits across every gateway                 | A network hop per request, and the store must stay up            |
-| Local per-instance limits | No shared state, no extra latency                 | Inaccurate when traffic spreads unevenly                         |
-| Fail open                 | A store outage never blocks good clients          | A short window where abusers get through                         |
-| Fail closed               | Limits always hold                                | A store outage becomes a full outage                             |
+| Choice                    | What it buys                             | What it costs                                 |
+| ------------------------- | ---------------------------------------- | --------------------------------------------- |
+| Token bucket              | Short bursts, then a steady average      | No hard count per period                      |
+| Fixed window              | One cheap counter per client             | Up to twice the limit across a boundary       |
+| Sliding window            | A hard count over any rolling period     | More memory, or a small error with slots      |
+| Central counter store     | Exact limits across gateways             | A hop per request, and the store must stay up |
+| Local per-instance limits | No shared state or extra latency         | Inaccurate when traffic spreads unevenly      |
+| Fail open                 | A store outage never blocks good clients | Abusers get through for a while               |
+| Fail closed               | Limits always hold                       | A store outage becomes a full outage          |
 
 </TradeoffTable>
 
-<Quiz client:visible questions={quiz} />
+## Common mistakes
 
-## Mini design challenge
+- **One global limit only.** One noisy client still takes most of the capacity.
+- **A token bucket for a contract quota.** "1,000 per hour" needs a sliding window.
+- **Per-IP limits as a botnet defense.** 300 IPs at 50 per second each still send 15,000 per second. Add bot filtering,
+  caching, and an aggregate budget.
+- **503 or a bare 429.** Send 429 with Retry-After.
+- **Instant or endless retries.** Wait for Retry-After plus jitter, and cap the tries.
+
+<KeyTakeaways>
+
+- Per-client limits stop one noisy client from starving everyone else.
+- A token bucket enforces an average rate plus a burst; a sliding window enforces a hard count per rolling period.
+- Per-client limits never cap the total, so the service also needs an aggregate budget.
+- Answer with 429 and Retry-After, and have clients wait with jitter and a retry cap.
+- Layer limits at the edge, gateway, and service, and decide how gateways share counts and fail.
+
+</KeyTakeaways>
+
+<Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-The shortener opens a public API with two plans. Free accounts may create 10 short links per minute; paid accounts may
-create 1,000. Redirects (`GET /abc123`) have no per-account limit, but one botnet recently sent 50,000 redirect requests
-per second from a few hundred IP addresses. Six gateway instances run behind a load balancer, and a Redis cluster is
-available. Sketch where each limit lives, which limiter it uses, how the gateways share counts, and what happens when
-Redis is down.
+The shortener opens a public API. Free accounts may create 10 links per minute, with short bursts allowed. Paid
+contracts promise at most 1,000 links in any rolling hour. Redirect servers handle about 8,000 requests per second, and
+a botnet recently sent 15,000 per second from about 300 IPs. Six gateways share a Redis cluster. Where does each limit
+live, which limiter does it use, and what happens when Redis is down?
 
 <div slot="answer">
 
-1. **Edge, by IP, for redirects.** A token bucket per IP at the CDN or firewall, for example 50 per second with a burst
-   of 100, stops the botnet before it reaches the gateways. Allow higher limits for known shared IPs such as large
-   corporate networks.
-2. **Gateway, by API key, for link creation.** A token bucket per key with the plan's rate: 10 per minute with a burst
-   of about 5 for free accounts, 1,000 per minute with a burst of about 100 for paid ones. The burst size caps the
-   spike any one key can send.
-3. **Shared counts in Redis.** Link creation is low volume and its limits matter for billing, so the gateways keep exact
-   buckets in Redis with one atomic script per request. Redirects stay at the edge with local counters, since they need
-   speed more than precision.
-4. **Answers.** Rejected requests get 429 with Retry-After and the `RateLimit` headers. The client libraries the
-   shortener publishes wait for Retry-After plus jitter and stop after three tries.
-5. **Redis down.** Fail open with a local fallback: each gateway allows one sixth of each plan's limit per key until
-   Redis returns, and an alert fires so someone looks.
+1. **Match the limiter to the requirement.** Free keys get a token bucket that refills 10 per minute and holds about 5,
+   since the plan states an average with bursts. Paid keys get a sliding window over the last 60 minutes, since a
+   token bucket would allow its burst plus a full hour of refill.
+2. **Redirects: filter, cache, then budget.** A per-IP limit of 50 per second only caps each source's share: 300 IPs
+   × 50 per second still deliver 15,000 per second. So filter bots first with reputation lists and challenges, serve
+   hot short codes from the CDN cache, and put an aggregate budget of about 6,000 cache misses per second in front of
+   the redirect servers. Beyond it, shed with 503 and Retry-After, or queue briefly.
+3. **Counts.** Gateways keep exact link creation counts in Redis. Edge limits use local counters.
+4. **Answers.** Send 429 with Retry-After. Client libraries add jitter and stop after three tries.
+5. **Redis down.** Fail open with a local fallback of one sixth of each limit per gateway, and fire an alert.
 
 </div>
 
