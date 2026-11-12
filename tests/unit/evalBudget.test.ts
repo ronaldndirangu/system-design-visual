@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   type Budgets,
+  CACHED_INPUT_RATIO,
   candidates,
   checkBudgets,
   DEFAULT_BUDGETS,
@@ -10,7 +11,11 @@ import {
   finishedSummaries,
   type LaneSummary,
   latencyFor,
+  OUTPUT_PRICE_RATIO,
+  PROMPT_TOKENS,
   summarizeLane,
+  TYPICAL_OUTPUT_TOKENS,
+  tokenCost,
 } from '../../src/lib/models/evalBudget';
 
 function threeSummaries(scenario: 'demo' | 'full'): [LaneSummary, LaneSummary, LaneSummary] {
@@ -104,10 +109,10 @@ describe('budget gate', () => {
       graded: 24,
       declinesHandled: 3,
       declineCases: 6,
-      costPer1k: 987,
+      costPer1k: 965,
     });
-    expect(medium).toMatchObject({ passed: 21, graded: 24, declinesHandled: 6, costPer1k: 3949 });
-    expect(large).toMatchObject({ passed: 23, graded: 24, declinesHandled: 6, costPer1k: 14809 });
+    expect(medium).toMatchObject({ passed: 21, graded: 24, declinesHandled: 6, costPer1k: 3862 });
+    expect(large).toMatchObject({ passed: 23, graded: 24, declinesHandled: 6, costPer1k: 14482 });
     expect(small.p95Seconds).toBeCloseTo(0.8, 2);
     expect(medium.p95Seconds).toBeCloseTo(1.5, 2);
     expect(large.p95Seconds).toBeCloseTo(3.01, 2);
@@ -140,5 +145,38 @@ describe('budget gate', () => {
     const [small] = threeSummaries('full');
     const loose: Budgets = { ...DEFAULT_BUDGETS, minPassRate: 0.7, requireDeclines: false };
     expect(checkBudgets(small, loose)).toEqual({ fits: true, failed: [] });
+  });
+});
+
+describe('token pricing', () => {
+  const { small, medium } = candidates;
+
+  it('charges Small exactly one unit for a typical answer', () => {
+    expect(tokenCost(small, { inputTokens: PROMPT_TOKENS, outputTokens: TYPICAL_OUTPUT_TOKENS })).toBe(1);
+  });
+
+  it('prices an output token above an input token', () => {
+    const input = tokenCost(small, { inputTokens: 7000, outputTokens: 0 });
+    const output = tokenCost(small, { inputTokens: 0, outputTokens: 7000 });
+    expect(output).toBeGreaterThan(input);
+    expect(output / input).toBeCloseTo(OUTPUT_PRICE_RATIO, 6);
+  });
+
+  it('prices a cached prompt token below a fresh one', () => {
+    const fresh = tokenCost(small, { inputTokens: 7000, outputTokens: 0 });
+    const cached = tokenCost(small, { inputTokens: 0, outputTokens: 0, cachedInputTokens: 7000 });
+    expect(cached).toBeLessThan(fresh);
+    expect(cached / fresh).toBeCloseTo(CACHED_INPUT_RATIO, 6);
+  });
+
+  it('scales both sides of the bill by the model price ratio', () => {
+    const usage = { inputTokens: PROMPT_TOKENS, outputTokens: 200, cachedInputTokens: 300 };
+    expect(tokenCost(medium, usage)).toBeCloseTo(tokenCost(small, usage) * medium.priceRatio, 3);
+  });
+
+  it('makes a long answer cost more than a long prompt of the same length', () => {
+    const longAnswer = tokenCost(small, { inputTokens: PROMPT_TOKENS, outputTokens: 300 });
+    const longPrompt = tokenCost(small, { inputTokens: PROMPT_TOKENS + 300, outputTokens: 0 });
+    expect(longAnswer).toBeGreaterThan(longPrompt);
   });
 });

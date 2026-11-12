@@ -42,6 +42,12 @@ function collectErrors(page: Page): string[] {
 
 /** Bring every visible client:visible island into view and wait until Astro marks it hydrated. */
 async function hydrateAll(page: Page) {
+  // A closed disclosure hides its content: islands inside never intersect, and the checks would skip what it reveals.
+  await page.evaluate(() => {
+    for (const details of document.querySelectorAll<HTMLDetailsElement>('.sl-markdown-content details')) {
+      details.open = true;
+    }
+  });
   await expect
     .poll(
       () =>

@@ -212,6 +212,9 @@ export const quiz = [
 
 </Objectives>
 
+**Route:** Advanced, an extra case off the beginner route through Module 6. Take it after
+[Collaborative editor](../collaborative-editor/).
+
 ## The failure: two nodes down, a third of the keys gone
 
 A shopping cart service keeps every cart in a five-node key-value store. Each key lives on three nodes, its homes. A
@@ -257,9 +260,8 @@ come after D and B return, because the returned nodes answer reads before the st
 </Predict>
 
 Neither answer is wrong. A cart that must always accept “add to cart” wants the sloppy copy, and Amazon built Dynamo
-for exactly that. A workload that would rather refuse a request than serve a stale read wants the strict copy. A bank
-balance also needs atomic conditional updates. This lesson builds a store that offers both copies and shows what each
-costs.
+for exactly that. A workload that would rather refuse a request than serve a stale read wants the strict copy. This
+lesson builds a store that offers both and shows what each costs.
 
 ## Requirements and estimates
 
@@ -283,9 +285,8 @@ mass reshuffle of data. A write the store acknowledges survives the loss of any 
 - **Hints.** Each node is a home for about a sixth of the keys. If one dies for an hour, about 6,700 writes a second
   miss it, so coordinators collect 24 million hints, about 24 GB, to hand back when it returns.
 
-The last number shapes the design. Replay time depends on the backlog and the replay throttle, and an hour’s 24 GB,
-throttled to protect live traffic, can take hours to drain. An outage of a day leaves more than half a terabyte. Stores
-cap how long they collect hints and repair longer outages another way.
+The last number shapes the design. An hour’s 24 GB, throttled to protect live traffic, can take hours to replay, and a
+day’s outage leaves over half a terabyte. Stores cap how long they collect hints and repair longer outages another way.
 
 ## API and data model
 
@@ -454,8 +455,8 @@ What to look for with **Throttled handoff**:
   the newest value of every key they own. Fresh writes, **183** read repairs, and the hints that did arrive got there
   first. The leftover hints carry versions the homes already have, and they still cost disk and replay bandwidth.
 
-The simulation reads every key often, so read repair covers for slow replay. A cold key that missed a write stays wrong
-until its hint lands or repair compares its range, and the deletes section below shows why that repair has a deadline.
+The simulation reads every key often, so read repair hides slow replay. A cold key that missed a write stays wrong
+until its hint lands or repair compares its range.
 
 <details>
 <summary>Go deeper: what a Merkle tree comparison costs</summary>
@@ -493,7 +494,7 @@ add one more thing to fail, so Dynamo and Cassandra spread membership by **gossi
 
 Detection speed matters less than it seems. A coordinator sends each write to all three homes and waits for the first
 two acknowledgments, so a dead home that nobody has convicted yet just never answers. Cassandra writes a hint for a
-home that times out as well as for one gossip marks down. In the duel, D and B keep their ranges while down.
+home that times out as well as for one gossip marks down.
 
 ## Deep dive: conflicts and deletes
 
@@ -560,9 +561,6 @@ Follow writes to `user:218` through the failures they meet, with strict quorums,
 | A hint holder dies before replay | Nothing | Two homes still hold the write, and repair fixes the third |
 | A node returns after 14 days down | Deleted rows come back | Only prevention works: replace the node instead of restarting it |
 
-The last row is the subtle one. The other replicas purged their tombstones after 10 days, so the returning node’s old
-values look like the only copy, and repair spreads them.
-
 ## Trade-offs
 
 <TradeoffTable title="Choosing quorums and conflict rules">
@@ -581,7 +579,7 @@ values look like the only copy, and repair spreads them.
 
 Skip this design when a key’s value must never fork, such as a lock owner or an account balance: use a consensus
 store built on [Raft](../../distributed-data/raft/), or a database with [transactions](../../foundations/transactions/). Skip it when
-the data fits on one primary with replicas, which gives one order of writes with far less machinery.
+the data fits on one primary with replicas.
 
 ## Common mistakes
 
@@ -608,14 +606,21 @@ the data fits on one primary with replicas, which gives one order of writes with
 
 <Challenge>
 
-The store grows ten times: 100 billion keys and 2 million requests a second, still 80% reads. Size the cluster from
-the estimates. Then, at the evening peak, one zone goes dark for five hours. Say what users see, what happens to hints,
-and what you change.
+**Closing rubric: grow one dimension tenfold.** Keep this lesson’s estimates (1 KB values, 80% reads, N = 3 with
+R = W = 2, 2 TB of live data per node, one home per zone, and a 3-hour hint window), and grow the users tenfold: 100
+billion keys and 2 million requests a second.
+
+1. Which part hits its limit first, and by how much?
+2. What do you change, and what does the change cost?
+3. At the evening peak, one zone goes dark for five hours. What do users see, and what happens to hints?
 
 <div slot="answer">
 
-- **Size.** 300 TB with replicas at 2 TB of live data per node is 150 nodes. Round up to 180, 60 per zone. Load per
-  node stays about 18,000 reads and 7,000 writes a second.
+**Disk breaks first.**
+
+- **By eightfold.** 300 TB with replicas, at 2 TB of live data per node, needs 150 nodes against today’s 18.
+- **Change: add nodes.** Grow to 180, 60 per zone, and load per node stays about 18,000 reads and 7,000 writes a
+  second. The cost is ten times the hardware, and each new node streams its ranges in while serving live traffic.
 - **Users see nothing.** Every key keeps two homes, so W = 2 and R = 2 keep working.
 - **Hints overflow.** Each of the 400,000 writes a second has one home in the dark zone: 1.44 TB of hints an hour.
   After 3 hours coordinators stop collecting them, and the zone misses the last two hours of writes.
@@ -623,8 +628,8 @@ and what you change.
   that has it, and read repair fixes the stale copy.
 - **Change: repair the zone on return.** Run repair range by range, throttled, well inside the 10 days of
   `gc_grace_seconds`. Raising the hint window instead costs about 12 GB of disk per surviving node per hour.
-- **Extension.** Add a second region with one ring and `LOCAL_QUORUM`. The cost: the two regions’ conflicting writes
-  meet only through asynchronous replication and last write wins.
+- **Extension.** A second region with `LOCAL_QUORUM` keeps requests local. The cost: conflicting writes from the two
+  regions meet only through asynchronous replication, and last write wins.
 
 </div>
 

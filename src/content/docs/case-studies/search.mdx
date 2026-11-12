@@ -1,8 +1,20 @@
 ---
 title: Search
 description: Keep a news search index fresh while each ranking signal updates on its own schedule, then add typeahead.
+furtherReading:
+  - title: Near real-time search (Elasticsearch docs)
+    url: https://www.elastic.co/docs/manage-data/data-store/near-real-time-search
+    note: How a refresh opens a new Lucene segment about once a second, the assumed 1 s in this lesson.
+  - title: 'Practical BM25, Part 1: How shards affect relevance scoring (Elastic)'
+    url: https://www.elastic.co/blog/practical-bm25-part-1-how-shards-affect-relevance-scoring-in-elasticsearch
+    note: The same document scores differently on different shards, because each shard computes term statistics alone.
+  - title: 'Understanding "Query Then Fetch" vs "DFS Query Then Fetch" (Elastic)'
+    url: https://www.elastic.co/blog/understanding-query-then-fetch-vs-dfs-query-then-fetch
+    note: Gathers global term statistics in an extra round trip before scoring, and what that costs.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -48,8 +60,8 @@ export const steps = [
     flows: ['cache>query', 'query>shards', 'query>live'],
   },
   {
-    title: 'A new story is searchable within 1 s',
-    text: 'The publishing system appends each new story to a queue. The indexer buffers new documents and flushes them into a small, immutable live segment every second. The story is searchable now, ranked on text match only.',
+    title: 'A new story is searchable after an assumed 1 s refresh',
+    text: 'The publishing system appends each new story to a queue. The indexer buffers new documents and flushes them into a small, immutable live segment on each refresh, assumed here to run every second. After the refresh, the story is searchable, ranked on text match only.',
     nodes: ['queue', 'indexer', 'live'],
     flows: ['queue>indexer', 'indexer>live'],
   },
@@ -160,34 +172,83 @@ export const quiz = [
     ],
   },
 ];
+export const recall = [
+  {
+    id: 'case-studies/search/recall-1',
+    prompt:
+      'An articles table has a B-tree index on article_id. A query asks for every article whose body contains the word storm. How does the database answer it?',
+    options: [
+      {
+        text: 'It reads every row, because the index sorts rows by article_id and knows nothing about the words in each body',
+        correct: true,
+        why: 'A B-tree finds rows by the key it sorts on. Finding documents by the words inside them needs a different structure, keyed by word.',
+      },
+      {
+        text: 'It walks the B-tree straight to storm',
+        why: 'The B-tree holds article ids in order. The word storm is not a key in it, so the tree cannot jump there.',
+      },
+      {
+        text: 'It reads only the newest rows, because new rows sit at the end of the index',
+        why: 'The index says where each id lives. It says nothing about which bodies mention storm, old or new.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/search/recall-2',
+    prompt:
+      'A cache keeps each page for 60 s. A page changes 5 s after the cache stored it, and nothing deletes the cached copy. How long can readers see the old page?',
+    options: [
+      {
+        text: 'Up to 55 more seconds, until the entry expires',
+        correct: true,
+        why: 'A cache with a time to live serves its copy until the entry expires or something deletes it. The change alone does not reach the cache.',
+      },
+      {
+        text: 'Not at all, because the cache notices the change',
+        why: 'A cache with a time to live never watches the source. Only expiry or an explicit delete removes the old copy.',
+      },
+      {
+        text: 'Until the server restarts',
+        why: 'The entry expires 60 s after the cache stored it, restart or not. That leaves 55 s after the change.',
+      },
+    ],
+  },
+];
 
 This case study builds on the **Scaling the URL shortener** module: [Caching](../../scaling/caching/),
 [Read replicas](../../scaling/read-replicas/), and [Sharding and consistent hashing](../../scaling/sharding/) all return
-here. The [Indexes](../../foundations/indexes/) lesson finds one row by its key with a B-tree. Search asks the reverse question: given a few words,
-which documents contain them, and which of those are best?
+here. The [Indexes](../../foundations/indexes/) lesson finds one row by its key with a B-tree. Search asks the reverse
+question: given a few words, which documents contain them, and which of those are best?
+
+<Recall questions={recall} />
 
 <Objectives>
 
 - Build an inverted index and answer a query by intersecting posting lists.
 - Separate index refresh, signal updates, signal freshness, and model training, each with its own clock.
 - Compare a nightly rebuild with batch plus delta (a real-time tier) on freshness, recall, fan-out, and write work.
+- Add up an end-to-end freshness budget, and keep a takedown out of every result, cached or not.
+- Name what goes wrong when each shard scores with its own term statistics.
 - Serve typeahead from a trie whose nodes store precomputed top completions.
 
 </Objectives>
 
+**Route:** Advanced, case 7 of 10 on the beginner route through Module 6. Next on the route:
+[Ride sharing](../ride-sharing/).
+
 ## The failure: a storm the index has never heard of
 
 The first design builds one index each night. A batch job reads every document, attaches its ranking signals, including
-the day's clicks, and writes a fresh index that goes live by morning. Searches for anything older than the
-build get excellent results. Then a storm makes landfall at 00:30. Thousands of readers search for it within minutes,
-and the index has never seen a single word about it.
+the day's clicks, and writes a fresh index that goes live by morning. Searches for anything older than the build get
+excellent results. Then a storm makes landfall at 00:30. Thousands of readers search for it within minutes, and the
+index has never seen a single word about it.
 
 The widget below runs one toy news day, and every number in it is illustrative. It starts with 1,800 older documents
 across 30 topics. Three stories break at 00:30, 10:30, and 18:30, and 191 new documents arrive over the day, most of
 them about those stories. Every 15 simulated minutes, 48 queries arrive, and once a story has broken, 70% of them chase
-one. Both lanes run the same full
-build, which starts at 02:00 and takes 3 h. The second lane also writes each new document into a small live segment that
-is searchable within 1 s. Recall@10 compares each lane's top 10 with an ideal ranking that knows every document.
+one. Both lanes run the same full build, which starts at 02:00 and takes 3 h. The second lane also writes each new
+document into a small live segment that is searchable after a refresh, assumed to take 1 s. Recall@10 compares each
+lane's top 10 with an ideal ranking that knows every document.
 
 <Predict
   client:visible
@@ -208,7 +269,7 @@ is searchable within 1 s. Recall@10 compares each lane's top 10 with an ideal ra
 That average stops counting at midnight, so the true wait is longer: each of those 168 documents waits for the next
 night's build. Some queries still do well: about 30% look for older documents, which the nightly index ranks with full
 signals, and the 02:00 build covers the first story's first 90 minutes. The real-time tier never misses the ideal top
-result, reaches 75% recall, and makes every new document searchable within 1 s.
+result, reaches 75% recall, and makes every new document searchable after the assumed 1 s refresh.
 
 </Predict>
 
@@ -228,15 +289,14 @@ What to look for:
   documents against 1,823, counting its flushes and merges. At 19:45 it merges 4 level 2 segments into one level 3
   segment and rewrites 128 documents in one go.
 
-The real-time tier still stops at 75%. In this toy its live documents rank on text match alone, so a keyword-stuffed page
-about the storm can outrank the story everyone reads until the next full build scores both.
+The real-time tier still stops at 75%. In this toy its live documents rank on text match alone, so a keyword-stuffed
+page about the storm can outrank the story everyone reads until the next full build scores both.
 
 ## The constraint: freshness runs on four clocks
 
-Text match alone ranks badly. A page that repeats "storm" three times beats the story everyone reads. Good ranking adds
-signals that come from outside the document: how often readers click it, how trusted its source is, whether a spam
-model flags it. New documents arrive every second, and a reader searching for breaking news wants them ranked well now.
-"Fresh" means four different things here, and each runs on its own clock:
+Good ranking fixes that with signals from outside the document: how often readers click it, how trusted its source is,
+whether a spam model flags it. New documents arrive every second, and a reader searching for breaking news wants them
+ranked well now. "Fresh" means four different things here, and each runs on its own clock:
 
 - **Index refresh.** How soon a new document becomes searchable. Lucene-style engines open a new small segment about
   once a second.
@@ -248,11 +308,11 @@ model flags it. New documents arrive every second, and a reader searching for br
   of click logs and ships daily or weekly.
 
 The nightly design ties the first two clocks to one build. It bakes the signals into the index files, so a document
-becomes searchable, and its popularity changes, only when a build rewrites its shard. Ranking itself never forces that
-coupling. One option keeps the nightly build and adds a small real-time tier for new documents: **batch plus delta**,
-two indexes side by side. Another keeps signals in a separate store that a stream job updates incrementally, and the
-search servers read the latest values at query time. Real systems often run both. This lesson builds batch plus delta,
-and its toy bakes every signal in at build time to keep the duel simple.
+becomes searchable, and its popularity changes, only when a build rewrites its shard. One option keeps the nightly
+build and adds a small real-time tier for new documents: **batch plus delta**, two indexes side by side. Another keeps
+signals in a separate store that a stream job updates, and search servers read the latest values at query time. Real
+systems often run both. This lesson builds batch plus delta and bakes every signal in at build time to keep the duel
+simple.
 
 The rest of this lesson walks the [design checklist](../../thinking/design-checklist/).
 
@@ -275,8 +335,8 @@ The rest of this lesson walks the [design checklist](../../thinking/design-check
 ## Estimates
 
 These numbers are illustrative. Assume 540M documents of about 1 KB of index each, 60 new documents per second, and 576M
-searches a day with a peak 3 times the average. A build machine pool indexes 50,000 documents per second, one shard holds
-30 GB of index, and one replica serves 2,000 searches per second.
+searches a day with a peak 3 times the average. A build machine pool indexes 50,000 documents per second, one shard
+holds 30 GB of index, and one replica serves 2,000 searches per second.
 
 | Quantity                           | Illustrative value                                              |
 | ---------------------------------- | --------------------------------------------------------------- |
@@ -308,7 +368,7 @@ POST   /documents
        returns 202: searchable within seconds, fully ranked after the next build
 
 DELETE /documents/{docId}
-       returns 202: hidden from results at once, removed from disk at the next merge
+       returns 202: hidden from every result, cached or not, within about 1 s; removed from disk at the next merge
 
 GET    /suggest?prefix=sto
        returns { completions: ["storm", "stock market today", "storm tracker"] }
@@ -316,8 +376,9 @@ GET    /suggest?prefix=sto
 
 `POST /documents` returns 202 because indexing runs after the call returns. The API promises two stages: the document
 becomes searchable within seconds with text-only ranking, and it gains full ranking signals after the next full build.
-`DELETE` hides the document at once with a tombstone and frees its space later. `GET /suggest` serves typeahead and never
-touches the search index.
+`DELETE` writes a tombstone so new queries skip the document, and it pushes the id to every query server so cached pages
+skip it too (see the freshness budget below). The disk space comes back at the next merge. `GET /suggest` serves
+typeahead and never touches the search index.
 
 ## Data model
 
@@ -329,10 +390,10 @@ touches the search index.
 | Live segments   | `segmentId` | Small inverted indexes for documents since the last build, plus a set of tombstones    |
 | Typeahead trie  | `prefix`    | The top completions under that prefix, counted from the query log                      |
 
-The document store is the source of truth. Every index here is derived from it and can be rebuilt from it, which is what
-makes a nightly rebuild possible at all. The posting lists answer "which documents contain this word?", and the ranking
-signals answer "which of those should come first?" The [Data modeling and storage choice](../../foundations/data-modeling/) lesson covers the stores
-themselves.
+The document store is the source of truth. Every index here derives from it and can be rebuilt from it, which makes a
+nightly rebuild possible. The posting lists answer "which documents contain this word?", and the ranking signals answer
+"which of those should come first?" The [Data modeling and storage choice](../../foundations/data-modeling/) lesson
+covers the stores themselves.
 
 ## High-level design
 
@@ -454,15 +515,102 @@ it:
 
 Most engines shard by document. Since every query visits every shard, each shard sees the full peak of 20,000 searches
 per second. At 2,000 per replica, that means 10 [read replicas](../../scaling/read-replicas/) per shard and 180 search
-servers, with a [load balancer](../../scaling/load-balancing/) choosing a replica for each shard. The live segments shard
-the same way, so the real-time tier adds a little fan-out inside each shard.
+servers, with a [load balancer](../../scaling/load-balancing/) choosing a replica for each shard. The live segments
+shard the same way, so the real-time tier adds a little fan-out inside each shard. Each shard also scores text with its
+own term counts, a small skew the next block explains.
+
+<details>
+<summary>Go deeper: text scores across shards</summary>
+
+BM25 weighs a term by how rare it is, and each shard counts that over its own documents only, so the query service
+merges scores computed on 18 slightly different scales. Hashing documents by docId gives every shard a similar random
+sample, so the local counts land close to the global ones and the error stays small. The real-time tier breaks that
+sample when it scores with statistics from its own documents. During a big story, storm appears in a large share of
+today's documents, so the tier weighs storm low and ranks its fresh matches below equally good older ones. Two fixes are
+common:
+
+- **Ask first.** Elasticsearch's `dfs_query_then_fetch` collects term counts from every shard, then scores with the
+  totals. Scores compare fairly, and every query pays an extra round trip.
+- **Publish global statistics.** Each full build writes a table of corpus-wide term counts, and every shard and live
+  segment scores with it until the next build. A word that is new today gets an estimate until then.
+
+</details>
 
 ### Caching hot queries
 
 Search traffic is skewed: during a big story, thousands of readers type the same few words. A
 [result cache](../../scaling/caching/) keyed by the normalized query (lowercased, stopwords dropped) answers those
 repeats without any fan-out. Freshness bites again here. A cached result hides any story published after it was cached,
-so hot queries get a short time to live, a few seconds to a minute, and the cache stores only the first page.
+so hot queries get a short time to live, 10 s in this design, and the cache stores only the first page. A takedown
+cannot wait 10 s, so a visibility filter checks cached pages too (next section).
+
+### The freshness budget, end to end
+
+The 1 s refresh is only one stage between a reporter pressing publish and a reader finding the story. Add up every
+stage on the path:
+
+| Stage                                   | Illustrative time |
+| --------------------------------------- | ----------------- |
+| Ingest queue lag, publish to indexer    | 2 s               |
+| Refresh, buffer to searchable segment   | 1 s (assumed)     |
+| Copy the new segment to every replica   | 2 s               |
+| Hot-query result cache, time to live    | 10 s              |
+| **Worst case, new story on a hot query** | **about 15 s**    |
+
+So the honest promise for the real-time tier is "searchable within seconds, and on a hot query within about 15 s".
+Shrinking the cache's time to live buys freshness and costs fan-out: every expiry sends one more query to all 18
+shards.
+
+Takedowns run on a different budget, because a legal or safety removal cannot sit in a cache for 10 s. The `DELETE`
+call does two things at once:
+
+- **It writes a tombstone** through the normal indexing path, so new queries skip the document after the next refresh.
+- **It publishes the docId** to every query server over pub/sub, where it joins an in-memory blocked set within about
+  1 s.
+
+Every response passes a final visibility filter against that blocked set, including cache hits. When a cached page
+contains a blocked document, the server treats the entry as a miss and runs the query again. An entry leaves the blocked
+set once the tombstone has reached every replica and every cached page holding the document has expired.
+
+<details>
+<summary>Go deeper: fields that change every second</summary>
+
+Suppose the same engine serves a shop with 540M product listings. Titles rarely change, but price and stock change 2,000
+times per second across the catalog. That is 172.8M changes a day, about 32% of the catalog, and 33 times the 60 new
+documents per second the real-time tier was sized for. Each change through the tier would be a delete plus an add: a
+tombstone and a fresh copy of the whole listing, and merges would rewrite the same listings again and again.
+
+Split the fast fields out instead. Keep price and stock in a column store keyed by document id and update it in place.
+At 16 bytes per listing that is 8.64 GB, or 480 MB per shard across 18 shards, small enough to hold in memory. Each
+shard matches text in its segments as before, then reads price and stock for the candidates, drops out-of-stock items,
+and applies price filters and sorts from the fresh column.
+
+</details>
+
+## Failure walkthrough: the indexer crashes mid-flush
+
+Each shard's indexer reads new documents from the ingest queue, buffers them in memory, writes a live segment every
+second, and commits to disk every 30 s. A commit records the segments on disk and the queue offset they cover in one
+write, so a commit point always pairs segments with the offset that produced them. Replicas copy each new segment as
+soon as the indexer writes it.
+
+At 10:31, while the storm story is breaking, shard 7's indexer crashes in the middle of writing a segment.
+
+1. **What survives.** The queue still holds every document, because the indexer records an offset only inside a
+   commit. The main index and the last commit point are untouched. The half-written segment never joined a commit, so
+   the restart ignores it, along with every segment written since the last commit.
+2. **Readers during recovery.** Shard 7's replicas keep serving the segments they already copied, so a reader loses
+   nothing that was already searchable. Stories that reach shard 7 after the crash stay unsearchable there until the
+   indexer catches up. The other 17 shards keep their 1 s refresh.
+3. **The replay.** The restarted indexer reopens the last commit and reads the queue from the offset it recorded. At
+   60 documents per second spread over 18 shards, that is at most 30 s of input, about 100 documents. Some of them
+   already sit in segments the replicas copied, and the queue itself delivers
+   [at least once](../../async/delivery-semantics/), so duplicates are certain. Every document carries its docId, and
+   the indexer writes each one as an upsert: a tombstone for any older copy, then the add. The replay leaves one copy
+   of each story.
+4. **Back to normal.** The replicas copy the rebuilt segments and drop the ones the indexer discarded. Replaying 100
+   documents takes well under a second, so the freshness budget stretches by the restart time. No story is lost, and
+   none appears twice.
 
 ## Trade-offs
 
@@ -477,7 +625,7 @@ freshness is a separate dial: an incrementally updated signal store keeps popula
 | --------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | Nightly rebuild only              | One index, full signals on every document, 1 segment per query         | New documents hidden for hours: 38% recall, 9.5 h unsearchable on average in the toy breaking day        |
 | Rebuild every few hours           | Fresher results with the same simple serving path                      | Rewrites the whole corpus each time: 6 builds and 11,355 writes in the toy, still hours behind           |
-| Batch plus delta (real-time tier) | New documents searchable within 1 s, full signals for everything older | 5.5 segments per query in the toy, merge work, text-only ranking for new documents, two paths            |
+| Batch plus delta (real-time tier) | New documents searchable after an assumed 1 s refresh, full signals for everything older | 5.5 segments per query in the toy, merge work, text-only ranking for new documents, two paths |
 | Incremental signal store          | Click counts current within seconds for every document, old or new     | A second store to keep consistent, a lookup per candidate at query time, still no clicks for new stories |
 | Sharding by term                  | A query touches only the shards that hold its terms                    | Hot shards for popular terms, intersections across machines, many shards per indexed document            |
 
@@ -510,8 +658,8 @@ What to look for:
 
 The freshness problem returns in miniature. A query that starts trending at 10:30 stays out of the suggestions until
 the next offline count. The same fix applies: a small, fast-updating list of trending queries, merged with the trie's
-answer at serve time. Short prefixes are few and hot, so a cache in front of the trie, or in the browser, absorbs much of
-the load.
+answer at serve time. Short prefixes are few and hot, so a cache in front of the trie, or in the browser, absorbs much
+of the load.
 
 ## Honest simplifications
 
@@ -530,34 +678,58 @@ This lesson's model is a toy. Here is what it leaves out:
   with high text scores and low quality.
 - **A fixed merge policy.** The duel merges any 4 segments on one level. Real policies weigh segment sizes and the share
   of deleted documents.
-- **15-minute ticks.** The real-time tier flushes once per tick, and the lesson reports its time unsearchable as the 1 s
-  refresh interval.
+- **15-minute ticks.** The real-time tier flushes once per tick, and the lesson reports its time unsearchable as an
+  assumed 1 s refresh interval. The duel models no queue lag, replica copy, or cache expiry; the freshness budget adds
+  those by hand.
 - **Builds snapshot at their start.** A build covers everything that arrived before it started and nothing from its 3 h
   run.
 - **Simplified BM25.** The inverted index widget skips length normalization and uses one popularity signal with a fixed
-  weight.
+  weight. Its term counts come from one small collection on one machine, so it shows none of the per-shard skew
+  described in the sharding section.
 
-## Check yourself
+<KeyTakeaways>
+
+- An inverted index answers a query by reading only its terms' posting lists, so the work grows with those lists and
+  never with the corpus.
+- Freshness runs on separate clocks: index refresh, signal updates, signal freshness, and model training. Fix the slow
+  one, and measure the whole path from publish to result, cache included.
+- Batch plus delta keeps a full build for ranking and a small real-time tier for new documents. Every query pays for the
+  extra segments, so it wins only when queries chase new documents.
+- Shards and tiers score with their own term counts. Share global statistics, or accept and name the skew.
+- A takedown needs its own path: a tombstone for the index and a visibility filter that checks every response,
+  cached or not.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-The same engine now serves a shop with 540M product listings. Titles rarely change, but price and stock change 2,000
-times per second across the catalog. Using this lesson's numbers, why is sending each change through the real-time tier
-a bad idea, and what would you do instead?
+**Closing rubric: grow one dimension tenfold.** Keep this lesson's estimates (540M documents in 18 shards of 30 GB, 60
+new documents per second, 2,000 searches per second per replica, a 10 s hot-query cache), and raise peak searches from
+20,000 to 200,000 per second.
+
+1. Which part hits its limit first, and by how much?
+2. What do you change, and what does the change cost?
+3. One shard's replicas all answer 2 s late for a minute. What does a reader see, and how does the design respond?
 
 <div slot="answer">
 
-- 2,000 changes per second is **172.8M** a day, about **32%** of the catalog, and **33** times the 60 new documents per
-  second the real-time tier was sized for.
-- Each change through the tier is a delete plus an add: a tombstone and a fresh copy of the whole listing, title and
-  all. Merges would rewrite the same listings again and again.
-- Split the fast fields out. Keep price and stock in a column store keyed by document id and update it in place. At
-  **16 bytes** per listing that is **8.64 GB**, or **480 MB** per shard across 18 shards, small enough to hold in memory.
-- At query time, each shard matches text in its segments as before, then reads price and stock for the candidates. It
-  drops out-of-stock items and applies price filters and price sorts from the fresh column.
-- Titles and descriptions keep the batch index plus real-time tier, so new listings still appear within seconds.
+**The replica fleet breaks first.**
+
+- **The new numbers.** Every query visits all 18 shards, so each shard now sees 200,000 searches per second. At 2,000
+  per replica, that is 100 replicas per shard and 1,800 search servers, ten times today's 180. The index stays at
+  540 GB, and the indexer's 60 documents per second do not change.
+- **The change.** Start with the cache, because it cuts fan-out at the source. If half of peak queries hit the
+  10 s cache, shards see 100,000 per second, 50 replicas per shard, and 900 servers. A longer time to live saves more
+  servers and makes hot queries staler, which the freshness budget makes explicit. Typeahead grows to 1.2M requests per
+  second, so it needs its own fleet sized the same way. More shards would not help: each query still visits every
+  shard, so a smaller shard only makes each replica a little faster.
+- **The slow shard.** The query service waits for all 18 shards, so every search now takes 2 s. Set a deadline per
+  shard, for example 200 ms, and send a hedged request to a second replica when the first runs late. If both miss
+  the deadline, return the other 17 shards' results and mark the page partial. That shard holds 1 in 18 documents, so
+  about 1 in 18 of the best results may be missing from that page. The cost: hedged requests add load, and a partial
+  page must not enter the cache, or one slow minute stays visible for another 10 s.
 
 </div>
 

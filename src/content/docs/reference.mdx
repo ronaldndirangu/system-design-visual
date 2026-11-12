@@ -8,6 +8,22 @@ Real hardware varies by a factor of two or more, so measure your own system befo
 
 The [requirements and estimates lesson](../thinking/requirements-and-estimates/) shows how to put these numbers to work.
 
+## Four terms people mix up
+
+| Term            | Question it answers                                    | Unit                 | Example                                      |
+| --------------- | ------------------------------------------------------ | -------------------- | -------------------------------------------- |
+| **Latency**     | How long does one request take?                        | ms per request       | A redirect answers in 40 ms                  |
+| **Throughput**  | How many requests finish each second?                  | requests per second  | One server redirects 2,000 links a second    |
+| **Performance** | Is the system fast for a single user on a quiet day?   | latency at low load  | One search takes 3 s even with nobody else on |
+| **Scalability** | Does it stay fast as load, data, or users grow?        | latency as load grows | Search takes 50 ms alone and 3 s at peak     |
+
+A **performance** problem shows up with one user, so profile the slow request. A **scalability** problem shows up only
+under load, so look for the resource that saturates first: a hot key, a full queue, or one overloaded database.
+
+Latency and throughput meet in **Little's law**: requests in flight = throughput × latency. A service handling 1,000
+requests a second at 50 ms each keeps about 50 requests in flight, which sizes its connection pools and thread counts.
+Raising throughput by batching often raises latency, so name which one the requirement protects.
+
 ## Latency numbers
 
 | Operation                              | Rough time | Compared with a memory read |

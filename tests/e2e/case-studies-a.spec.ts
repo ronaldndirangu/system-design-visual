@@ -152,10 +152,11 @@ test('case-studies/news-feed/ hybrid fan-out delivers the celebrity post on time
   await expect(duel.getByRole('radio', { name: /^Celebrity posts/ })).toBeChecked();
   await finish(duel);
   await expectRow(duel, 'Missed the 2 s target', ['29', '0']);
-  await expectRow(duel, 'Celebrity post in every follower feed after', ['10.0 s', '0.0 s']);
+  await expectRow(duel, 'Celebrity post available to every follower after', ['10.0 s', '0.0 s']);
   await expectRow(duel, 'Feed writes run', ['7,974', '2,974']);
   await expectRow(duel, 'Lookups to serve feed loads', ['1,200', '1,520']);
   await expectRow(duel, 'Feed loads that missed the celebrity post', ['45', '0']);
+  await expectRow(duel, 'Feed loads that showed the celebrity post within 1 s', ['247', '292']);
   await expect(
     duel.getByText('Posts that missed the 2 s target: fan out on write 29, hybrid fan-out 0.'),
   ).toBeVisible();
@@ -164,6 +165,14 @@ test('case-studies/news-feed/ hybrid fan-out delivers the celebrity post on time
       '13.0 s Fan out on write: the last of 5,000 followers gets the celebrity post in their feed, 10.0 s after it went up.',
     ),
   ).toBeVisible();
+});
+
+test('case-studies/news-feed/ hybrid fan-out needs read headroom', async ({ page }) => {
+  const duel = await openDuel(page, 'case-studies/news-feed/', 'Same posts, two ways to fan out');
+  await duel.getByRole('radio', { name: /^Read tier sized for push/ }).check();
+  await finish(duel);
+  await expectRow(duel, 'Waited more than 1 s', ['0', '996']);
+  await expectRow(duel, 'Feed loads that showed the celebrity post within 1 s', ['247', '17']);
 });
 
 test('case-studies/news-feed/ fan out on read overloads the read tier at peak', async ({ page }) => {

@@ -106,6 +106,9 @@
   font-size: var(--sl-text-xs);
   margin: 0;
 }
+.sdv-rec-budget__details {
+  min-width: 0;
+}
 .sdv-rec-budget__details summary {
   cursor: pointer;
   font-size: var(--sl-text-sm);

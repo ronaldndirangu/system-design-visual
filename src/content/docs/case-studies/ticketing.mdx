@@ -1,9 +1,21 @@
 ---
 title: Flash-sale ticketing
 description: Sell 10,000 seats to a million people without selling one seat twice. Watch a read, then write race oversell a venue, then fix it with conditional writes, holds that expire, and a waiting room.
+furtherReading:
+  - title: 'PostgreSQL documentation: Transaction Isolation'
+    url: https://www.postgresql.org/docs/current/transaction-iso.html
+    note: Under Read Committed, an UPDATE that waits on a concurrent writer re-checks its WHERE clause, which is why a conditional claim changes zero rows for the loser.
+  - title: 'PostgreSQL documentation: Explicit Locking'
+    url: https://www.postgresql.org/docs/current/explicit-locking.html
+    note: Row-level locks and SELECT ... FOR UPDATE, the row lock option for claiming a seat.
+  - title: Cloudflare Waiting Room
+    url: https://blog.cloudflare.com/cloudflare-waiting-room/
+    note: Queues visitors at the edge and admits them at a set rate, so the origin sees flat load during a rush.
 ---
 
 import { Steps } from '@astrojs/starlight/components';
+import Recall from '../../../components/lesson/Recall.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -160,14 +172,62 @@ export const quiz = [
   },
 ];
 
+export const recall = [
+  {
+    id: 'case-studies/ticketing/recall-1',
+    prompt: 'Two requests read a click count of 7 at the same moment, and each writes back 8. Which fix makes the count 9?',
+    options: [
+      {
+        text: 'One atomic statement that adds 1 to the stored value',
+        correct: true,
+        why: 'The database reads and writes in one step, so the second update sees the first one’s result. A conditional claim on a seat works the same way.',
+      },
+      {
+        text: 'Read the count again just before writing',
+        why: 'A gap remains between the second read and the write, so two requests can still both see 7 and both write 8.',
+      },
+      {
+        text: 'Run the requests on a faster database',
+        why: 'Faster steps shrink the gap between the read and the write. A rush still lands two requests inside it.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/ticketing/recall-2',
+    prompt:
+      'A token bucket holds up to 20 tokens and refills 10 per second. A client that has been idle sends 50 requests at once. How many pass right away?',
+    options: [
+      {
+        text: '20, and the rest get 429 with a Retry-After header',
+        correct: true,
+        why: 'An idle bucket is full, so the burst spends its 20 tokens. After that the client gets 10 requests per second as the bucket refills.',
+      },
+      {
+        text: '50, because the client was idle',
+        why: 'The bucket caps at 20 tokens, however long the client waited.',
+      },
+      {
+        text: '10, the refill rate',
+        why: 'The refill rate sets the steady pace after the burst. A full bucket allows a burst of 20 first.',
+      },
+    ],
+  },
+];
+
+<Recall questions={recall} />
+
 <Objectives>
 
 - Explain why reading a seat as free and then writing a buyer into it sells the same seat twice under a rush.
 - Use a conditional write, a row lock, or a unique constraint so the database rejects the second claim.
 - Size holds that expire, claim them at checkout, and see why holds that never expire strand seats.
 - Place a waiting room in front of the sale, and say what it fixes and what it leaves to the database.
+- Finish or undo a checkout when an app server crashes between the bank's approval and the sale.
 
 </Objectives>
+
+**Route:** Intermediate, case 3 of 10 on the beginner route through Module 6. Next on the route:
+[Payments](../payments/).
 
 ## The failure: two buyers, one seat
 
@@ -333,6 +393,50 @@ they arrived, and shows each one their place in line. It does three jobs at once
 It cannot guarantee one buyer per seat. Two admitted fans can still read the same free seat, so the conditional write
 stays.
 
+<details>
+<summary>Go deeper: standing tickets and one hot counter</summary>
+
+A festival sells 50,000 standing tickets with no seat numbers to 2 million fans. There is no seat map, just a count of
+tickets left, so contention moves from 10,000 seat rows to one.
+
+- **The counter becomes the one hot row.** Every purchase decrements the same `tickets_left` value, so every claim in
+  the country waits on one row.
+- **Keep the conditional write:** `UPDATE inventory SET left = left - 1 WHERE event = ? AND left > 0`, and treat zero
+  rows changed as sold out. That alone rules out ticket 50,001.
+- **Split the hot row:** store the 50,000 tickets as 50 bucket rows of 1,000 each, pick a bucket at random, and move to
+  another when one empties. Claims now spread across 50 rows, the same idea as [sharding](../../scaling/sharding/) a
+  hot key.
+- **Keep the waiting room and holds:** admit fans at the rate the buckets can serve, and expire holds so abandoned
+  checkouts return tickets to a bucket.
+
+</details>
+
+## Failure walkthrough: the app server crashes mid-checkout
+
+Ana holds seat A10 and presses Pay at 20:00:00. The server claims the hold, so A10 is `paying` with a deadline of
+20:10:00. It asks the bank to authorize her card and passes her order's idempotency key along. The bank approves at
+20:00:02, and the server crashes before the Sold transaction. Ana's money is on hold at the bank, A10 is still
+`paying`, and no ticket exists.
+
+1. **Ana's browser retries.** It sends `POST /orders` again with the same `Idempotency-Key`, and the load balancer picks
+   another server. The first server's lease on the key has run out, so the new server takes over the claim, as the
+   [Idempotency](../../reliability/idempotency/) lesson describes. It finds A10 `paying`, held by Ana, with 9 minutes
+   left.
+2. **It asks the bank again with the same key.** The bank returns the approval it already gave, so Ana's card carries
+   one authorization. The server runs the Sold transaction and captures the money after the commit. Ana gets her
+   ticket a few seconds late.
+3. **If Ana never retries,** the deadline passes at 20:10:00 and A10 goes back on sale. A cleanup job finds keys still
+   in progress whose seat claim has lapsed and voids each authorization at the bank by its key, which releases the
+   hold on Ana's card.
+4. **If the crash comes after the Sold commit,** the ticket exists and nobody has captured the money. The Sold
+   transaction also wrote an outbox row, "capture order 5531", so a relay finds it on restart and captures. A relay can
+   send the capture twice, and the bank's key turns the second into a no-op, so capture runs
+   [at least once](../../async/delivery-semantics/) and charges once.
+
+The seat row also fences a server that only paused. If the first server wakes up after step 2 and runs its own Sold
+transaction, A10 is no longer `paying`, so the write changes zero rows, and the unique constraint on (event, seat)
+backs it up.
+
 ## Ticketing versus payments
 
 [Payments](../payments/) is the other half of this pair. Both protect something scarce, and they fail in opposite ways.
@@ -364,25 +468,51 @@ payment is captured, nothing expires: the only way back is a second transaction 
 
 </TradeoffTable>
 
+<KeyTakeaways>
+
+- The oversell needs concurrency: two buyers read the same free seat before either one writes. One buyer at a time
+  never triggers it, so it passes every test and appears on launch day.
+- Put the check inside the write. A conditional write, a row lock or a unique constraint makes the database refuse the
+  second claim.
+- Correctness turns collisions into retries and load. A waiting room admits fans at the rate the database can serve,
+  in arrival order, and the conditional write still guards every seat.
+- Every hold and every checkout claim has a deadline. Pay claims the seat before money moves, and capture happens only
+  after the Sold commit, so a crash ends in a retry or a void, never a second sale.
+
+</KeyTakeaways>
+
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-A festival sells 50,000 standing tickets with no seat numbers to 2 million fans. There is no seat map, just a count of
-tickets left. Where does contention move, and how do you avoid selling ticket 50,001?
+**Closing rubric: grow one dimension tenfold.** Keep the estimates from the design checklist (10,000 seats, about 6
+requests and 1 hold attempt per fan in the first minute, and a seat table of about 1,000 KB). Suppose the seat
+database sustains 20,000 conditional writes per second, and raise the crowd from 1 million to 10 million.
+
+1. Which part hits its limit first, and by how much?
+2. What do you change, and what does the change cost?
+3. The seat database fails over to its standby for 20 s at peak. What happens to claims in flight, and can a sale be
+   lost?
 
 <div slot="answer">
 
-**The counter becomes the one hot row.** Every purchase decrements the same `tickets_left` value, so every claim in the
-country waits on one row.
+**The seat database breaks first.**
 
-- **Keep the conditional write:** `UPDATE inventory SET left = left - 1 WHERE event = ? AND left > 0`, and treat zero
-  rows changed as sold out. That alone rules out ticket 50,001.
-- **Split the hot row:** store the 50,000 tickets as 50 bucket rows of 1,000 each, pick a bucket at random, and move to
-  another when one empties. Claims now spread across 50 rows, the same idea as [sharding](../../scaling/sharding/) a
-  hot key.
-- **Keep the waiting room and holds:** admit fans at the rate the buckets can serve, and expire holds so abandoned
-  checkouts return tickets to a bucket.
+- **The new numbers.** Requests rise to about 1,000,000 per second and hold attempts to about 166,667 per second,
+  8.3 times the 20,000 writes the database sustains (today's 16,667 fit). Every seat now has 1,000 would-be buyers.
+  The seat table stays at about 1,000 KB: the crowd grew and the data did not. App servers scale out by adding
+  machines, and the 10,000 hot rows cannot.
+- **The change.** Run the waiting room at a fixed admission rate. At about 5,000 fans per second, each making about 2
+  claims, the database sees about 10,000 writes per second, half its budget. The room stops admitting when sold plus
+  held seats reach 10,000, tells everyone behind that point "sold out", and admits a few more fans each time a hold
+  expires. The cost: 10 million fans checking their place every 30 s is about 333,333 checks per second, so the room
+  answers at the edge from signed position tokens that never touch the seat database.
+- **The crash.** For 20 s no claim commits. A claim whose reply was lost in the failover gets retried, and the retry
+  changes zero rows if the first write already took the seat, so the server rereads the row: if the holder is this
+  buyer, the claim succeeded. The waiting room pauses admission until the database is back. Holds lose 20 s of their
+  8 to 10 minutes, which is harmless. With synchronous replication to the standby, every committed sale survives.
+  With asynchronous replication, the last few commits can vanish and a sold seat can sell again, so seat writes pay
+  the extra milliseconds per commit (the [Read replicas](../../scaling/read-replicas/) lesson covers the trade).
 
 </div>
 

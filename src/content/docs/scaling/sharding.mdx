@@ -1,16 +1,52 @@
 ---
-title: Sharding and consistent hashing
-description: Split the links across many databases, see why hash mod N reshuffles almost everything, and fix it with a consistent hashing ring.
+title: Sharding and partitioning
+description: Split the links across many databases. Pick a shard key, choose range or hash placement, route queries through secondary indexes, and keep one hot key from overloading a shard.
+furtherReading:
+  - title: Designing Data-Intensive Applications, chapter 6 (Partitioning)
+    url: https://dataintensive.net/
+    note: The standard reference on key range and hash partitioning, secondary indexes, and rebalancing.
+  - title: Sharding (Vitess documentation)
+    url: https://vitess.io/docs/reference/features/sharding/
+    note: How a production MySQL sharding layer maps keys to shards and splits shards while serving traffic.
+  - title: Using global secondary indexes (Amazon DynamoDB)
+    url: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GSI.html
+    note: A global index in practice, including why it updates a moment after the table.
+  - title: Using write sharding to distribute workloads evenly (Amazon DynamoDB)
+    url: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-partition-key-sharding.html
+    note: Salted partition keys for hot writes, with the cost on the read side spelled out.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
-import Analogy from '../../../components/lesson/Analogy.astro';
+import Callout from '../../../components/lesson/Callout.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import ArcDiagram from '../../../components/viz/ArcDiagram';
 import ShardingWidget from '../../../components/widgets/ShardingWidget';
+
+export const recall = [
+  {
+    id: 'scaling/sharding/recall-1',
+    prompt: 'A primary runs at full capacity on writes. You add three read replicas. What happens to write capacity?',
+    options: [
+      { text: 'It roughly quadruples', why: 'Replicas only serve reads. Every write still goes to the one primary.' },
+      { text: 'It stays about the same', correct: true, why: 'Only the primary accepts writes, and every replica replays all of them. Replicas add read capacity and leave write capacity where it was.' },
+      { text: 'It drops to a quarter', why: 'Shipping the change log costs the primary a little, far less than a quarter of its capacity.' },
+    ],
+  },
+  {
+    id: 'scaling/sharding/recall-2',
+    prompt: 'One link draws 60% of all clicks, and a cache tier routes each link to one node by hash. You double the nodes. What happens to the node that owns the link?',
+    options: [
+      { text: 'Its load halves', why: 'Hashing moves the cold links around. The hot link still hashes to a single node.' },
+      { text: 'It stays overloaded', correct: true, why: 'Every click on that link hashes to the same node, so more nodes cannot split it. Copies of the hot key can.' },
+      { text: 'The cache rejects the link', why: 'A cache has no rule against popular keys. The owning node just runs hot.' },
+    ],
+  },
+];
 
 export const quiz = [
   {
@@ -18,51 +54,113 @@ export const quiz = [
     ordered: true,
     prompt: 'Links live on 9 shards placed with hash mod 9. You add a tenth shard. About what share of links move?',
     options: [
-      { text: 'About 10%', why: 'That is the minimum, and only consistent hashing gets close to it. With mod N, a link stays put only when both remainders happen to match.' },
-      { text: 'About 50%', why: 'Mod N does worse than half. Try it in the first simulation.' },
+      { text: 'About 10%', why: 'That is the new shard\'s fair share, and consistent hashing moves about that much. With mod N, a link stays put only when both remainders happen to match.' },
+      { text: 'About 50%', why: 'Mod N does worse than half. Try it in the simulation below.' },
       { text: 'About 90%', correct: true, why: 'With mod N, a link keeps its shard only about 1 time in N + 1. Going from 9 to 10 shards moves roughly 9 links in 10.' },
       { text: 'All of them', why: 'A few links land on the same shard by chance under both counts, so slightly fewer than all move.' },
     ],
   },
   {
-    id: 'scaling/sharding/q2',
-    prompt: 'On a consistent hashing ring, which links move when a new shard joins?',
+    id: 'scaling/sharding/q4',
+    prompt: 'An app shards its events by the date they were created. Which check on the shard key did that choice fail?',
     options: [
-      { text: 'Every link, since the ring gets redrawn', why: 'The ring stays put. Only the new shard\'s points get added to it.' },
-      { text: 'Only links in the arcs the new shard takes over', correct: true, why: 'Each link belongs to the next shard point clockwise. A new point only claims the arc just before it, and only from one neighbor.' },
-      { text: 'A random half of the links', why: 'Placement is deterministic. The same link always hashes to the same spot on the ring.' },
-      { text: 'None, since old links stay where they were', why: 'Some links must move, or the new shard would sit empty. The ring keeps that number near the minimum.' },
+      { text: 'Cardinality', why: 'Dates keep coming, so the key has plenty of distinct values.' },
+      { text: 'Skew', correct: true, why: 'Every new event carries today\'s date, so every write lands on one shard while the others sit idle.' },
+      { text: 'Query fan-out', why: 'A query for one day names the key and touches one shard. Fan-out is the part this key gets right.' },
+      { text: 'None, since dates spread evenly over a year', why: 'Over a year the data spreads out. At any moment, all the writes go to one shard.' },
     ],
   },
   {
-    id: 'scaling/sharding/q3',
-    prompt: 'Why give each shard many virtual nodes on the ring?',
+    id: 'scaling/sharding/q5',
+    prompt: 'Links sit on 16 shards keyed by short code, with a local index on user id in each shard. How many shards does a page listing one user\'s links query?',
     options: [
-      { text: 'To store more copies of each link', why: 'Virtual nodes are extra positions for the same shard. They change placement and store no extra copies.' },
-      { text: 'To even out how much each shard owns', correct: true, why: 'With one point per shard, arcs vary wildly in length. Many small arcs per shard average out to a fair share.' },
-      { text: 'To make lookups faster', why: 'Lookups get slightly slower with more points to search. The goal is balance.' },
-      { text: 'To let shards run on fewer machines', why: 'Each shard is still one machine (or replica set). Virtual nodes only decide which keys it owns.' },
+      { text: 'One, the shard that holds the user', why: 'Nothing places a user on one shard. Their links hash by code, so they scatter.' },
+      { text: 'All 16, then the app merges the answers', correct: true, why: 'Each local index only knows its own shard\'s links, so the query asks every shard. A global index on user id would answer from one place.' },
+      { text: 'None, since the index answers on its own', why: 'A local index lives inside each shard, so the app still has to reach every shard to read it.' },
+      { text: 'About half of them', why: 'The router cannot tell which shards hold the user\'s links, so it asks all of them.' },
+    ],
+  },
+  {
+    id: 'scaling/sharding/q6',
+    prompt: 'A viral link takes 50,000 clicks a second, and each click adds one to its counter row. The counter\'s shard cannot keep up. What helps most?',
+    options: [
+      { text: 'Put a cache in front of the shard', why: 'A cache answers reads. Every increment still has to reach the one row that owns the count.' },
+      { text: 'Add read replicas to the shard', why: 'Replicas replay every write, so they add work for hot writes and remove none.' },
+      { text: 'Split the counter into salted parts and add them up on read', correct: true, why: 'Parts like abc123#0 to abc123#7 hash to different shards, so the increments spread. Each read gathers all the parts.' },
+      { text: 'Move to consistent hashing', why: 'Any placement still gives one key one home. The counter row stays on a single shard.' },
+    ],
+  },
+  {
+    id: 'scaling/sharding/q7',
+    prompt: 'What does federation split the data by?',
+    options: [
+      { text: 'A hash of each record\'s key', why: 'That is hash sharding, which splits one table across many machines.' },
+      { text: 'Feature, so users, links and analytics each get their own database', correct: true, why: 'Federation gives each part of the product its own database. Each one still has a single primary.' },
+      { text: 'Ranges of the key, such as A to F', why: 'That is range sharding, which also splits one table.' },
+      { text: 'The region each user lives in', why: 'Splitting by region is geo partitioning, a form of sharding by a location key.' },
     ],
   },
 ];
 
+<Recall questions={recall} />
+
 <Objectives>
 
-- Explain sharding and how to pick a shard key.
-- Show why hash mod N moves almost every key when a shard joins.
-- Describe a consistent hashing ring, and how virtual nodes even out the load.
-- Name the costs of sharding: queries that span shards, hot keys, and rebalancing.
+- Split a database by feature before splitting it by key.
+- Pick a shard key by checking cardinality, skew, and query fan-out.
+- Compare range and hash placement, and judge a placement on keys moved and load balance.
+- Choose between local and global secondary indexes.
+- Treat hot reads and hot writes as two different problems.
 
 </Objectives>
 
 ## The failure: one primary runs out of room
 
 At 100 million users, the shortener stores hundreds of terabytes and accepts thousands of new links per second.
-Replicas copied the reads away, but one primary still has to take every write and hold every link. No single machine is
-that big.
+[Read replicas](../read-replicas/) copied the reads away, but one primary still has to take every write and hold every
+link. No single machine is that big.
 
-The fix is to **split the data**: each database (a **shard**) holds a slice of the links. The question is how to decide
-which shard owns which link.
+The fix is to **split the data**: each database (a **shard**) holds a slice of the links, also called a
+**partition**. Two questions decide the design: which field picks the slice, and how a value maps to a shard.
+
+## Split by feature first: federation
+
+Before splitting one table, check whether the database holds unrelated jobs. The shortener keeps links, accounts, and
+analytics (one row per click). Clicks write far more often than anything else, and no redirect reads them.
+
+**Federation** gives each feature its own database. The links database stops absorbing click writes, and an accounts
+outage leaves redirects running. It has limits:
+
+- **A handful of splits.** A product has a few features, so federation multiplies capacity by a few.
+- **Joins and transactions move into the app.** "Links with their owner's plan" reads two databases, and creating an
+  account with its first link becomes two writes that can half fail.
+- **Each feature keeps one primary.** When the links database alone outgrows a machine, it needs sharding.
+
+## Choosing a shard key
+
+The **shard key** is the field that decides where each record lives. Start from the
+[access patterns](../../thinking/access-patterns/): list the queries and their rates, then test each candidate key
+against three checks.
+
+- **Cardinality.** The key needs many more distinct values than you will ever have shards. Country caps the count near
+  200 shards, while a short code has billions.
+- **Skew.** Values should carry similar amounts of data and traffic. A created date sends every new write to today's
+  shard. A tenant id sends a giant customer's whole load to one shard.
+- **Query fan-out.** The busiest queries should name the key, so each one touches a single shard. A query that leaves
+  the key out has to ask every shard.
+
+For the shortener, every redirect names exactly one short code, so every redirect touches exactly one shard. "List my
+links" names a user instead, and secondary indexes, below, handle it.
+
+Changing the key later means moving every record while the old layout keeps serving, so pick it with care.
+
+## Range or hash placement
+
+- **Range placement** gives each shard a contiguous slice of keys: codes starting `a` to `f` on shard 1, `g` to `m` on
+  shard 2. Range scans stay on one or two shards, and a busy range splits in two. Sequential keys break it: timestamps
+  or increasing ids all land in the last range, so one shard takes every new write.
+- **Hash placement** hashes the key first, then places the hash. Neighboring keys scatter, so sequential keys spread
+  evenly. Range scans now ask every shard.
 
 <Predict
   client:visible
@@ -79,74 +177,127 @@ The ideal is 20%: just enough to fill the new shard.
 
 </Predict>
 
-## The idea: give each link a home
-
-Choose a **shard key**, the field that decides where each record lives. For the shortener, the short code works well:
-every redirect looks up exactly one code, so every redirect touches exactly one shard.
-
 <ArcDiagram stage="shards" caption="Each shard owns a slice of the short codes." />
 
-The simplest placement hashes the key and takes the remainder: `shard = hash(code) mod N`. It spreads links evenly,
-until N changes.
+The simplest hash placement takes the remainder: `shard = hash(code) mod N`. It spreads links evenly, until N changes.
 
 <ShardingWidget client:visible placement="modulo" showPlacement={false} />
 
-## Consistent hashing: a ring instead of a remainder
-
-Picture the hash values arranged around a circle. Each shard sits at a point on the circle. A link hashes to a point too,
-and it belongs to the **first shard clockwise** from it.
-
-When a new shard joins, it lands at one point and takes over only the arc just before it, from a single neighbor.
-Every other link stays where it was. When a shard leaves, its arc passes to the next shard clockwise.
-
-One point per shard leaves arcs of very uneven length, so one shard can own twice its fair share. The fix: give each
-shard many **virtual nodes**, points scattered around the ring. Many small arcs average out.
-
-<Analogy>
-
-Picture a round table where each guest takes the dishes in front of them, up to the next guest on their left. When a
-new guest sits down, only the neighbor on one side passes over some dishes. Everyone else keeps eating. Now give each
-guest several seats spread around the table, and everyone ends up with a fair share.
-
-</Analogy>
-
-## Try it: the ring
-
-Switch between `hash mod N` and the ring, add and remove shards, and slide the virtual nodes from 1 to 64. Watch both
-the share of links that move and how even the load bars get.
-
-<ShardingWidget client:visible placement="ring" virtualNodes={1} />
-
 What to look for:
 
-- **Mod N moves most links** on every change. The ring moves close to the minimum.
-- **One point per shard is lumpy.** The busiest shard can own far more than its share. Raise the virtual nodes and the
-  load bars level out.
-- **Removing a shard** hands its links to its clockwise neighbors. With many virtual nodes, those links spread over all
-  the remaining shards instead of landing on one.
+- **Two numbers judge a change.** The first is the share of links that move, compared with the **balanced reference
+  share**: the slice a new shard needs to hold an even share, 1 in 5 when 4 shards become 5. The second is how even
+  the load stays afterward.
+- **Mod N passes on balance and fails on movement.** Going from 4 to 5 shards moves 188 of the 240 links (78%) against
+  a reference share of 20%, while the busiest shard stays within 1.15× an even share.
+- **More shards make it worse.** Going from 7 to 8 moves 220 of 240 links (92%), since a link keeps its shard only
+  when both remainders match.
 
-## What sharding costs
+<details>
+<summary>Go deeper: moving data without downtime</summary>
 
-- **Queries across shards.** "Show me all links created by Ada" now asks every shard and merges the answers, unless you
-  also keep an index keyed by user.
-- **Hot keys.** One viral link still lives on one shard. Sharding spreads many keys; the cache in front handles a single
-  hot one.
-- **Rebalancing.** Moving data between live shards takes careful tooling, even when the ring keeps the amount small.
-- **No easy joins or transactions** across shards. Keep data that changes together on the same shard.
+Any change of shard count or shard key means copying live data. Teams follow the same five steps:
+
+1. **Backfill.** Copy existing rows to their new shards in the background, throttled so live traffic stays fast.
+2. **Catch up.** Stream the change log (or write to both layouts) so rows changed during the copy arrive too.
+3. **Verify.** Compare row counts and checksums between old and new homes.
+4. **Cut over.** Flip the router to the new layout, one slice at a time, with a way back.
+5. **Clean up.** Delete the old copies once nothing reads them.
+
+Tools such as Vitess automate these steps. The amount of data to move still sets the time, which is why the placement
+rule matters.
+
+</details>
+
+## Secondary indexes: local or global
+
+Sharding by code makes "list Ada's links" hard, since her links hash to every shard. An
+[index](../../foundations/indexes/) on user id helps, and there are two places to keep it.
+
+- **Local index.** Each shard indexes its own links by user id. A new link and its index entry live on the same shard,
+  so a write stays on one machine. A query by user asks every shard and merges the answers (**scatter and gather**).
+  With 16 shards, one page view becomes 16 queries, and the slowest shard sets the page's latency.
+- **Global index.** A separate index, sharded by user id, maps each user to their codes. The query reads one index
+  shard, then fetches the links it lists. A write now touches two shards, so most systems update the global index a
+  moment later, and a brand new link can be missing from the list for that moment.
+
+Use a local index for rare queries and a global index for frequent ones.
+
+## Hot keys: hot reads and hot writes
+
+Sharding spreads many keys, and it gives each key exactly one home. One viral link keeps its shard busy no matter how
+many shards you add. The fix depends on the direction of the traffic.
+
+**Hot reads** have many cures, because any copy can answer a read. The [cache](../caching/) answers most clicks from
+memory, and replicas of that one shard take what the cache misses.
+
+**Hot writes** are harder, because every write has to reach the key's one owner.
+
+<Predict
+  client:visible
+  id="scaling/sharding/predict-2"
+  ordered
+  question="Each click on abc123 also adds one to its counter row. A cache in front of the shard serves 99% of the redirect reads. What share of the counter writes still reach the shard?"
+  options={['About 1%', 'About half', 'All of them']}
+  answer={2}
+>
+
+**All of them.** A cache absorbs reads by answering from a copy. An increment changes the one row that owns the count,
+so every click still lands on that shard. Replicas replay every write, so they cannot help either.
+
+</Predict>
+
+Two fixes from [access patterns](../../thinking/access-patterns/) carry over to shards:
+
+- **Salt the key.** Store the counter as eight parts, `abc123#0` to `abc123#7`. Each click adds to a random part, and
+  the parts hash to different shards, so the writes spread. Reading the total means gathering all eight parts.
+- **Batch the writes.** Each app server counts clicks in memory and adds its total to the shard once a second. The
+  count trails by a second, and a crash loses the unsent part.
+
+Salt only the keys that need it. Salting every key turns every read into a gather across shards.
 
 ## Trade-offs
 
-<TradeoffTable title="Placement choices">
+<TradeoffTable title="Partitioning choices">
 
-| Choice                      | What it buys                                        | What it costs                                                |
-| --------------------------- | --------------------------------------------------- | ------------------------------------------------------------ |
-| hash mod N                  | Simple, even spread, one line of code               | Changing N moves almost every key                            |
-| Consistent hashing ring     | Adding or removing a shard moves about 1/N of keys  | More code, and uneven arcs without virtual nodes             |
-| Many virtual nodes          | Even load, and a lost shard's work spreads widely   | A bigger ring to store and search                            |
-| Range sharding (A to F...)  | Fast range scans, easy to split a busy range        | Sequential keys pile onto one shard                          |
-| Shard by user instead       | One user's links live together                     | Redirects must find the owner first, and big users run hot   |
+| Choice                        | What it buys                                        | What it costs                                                |
+| ----------------------------- | --------------------------------------------------- | ------------------------------------------------------------ |
+| Federation (split by feature) | Each feature scales and fails on its own            | Joins and transactions across features move into the app     |
+| hash mod N                    | Simple, even spread, one line of code               | Changing N moves almost every key                            |
+| Range sharding (A to F...)    | Fast range scans, easy to split a busy range        | Sequential keys pile onto one shard                          |
+| Shard by user instead         | One user's links live together                      | Redirects must find the owner first, and big users run hot   |
+| Local secondary index         | Writes stay on one shard                            | Queries on the indexed field ask every shard                 |
+| Global secondary index        | Queries on the indexed field read one index shard   | Writes touch two shards, and the index trails the data       |
+| Salted hot key                | One key's writes spread over many shards            | Every read gathers and adds up all the parts                 |
 
 </TradeoffTable>
+
+**When not to shard.** Shard last. One large primary handles thousands of writes a second and several terabytes, and a
+cache, replicas, and federation are each cheaper and easier to undo. Shard when one feature's writes or data outgrow the
+biggest machine you can buy.
+
+<Callout variant="warning" title="Common mistakes">
+
+- **A key with few values or heavy skew,** such as country or created date.
+- **Sharding before listing the queries,** then finding that the busiest one leaves out the key and asks every shard.
+- **Expecting a cache or replicas to fix a hot write.** Both copy data, and every write still reaches one owner.
+- **Splitting data that changes together.** Keep records that one transaction updates on the same shard.
+
+</Callout>
+
+<KeyTakeaways>
+
+- Shard when one primary cannot hold the writes or the data, and federate by feature first.
+- A good shard key has many values, little skew, and appears in the busiest queries.
+- Range placement keeps scans fast and suffers on sequential keys. Hash placement spreads keys and scatters scans.
+- Judge a placement on two numbers: keys moved against the balanced reference share, and how even the load stays.
+- Local indexes keep writes on one shard and fan out reads. Global indexes read from one place and lag behind writes.
+- Hot reads need copies. Hot writes need salted keys or batched writes.
+
+</KeyTakeaways>
+
+Mod N moved 78% of the links when one shard joined. [Consistent hashing](../consistent-hashing/), the next lesson, moves
+close to the 20% reference share and keeps the load even.
 
 <Quiz client:visible questions={quiz} />
 

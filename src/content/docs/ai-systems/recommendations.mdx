@@ -1,11 +1,23 @@
 ---
 title: Recommendation systems
 description: Narrow millions of items to a handful with candidate generation, then ranking. Cheap sources find a few hundred candidates, and an accurate ranker orders them.
+furtherReading:
+  - title: "Deep Neural Networks for YouTube Recommendations"
+    url: https://research.google/pubs/deep-neural-networks-for-youtube-recommendations/
+    note: Covington, Adams and Sargin (RecSys 2016) describe the two stage funnel, a candidate generator that narrows millions of videos to hundreds and a ranker that orders them.
+  - title: "Sampling-Bias-Corrected Neural Modeling for Large Corpus Item Recommendations"
+    url: https://research.google/pubs/sampling-bias-corrected-neural-modeling-for-large-corpus-item-recommendations/
+    note: Yi et al. (RecSys 2019) train a two-tower retrieval model with in-batch negatives, correct its bias toward popular items, and feed content features into the item tower.
+  - title: "A Contextual-Bandit Approach to Personalized News Article Recommendation"
+    url: https://arxiv.org/abs/1003.0146
+    note: Li, Chu, Langford and Schapire (WWW 2010) treat exploration as a contextual bandit (LinUCB) on Yahoo front page news and show how to evaluate it offline on logged random traffic.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
@@ -37,43 +49,92 @@ export const edges = [
 export const steps = [
   {
     title: 'A request arrives',
-    text: 'A customer\u2019s 50 ft green garden hose from Verdant is out of stock. The assistant has an illustrative 50 ms to pick five replacements from a catalog of 3,000,000 items.',
+    text: 'A customer\u2019s 50 ft green Verdant hose is out of stock. The assistant has an illustrative 50 ms to pick five replacements from 3,000,000 items.',
     nodes: ['catalog', 'shown'],
   },
   {
     title: 'Build the sources ahead of time',
-    text: 'Background jobs (the dashed lines) turn the catalog into fast lookups: an embedding for every item, bought together lists from past orders, and the best sellers in each category. None of this work happens during the request.',
+    text: 'Background jobs (dashed lines) build an embedding per item, bought together lists, and category best sellers.',
     nodes: ['catalog', 'embed', 'together', 'category'],
     flows: ['catalog>embed', 'catalog>together', 'catalog>category'],
   },
   {
     title: 'Ask three cheap sources',
-    text: 'Each source returns its share of a 500 candidate budget: 300 nearest neighbors, 125 bought together, and 75 popular in the category. They run in parallel, so the slowest one, embeddings at 8 ms, sets the time.',
+    text: '300 nearest neighbors, 125 bought together, and 75 popular make 500 candidates. The sources run in parallel, so the slowest (8 ms) sets the time.',
     nodes: ['embed', 'together', 'category', 'merge'],
     flows: ['embed>merge', 'together>merge', 'category>merge'],
   },
   {
     title: 'Merge, dedupe, and check eligibility',
-    text: 'The same hose nozzle can arrive from all three sources. Merging drops 11 duplicates and leaves 489 unique candidates. An eligibility filter then removes the hose and reel cart (does not ship to this address) and a recalled hose timer, so the ranker never spends a slot on an item this customer cannot buy. That leaves 487. Candidate generation took 9 ms, including 1 ms to merge and filter.',
+    text: 'Merging drops 11 duplicates. Eligibility removes a cart that does not ship here and a recalled timer, leaving 487 after 9 ms.',
     nodes: ['merge'],
   },
   {
     title: 'Rank with rich features',
-    text: 'The accurate ranker scores all 487 candidates using price, reviews, length, brand, and how closely each item matches the hose. At an illustrative 10 microseconds each, that takes 4.87 ms. It keeps the top 15.',
+    text: 'The ranker scores all 487 at an illustrative 10 microseconds each (4.87 ms) and keeps 15.',
     nodes: ['merge', 'ranker'],
     flows: ['merge>ranker'],
   },
   {
     title: 'Check live stock',
-    text: 'Stock changes by the minute, so a live check runs on the short list. It drops one of the 15: the green hose from another seller (out of stock). Fourteen remain, after 0.5 ms.',
+    text: 'A live check drops one out of stock hose. Fourteen remain after 0.5 ms.',
     nodes: ['ranker', 'filters'],
     flows: ['ranker>filters'],
   },
   {
     title: 'Re-rank for variety and pick five',
-    text: 'A diversity rule allows at most two items per brand, so the 75 ft green hose is skipped as a third Verdant hose. Five replacements reach the chat after 14.87 ms in total.',
+    text: 'At most two per brand, so a third Verdant hose is skipped. Five replacements reach the chat after 14.87 ms.',
     nodes: ['filters', 'shown'],
     flows: ['filters>shown'],
+  },
+];
+
+export const recall = [
+  {
+    id: 'ai-systems/recommendations/recall-1',
+    prompt: 'In retrieval, why does the tenant scope go inside the search instead of filtering the top results?',
+    options: [
+      {
+        text: 'Filtering the top results can leave empty slots and a needless abstain',
+        correct: true,
+        why: 'Scoping first fills every slot with chunks this customer may read.',
+      },
+      {
+        text: 'Filtering afterwards leaks other tenants\u2019 chunks',
+        why: 'The late filter removes them before the model reads them.',
+      },
+      {
+        text: 'The model refuses to read other tenants\u2019 chunks',
+        why: 'The model reads whatever it receives.',
+      },
+      {
+        text: 'Hybrid search only works on one tenant',
+        why: 'Hybrid search works on any set of chunks.',
+      },
+    ],
+  },
+  {
+    id: 'ai-systems/recommendations/recall-2',
+    prompt: 'Several candidate models run on the eval set. Which one ships?',
+    options: [
+      {
+        text: 'The cheapest one that meets every budget',
+        correct: true,
+        why: 'Quality, must decline, p95 latency, and cost are all gates.',
+      },
+      {
+        text: 'The highest quality score',
+        why: 'Extra quality is worthless if latency or cost fails.',
+      },
+      {
+        text: 'The fastest one',
+        why: 'A fast model below the quality floor fails.',
+      },
+      {
+        text: 'The newest one',
+        why: 'A release date says nothing about your task.',
+      },
+    ],
   },
 ];
 
@@ -84,20 +145,20 @@ export const quiz = [
     options: [
       {
         text: 'The ranker gives worse answers on large inputs',
-        why: 'Score everything shows the best five on the fixture. The problem is time: 3,000,000 items at an illustrative 10 microseconds each take 30 seconds.',
+        why: 'It shows the best five, 30 seconds late.',
       },
       {
         text: 'Ranker time grows with every item scored, so the whole catalog takes about 30 seconds against a 50 ms budget',
         correct: true,
-        why: 'Ranker time is items times cost per item. Cheap sources shrink the list to a few hundred first, so the ranker needs under 5 ms.',
+        why: 'Ranker time is items times cost per item.',
       },
       {
         text: 'The catalog is too big to read during a request',
-        why: 'Reading is the cheap part. Even with every item in memory, scoring each one with rich features is what takes 30 seconds.',
+        why: 'Reading is cheap. Rich scoring is slow.',
       },
       {
         text: 'It would recommend the store\u2019s best sellers',
-        why: 'That is the popularity only failure. Scoring everything returns relevant hoses, just far too late.',
+        why: 'That is popularity only. Scoring everything finds hoses.',
       },
     ],
   },
@@ -107,20 +168,20 @@ export const quiz = [
     options: [
       {
         text: 'The ranker scores the blue hose too low',
-        why: 'The blue hose has the highest score on the fixture, 0.96. The ranker never sees it.',
+        why: 'It has the top score, 0.96.',
       },
       {
         text: 'The ranker only orders what candidate generation hands it, and the blue hose never made the candidate list',
         correct: true,
-        why: 'It ranks 14th among embedding neighbors and 9th in its category, while the small budget keeps only the top 12 and the top 3. Candidate recall caps final quality.',
+        why: 'It ranks 14th among neighbors, past the 12 kept.',
       },
       {
         text: 'A filter removed it for being out of stock',
-        why: 'The blue hose is in stock. The filter removed the green hose from another seller.',
+        why: 'The blue hose is in stock.',
       },
       {
         text: 'The diversity rule skipped it',
-        why: 'The diversity rule can only skip items that reach the re-rank. The blue hose never got past candidate generation.',
+        why: 'That rule only sees ranked items.',
       },
     ],
   },
@@ -130,43 +191,43 @@ export const quiz = [
     options: [
       {
         text: 'More sources make the reply faster',
-        why: 'The sources run in parallel, so the slowest one sets the time. Extra sources add work and never speed up the reply.',
+        why: 'Parallel sources add work and never speed the reply.',
       },
       {
         text: 'Each source sees a different signal, so items one source misses can still arrive through another',
         correct: true,
-        why: 'Embeddings find similar descriptions, bought together finds what customers pair, and category lists find what sells. In the toy model the hose and reel cart arrives only through bought together. The eligibility filter drops it here because it does not ship to this customer. For a customer it ships to, embedding neighbors alone would never find it.',
+        why: 'The hose and reel cart arrives only through bought together.',
       },
       {
         text: 'The ranker needs exactly three inputs',
-        why: 'The ranker scores one merged list. It has no idea how many sources fed it.',
+        why: 'The ranker scores one merged list.',
       },
       {
         text: 'Duplicates across sources make the ranker more accurate',
-        why: 'Duplicates are waste. The merge drops them (11 of 500 in the funnel run) before the ranker spends time on them.',
+        why: 'The merge drops duplicates before ranking.',
       },
     ],
   },
   {
     id: 'ai-systems/recommendations/q4',
-    prompt: 'The 75 ft green garden hose scores 0.88, higher than the 50 ft lightweight hose at 0.86. The lightweight hose is shown and the 75 ft hose is not. Why?',
+    prompt: 'The 75 ft green hose scores 0.88 and the 50 ft lightweight hose 0.86, yet only the lightweight hose is shown. Why?',
     options: [
       {
         text: 'The ranker made a mistake',
-        why: 'The ranker ordered them correctly by score. A rule after the ranker changed the pick.',
+        why: 'A rule after the ranker changed the pick.',
       },
       {
         text: 'The re-rank allows at most two items per brand, and the 75 ft hose would be the third Verdant hose',
         correct: true,
-        why: 'Five near identical hoses from one brand waste the slots. A diversity rule trades a little score for a wider choice.',
+        why: 'Diversity trades a little score for choice.',
       },
       {
         text: 'The 75 ft hose is out of stock',
-        why: 'The out of stock item is the 50 ft green garden hose from another seller. The 75 ft hose is in stock.',
+        why: 'The out of stock item is another seller\u2019s hose.',
       },
       {
         text: 'The 75 ft hose never reached the ranker',
-        why: 'It ranks 5th among embedding neighbors, so it reaches the ranker even with only 20 candidates.',
+        why: 'It ranks 5th among neighbors, so it gets in.',
       },
     ],
   },
@@ -176,46 +237,67 @@ export const quiz = [
     options: [
       {
         text: '10, because speed matters most',
-        why: 'At 10 candidates recall is 33% and the best replacement never reaches the ranker. The reply is fast and poor.',
+        why: 'Recall is 33%, and the best item is missed.',
       },
       {
         text: 'A few hundred, where recall has mostly flattened and the reply keeps room under the budget',
         correct: true,
-        why: 'At 500 the toy model reaches 89% recall in 14.87 ms. Going to 2,000 buys the last 11 points for 24 more milliseconds.',
+        why: '500 gives 89% in 14.87 ms.',
       },
       {
         text: '20,000, because more candidates are always better',
-        why: 'Recall stops growing at 2,000, and total time reaches about 327 ms, far over the budget.',
+        why: 'Recall stops at 2,000, and time reaches 327 ms.',
       },
       {
         text: 'Whatever count makes total time exactly 50 ms',
-        why: 'That leaves no room for a slow request or the rest of the reply, and recall barely grows past 2,000 anyway.',
+        why: 'That leaves no room for slow requests.',
+      },
+    ],
+  },
+  {
+    id: 'ai-systems/recommendations/q6',
+    prompt: 'A video site trains only on clicks from the lists it showed, and new videos never surface. Which change breaks the loop?',
+    options: [
+      {
+        text: 'Reserve a few exploration slots, and build new video vectors from content features',
+        correct: true,
+        why: 'Both give new videos a chance to earn clicks.',
+      },
+      {
+        text: 'Retrain more often on the same logs',
+        why: 'The logs still hold no new video clicks.',
+      },
+      {
+        text: 'Use a heavier ranker',
+        why: 'It learns from the same logs.',
+      },
+      {
+        text: 'Pull more candidates from the same embeddings',
+        why: 'New videos still have weak vectors.',
       },
     ],
   },
 ];
 
+<Recall questions={recall} />
+
 <Objectives>
 
-- Explain the recommendation funnel: cheap candidate generation, then an accurate ranker, then filters and a re-rank.
-- Size the candidate count from two curves: ranker latency, which grows with every candidate, and recall, which
-  flattens.
-- Explain why candidate recall caps final quality, and why a better ranker cannot recover an item it never sees.
-- Combine several cheap candidate sources, apply eligibility rules before ranking, then check stock and diversify the
-  final handful.
+- Trace the funnel: candidate generation, ranking, then filters and a re-rank.
+- Size the candidate count from recall and ranker time, and explain why candidate recall caps quality.
+- Place eligibility rules before ranking, and keep spares for live checks.
+- Explain two-tower embeddings, cold start, and exploration.
 
 </Objectives>
 
 ## The failure: scoring the whole catalog
 
-The support assistant works for a large online store that sells about 3,000,000 items. A customer's order includes a
-50 ft green garden hose from Verdant, and it just went out of stock. The assistant should suggest five replacements in
-the chat, and the recommendation step gets an illustrative 50 ms of the reply's
+An online store sells about 3,000,000 items. A customer's 50 ft green Verdant garden hose just went out of stock, and
+the support assistant should suggest five replacements within an illustrative 50 ms of the reply's
 [latency budget](../evaluation-and-budgets/).
 
-The first version is simple. A ranking model with rich features (price, reviews, length, brand, and how closely each
-item matches the hose) scores every item in the catalog, and the assistant shows the top five. On a test with a small
-catalog, the list looks perfect.
+The first version scores every item with an accurate ranking model (price, reviews, length, brand, match to the hose)
+and shows the top five. On a small test catalog, the list looks perfect.
 
 <Predict
   client:visible
@@ -226,38 +308,92 @@ catalog, the list looks perfect.
   answer={2}
 >
 
-**About 30 seconds.** 3,000,000 items at 10 microseconds each is 30,000 ms, and the toy model reports 30,001 ms once
-the filters run. That is 600 times the budget, on every request. A quick
-[estimate](../../thinking/requirements-and-estimates/) catches this before anyone builds it.
+<div slot="figure">
+
+| Items in the catalog | Ranker cost per item | Budget per request |
+| --- | --- | --- |
+| 3,000,000 | 10 microseconds | 50 ms |
+
+</div>
+
+**About 30 seconds.** 3,000,000 items at 10 microseconds each is 30,000 ms, and the toy model reports 30,001 ms with
+the filters: 600 times the budget. A quick [estimate](../../thinking/requirements-and-estimates/) catches this early.
 
 </Predict>
 
-The quick fix fails the other way. A second version skips the ranker and shows the store's five best sellers. It
-answers in about 2 ms and offers a phone case, a USB charger, wireless earbuds, paper towels, and a water bottle to a
-customer who wanted a garden hose.
+The quick fix, the store's five best sellers, answers in about 2 ms with a phone case, a charger, earbuds, paper
+towels, and a water bottle. One version is accurate and too slow. The other is fast and useless.
 
-One version is accurate and far too slow. The other is fast and useless. A real system spends the expensive model only
-on the items that have a chance.
+## The idea: a funnel
+
+A recommendation system narrows the catalog in stages. **Candidate generation** uses cheap sources to pull a few
+hundred plausible items from millions. **Ranking** scores only those with an accurate, expensive model. Eligibility
+rules run before ranking, and a live stock check and a re-rank pick the final handful. The stages split because no
+model is both cheap enough for millions of items and rich enough to order them well. YouTube's recommender (RecSys
+2016) uses the same shape.
+
+<StepDiagram client:visible title="From 3,000,000 items to five" nodes={nodes} edges={edges} steps={steps} height={300} />
+
+<Analogy>
+
+Hiring five people for a busy store. A quick resume screen cuts 3,000 applicants to a few hundred, interviews rank
+those carefully, reference checks remove anyone who cannot start, and the manager picks five across teams. If the
+screen rejects the best applicant, no interview brings them back.
+
+Where it breaks: a store screens once, while a recommender reruns the screen for every customer in milliseconds, so
+the screen must be a precomputed lookup.
+
+</Analogy>
+
+### Where the time goes
+
+| Stage | Items in | Items out | Dropped | Illustrative time |
+| --- | --- | --- | --- | --- |
+| Candidate generation (three sources, merge, eligibility) | 3,000,000 | 487 | 2,999,513 | 9 ms |
+| Ranker (rich features) | 487 | 15 | 472 | 4.87 ms |
+| Stock check (live stock) | 15 | 14 | 1 | 0.5 ms |
+| Re-rank and pick (at most two per brand) | 14 | 5 | 9 | 0.5 ms |
+| Total | | | | 14.87 ms |
+
+Every row balances: items in equals items out plus items dropped. Lookups remove almost everything in 9 ms.
+
+### Recall caps quality
+
+- **The ranker orders what it receives.** An item missing from the candidates never gets a score, so candidate recall
+  caps final quality.
+- **Measure recall at the candidate stage.** Here 8 of 9 known good items survive. The RV fresh water hose sits at
+  rank 900 among embedding neighbors, past the 300 kept.
+- **Filter for eligibility before ranking, and keep spares for live checks.** The ranker never scores an item this
+  customer cannot buy, the same rule as tenant scoping in [retrieval](../retrieval/). It keeps 15 for five slots, so
+  the stock and diversity checks still leave a full list.
+
+<details>
+<summary>Go deeper: fixing misses and precomputing sources</summary>
+
+**Fix missed items at the source.** When candidate recall drops, add a source that sees a different signal, or give
+the source that finds the missed items a bigger share of the budget. A heavier ranker cannot help, because it never
+sees those items. Each source covers a gap: the hose and reel cart arrives only through bought together, because its
+text and vector look nothing like a hose.
+
+**Precompute the sources.** Embeddings, bought together lists, and category best sellers come from background jobs,
+and the request only looks them up. This is [caching](../../scaling/caching/) applied to recommendations, with the same
+cost: the lists go stale between refreshes, so new items and stock changes lag until the next run. Live checks after
+the ranker cover the facts that change by the minute.
+
+</details>
 
 ## Try it: four pipelines, one request
 
-Every pipeline answers the same request: suggest five replacements for the out of stock 50 ft green garden hose. Start
-with **Score everything** and press Play. Then pick **Funnel** and run it again. The scoreboard keeps each finished run,
-so you can compare them side by side.
+Every pipeline answers the same request. Run **Score everything**, then **Funnel**, and compare them on the
+scoreboard.
 
 <RecFunnelWidget client:visible />
 
 What to look for:
 
-- **Score everything is perfect and 600 times too slow.** All 9 known good replacements reach the ranker, and the top
-  five are all good. The latency lane runs off the end of the 50 ms budget: 30,001 ms.
-- **The funnel shows the same five in 14.87 ms.** Three cheap sources send 500 candidates, the merge drops 11
-  duplicates, and an eligibility filter removes a hose and reel cart (does not ship here) and a recalled timer. The
-  ranker scores 487 instead of 3,000,000. Eight of the 9 good items reach it.
-- **Eligibility runs before the ranker; live checks run after.** Shipping and recall rules never change during a
-  request, so they remove items before any scoring. The live stock check then drops an out of stock hose from the
-  ranked 15, and the re-rank skips the 75 ft green hose, which would be a third Verdant hose in five slots.
-- **Popularity only is fast and wrong.** One source, no ranker, about 2 ms, and nothing in the list replaces a hose.
+- **Score everything is perfect and 600 times too slow:** 30,001 ms.
+- **The funnel picks five good replacements in 14.87 ms.** The ranker scores 487 items, and 8 of 9 good items reach it.
+- **Popularity only is fast and wrong.** About 2 ms, and nothing replaces a hose.
 
 Before you pick **Too few candidates**, predict what it does.
 
@@ -274,82 +410,90 @@ Before you pick **Too few candidates**, predict what it does.
   answer={1}
 >
 
-**Faster and worse.** The run takes 7.24 ms, and only 3 of the 5 shown are good replacements; a hose nozzle and a
-sprinkler fill the other slots. The 50 ft blue garden hose, the best match on the fixture, ranks 14th among embedding
-neighbors, and the embedding source now returns only 12. It never reaches the ranker, so no ranker can show it.
+**Faster and worse.** The run takes 7.24 ms, and only 3 of 5 shown are good. The 50 ft blue garden hose, the best
+match, ranks 14th among embedding neighbors, and the source now returns 12, so no ranker can show it.
 
 </Predict>
+
+<details>
+<summary>Go deeper: how the toy model works</summary>
 
 This is a **toy model**. The 26 named items, their relevance, their ranks in each source, and their scores are
 hand-written fixtures. The other items count toward the totals and appear as a scaled sample of dots from a seeded
 generator, so every run looks the same. Counts use the illustrative catalog size of 3,000,000. Times come from a simple
 formula (a fixed cost per source plus a cost per item scored), and every time is illustrative.
 
-## The idea: a funnel
-
-A recommendation system narrows the catalog in stages. **Candidate generation** uses cheap sources to pull a few
-hundred plausible items out of millions. **Ranking** scores only those candidates with an accurate, expensive model.
-Eligibility rules (shipping, recalls) run before ranking, so the ranker scores only items the customer can buy. A
-live stock check and a re-rank then pick the handful the customer sees. Published systems use the same
-shape: in YouTube deep neural network recommendations (RecSys 2016), candidate generation narrows a corpus of millions
-to hundreds, ranking scores a few hundred, and the funnel goes from millions to hundreds to dozens.
-
-<StepDiagram client:visible title="From 3,000,000 items to five" nodes={nodes} edges={edges} steps={steps} height={300} />
-
-<Analogy>
-
-Hiring five people for a busy store. Three thousand people apply. A quick resume screen keeps a few hundred who list
-the right skills, interviews rank those carefully, reference checks remove anyone who cannot start, and the manager
-picks five so that no single team gets every hire. The screen is cheap and the interviews are expensive. If the screen
-rejects the best applicant, no interview can bring them back.
-
-</Analogy>
-
-### Where the time goes
-
-| Stage | Items in | Items out | Dropped | Illustrative time |
-| --- | --- | --- | --- | --- |
-| Candidate generation (three sources, merge, eligibility) | 3,000,000 | 487 | 2,999,513 | 9 ms |
-| Ranker (rich features) | 487 | 15 | 472 | 4.87 ms |
-| Stock check (live stock) | 15 | 14 | 1 | 0.5 ms |
-| Re-rank and pick (at most two per brand) | 14 | 5 | 9 | 0.5 ms |
-| Total | | | | 14.87 ms |
-
-Every row balances: items in equals items out plus items dropped. Candidate generation removes almost everything in
-9 ms because each source is a lookup, while the ranker spends 10 microseconds on every item it sees.
-
-### Recall caps quality
-
-- **The ranker orders what it receives.** An item that never reaches the ranker never gets a score, however good it
-  is. The best the final list can be is the best set of candidates.
-- **Measure recall at the candidate stage.** Keep a set of requests with known good answers, and count how many good
-  items survive candidate generation. In the funnel run, 8 of 9 survive. The RV fresh water hose sits at rank 900
-  among embedding neighbors, beyond the 300 that source returns.
-- **Fix missed items at the source.** Add a source that sees a different signal, or give the source that finds them a
-  bigger share. A heavier ranker cannot help.
-- **Precompute the sources.** Embeddings, bought together lists, and category best sellers come from background jobs,
-  and the request only looks them up. This is [caching](../../scaling/caching/) applied to recommendations, and the
-  lists go stale between refreshes.
-- **Filter for eligibility before ranking, and keep spares for live checks.** Shipping and recall rules run on the
-  candidates, so the ranker never spends a slot on an item the customer cannot buy. Live stock and diversity run after
-  the ranker, which keeps 15 for five slots, so those checks can remove items and still leave a full list.
+</details>
 
 ## How many candidates?
 
-The funnel sends 500 candidates to the ranker. Why 500, instead of 50 or 5,000? Two curves decide. **Recall**, the
-share of the 9 known good replacements this customer can buy that reach the ranker, climbs fast and then flattens. **Ranker time** grows in
-a straight line with every candidate. Drag the slider and watch both.
+Why 500 candidates, instead of 50 or 5,000? Two curves decide. **Recall**, the share of the 9 known good items that
+reach the ranker, climbs fast and then flattens. **Ranker time** grows in a straight line. Drag the slider.
 
 <RecBudgetWidget client:visible />
 
-In the toy model, recall reaches 78% at 50 candidates, 89% at 500, and 100% at 2,000. Total time is 14.87 ms at 500 and
-38.87 ms at 2,000, and it crosses the 50 ms budget near 2,700 candidates. Below 50 candidates the best replacement
-never reaches the ranker. Past 2,000 every extra candidate costs time and finds nothing new. This is why production
-funnels hand the ranker hundreds of candidates: recall has mostly flattened, and the reply keeps room under the budget.
-Measure both curves on real requests before you settle on a number.
+In the toy model, recall reaches 78% at 50 candidates, 89% at 500, and 100% at 2,000. Total time is 14.87 ms at 500
+and 38.87 ms at 2,000, and it crosses 50 ms near 2,700. Production funnels typically hand the ranker hundreds of
+candidates. Measure both curves on real traffic.
 
-[Retrieval](../retrieval/), earlier in this module, uses the same narrow then rank shape for documents. The next lesson,
-[Capstone: support assistant](../support-assistant/), puts these pieces together in one design with a fixed budget.
+## Embeddings, cold start, and feedback loops
+
+### Two towers turn candidate generation into a lookup
+
+An **embedding** is a vector that places similar things close together. A **two-tower model** has a user tower, which
+turns the request (customer, history, current item) into a vector, and an item tower, which turns each item into a
+vector in the same space. Training pulls clicked pairs together, so a dot product scores a match.
+
+Because the towers never see a user and an item together, a background job can embed the whole catalog into an
+approximate nearest neighbor (ANN) index. Each request runs the user tower once and fetches the closest few hundred
+items, typically in a few milliseconds. The cost: the towers miss cross features such as "fits this customer's hose
+reel," so the ranker adds them.
+
+### Cold start
+
+A new customer has no history, so fall back on the current item, its category, popular items, and onboarding choices.
+A new item has no clicks, so an item tower that learns only from item ids gives it a meaningless vector. Feed the item
+tower content features (title, description, category, price), and a new item gets a useful vector on day one.
+
+### Feedback loops and exploration
+
+The model learns only from clicks on what it showed. Top items collect clicks and climb, unseen items never earn one,
+and the logs cannot reveal what the list missed. **Exploration** breaks the loop: reserve a small share of slots,
+typically a few percent, for new or uncertain items, and log which slots explored, so those clicks become fair
+training data.
+
+<details>
+<summary>Go deeper: training the two towers</summary>
+
+**Negatives.** Training needs items the user did not pick. Scoring every catalog item for each example is too slow, so
+a common trick uses the other items in the same training batch as negatives. Popular items show up in many batches and
+get pushed down too often. Yi et al. (RecSys 2019) estimate how often each item appears in the training stream and
+correct each score for it, and they feed content features into the item tower, which helps fresh items.
+
+**ANN recall.** An approximate index trades a little recall for a lot of speed. Typical settings return 90 to 99% of
+the exact nearest neighbors. Measure that loss like any other candidate source.
+
+**YouTube's version.** Covington et al. (RecSys 2016) train candidate generation as a classifier over millions of
+videos, then serve it as a nearest neighbor search over the learned video vectors, the same split described above.
+
+</details>
+
+<details>
+<summary>Go deeper: bandits, replay, and position bias</summary>
+
+**Contextual bandits.** A fixed random share wastes slots on items that are clearly poor. A contextual bandit picks
+each exploratory item from the request context and its own uncertainty: it shows an item when the expected click rate
+is high or when it knows little about that item. Li et al. (WWW 2010) ran this as LinUCB on Yahoo front page news.
+
+**Offline replay.** The same paper evaluates a new policy on logged traffic in which articles were shown at random. It
+keeps only the events where the new policy would have picked the article that was shown. This works only when some
+traffic was random, which is another reason to log exploration.
+
+**Position bias.** People click the first slot more often whatever it holds, so raw click rates overrate top slots. Log
+the position with every impression, and train with position as an input that serving fixes to one value, or weight
+clicks by how often each position gets looked at.
+
+</details>
 
 ## Trade-offs
 
@@ -357,40 +501,54 @@ Measure both curves on real requests before you settle on a number.
 
 | Choice | What it buys | What it costs |
 | --- | --- | --- |
-| More candidates (thousands) | Higher recall, fewer good items missed | Ranker time grows with every candidate |
-| Fewer candidates (dozens) | Fast, cheap ranking | Good items never reach the ranker, which caps quality |
-| One candidate source | Simple to build, refresh, and debug | Misses items that only another signal finds |
-| Several candidate sources | Higher recall from different signals | More pipelines to build, refresh, merge, and dedupe |
-| Heavy ranker (rich features) | Better order at the top of the list | More time per item, so fewer candidates fit the budget |
-| Light ranker | Scores more candidates in the same time | Weaker order, so worse items reach the top |
-| Precompute (lists built in the background) | Fast lookups at request time | Stale lists: new items and stock changes lag until the next refresh |
-| Compute per request | Fresh results that use the current order and customer | Spends the latency budget on every request |
+| More candidates | Higher recall | Ranker time grows with every candidate |
+| Several sources | Items one signal misses arrive through another | More pipelines to build and merge |
+| Heavy ranker | Better order at the top | Fewer candidates fit the budget |
+| Two-tower embeddings | One ANN lookup covers the catalog | No cross features, so the ranker adds them |
+| Precomputed sources | Fast lookups | Stale lists until the next refresh |
+| Exploration slots | Data on new items and a way out of the feedback loop | A few weaker items shown today |
 
 </TradeoffTable>
 
+Skip the funnel when the ranker can score the whole catalog in budget: at an illustrative 10 microseconds per item,
+50 ms covers about 5,000 items.
+
+## Common mistakes
+
+- **Tuning the ranker when recall is the bottleneck.** No ranker can show an item it never sees.
+- **Filtering eligibility after ranking.** Items the customer cannot buy take ranked slots, and the list comes up short.
+- **Training only on logged clicks.** The list narrows to what it already showed. Reserve exploration slots.
+- **Giving new items only an id embedding.** Feed content features to the item tower.
+
+<KeyTakeaways>
+
+- A funnel: cheap candidate generation narrows millions to hundreds, an accurate ranker orders them, and filters pick
+  the handful.
+- Candidate recall caps final quality.
+- Size the candidate count where recall flattens and ranker time still fits.
+- Run eligibility before ranking, and keep spares for live checks.
+- Two towers make candidates a lookup, content features handle cold start, and exploration breaks the feedback loop.
+
+</KeyTakeaways>
+
 <Quiz client:visible questions={quiz} />
+
+The next lesson, [Capstone: support assistant](../support-assistant/), puts these pieces together in one design.
 
 <Challenge>
 
 Customers often return some hoses because they leak. The store asks the assistant to stop suggesting items that are
 frequently returned. Where does this go in the funnel, what data does it need, and how do you still show five good
-replacements when it removes items?
+replacements?
 
 <div slot="answer">
 
-- **Placement:** a hard rule goes in the eligibility filter before the ranker, next to the shipping and recall checks.
-  The return rate is precomputed and does not change during a request, so the ranker never needs to score an item the
-  rule would remove. A softer rule adds the return rate as a ranker feature or a score penalty, so a slightly better item with a few returns can
-  still win.
-- **Data:** a return rate per item, computed by a background job from orders and returns and refreshed daily. The
-  request reads a precomputed number, the same way it reads the category lists.
-- **Threshold:** compare each item with similar items (for example, returned three times as often as other 50 ft
-  hoses), and require a minimum number of orders so that one return cannot remove a new item.
-- **Backfill:** the ranker still keeps 15 for five slots, and it now picks them only from eligible items, so the list
-  stays full. If the rule removes many candidates, measure candidate recall again and raise the source budgets when good
-  items go missing.
-- **Measure:** track the return rate and how often customers accept a suggested replacement, before and after the
-  change. Add requests whose best match is often returned to the evaluation set, so the rule stays tested.
+- **Placement:** a hard rule joins the eligibility filter before the ranker. A softer rule adds the return rate as a
+  ranker penalty.
+- **Data:** a daily return rate per item from orders and returns.
+- **Threshold:** compare with similar items, and require a minimum order count so one return cannot remove a new item.
+- **Backfill:** the ranker still keeps 15 eligible items for five slots. Recheck candidate recall.
+- **Measure:** track returns and accepted replacements.
 
 </div>
 

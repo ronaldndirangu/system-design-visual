@@ -5,6 +5,7 @@ import {
   type AgentSummary,
   ALL_GUARDS,
   agentScenarios,
+  agentTools,
   COST_CAP,
   finishedDuel,
   type GuardId,
@@ -15,6 +16,8 @@ import {
   STEP_CAP,
   scenarioOrder,
   summarizeLane,
+  TURN_COST,
+  turnCost,
 } from '../../src/lib/models/agentRun';
 
 function summaries(scenario: AgentScenarioId, guards: Guards = ALL_GUARDS): [AgentSummary, AgentSummary] {
@@ -132,6 +135,26 @@ describe('AgentDuel', () => {
     expect(guarded.executed).toBe(RUNAWAY_SEARCHES);
   });
 
+  it('charges each model turn more as the trace it rereads grows', () => {
+    expect(turnCost(0)).toBe(TURN_COST);
+    for (let cards = 0; cards < 40; cards += 1) {
+      expect(turnCost(cards + 1)).toBeGreaterThanOrEqual(turnCost(cards));
+    }
+    const duel = new AgentDuel('runaway');
+    const unguarded = duel.lanes[0];
+    const spends: number[] = [];
+    while (!duel.done) {
+      const before = unguarded.cost;
+      duel.step();
+      spends.push(unguarded.cost - before);
+    }
+    const searches = spends.slice(1, 1 + RUNAWAY_SEARCHES);
+    expect(searches.at(-1)).toBeGreaterThan(searches[0] ?? Number.POSITIVE_INFINITY);
+    expect(unguarded.cost).toBeGreaterThan(
+      RUNAWAY_SEARCHES * (TURN_COST + agentTools.search.cost) + 2 * TURN_COST,
+    );
+  });
+
   it('ends a budget stop with a handoff to a person', () => {
     const guarded = finishedDuel('runaway').lanes[1];
     expect(guarded.cards.at(-2)).toMatchObject({
@@ -163,7 +186,7 @@ describe('AgentDuel', () => {
       refundTotal: 544,
       emails: 1,
       unauthorized: 1,
-      cost: 25,
+      cost: 26,
     });
     expect(guarded).toMatchObject({
       attempted: 6,
@@ -173,14 +196,14 @@ describe('AgentDuel', () => {
       refunds: 0,
       emails: 1,
       unauthorized: 0,
-      cost: 23,
+      cost: 24,
     });
   });
 
   it('pins the runaway loop numbers the lesson quotes', () => {
     const [unguarded, guarded] = summaries('runaway');
-    expect(unguarded).toMatchObject({ attempted: 30, executed: 30, toolCalls: 30, cost: 124 });
-    expect(guarded).toMatchObject({ attempted: 9, executed: 8, blocked: 1, toolCalls: 8, cost: 36 });
+    expect(unguarded).toMatchObject({ attempted: 30, executed: 30, toolCalls: 30, cost: 172 });
+    expect(guarded).toMatchObject({ attempted: 9, executed: 8, blocked: 1, toolCalls: 8, cost: 38 });
   });
 
   it('pins the customer cancels numbers the lesson quotes', () => {

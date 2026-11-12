@@ -212,6 +212,8 @@ export const quiz = [
 
 </Objectives>
 
+**Route:** Intermediate, an extra case off the beginner route through Module 6. Take it after [Chat](../chat/).
+
 ## The failure: a video that never finishes uploading
 
 Maya records a 300 MB video and drops it into her synced folder on a train. The first version of the sync client sends
@@ -589,17 +591,24 @@ one document at the same moment, and use the [collaborative editor](../collabora
 
 <Challenge>
 
-A customer puts 20,000 employees on 40,000 devices into one shared folder, ten times the largest shared folder in the
-estimates. Each employee still saves 20 files a day. Use the estimates to find the first limit this folder hits. Then,
-during the morning peak, the metadata shard holding the folder fails over, and one laptop’s commit answer arrives 30
-seconds late. Say what you change in the design and what each change costs.
+**Closing rubric: grow one dimension tenfold.** Keep this lesson’s estimates (20 files saved per active user a day, a 3x
+peak, and a largest shared folder of 2,000 members on 4,000 devices), and grow that folder tenfold: 20,000 employees on
+40,000 devices.
+
+1. Which part hits its limit first, and by how much?
+2. What do you change, and what does the change cost?
+3. At the morning peak, the metadata shard holding the folder fails over, and one laptop’s commit answer arrives 30
+   seconds late. What happens to the folder and to that commit?
 
 <div slot="answer">
 
+**Fan-out to devices breaks first.**
+
 - **Commits are fine.** 20,000 people saving 20 files is 400,000 commits a day: about 5 a second, and 14 at a 3x
   peak. One journal shard handles that easily.
-- **Fan-out breaks first.** Each commit wakes the other 39,999 devices, and each one reads the journal. At 14 commits
-  a second that is about 560,000 wake-ups and journal reads a second, all on one shard.
+- **Fan-out grows a hundredfold.** Each commit wakes the other 39,999 devices, and each one reads the journal.
+  Commits and devices both grow tenfold, so wake-ups and journal reads climb from about 5,600 to 560,000 a second, all
+  on one shard.
 - **Change: batch the wake-ups and cache the journal tail.** Notify each device at most once a second, and serve
   journal reads from replicas or a cache of recent rows, which never change once written. The cost is up to a second
   of extra delay, plus replica lag. A device must move its cursor only to the last version it actually read.

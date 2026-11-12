@@ -1,8 +1,23 @@
 ---
 title: Metrics and alerting
 description: Ingest a million samples per second, keep label cardinality bounded, downsample old data, and page people only for real incidents.
+furtherReading:
+  - title: 'Gorilla: A Fast, Scalable, In-Memory Time Series Database (VLDB 2015)'
+    url: https://www.vldb.org/pvldb/vol8/p1816-teller.pdf
+    note: Stores timestamps as delta of deltas and values as XORs, about 1.37 bytes per sample, the figure this lesson's estimates use.
+  - title: 'Prometheus documentation: Storage'
+    url: https://prometheus.io/docs/prometheus/latest/storage/
+    note: How the in-memory head, the write-ahead log replayed after a crash, and 2 hour blocks fit together.
+  - title: 'Prometheus documentation: Metric and label naming'
+    url: https://prometheus.io/docs/practices/naming/
+    note: Every unique label combination is a new time series, so keep user ids and other unbounded values out of labels.
+  - title: Monitoring Distributed Systems (Google SRE book, chapter 6)
+    url: https://sre.google/sre-book/monitoring-distributed-systems/
+    note: Page on symptoms users feel, and make every page urgent and actionable.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -175,9 +190,54 @@ export const quiz = [
   },
 ];
 
+export const recall = [
+  {
+    id: 'case-studies/metrics/recall-1',
+    prompt:
+      'A consumer reads a log partition and saves its offset every 5 seconds. It crashes 3 seconds after its last save, and another consumer takes over the partition. What happens to those 3 seconds of events?',
+    options: [
+      {
+        text: 'The new owner reads them again from the saved offset, so they repeat and none are lost',
+        correct: true,
+        why: 'The log keeps every event and the saved offset is behind the crash point, so the new owner rereads from there. Consumers must tolerate duplicates.',
+      },
+      {
+        text: 'They are lost, because the crashed consumer never saved past them',
+        why: 'The log still holds the events. Only the offset is old, and an old offset makes the new owner reread them.',
+      },
+      {
+        text: 'The new owner starts at the newest event and skips them',
+        why: 'A new owner resumes from the last saved offset for the partition, which sits before the 3 unsaved seconds.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/metrics/recall-2',
+    prompt:
+      'Support wants to see which users hit checkout errors. Where should the per-user detail go?',
+    options: [
+      {
+        text: 'In logs or traces, linked to the request by its trace id',
+        correct: true,
+        why: 'Logs and traces store one record per request, so a user id costs one field. Metrics stay aggregated with few label values.',
+      },
+      {
+        text: 'In a user_id label on the error counter',
+        why: 'Each distinct label value creates a new series, so a user_id label multiplies series by the number of users.',
+      },
+      {
+        text: 'In a new metric per user, such as errors_user_42_total',
+        why: 'A metric name per user creates the same unbounded series count as a label, and dashboards cannot query it.',
+      },
+    ],
+  },
+];
+
 This case study builds on the **Async and streaming** module, especially [Logs and pub/sub](../../async/logs-and-pubsub/) (the write buffer is a log) and
 [Stream processing](../../async/stream-processing/) (rollups and alert rules are continuous queries over a stream of samples). It also pairs with
 [Observability](../../reliability/observability/) in the Reliability module, which covers what to measure; this lesson covers the system that stores it.
+
+<Recall questions={recall} />
 
 <Objectives>
 
@@ -188,6 +248,9 @@ This case study builds on the **Async and streaming** module, especially [Logs a
 - Tune an alert rule's `for` duration to trade false pages against detection delay.
 
 </Objectives>
+
+**Route:** Advanced, case 9 of 10 on the beginner route through Module 6. Next on the route:
+[Collaborative editor](../collaborative-editor/).
 
 ## The failure: one label on launch day
 
@@ -408,7 +471,7 @@ What to look for:
   in the instrumentation, or in an agent that aggregates before it sends.
 - **Set limits, then alert on them.** A per scrape `sample_limit` and a per tenant series limit protect the shared
   ingesters. Rejections are silent data loss, so alert on the rejected sample count itself.
-- **Put per-user detail where it belongs.** Logs, traces, and analytics stores are built for high cardinality: they
+- **Put per-user detail where it belongs.** Logs, traces, and analytics stores handle high cardinality: they
   store each event once and index it for search. The user level events can flow through a log into a stream processor or
   analytics store, the pattern the [Logs and pub/sub](../../async/logs-and-pubsub/) and [Stream processing](../../async/stream-processing/) lessons cover. Exemplars bridge the two: they
   attach a trace id to a sample without making it a label.
@@ -418,6 +481,24 @@ What to look for:
 The distributor hashes each series to pick its ingesters, so a label explosion lands on every shard at once. Adding
 ingesters buys time and leaves the growth in place. Replication makes it worse: 10 million series at 3 KB is about 30 GB
 per replica and about 90 GB across 3 replicas, and every extra series costs three times.
+
+<details>
+<summary>Go deeper: one label with 3 values, one with a million</summary>
+
+Your orders counter has 5,000 series. One team wants a `customer_tier` label with 3 values. Another wants `order_id`,
+at about 1,000,000 orders a day. At about 3 KB per series:
+
+- **`customer_tier`**: the worst case is 5,000 × 3 = 15,000 series, about 45 MB per replica and about 135 MB across 3
+  replicas. The value set is fixed, so the cost is fixed. Add it.
+- **`order_id`**: every order creates at least one new series that counts to 1 and then sits in memory, exported on
+  every scrape. A million orders a day is about 1,000,000 new series and about 3 GB of head memory per replica per day,
+  about 9 GB across 3 replicas, and the total keeps growing. A series limit trips quickly; without one, the ingester
+  runs out of memory.
+- **Where the detail goes**: log each order with its id, or trace it, and query the logs or an analytics store for one
+  customer's orders. Keep the counter on `route`, `status`, and `customer_tier`, and attach a trace id as an exemplar
+  when you want to jump from a spike on the chart to one example order.
+
+</details>
 
 ## Downsampling and retention
 
@@ -496,12 +577,38 @@ Firing alerts go to **Alertmanager**, which decides who hears about them:
 - **Grouping** folds 40 hosts failing the same rule into one page.
 - **Routing** sends each alert to a team and channel by its labels, such as `team: payments` and `severity: page`.
 - **Inhibition** mutes the host alerts while a whole data center alert is firing.
-- **Silences** mute matching alerts during planned maintenance, set by a person, with an expiry.
+- **Silences** mute matching alerts during planned maintenance. A person sets each one with an expiry.
 
 Two habits keep alerting honest. First, alert on what users feel, such as error rate and latency, and let the [SLOs and
 measurement](../../thinking/slos/) lesson's error budgets set the thresholds. Second, alert on the metrics system itself: on launch day the
-checkout error panel saw only 3 of 45 errors because their series were rejected, so a rule on rejected samples, or one
-that fires when an expected series goes missing, catches the failure this lesson opened with.
+checkout error panel saw only 3 of 45 errors because the ingester rejected their series, so a rule on rejected
+samples, or one that fires when an expected series goes missing, catches the failure this lesson opened with.
+
+## Failure walkthrough: an ingester crashes mid-block
+
+An ingester dies 40 minutes into its 2 hour block. Its head block holds those 40 minutes for every series it owns, and
+none of them have reached object storage yet. With one copy in memory and nothing on disk, every dashboard and alert
+that reads those series would show a 40 minute hole.
+
+The design gives each sample two more homes. The distributor wrote every series to 3 ingesters, and each ingester
+appended every sample to its write-ahead log on local disk before it acknowledged the push.
+
+1. **The distributor keeps writing.** Each series on the dead ingester still has 2 of its 3 replicas, and a push
+   succeeds once 2 replicas acknowledge it. Queriers read both survivors and merge their identical samples, so
+   dashboards show no gap.
+2. **The ingester restarts and replays its log.** It reads the write-ahead log from its last checkpoint and rebuilds
+   the head block in memory. Replay time grows with the series and samples in the log, so a full head can take
+   minutes to rebuild, and the 2 survivors carry the load until then.
+3. **It rejoins with a hole.** The ingester takes new samples again, yet it missed every sample pushed while it was
+   down. The other 2 replicas hold that stretch, and queriers fill the hole from them.
+4. **The next block cut repairs the copies.** At the 2 hour mark each replica uploads its block, and the compactor
+   merges the 3 copies of each series into one, dropping duplicate samples. The hole lived in one replica's block and
+   never reaches the merged one.
+
+A distributor crash replays differently. The write buffer is a log, so the replacement rereads from the last saved
+offset and pushes some batches twice. An ingester ignores a sample whose timestamp and value it already holds, so the
+repeat costs only work. The failure that hurts is a slow one: if ingest falls behind, the ruler evaluates windows that
+are missing their newest samples, and pages arrive late. That is one more reason to alert on the metrics system itself.
 
 ## Trade-offs
 
@@ -535,32 +642,71 @@ This lesson's model is a toy. Here is what it leaves out:
   encoding, and how fast series churn.
 - **A sped up clock.** 30 seconds of toy time stands in for hours of user growth.
 - **A simple alert input.** The alert widget evaluates each 30 s window's own error rate over a fixed 13 minute trace.
-- **Overlapping tiers.** Each tier keeps its own full window, so the newest week is stored in all three, and the
+- **Overlapping tiers.** Each tier keeps its own full window, so all three tiers store the newest week, and the
   estimate applies 1.37 bytes to every rollup value, which flatters sums and counts.
 - **Gauge rollups only.** The storage estimate prices four values per rollup point. A latency histogram stores one count
   per bucket in every rollup point, so it costs several times more per series.
 
-## Check yourself
+<KeyTakeaways>
+
+- Memory follows active series, and every label multiplies them. Scraping more often adds samples, which load the
+  ingest path, and leaves memory nearly flat.
+- A series limit protects the shared ingesters by dropping new series, often the ones an incident creates. Bound labels
+  at the source, send per-user detail to logs or traces, and alert on rejected samples.
+- Rollups store min, max, sum, and count for gauges, increases for counters, and mergeable histograms for percentiles,
+  so a year long chart reads 8,760 points per series.
+- A `for` duration trades false pages against delay. Three replicas and a write-ahead log let an ingester crash cost
+  time and no data.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
-Your orders counter has 5,000 series. One team wants a `customer_tier` label with 3 values. Another wants `order_id`,
-at about 1,000,000 orders a day. Using about 3 KB per series, what does each label cost in ingester memory, and where
-should the order detail go instead?
+**Closing rubric: grow one dimension tenfold, two ways.** Keep this lesson's estimates (10,000 hosts, 1,000 active
+series per host, a 10 s scrape, about 1.37 bytes per stored sample, about 3 KB of ingester memory per series, 3
+replicas). Grow each dimension in its own case:
+
+- **Case A, frequency.** Scrape every 1 s. Series stay at 10 million.
+- **Case B, cardinality.** Grow to 100 million active series. The scrape stays at 10 s.
+
+1. Which limit does each case hit first, and by how much?
+2. What do you change in each case, and what does the change cost?
+3. Inject a failure into each grown design: in case A, the distributors crash and stay down for 60 s; in case B, one
+   ingester crashes and replays its log. What do the alerts see?
 
 <div slot="answer">
 
-- **`customer_tier`**: the worst case is 5,000 × 3 = 15,000 series, about 45 MB per replica and about 135 MB across 3
-  replicas. The value set is fixed, so the cost is fixed. Add it.
-- **`order_id`**: every order creates at least one new series that counts to 1 and then sits in memory, exported on
-  every scrape. A million orders a day is about 1,000,000 new series and about 3 GB of head memory per replica per day,
-  about 9 GB across 3 replicas, and the total keeps growing. A series limit trips quickly; without one, the ingester
-  runs out of memory.
-- **Where the detail goes**: log each order with its id, or trace it, and query the logs or an analytics store for one
-  customer's orders. Keep the counter on `route`, `status`, and `customer_tier`, and attach a trace id as an exemplar
-  when you want to jump from a spike on the chart to one example order.
+**Frequency breaks the ingest path first. Cardinality breaks memory first and brings 10 times the samples with it.**
+
+- **The new numbers.**
+  - Case A: 10 million samples per second against an ingest path built for 1 million, and about 1.18 TB a day. Head
+    memory stays near 30 GB per replica, since each series still holds one open chunk. A fleet that drains 1.2 million
+    samples per second (20% headroom) falls 8.8 million samples further behind every second: after 10 minutes the
+    ruler reads data 8.8 minutes old, and the lag keeps growing.
+  - Case B: about 300 GB of head memory per replica, 900 GB across 3, and every block index lists 10 times the series.
+    Samples reach 10 million per second too, since 100 million series ÷ 10 s is 10 million. The per tenant series
+    limit sized for today trips first and drops new series silently, the failure this lesson opened with. Without it,
+    the ingesters run out of memory.
+- **The change.**
+  - Case A: scale the write path (distributors, buffer partitions, ingester CPU, log disks) to about 12 million samples
+    per second. Memory stays put. Storage rises from about 3.68 TB to about 11.1 TB, since only the raw tier grows, and
+    a `rate(...[5m])` reads 300 samples per series instead of 30. The cheaper fix scrapes only the series that need
+    1 s: at 1% of series, ingest is about 1.09 million samples per second.
+  - Case B: if a label caused the growth, bound it at the source and move the detail to logs or traces. Series return
+    to about 10 million, and a log or trace store holds the detail. If the growth is real, raise the limits on purpose
+    and scale out: 10 times the ingesters and memory, case A's 12 million sample write path, and about 36.8 TB of
+    storage.
+- **The crash.**
+  - Case A: 60 s down leaves 600 million samples in the write buffer (60 million today), so the buffer needs 10 times
+    the disk for the same outage. The replacements reread from the saved offsets, and 2 million samples per second of
+    spare capacity clears the backlog in 300 s. For about 6 minutes, pages can arrive up to 60 s late. Nothing is lost,
+    and the repeated pushes cost only work.
+  - Case B: scaled out, each ingester holds today's share, so replay takes as long as today. Scaled up instead (the
+    same ingesters with 10 times the memory), replay rebuilds 10 times the series and takes about 10 times as long. A
+    second crash in that window leaves some series with 1 live copy. A push needs 2 acknowledgments, so their writes
+    fail, the buffer retries them, and alerts on those series go stale until a replica returns.
 
 </div>
 
