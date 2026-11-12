@@ -51,37 +51,37 @@ export const steps = [
   {
     title: 'A healthy click',
     text: 'A reader clicks a sho.rt link. One of 16 workers on an app server finds the code in the cache. The whole redirect takes about 3.5 ms.',
-    nodes: ['reader', 'lb', 'app', 'cache'],
+    focus: { active: 'app', involved: ['reader', 'lb', 'cache'] },
     flows: ['reader>lb', 'lb>app', 'app>cache'],
   },
   {
     title: 'The old click report',
     text: 'Before it sends the 302, the worker reports the click to analytics ingest. That call takes 1 ms on a good day.',
-    nodes: ['app', 'analytics'],
+    focus: { active: 'analytics', involved: ['app'] },
     flows: ['app>analytics'],
   },
   {
     title: 'Ingest hangs',
     text: 'Ingest slows to 3 s. Every worker waits on it, the line on each server fills, and readers get nothing.',
-    nodes: ['reader', 'app', 'analytics'],
+    focus: { active: 'analytics', involved: ['reader', 'app'] },
     flows: ['app>analytics'],
   },
   {
     title: 'Report into a buffer',
     text: 'The fix: the worker appends the click to a local buffer and sends the 302 at once. Redirects no longer wait on ingest.',
-    nodes: ['app', 'buffer'],
+    focus: { active: 'buffer', involved: ['app'] },
     flows: ['app>buffer'],
   },
   {
     title: 'Upload behind a breaker',
     text: 'An uploader sends batches from the buffer. A circuit breaker stops the uploads while ingest is sick and probes gently before it resumes.',
-    nodes: ['buffer', 'analytics'],
+    focus: { active: 'buffer', involved: ['analytics'] },
     flows: ['buffer>analytics'],
   },
   {
     title: 'A create that is safe to retry',
     text: 'A creator presses Shorten with an idempotency key. The primary stores the key with the new link, so a second press returns the same code.',
-    nodes: ['creator', 'lb', 'app', 'primary'],
+    focus: { active: 'primary', involved: ['creator', 'lb', 'app'] },
     flows: ['creator>lb', 'lb>app', 'app>primary'],
   },
 ];
