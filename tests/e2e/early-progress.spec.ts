@@ -12,7 +12,8 @@ function completedLessons(page: Page): Promise<number> {
 test('a Mark complete tap before hydration completes the lesson once', async ({ page }) => {
   const release = await holdIslandCode(page);
   await page.goto('scaling/caching/', { waitUntil: 'commit' });
-  const section = page.getByRole('region', { name: 'Finished the lesson?' });
+  // The heading, and so the region name, changes once the lesson completes.
+  const section = page.locator('section[aria-labelledby="sdv-complete-title"]');
   const root = page.locator('astro-island').filter({ has: section });
 
   await section.getByRole('button', { name: 'Mark lesson complete' }).click();
@@ -20,7 +21,7 @@ test('a Mark complete tap before hydration completes the lesson once', async ({ 
 
   release();
   await island(section.getByRole('button'));
-  await expect(page.getByRole('button', { name: 'Completed' })).toBeVisible();
+  await expect(section.getByRole('button', { name: 'Completed' })).toBeVisible();
   await expect.poll(() => completedLessons(page)).toBe(1);
 });
 
