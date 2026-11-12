@@ -25,7 +25,7 @@ import { SeriesSwatch, type SeriesVariant, TraceChart } from '../sim/TraceChart'
 import { useHydrated } from '../sim/useHydrated';
 import { DiagramScroll } from '../viz/DiagramScroll';
 import { type Flow, FlowDots } from '../viz/FlowDots';
-import { lerp, link } from '../viz/geometry';
+import { lerp, link, readableFont } from '../viz/geometry';
 import { UiIcon } from '../viz/icons';
 import type { ComponentKind } from '../viz/kinds';
 import { Edge, SystemNode } from '../viz/SystemNode';
@@ -121,6 +121,8 @@ function laneFlows(lane: LaneState, tick: number): Flow[] {
 }
 
 function LaneDiagram({ lane, tick }: { lane: LaneState; tick: number }) {
+  const [scale, setScale] = useState(1);
+  const minFont = readableFont(scale);
   const busy = new Set<Slot>();
   for (const msg of lane.inFlight) {
     busy.add(slotOf(lane.style, msg.from));
@@ -131,7 +133,7 @@ function LaneDiagram({ lane, tick }: { lane: LaneState; tick: number }) {
   const hubToTop = link(SLOT_POS.hub, SLOT_POS.top);
   const moving = lane.inFlight.length;
   return (
-    <DiagramScroll label={`${styleLabels[lane.style]} diagram, scrolls sideways`}>
+    <DiagramScroll label={`${styleLabels[lane.style]} diagram, scrolls sideways`} onScale={setScale}>
       <svg
         className="sdv-saga__svg"
         viewBox="0 0 400 300"
@@ -156,6 +158,7 @@ function LaneDiagram({ lane, tick }: { lane: LaneState; tick: number }) {
             y={SLOT_POS[slot].y}
             label={center[slot].label}
             status={failing.has(slot) ? 'bad' : undefined}
+            minFontSize={minFont}
           />
         ))}
         {STEPS.map((step) => {
@@ -169,6 +172,7 @@ function LaneDiagram({ lane, tick }: { lane: LaneState; tick: number }) {
               width={100}
               label={step.serviceLabel}
               status={failing.has(slot) ? 'bad' : undefined}
+              minFontSize={minFont}
             />
           );
         })}

@@ -46,7 +46,7 @@
 }
 .sdv-rec-funnel__pending {
   fill: var(--sl-color-gray-4);
-  font-size: 16px;
+  font-size: max(16px, var(--sdv-text-floor));
   font-weight: 700;
 }
 .sdv-rec-funnel__flow {
@@ -61,7 +61,7 @@
 }
 .sdv-rec-funnel__gap {
   fill: var(--sl-color-white);
-  font-size: 11px;
+  font-size: max(12px, var(--sdv-text-floor));
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
@@ -71,13 +71,13 @@
 }
 .sdv-rec-funnel__count {
   fill: var(--sl-color-white);
-  font-size: 12px;
+  font-size: max(12px, var(--sdv-text-floor));
   font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
 .sdv-rec-funnel__col {
   fill: var(--sl-color-gray-2);
-  font-size: 12px;
+  font-size: max(12px, var(--sdv-text-floor));
   font-weight: 600;
 }
 .sdv-rec-funnel__crowd {
@@ -113,7 +113,7 @@
 }
 .sdv-rec-lat__label {
   fill: var(--sl-color-gray-2);
-  font-size: 12px;
+  font-size: max(12px, var(--sdv-text-floor));
   font-weight: 600;
 }
 .sdv-rec-lat__track {
@@ -141,7 +141,7 @@
 }
 .sdv-rec-lat__budget-label {
   fill: var(--sl-color-gray-2);
-  font-size: 11px;
+  font-size: max(12px, var(--sdv-text-floor));
   font-weight: 600;
 }
 .sdv-rec-lat__overflow path {
@@ -151,7 +151,7 @@
 }
 .sdv-rec-lat__overflow text {
   fill: var(--sdv-bad);
-  font-size: 12px;
+  font-size: max(12px, var(--sdv-text-floor));
   font-variant-numeric: tabular-nums;
   font-weight: 700;
 }

@@ -1077,7 +1077,7 @@ button[data-tone="bad"] {
 .sdv-chart__label {
   fill: var(--sl-color-gray-2);
   font-family: var(--sl-font);
-  font-size: 13px;
+  font-size: max(13px, var(--sdv-text-floor));
 }
 .sdv-chart__axis {
   stroke: var(--sl-color-gray-4);
@@ -1193,7 +1193,15 @@ button[data-tone="bad"] {
 /*
  * Drawings shrink to fit narrow screens, which shrinks their text with them.
  * --sdv-dscale is the inverse of that shrink, so text sized by it keeps its real pixel size.
+ * --sdv-text-floor resolves on each svg, so its text inherits the floor for that drawing's own shrink.
+ * Widget label rules use font-size: max(<base>, var(--sdv-text-floor)).
  */
+svg {
+  --sdv-text-floor: calc(12px * var(--sdv-dscale, 1));
+}
+svg text {
+  font-size: max(1em, var(--sdv-text-floor));
+}
 .sdv-sim__stage .sdv-chart__label,
 .sdv-scroll-x .sdv-chart__label {
   font-size: calc(13px * var(--sdv-dscale, 1));
@@ -1860,12 +1868,12 @@ button[data-tone="bad"] {
 .sdv-axis text {
   fill: var(--sl-color-gray-3);
   font-family: var(--sl-font);
-  font-size: 12px;
+  font-size: max(12px, var(--sdv-text-floor));
 }
 .sdv-estimator__lane {
   fill: var(--sl-color-gray-2);
   font-family: var(--sl-font);
-  font-size: 12px;
+  font-size: max(12px, var(--sdv-text-floor));
   font-weight: 600;
 }
 .sdv-estimator__bar--write {
@@ -1880,7 +1888,7 @@ button[data-tone="bad"] {
 .sdv-estimator__value {
   fill: var(--sl-color-white);
   font-family: var(--sl-font);
-  font-size: 12px;
+  font-size: max(12px, var(--sdv-text-floor));
   font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
@@ -1895,7 +1903,7 @@ button[data-tone="bad"] {
 .sdv-estimator__limit text {
   fill: var(--sdv-bad);
   font-family: var(--sl-font);
-  font-size: 12px;
+  font-size: max(12px, var(--sdv-text-floor));
   font-weight: 700;
 }
 .sdv-estimator__row {
@@ -2125,13 +2133,13 @@ button[data-tone="bad"] {
 .sdv-shards__point-label {
   fill: var(--sl-color-white);
   font-family: var(--sl-font);
-  font-size: 19px;
+  font-size: max(19px, var(--sdv-text-floor));
   font-weight: 700;
 }
 .sdv-shards__center {
   fill: var(--sl-color-gray-2);
   font-family: var(--sl-font);
-  font-size: 17px;
+  font-size: max(17px, var(--sdv-text-floor));
 }
 .sdv-shards__formula {
   background: var(--sdv-surface);
@@ -2728,11 +2736,11 @@ a.sdv-map__link:hover {
 }
 .sdv-fence__row-label {
   fill: var(--sl-color-gray-2);
-  font-size: 11px;
+  font-size: max(12px, var(--sdv-text-floor));
 }
 .sdv-fence__note {
   fill: var(--sl-color-gray-2);
-  font-size: 11px;
+  font-size: max(12px, var(--sdv-text-floor));
 }
 .sdv-fence__note--strong {
   fill: var(--sl-color-white);
@@ -2817,7 +2825,7 @@ a.sdv-map__link:hover {
 }
 .sdv-trace__tick {
   fill: var(--sl-color-gray-3);
-  font-size: 11px;
+  font-size: max(12px, var(--sdv-text-floor));
   font-variant-numeric: tabular-nums;
 }
 .sdv-trace__line {
@@ -2875,7 +2883,7 @@ a.sdv-map__link:hover {
 }
 .sdv-trace__marker text {
   fill: var(--sl-color-black);
-  font-size: 11px;
+  font-size: max(12px, var(--sdv-text-floor));
   font-weight: 700;
 }
 .sdv-trace__log {

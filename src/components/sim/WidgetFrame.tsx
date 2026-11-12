@@ -1,4 +1,5 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { useStageScale } from '../viz/drawingScale';
 import { type StatRow, StatTable, type Tone, ToneBadge } from './StatTable';
 
 interface WidgetFrameProps {
@@ -27,6 +28,8 @@ export function WidgetFrame({
   statsCaption,
 }: WidgetFrameProps) {
   const [announcement, setAnnouncement] = useState('');
+  const stageRef = useRef<HTMLDivElement>(null);
+  useStageScale(stageRef);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setAnnouncement(summary), 700);
@@ -40,7 +43,9 @@ export function WidgetFrame({
         {status && <ToneBadge tone={status.tone}>{status.text}</ToneBadge>}
       </header>
       {instructions && <p className="sdv-sim__instructions">{instructions}</p>}
-      <div className="sdv-sim__stage">{children}</div>
+      <div ref={stageRef} className="sdv-sim__stage">
+        {children}
+      </div>
       {actions && (
         // biome-ignore lint/a11y/useSemanticElements: a labelled group of buttons, not a form section
         <div className="sdv-sim__toolbar" role="group" aria-label="Actions">

@@ -166,7 +166,8 @@ function LaneTrack({ plan, now, width, x }: { plan: RtPlan; now: number; width: 
 }
 
 function Axis({ width, x }: { width: number; x: Scale }) {
-  const ticks = [0, 10_000, 20_000, 30_000, 40_000, 50_000, 60_000];
+  const ticks =
+    width < 320 ? [0, 20_000, 40_000, 60_000] : [0, 10_000, 20_000, 30_000, 40_000, 50_000, 60_000];
   return (
     <svg width={width} height={AXIS_HEIGHT} viewBox={`0 0 ${width} ${AXIS_HEIGHT}`} aria-hidden="true">
       {ticks.map((at, index) => (

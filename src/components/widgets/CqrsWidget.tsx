@@ -24,7 +24,7 @@ import { TraceChart } from '../sim/TraceChart';
 import { useHydrated } from '../sim/useHydrated';
 import { DiagramScroll } from '../viz/DiagramScroll';
 import { type Flow, FlowDots, type Point } from '../viz/FlowDots';
-import { link } from '../viz/geometry';
+import { link, readableFont } from '../viz/geometry';
 import { UiIcon } from '../viz/icons';
 import { ArrowDefs, Edge, SystemNode, safeId } from '../viz/SystemNode';
 import './CqrsWidget.css';
@@ -195,6 +195,8 @@ export default function CqrsWidget({
   instructions?: string;
 }) {
   const hydrated = useHydrated();
+  const [scale, setScale] = useState(1);
+  const minFont = readableFont(scale);
   const arrow = safeId(useId(), 'cqrs-arrow');
   const [scenarioId, setScenarioId] = useState<CqrsScenarioId>('normal');
   const simRef = useRef<CqrsModel | null>(null);
@@ -424,7 +426,7 @@ export default function CqrsWidget({
             }))}
             onChange={chooseScenario}
           />
-          <DiagramScroll label="Scrollable diagram">
+          <DiagramScroll label="Scrollable diagram" onScale={setScale}>
             <svg
               viewBox="0 0 720 340"
               role="img"
@@ -465,6 +467,7 @@ export default function CqrsWidget({
                 label="Shopper"
                 sublabel={`${st.commands} commands`}
                 highlight={commandsThisTick > 0}
+                minFontSize={minFont}
               />
               <SystemNode
                 kind="server"
@@ -473,6 +476,7 @@ export default function CqrsWidget({
                 label="Write model"
                 sublabel={`${st.rejected} rejected`}
                 highlight={commandsThisTick > 0}
+                minFontSize={minFont}
               />
               <SystemNode
                 kind="queue"
@@ -480,6 +484,7 @@ export default function CqrsWidget({
                 y={LOG.y}
                 label="Event log"
                 highlight={activity.accepted.length > 0}
+                minFontSize={minFont}
               />
               <SystemNode
                 kind="database"
@@ -489,6 +494,7 @@ export default function CqrsWidget({
                 sublabel={`at ${m.cartPage.position} of ${appended}`}
                 status={cartStatus}
                 highlight={activity.cartApplied > 0}
+                minFontSize={minFont}
               />
               {isReplay && (
                 <SystemNode
@@ -499,6 +505,7 @@ export default function CqrsWidget({
                   sublabel={rebuildSublabel}
                   highlight={rebuild !== null}
                   dim={rebuild === null}
+                  minFontSize={minFont}
                 />
               )}
               <SystemNode
@@ -509,6 +516,7 @@ export default function CqrsWidget({
                 sublabel={`at ${m.topItems.position} of ${appended}`}
                 status={topStatus}
                 highlight={activity.topApplied > 0}
+                minFontSize={minFont}
               />
               <SystemNode
                 kind="server"
@@ -517,6 +525,7 @@ export default function CqrsWidget({
                 label="Email sender"
                 sublabel={`${st.emailsSent} receipts mailed`}
                 highlight={activity.emailApplied > 0}
+                minFontSize={minFont}
               />
               <FlowDots flows={flows} />
             </svg>

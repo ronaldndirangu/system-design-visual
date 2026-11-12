@@ -17,7 +17,7 @@
 }
 
 .sdv-cdn__site-label {
-  font-size: 12.5px;
+  font-size: max(12.5px, var(--sdv-text-floor));
 }
 
 .sdv-cdn__city {

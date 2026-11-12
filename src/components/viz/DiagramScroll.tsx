@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { drawingScale } from './drawingScale';
 import { MIN_SCALE } from './geometry';
 
 interface Overflow {
@@ -56,7 +57,7 @@ export function DiagramScroll({
       const scale = Math.floor(Math.min(1, shown / viewWidth) * 100) / 100;
       if (scale === lastScale) return;
       lastScale = scale;
-      el.style.setProperty('--sdv-dscale', String(Math.ceil(Math.max(1, viewWidth / shown) * 100) / 100));
+      el.style.setProperty('--sdv-dscale', String(drawingScale(viewWidth, shown)));
       onScaleRef.current?.(scale);
     };
     const measure = () => {

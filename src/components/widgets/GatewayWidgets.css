@@ -76,7 +76,7 @@
 /* The diagrams render at about 0.73 scale, so text is enlarged to stay readable. */
 .sdv-gw-diagram .sdv-node__sublabel,
 .sdv-gw-diagram .sdv-chart__label {
-  font-size: 14px;
+  font-size: max(14px, var(--sdv-text-floor));
 }
 .sdv-gw-table td {
   vertical-align: top;
@@ -120,7 +120,7 @@
 .sdv-gw-svg-title {
   fill: var(--sl-color-white);
   font-family: var(--sl-font);
-  font-size: 15px;
+  font-size: max(15px, var(--sdv-text-floor));
   font-weight: 700;
 }
 .sdv-gw-divider {

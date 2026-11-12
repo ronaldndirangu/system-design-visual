@@ -63,7 +63,7 @@
 .sdv-review__marker text {
   fill: var(--sl-color-white);
   font-family: var(--sl-font);
-  font-size: 13px;
+  font-size: max(13px, var(--sdv-text-floor));
   font-weight: 700;
 }
 
