@@ -12,9 +12,10 @@ import {
 } from '../../lib/models/retries';
 import { type CompareRow, CompareTable } from '../sim/CompareTable';
 import { ScenarioChips } from '../sim/ScenarioChips';
-import { SimulationShell } from '../sim/SimulationShell';
+import { SimulationShell, TOY_MODEL_ASSUMPTIONS } from '../sim/SimulationShell';
 import { type Tone, ToneBadge } from '../sim/StatTable';
 import { SeriesSwatch, type SeriesVariant, TraceChart } from '../sim/TraceChart';
+import { TranscriptScroll } from '../sim/TranscriptScroll';
 import { useHydrated } from '../sim/useHydrated';
 import './RetriesWidget.css';
 
@@ -229,6 +230,16 @@ export default function RetriesWidget({
       status={status}
       finished={duel.done}
       resetKey={scenarioId}
+      assumptions={TOY_MODEL_ASSUMPTIONS}
+      keyStats={[
+        {
+          label: `Clicks confirmed (${first.label} / ${second.label})`,
+          value: `${sums[0].confirmed} / ${sums[1].confirmed}`,
+        },
+        { label: 'Attempts sent', value: `${sums[0].attempts} / ${sums[1].attempts}` },
+      ]}
+      readoutCount={rows.length}
+      started={started}
       controls={
         <div className="sdv-duel__extra">
           <button type="button" className="sdv-button" onClick={skipToEnd} disabled={!hydrated || duel.done}>
@@ -303,16 +314,18 @@ export default function RetriesWidget({
           </p>
         )}
         {markerEvents.length > 0 && (
-          <ol>
-            {markerEvents.map((event, index) => (
-              <li key={`${event.tick}-${event.text}`}>
-                <span className="sdv-trace__num" aria-hidden="true">
-                  {index + 1}
-                </span>
-                <time>{(event.tick * duel.tickSeconds).toFixed(1)} s</time> {event.text}
-              </li>
-            ))}
-          </ol>
+          <TranscriptScroll label="What happened">
+            <ol>
+              {markerEvents.map((event, index) => (
+                <li key={`${event.tick}-${event.text}`}>
+                  <span className="sdv-trace__num" aria-hidden="true">
+                    {index + 1}
+                  </span>
+                  <time>{(event.tick * duel.tickSeconds).toFixed(1)} s</time> {event.text}
+                </li>
+              ))}
+            </ol>
+          </TranscriptScroll>
         )}
         {notes.map((event) => (
           <p key={`${event.tick}-${event.text}`} className="sdv-trace__note">

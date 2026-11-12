@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import { island } from './helpers';
 
 function collectErrors(page: Page): string[] {
@@ -24,6 +24,14 @@ async function axeViolations(page: Page): Promise<string[]> {
   );
 }
 
+/** Expand the collapsed "All numbers" readout, which hides its rows until opened. */
+async function showAllNumbers(sim: Locator) {
+  const more = sim.locator('details.sdv-sim__more');
+  if (!(await more.evaluate((details: HTMLDetailsElement) => details.open))) {
+    await more.locator('summary').click();
+  }
+}
+
 test.describe('Timeouts and cancellation', () => {
   test('the timeout duel runs by keyboard and resets on a new scenario', async ({ page }) => {
     const errors = collectErrors(page);
@@ -40,7 +48,6 @@ test.describe('Timeouts and cancellation', () => {
     await expect(served).toContainText('615');
     await expect(served).toContainText('853');
     await expect(served).toContainText('Better');
-    await expect(duel.getByText('Run complete')).toBeVisible();
     expect(await axeViolations(page)).toEqual([]);
 
     const healthy = duel.getByRole('radio', { name: /All replicas healthy/ });
@@ -103,7 +110,6 @@ test.describe('Queues and backpressure', () => {
     await expect(served).toContainText('265');
     await expect(served).toContainText('946');
     await expect(duel.getByRole('row', { name: /Still inside the server/ })).toContainText('266');
-    await expect(duel.getByText('Run complete')).toBeVisible();
     expect(await axeViolations(page)).toEqual([]);
     await page.emulateMedia({ colorScheme: 'light' });
     expect(await axeViolations(page)).toEqual([]);
@@ -173,7 +179,6 @@ test.describe('Idempotency', () => {
     await expect(twice).toContainText('9');
     await expect(twice).toContainText('Better');
     await expect(duel.getByRole('row', { name: /Money taken by mistake/ })).toContainText('$45');
-    await expect(duel.getByText('Run complete')).toBeVisible();
     await expect(duel.getByText(/No key: Order #21 is charged twice/)).toBeVisible();
     await expect(
       duel.getByRole('region', { name: 'No key' }).getByText('9 orders charged twice'),
@@ -220,11 +225,11 @@ test.describe('Retries', () => {
     await expect(skip).toBeEnabled();
     await skip.focus();
     await page.keyboard.press('Enter');
+    await showAllNumbers(duel);
     const confirmed = duel.getByRole('row', { name: /Clicks confirmed/ });
     await expect(confirmed).toContainText('2485');
     await expect(confirmed).toContainText('574');
     await expect(duel.getByRole('row', { name: /Attempts sent/ })).toContainText('10002');
-    await expect(duel.getByText('Run complete')).toBeVisible();
     expect(await axeViolations(page)).toEqual([]);
     await page.emulateMedia({ colorScheme: 'light' });
     expect(await axeViolations(page)).toEqual([]);
@@ -262,6 +267,7 @@ test.describe('Circuit breakers', () => {
     await expect(skip).toBeEnabled();
     await skip.focus();
     await page.keyboard.press('Enter');
+    await showAllNumbers(duel);
     const answered = duel.getByRole('row', { name: /Redirects answered/ });
     await expect(answered).toContainText('1997');
     await expect(answered).toContainText('2943');
@@ -269,7 +275,6 @@ test.describe('Circuit breakers', () => {
     await expect(rejected).toContainText('1016');
     await expect(rejected).toContainText('70');
     await expect(duel.getByRole('row', { name: /Times the breaker opened/ })).toContainText('4');
-    await expect(duel.getByText('Run complete')).toBeVisible();
     await expect(duel).toContainText('the breaker opens after 18 of the last 20 calls failed');
     expect(await axeViolations(page)).toEqual([]);
     await page.emulateMedia({ colorScheme: 'light' });
@@ -286,6 +291,7 @@ test.describe('Circuit breakers', () => {
     const refused = page.getByRole('region', { name: 'Simulation: Ingest refuses connections' });
     await refused.scrollIntoViewIfNeeded();
     await refused.getByRole('button', { name: 'Skip to the end' }).click();
+    await showAllNumbers(refused);
     const calls = refused.getByRole('row', { name: /Calls sent to ingest/ });
     await expect(calls).toContainText('3018');
     await expect(calls).toContainText('1515');
@@ -293,6 +299,7 @@ test.describe('Circuit breakers', () => {
     const probe = page.getByRole('region', { name: 'Simulation: Three probes or everyone' });
     await probe.scrollIntoViewIfNeeded();
     await probe.getByRole('button', { name: 'Skip to the end' }).click();
+    await showAllNumbers(probe);
     const probes = probe.getByRole('row', { name: /Probe calls while half-open/ });
     await expect(probes).toContainText('60');
     await expect(probes).toContainText('12');

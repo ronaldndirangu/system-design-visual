@@ -17,9 +17,10 @@ import {
 } from '../../lib/models/circuitBreaker';
 import { type CompareRow, CompareTable } from '../sim/CompareTable';
 import { ScenarioChips } from '../sim/ScenarioChips';
-import { SimulationShell } from '../sim/SimulationShell';
+import { SimulationShell, TOY_MODEL_ASSUMPTIONS } from '../sim/SimulationShell';
 import { type Tone, ToneBadge } from '../sim/StatTable';
 import { SeriesSwatch, type SeriesVariant, TraceChart } from '../sim/TraceChart';
+import { TranscriptScroll } from '../sim/TranscriptScroll';
 import { useHydrated } from '../sim/useHydrated';
 import './CircuitBreakerWidget.css';
 
@@ -342,6 +343,17 @@ export default function CircuitBreakerWidget({
       status={status}
       finished={duel.done}
       resetKey={scenarioId}
+      assumptions={TOY_MODEL_ASSUMPTIONS}
+      keyStats={[
+        {
+          label: `Redirects answered (${first.label} / ${second.label})`,
+          value: `${sums[0].answered} / ${sums[1].answered}`,
+        },
+        { label: 'Turned away with 503', value: `${sums[0].rejected} / ${sums[1].rejected}` },
+        { label: 'Calls sent to ingest', value: `${sums[0].calls} / ${sums[1].calls}` },
+      ]}
+      readoutCount={rows.length}
+      started={started}
       controls={
         <div className="sdv-duel__extra">
           <button type="button" className="sdv-button" onClick={skipToEnd} disabled={!hydrated || duel.done}>
@@ -373,8 +385,7 @@ export default function CircuitBreakerWidget({
       )}
       <p className="sdv-cb__diff">
         Each breaker opens when at least half of {MIN_CALLS} or more calls in the last 1 s failed (threshold{' '}
-        {FAILURE_THRESHOLD * 100}%), waits {COOLDOWN_MS / 1000} s, then lets probes through. Toy model,
-        illustrative numbers.
+        {FAILURE_THRESHOLD * 100}%), waits {COOLDOWN_MS / 1000} s, then lets probes through.
       </p>
       <div className="sdv-duel__lanes">
         {duel.lanes.map((lane, index) => (
@@ -443,20 +454,22 @@ export default function CircuitBreakerWidget({
           </p>
         )}
         {markerEvents.length > 0 && (
-          <ol>
-            {markerEvents.map((event) => (
-              <li key={`${event.tick}-${event.text}`}>
-                {event.minor ? (
-                  <span className="sdv-trace__num sdv-cb__num--repeat" aria-hidden="true" />
-                ) : (
-                  <span className="sdv-trace__num" aria-hidden="true">
-                    {chartEvents.indexOf(event) + 1}
-                  </span>
-                )}
-                <time>{(event.tick * duel.tickSeconds).toFixed(1)} s</time> {event.text}
-              </li>
-            ))}
-          </ol>
+          <TranscriptScroll label="What happened">
+            <ol>
+              {markerEvents.map((event) => (
+                <li key={`${event.tick}-${event.text}`}>
+                  {event.minor ? (
+                    <span className="sdv-trace__num sdv-cb__num--repeat" aria-hidden="true" />
+                  ) : (
+                    <span className="sdv-trace__num" aria-hidden="true">
+                      {chartEvents.indexOf(event) + 1}
+                    </span>
+                  )}
+                  <time>{(event.tick * duel.tickSeconds).toFixed(1)} s</time> {event.text}
+                </li>
+              ))}
+            </ol>
+          </TranscriptScroll>
         )}
         {markerEvents.some((event) => event.minor) && (
           <p className="sdv-trace__note">

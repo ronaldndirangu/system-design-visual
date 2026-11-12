@@ -1,3 +1,5 @@
+import { TranscriptScroll } from '../sim/TranscriptScroll';
+
 export interface TranscriptEvent {
   tick: number;
   text: string;
@@ -22,16 +24,18 @@ export function RunTranscript({ events, tickSeconds }: { events: TranscriptEvent
         <p className="sdv-trace__empty">Events appear here, numbered to match the chart, as the run plays.</p>
       )}
       {markers.length > 0 && (
-        <ol>
-          {markers.map((event, index) => (
-            <li key={`${event.tick}-${event.text}`}>
-              <span className="sdv-trace__num" aria-hidden="true">
-                {index + 1}
-              </span>
-              <time>{(event.tick * tickSeconds).toFixed(1)} s</time> {event.text}
-            </li>
-          ))}
-        </ol>
+        <TranscriptScroll label="What happened">
+          <ol>
+            {markers.map((event, index) => (
+              <li key={`${event.tick}-${event.text}`}>
+                <span className="sdv-trace__num" aria-hidden="true">
+                  {index + 1}
+                </span>
+                <time>{(event.tick * tickSeconds).toFixed(1)} s</time> {event.text}
+              </li>
+            ))}
+          </ol>
+        </TranscriptScroll>
       )}
       {notes.map((event) => (
         <p key={`${event.tick}-${event.text}`} className="sdv-trace__note">

@@ -40,6 +40,14 @@ async function chooseScenario(sim: Locator, name: RegExp) {
   await expect(chip).toBeChecked();
 }
 
+/** Expand the collapsed "All numbers" readout, which hides its rows until opened. */
+async function showAllNumbers(sim: Locator) {
+  const more = sim.locator('details.sdv-sim__more');
+  if (!(await more.evaluate((details: HTMLDetailsElement) => details.open))) {
+    await more.locator('summary').click();
+  }
+}
+
 /** A readout row, matched by the start of its header cell. */
 function row(scope: Locator, label: string): Locator {
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -54,6 +62,7 @@ test.describe('/ai-systems/evaluation-and-budgets', () => {
 
     await chooseScenario(sim, /Demo questions/);
     await skipToEnd(sim);
+    await showAllNumbers(sim);
     await expect(row(sim, 'Passed the rubric')).toContainText('5 (100.0%)');
     await expect(row(sim, 'Must decline cases declined')).toContainText('none in this set');
 
@@ -96,8 +105,9 @@ test.describe('/ai-systems/evaluation-and-budgets', () => {
     await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
     await page.goto('ai-systems/evaluation-and-budgets/');
     const sim = await openSimulation(page, 'Grade three candidates on the same questions');
-    const graded = row(sim, 'Questions graded');
-    await expect(graded).toContainText('0');
+    await expect(sim.getByText('Press Play to see live numbers', { exact: true })).toBeVisible();
+    await showAllNumbers(sim);
+    await expect(row(sim, 'Questions graded')).toContainText('0');
     await sim.getByRole('button', { name: 'Step' }).focus();
     await page.keyboard.press('Enter');
     await page.keyboard.press('Enter');
@@ -193,6 +203,7 @@ test.describe('/ai-systems/retrieval', () => {
   /** The hybrid search ends on a verdict, so wait for its comparison table instead of Run complete. */
   async function finishSearch(sim: Locator) {
     await sim.getByRole('button', { name: 'Skip to the end' }).click();
+    await showAllNumbers(sim);
     await expect(row(sim, 'Rank of the right chunk')).toBeVisible();
   }
 
