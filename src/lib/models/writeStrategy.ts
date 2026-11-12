@@ -39,8 +39,9 @@ export const LINKS = 300;
 export const CACHE_CAPACITY = 150;
 /** Write-behind saves its buffered changes to the database every 2 s. */
 export const FLUSH_TICKS = 20;
+/** An in-memory cache answers in about 0.5 to 1 ms on the same network; an indexed database read takes about 1 to 5 ms. */
 export const CACHE_MS = 1;
-export const DB_MS = 10;
+export const DB_MS = 3;
 /** Imported links get ids far above the popular ones, so they never collide. */
 const IMPORT_BASE = 10_000;
 /** A click count is its own data item, stored under its own key apart from the redirect it counts. */

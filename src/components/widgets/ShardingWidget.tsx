@@ -85,9 +85,11 @@ export default function ShardingWidget({
   const load = summarizeLoad(assignment, shards);
   const moved = change ? countMoved(change.before, assignment) : 0;
   const movedShare = moved / KEYS.length;
-  const minimumShare = change
+  const referenceShare = change
     ? Math.abs(change.toCount - change.fromCount) / Math.max(change.toCount, change.fromCount)
     : 0;
+  const movedTooMuch = movedShare > referenceShare * 2;
+  const uneven = load.imbalance > 1.5;
 
   const resize = (next: number) => {
     setChange({
@@ -104,9 +106,11 @@ export default function ShardingWidget({
 
   const status: { tone: Tone; text: string } = !change
     ? { tone: 'neutral', text: 'Add or remove a shard' }
-    : movedShare > minimumShare * 2
+    : movedTooMuch
       ? { tone: 'bad', text: 'Most keys moved' }
-      : { tone: 'ok', text: 'Only a fair slice moved' };
+      : uneven
+        ? { tone: 'warn', text: 'Few keys moved, and the load is uneven' }
+        : { tone: 'ok', text: 'A fair slice moved and the load stays even' };
 
   const evenShare = 1 / count;
   const busiest = Math.max(...Object.values(load.counts));
@@ -130,14 +134,14 @@ export default function ShardingWidget({
         {
           label: 'Links moved by the last change',
           value: change ? `${moved} of ${KEYS.length} (${Math.round(movedShare * 100)}%)` : 'No change yet',
-          detail: change ? `the least possible is about ${Math.round(minimumShare * 100)}%` : undefined,
-          tone: change ? (movedShare > minimumShare * 2 ? 'bad' : 'ok') : undefined,
+          detail: change ? `balanced reference share: about ${Math.round(referenceShare * 100)}%` : undefined,
+          tone: change ? (movedTooMuch ? 'bad' : 'ok') : undefined,
         },
         {
           label: 'Busiest shard',
           value: `${load.imbalance.toFixed(2)}× an even share`,
           detail: '1.00× means perfectly even',
-          tone: load.imbalance > 1.5 ? 'warn' : undefined,
+          tone: uneven ? 'warn' : undefined,
         },
         {
           label: 'Shards',

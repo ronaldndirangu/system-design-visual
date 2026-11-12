@@ -1,11 +1,27 @@
 ---
 title: The server melts
 description: Watch one server drown under a viral link, then rescue it with a bigger machine or a load balancer and more servers.
+furtherReading:
+  - title: HTTP load balancing (NGINX documentation)
+    url: https://docs.nginx.com/nginx/admin-guide/load-balancer/http-load-balancer/
+    note: Round robin, least connections, weights, and health checks as one popular balancer configures them.
+  - title: Supported load balancers (Envoy documentation)
+    url: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/load_balancers
+    note: Weighted round robin, least request with the power of two choices, and ring hashing.
+  - title: Health checks for target groups (AWS)
+    url: https://docs.aws.amazon.com/elasticloadbalancing/latest/application/target-group-health-checks.html
+    note: How the interval and the unhealthy threshold together set how fast a dead server leaves the pool.
+  - title: The power of two choices in randomized load balancing (Mitzenmacher)
+    url: https://www.eecs.harvard.edu/~michaelm/postscripts/tpds2001.pdf
+    note: The paper behind sampling two servers and picking the less busy one.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
+import Callout from '../../../components/lesson/Callout.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
@@ -13,67 +29,88 @@ import ArcDiagram from '../../../components/viz/ArcDiagram';
 import ServerFarmWidget from '../../../components/widgets/ServerFarmWidget';
 import BalancerDuelWidget from '../../../components/widgets/BalancerDuelWidget';
 
+export const recall = [
+  {
+    id: 'scaling/load-balancing/recall-1',
+    prompt: 'Peak traffic is 1,400 requests a second and one server handles 500. How many servers does the 70% rule call for?',
+    options: [
+      { text: '3', why: 'Three servers would each run about 93% busy, and waits explode near 100%.' },
+      { text: '4', correct: true, why: 'Each server takes 500 × 0.7 = 350, and 1,400 ÷ 350 = 4.' },
+      { text: '5', why: 'Five clears the 70% target with room to spare. The rule alone asks for four.' },
+    ],
+  },
+  {
+    id: 'scaling/load-balancing/recall-2',
+    prompt: 'A browser opens a fresh HTTPS connection to the shortener. In what order do the steps happen?',
+    options: [
+      { text: 'DNS lookup, TCP handshake, TLS handshake, then the HTTP request', correct: true, why: 'The browser needs an address, then a connection, then encryption, before it can send a request.' },
+      { text: 'TCP handshake, DNS lookup, HTTP request, then TLS handshake', why: 'TCP needs an IP address, so DNS comes first, and TLS must finish before any HTTP bytes go out.' },
+      { text: 'HTTP request first, with DNS and TLS handled by the server', why: 'The browser does all three steps before the server sees a request.' },
+    ],
+  },
+];
+
 export const quiz = [
   {
     id: 'scaling/load-balancing/q1',
     prompt: 'A server can finish 100 requests per second. Traffic holds steady at 95 per second. What do users notice?',
     options: [
-      { text: 'Nothing, since 95 is below 100', why: 'Requests arrive in bursts. At 95% busy, short bursts pile up into long queues, so waits grow sharply even though the average fits.' },
-      { text: 'Long and unpredictable waits', correct: true, why: 'Queueing delay explodes as a server nears 100% busy. That is why teams aim for about 70% at peak.' },
-      { text: 'Half of the requests fail', why: 'The queue absorbs bursts, so failures only start once it fills. The first symptom is waiting.' },
-      { text: 'The server speeds up to cope', why: 'A server has a fixed capacity. Extra demand turns into waiting, then errors.' },
+      { text: 'Nothing, since 95 is below 100', why: 'Requests arrive in bursts, and at 95% busy they pile up.' },
+      { text: 'Long and unpredictable waits', correct: true, why: 'Queueing delay explodes as a server nears 100% busy, so teams aim for about 70% at peak.' },
+      { text: 'Half of the requests fail', why: 'The queue absorbs bursts. The first symptom is waiting.' },
+      { text: 'The server speeds up to cope', why: 'Capacity is fixed, so extra demand waits.' },
     ],
   },
   {
     id: 'scaling/load-balancing/q2',
-    prompt: 'One server crashes behind a load balancer with health checks every 2 seconds. What happens?',
+    prompt: 'A load balancer checks each server every 5 seconds and removes one after 3 failed checks in a row. A server crashes. How long can requests keep reaching it?',
     options: [
-      { text: 'No request ever fails', why: 'Until the health checks notice, the load balancer still sends some requests to the dead server, and those fail.' },
-      { text: 'Some requests fail for about 2 seconds, then traffic shifts to the healthy servers', correct: true, why: 'Detection takes time. After that, the remaining servers carry the load, as long as they have the spare capacity.' },
-      { text: 'Every request fails until an engineer steps in', why: 'Health checks remove the server automatically. No human needs to act.' },
-      { text: 'The load balancer restarts the server', why: 'A load balancer only decides where traffic goes. Restarting servers is a separate job for your platform.' },
+      { text: 'About 5 seconds, one check interval', why: 'The balancer waits for three failed checks in a row.' },
+      { text: 'No time at all, since the balancer sees the crash at once', why: 'The balancer learns of a crash only from failed checks.' },
+      { text: 'Up to about 15 seconds, then traffic shifts to the healthy servers', correct: true, why: 'Detection takes the interval times the threshold: 5 × 3 = 15 seconds.' },
+      { text: 'Until an engineer removes it', why: 'Health checks remove the server automatically.' },
     ],
   },
   {
     id: 'scaling/load-balancing/q3',
     prompt: 'A few requests take 10 times longer than the rest. Which strategy keeps queues most even?',
     options: [
-      { text: 'Round robin', why: 'Round robin hands out requests in turn, regardless of how busy each server is. A server stuck on slow requests keeps getting more.' },
-      { text: 'Random', why: 'Random choice ignores load too, and it adds its own unevenness on top.' },
-      { text: 'Least connections', correct: true, why: 'Sending each request to the server with the shortest queue steers work away from servers busy with slow requests.' },
-      { text: 'They all behave the same', why: 'They match only when every request costs the same. Try the Equal requests scenario in the side by side comparison.' },
+      { text: 'Round robin', why: 'Round robin ignores load, so a server stuck on slow requests keeps getting more.' },
+      { text: 'Random', why: 'Random ignores load too.' },
+      { text: 'Least connections', correct: true, why: 'It sends each request to the shortest queue, away from servers busy with slow work.' },
+      { text: 'They all behave the same', why: 'They match only when every request costs the same.' },
     ],
   },
   {
     id: 'scaling/load-balancing/q4',
     prompt: 'Your load balancer uses least connections. One server starts answering every request instantly with an error. Before the health check notices, what happens?',
     options: [
-      { text: 'It gets the same share as every other server', why: 'That is round robin. Least connections looks at requests in progress, and the broken server has none.' },
-      { text: 'It gets more than its share, so even more requests fail', correct: true, why: 'Errors return instantly, so the broken server always looks the least busy. Outlier detection, which ejects a server after a run of errors, closes this gap.' },
-      { text: 'It gets no traffic, because least connections avoids failing servers', why: 'Least connections only counts open requests. It never sees whether a response succeeded.' },
-      { text: 'Traffic shifts away at once, because the errors are fast', why: 'Speed is the problem: a fast error frees the slot at once, which invites the next request.' },
+      { text: 'It gets the same share as every other server', why: 'Least connections counts requests in progress, and the broken server has none.' },
+      { text: 'It gets more than its share, so even more requests fail', correct: true, why: 'Fast errors make it look idle. Outlier detection ejects a server after a run of errors.' },
+      { text: 'It gets no traffic, because least connections avoids failing servers', why: 'Least connections never sees whether a response succeeded.' },
+      { text: 'Traffic shifts away at once, because the errors are fast', why: 'A fast error frees the slot at once, which invites the next request.' },
     ],
   },
   {
     id: 'scaling/load-balancing/q5',
     prompt: 'The shortener wants redirects such as GET /abc123 on one pool of servers and /dashboard on another, all under one domain. Which load balancer can split them?',
     options: [
-      { text: 'A layer 4 load balancer', why: 'Layer 4 forwards connections by IP address and port. Both kinds of traffic arrive on the same address and port, so it cannot tell them apart.' },
-      { text: 'A layer 7 load balancer', correct: true, why: 'Layer 7 reads each HTTP request, so it can route by path. For HTTPS traffic it terminates TLS first, then reads the path.' },
-      { text: 'Either one, since both read the URL', why: 'Only layer 7 reads the request. Layer 4 passes the bytes along without looking inside.' },
+      { text: 'A layer 4 load balancer', why: 'Layer 4 sees only addresses and ports, and both paths share them.' },
+      { text: 'A layer 7 load balancer', correct: true, why: 'Layer 7 reads each HTTP request, so it can route by path after terminating TLS.' },
+      { text: 'Either one, since both read the URL', why: 'Layer 4 never looks inside the bytes.' },
       { text: 'Neither, since one domain always maps to one pool', why: 'A layer 7 balancer splits one domain by path, header, or cookie.' },
     ],
   },
 ];
 
+<Recall questions={recall} />
+
 <Objectives>
 
 - Explain why a server's response time explodes as it nears 100% busy.
 - Compare vertical scaling (a bigger machine) with horizontal scaling (more machines).
-- Describe how a load balancer spreads traffic and routes around a crashed server.
-- Choose between round robin, random, and least connections.
-- Spot the failure that makes least connections send more traffic to a broken server.
-- Tell layer 4 from layer 7 balancing, and keep the load balancer itself from becoming a single point of failure.
+- Choose between round robin, weighted round robin, and least connections.
+- Size a pool so the survivors of one crash stay under their limit.
 
 </Objectives>
 
@@ -111,11 +148,10 @@ adds about 600 ms. Press Play below to watch it happen.
   instructions="Press Play and watch the queue. Then try a bigger machine, or add servers, until the errors stop."
 />
 
-## Why waiting explodes
-
-A server is a line at a counter. Requests arrive in random bursts, so even when the average fits, a burst can arrive
-faster than the server works. At 50% busy, the line clears quickly between bursts. At 95% busy, there is almost no
-quiet time to catch up, so the line keeps growing. The rule of thumb: **plan for about 70% busy at peak**.
+Trouble starts well before 100%. Requests arrive in random bursts, so even when the average fits, a burst can outrun the
+server. At 50% busy, the line clears between bursts. At 95% busy, there is almost no quiet time to catch up. The rule
+of thumb from [requirements and estimates](../../thinking/requirements-and-estimates/) is **plan for about 70% busy at
+peak**. That 30% is queueing headroom that keeps waits short during bursts.
 
 ## Two ways out
 
@@ -135,8 +171,7 @@ database and nothing important lives in one server's memory.
 <Analogy>
 
 A supermarket with one cashier can hire a faster cashier (vertical) or open more lanes (horizontal). More lanes need
-someone at the front pointing shoppers to a free lane, and that person is the load balancer. If a cashier goes on break,
-the greeter stops sending people to that lane.
+a greeter pointing shoppers to a free lane: the load balancer. When a cashier goes on break, the greeter skips that lane.
 
 </Analogy>
 
@@ -145,15 +180,21 @@ the greeter stops sending people to that lane.
 - **Round robin** sends requests to each server in turn. Simple and fair when every request costs the same.
 - **Random** picks any server. Also simple, and slightly less even.
 - **Least connections** picks the server with the fewest requests in progress. It adapts when some requests are slow.
+- **Weighted round robin** gives each server a share in proportion to its weight. A server with twice the CPU gets
+  weight 2. A new release under test (a canary) gets weight 1 out of 20, so only 5% of traffic reaches it.
 
-The load balancer also runs **health checks**: it pings each server every few seconds and stops sending traffic to any
-server that fails to answer.
+The load balancer also runs **health checks**: it probes each server on a fixed interval and removes a server after
+several failures in a row. Detection takes up to the interval times that threshold, so checks every 5 seconds with a
+threshold of 3 leave a crashed server in the pool for up to about 15 seconds. Requests sent to it in that window fail.
+The simulations here remove a crashed server about 2 seconds after it crashes.
+
+Before a deploy or a scale-in, the balancer **drains** a server instead: it stops sending new requests and lets the
+ones in progress finish, up to a timeout that AWS calls the deregistration delay. Nothing is cut off mid-request.
 
 ## Same traffic, two balancers
 
-Below, two copies of the same three server farm receive the exact same stream of requests: the same arrival times and
-the same request sizes. One copy uses round robin; the other uses least connections. Any difference you see comes from
-the routing alone.
+Below, two copies of a three server farm receive the exact same requests at the same times. One uses round robin, the
+other least connections, so any difference comes from the routing alone.
 
 <Predict
   client:visible
@@ -168,8 +209,8 @@ the routing alone.
 >
 
 Least connections. Round robin evens out the **count** of requests, yet one slow request keeps a server busy as long as
-twenty normal ones. Round robin still hands that server its turn, so a line forms behind the slow request. Least
-connections sees the longer line and sends new requests elsewhere. In this toy model with seed 42, the whole run p95
+twenty normal ones, and round robin still hands that server its turn. Least connections sees the longer line and sends
+new requests elsewhere. In this toy model with seed 42, the whole run p95
 drops from about 193 ms to 90 ms, and the largest queue (sampled every 0.1 s) falls from 26 to 11. The exact numbers
 depend on the random traffic; least connections won in all 30 random seeds we tried.
 
@@ -183,7 +224,8 @@ depend on the random traffic; least connections won in all 30 random seeds we tr
   instructions="Press Play to check your prediction. Then pick Equal requests: when every request costs the same, the two balancers tie exactly."
 />
 
-## When least connections backfires
+<details>
+<summary>Go deeper: when least connections backfires</summary>
 
 Least connections has a blind spot. A crashed server often fails fast: it refuses each request at once, so it never has
 a request in progress. To a simple least connections balancer that checks every server, the broken server looks like
@@ -222,7 +264,23 @@ Production load balancers defend against this in two ways:
   servers, that cap is 4% of traffic, though short bursts can run higher. Health checks or outlier detection still have
   to remove it.
 
-## Try it: break things on purpose
+</details>
+
+## Plan for a crash
+
+The 70% target buys queueing headroom. It does not cover a crash on its own. When one of N servers dies, the survivors
+split its traffic, so each one goes from u busy to u × N ÷ (N − 1).
+
+- Three servers at 70% leave two survivors at 70% × 3 ÷ 2 = **105%**. Queues grow without limit until a replacement
+  arrives.
+- To keep two survivors under 100%, three servers can run at most 66.7% busy. To keep them at 70%, at most 46.7%.
+- Bigger pools need less spare room: 10 servers at 70% leave nine survivors at 77.8%.
+
+Size the pool twice. First pick N so each server stays near 70% at peak. Then check what N − 1 servers would run at,
+and add servers until that number is one you can live with. Teams call this N+1 sizing.
+
+<details>
+<summary>Go deeper: break things in the lab</summary>
 
 This farm starts with three servers at about 70% busy, plus a few slow requests. Try these experiments:
 
@@ -241,6 +299,8 @@ This farm starts with three servers at about 70% busy, plus a few slow requests.
   instructions="Press Play and let the farm settle. Then crash a server, add one back, and compare strategies with more slow requests."
 />
 
+</details>
+
 ## Inside the load balancer
 
 ### Layer 4 or layer 7
@@ -250,31 +310,32 @@ Load balancers differ in how much of each request they read.
 - A **layer 4** (transport layer) balancer forwards connections by IP address and port and never reads the HTTP
   request. It is fast, cheap, and works for any protocol. It sends a whole connection to one server.
 - A **layer 7** (application layer) balancer reads every HTTP request. It can route by path, header, or cookie, retry a
-  failed request on another server, and terminate TLS so the servers behind it skip the encryption work. Reading each
-  request costs CPU and adds a little latency.
+  failed request on another server, and terminate TLS (the handshake from
+  [what happens when you click](../../foundations/what-happens-when-you-click/)) so the servers skip that work.
 
 The shortener can use layer 7 to split its traffic: redirects such as `GET /abc123` go to a pool tuned for speed, and
 `/dashboard` goes to a separate pool, so a slow dashboard query never delays a redirect.
 
+A layer 7 balancer can also pin each user to one server with a cookie, called **sticky sessions**. It lets a server keep
+a login in memory, but load turns uneven when a few users are busy, and a crash logs out everyone pinned to that server.
+Keep sessions in a shared store instead, and the servers stay stateless.
+
 ### Reverse proxies
 
-A **reverse proxy** is a server that answers clients on behalf of the servers behind it. Clients see one address and
-never learn which server answered. A reverse proxy can terminate TLS, compress responses, cache popular answers, and
-block abusive traffic. A layer 7 load balancer is a reverse proxy with several servers behind it, and many teams put a
-reverse proxy such as NGINX in front of even a single server for TLS and caching.
+A **reverse proxy** answers clients on behalf of the servers behind it, so clients see one address. It can terminate
+TLS, compress responses, and cache popular answers. A layer 7 load balancer is a reverse proxy with several servers
+behind it.
 
 ### Who balances the balancer?
 
 Every request passes through the load balancer, so it needs a backup too.
 
 - **Active-passive**: one balancer handles all traffic while a standby watches its heartbeat. When the heartbeat stops,
-  the standby takes over the shared IP address. Connections open on the failed balancer break, and clients reconnect.
-  The standby costs money while it sits idle.
-- **Active-active**: two or more balancers all handle traffic, for example with DNS returning several addresses. You use
-  every machine you pay for, but each one must keep enough spare room to absorb the traffic of a failed partner. Two
-  balancers that each run above 50% busy cannot cover for each other.
+  the standby takes over the shared IP address, and clients on the failed balancer reconnect.
+- **Active-active**: two or more balancers all handle traffic, for example with DNS returning several addresses. Each
+  one must keep spare room for a failed partner: two balancers that each run above 50% busy cannot cover for each other.
 
-The server farm above already runs active-active: every server takes traffic, and the 70% rule leaves room for a crash.
+The server farm runs active-active too, so its survivors need the spare room from [Plan for a crash](#plan-for-a-crash).
 
 ## Trade-offs
 
@@ -285,27 +346,56 @@ The server farm above already runs active-active: every server takes traffic, an
 | Vertical: a bigger machine   | No code changes, no new components                  | A hard ceiling, rising prices, and one machine that can fail    |
 | Horizontal: more machines    | Nearly unlimited growth, survives a crashed server  | A load balancer to run, and servers must stay stateless         |
 | Round robin                  | Simple and predictable                              | Uneven queues when request costs vary                           |
-| Least connections            | Adapts to slow requests and slow servers            | Tracks every server's open requests, and favors a server that fails fast |
-| Short health check interval  | Faster failover                                     | More check traffic, and a brief hiccup can eject a good server  |
+| Least connections            | Adapts to slow requests and slow servers            | Favors a server that fails fast                                 |
+| Short health check interval  | Faster failover                                     | A brief hiccup can eject a good server                          |
 | Layer 4 balancer             | Fast, cheap, works for any protocol                 | Cannot route by path or header, or retry a single request       |
 | Layer 7 balancer             | Routes by path, header, or cookie, and terminates TLS | Reads every request, which costs CPU and a little latency     |
-| Active-passive balancers     | Simple failover with one shared address             | An idle standby to pay for, and open connections break on takeover |
+| Active-passive balancers     | Simple failover with one shared address             | An idle standby to pay for                                      |
 | Active-active balancers      | Uses every machine you pay for                      | Each balancer must keep spare room to cover a failed partner    |
 
 </TradeoffTable>
+
+**When not to add a load balancer.** Skip it while one server runs well under 70% at peak and a few minutes of downtime
+is acceptable, as with an internal tool. Skip it too when your platform already balances for you, such as a managed
+container or serverless service.
+
+<Callout variant="warning" title="Common mistakes">
+
+- Treating the 70% target as crash cover. Three servers at 70% leave two survivors at 105%.
+- Turning on sticky sessions by default. Load turns uneven and a crash logs users out.
+- Assuming a health check sees a crash at once. Detection takes the interval times the failure threshold.
+- Using plain least connections when a server can fail fast. Add outlier detection.
+- Forgetting the load balancer itself. Run two, or use a managed one.
+
+</Callout>
+
+<KeyTakeaways>
+
+- Waits explode as a server nears 100% busy, so plan for about 70% at peak.
+- A load balancer lets stateless servers share traffic and routes around a crashed one after its health checks fail.
+- Least connections beats round robin when request costs vary; weights handle mixed server sizes and canaries.
+- The survivors of a crash run at u × N ÷ (N − 1), so check N − 1 servers against your limit.
+- The balancer needs a backup of its own.
+
+</KeyTakeaways>
+
+Every server in the pool still reads the same database, and [caching](../caching/) is the next fix for that.
 
 <Quiz client:visible questions={quiz} />
 
 <Challenge>
 
 Peak traffic for the shortener is 1,200 redirects per second. One server handles 400 per second at full load. How many
-servers do you need, if you keep each one at most 70% busy **and** survive one server crashing at peak? What single
-component can still take the whole service down?
+servers do you need, if you keep each one at most 70% busy **and** keep the survivors at 70% or less after one server
+crashes at peak? What single component can still take the whole service down?
 
 <div slot="answer">
 
-- At 70%, each server takes 400 × 0.7 = 280 per second, so 1,200 ÷ 280 ≈ 4.3, which rounds up to **5 servers**.
-- To survive one crash at peak, add one more: **6 servers** (often written N+1).
+- At 70%, each server takes 400 × 0.7 = 280 per second, so 1,200 ÷ 280 ≈ 4.3, which rounds up to **5 servers** for
+  normal traffic.
+- With 5 servers, one crash leaves 4 to carry 1,200 per second: 300 each, or 75% busy. That misses the target.
+- The survivors need N − 1 ≥ 4.3, so N − 1 = 5 and **N = 6**. Each server runs at 200 per second (50%) normally and
+  240 (60%) after a crash.
 - The **load balancer itself** is now the single point of failure. Run two in an active and standby pair, or use a
   managed load balancer that runs redundant copies for you.
 

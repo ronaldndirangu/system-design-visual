@@ -1,0 +1,363 @@
+---
+title: Consistent hashing and rebalancing
+description: Place shards on a hash ring so a new shard takes only its fair share of keys. Even out the load with virtual nodes, fix the buckets with hash slots, and move data while the cluster keeps serving.
+furtherReading:
+  - title: "Dynamo: Amazon's Highly Available Key-value Store"
+    url: https://www.allthingsdistributed.com/files/amazon-dynamo-sosp2007.pdf
+    note: The paper that put a ring with virtual nodes into production, including its comparison of three partitioning strategies.
+  - title: Redis cluster specification
+    url: https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/
+    note: The 16384 hash slots, live slot migration, and the MOVED and ASK redirects, from the people who built them.
+  - title: A Fast, Minimal Memory, Consistent Hash Algorithm
+    url: https://arxiv.org/abs/1406.2294
+    note: Jump hash, a consistent hash with no ring and no stored state, for systems that add or remove only the last bucket.
+  - title: Production recommendations (Apache Cassandra)
+    url: https://cassandra.apache.org/doc/latest/cassandra/getting-started/production.html
+    note: How many virtual nodes (tokens) to give each node, and why more tokens cost availability.
+---
+
+import Recall from '../../../components/lesson/Recall.astro';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import Analogy from '../../../components/lesson/Analogy.astro';
+import Callout from '../../../components/lesson/Callout.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+import ShardingWidget from '../../../components/widgets/ShardingWidget';
+
+export const recall = [
+  {
+    id: 'scaling/consistent-hashing/recall-1',
+    prompt: 'Links sit on 4 shards placed with hash(code) mod 4. You add a fifth shard and switch to mod 5. About what share of the links move?',
+    options: [
+      { text: 'About 20%', why: 'That is the new shard\'s fair share. Mod N moves far more, because a link stays only when both remainders match.' },
+      { text: 'About 80%', correct: true, why: 'A link keeps its shard only about 1 time in 5. In the sharding simulation, 188 of 240 links moved.' },
+      { text: 'None', why: 'A link whose remainder changes belongs to a different shard.' },
+    ],
+  },
+  {
+    id: 'scaling/consistent-hashing/recall-2',
+    prompt: 'Which two numbers judge what a change of shard count does to a placement?',
+    options: [
+      { text: 'Hash speed and key length', why: 'Both are tiny next to the cost of copying data and running one shard hot.' },
+      { text: 'Total links and number of shards', why: 'Those describe the cluster. A placement is judged on what a change costs and what it leaves behind.' },
+      { text: 'Links moved against the balanced reference share, and how even the load stays', correct: true, why: 'Moving far more than the reference share wastes a migration. Moving far less leaves the new shard nearly empty.' },
+    ],
+  },
+];
+
+export const quiz = [
+  {
+    id: 'scaling/consistent-hashing/q1',
+    prompt: 'A ring has 8 shards with one point each. You add a ninth shard. Which links move?',
+    options: [
+      { text: 'Every link whose hash mod 9 differs from its hash mod 8', why: 'That is the rule for mod N placement. A ring never takes a remainder over the shard count.' },
+      { text: 'Only links in the arc the new shard now covers', correct: true, why: 'A link moves only if the new point is now the first shard clockwise from it.' },
+      { text: 'An even share from every shard', why: 'That takes many virtual nodes. With one point, the new shard splits a single arc, so one neighbor gives up every moved link.' },
+      { text: 'None, until an operator rebalances', why: 'Routing follows the ring, so the new arc belongs to the new shard as soon as it joins.' },
+    ],
+  },
+  {
+    id: 'scaling/consistent-hashing/q2',
+    prompt: 'Why give each shard 64 virtual nodes instead of one point on the ring?',
+    options: [
+      { text: 'To move fewer links when a shard joins', why: 'Virtual nodes move a few more links, closer to the fair share. In the simulation, 47 links moved with 64 points and 15 with one.' },
+      { text: 'To keep a copy of each link on several shards', why: 'Replication picks the next distinct shards clockwise. Virtual nodes change how the ring is divided.' },
+      { text: 'To even out how much of the ring each shard owns', correct: true, why: 'Many small random arcs average out, so the busiest of 4 shards fell from 2.08× to 1.07× an even share.' },
+      { text: 'To let a lookup skip hashing the key', why: 'Every lookup still hashes the key to find its point on the ring.' },
+    ],
+  },
+  {
+    id: 'scaling/consistent-hashing/q3',
+    prompt: 'A Redis cluster grows from 3 shards to 4, and an operator rebalances. What happens to the key user:42?',
+    options: [
+      { text: 'Its slot may get a new owner, and the key copies there with the slot', correct: true, why: 'The new shard takes about a quarter of the slots. If the slot of user:42 is one of them, the key moves with it.' },
+      { text: 'Its hash slot changes', why: 'The slot is CRC16 of the key mod 16384. Neither part changes, so the slot stays the same.' },
+      { text: 'Every key moves to a new shard', why: 'Only the slots handed to the new shard move, about a quarter of the data.' },
+      { text: 'Nothing moves, because slots are fixed', why: 'The slot count is fixed. Which shard owns each slot changes during a rebalance.' },
+    ],
+  },
+  {
+    id: 'scaling/consistent-hashing/q4',
+    prompt: 'A ring with 64 virtual nodes per shard loses shard D. Which shards take over its links?',
+    options: [
+      { text: 'Only the next shard clockwise', why: 'That holds with one point per shard. Each of D\'s 64 points passes its arc to its own neighbor.' },
+      { text: 'A random shard for each link', why: 'Placement stays deterministic. Each link goes to the first remaining point clockwise from it.' },
+      { text: 'None, so the links are unreachable', why: 'Routing hands every arc to a new owner at once. Replicas on the next shards clockwise hold the data.' },
+      { text: 'All the remaining shards, a slice each', correct: true, why: 'Each of D\'s 64 arcs goes to the next shard clockwise from it, so every survivor takes a slice.' },
+    ],
+  },
+  {
+    id: 'scaling/consistent-hashing/q5',
+    prompt: 'Slot 7000 has finished moving from shard A to shard E. An app server with an old slot map sends a write for that slot to A. What happens?',
+    options: [
+      { text: 'A applies the write anyway', why: 'A no longer owns slot 7000. Accepting the write would split the slot\'s data across two shards.' },
+      { text: 'A replies ASK, and the client keeps its old map', why: 'ASK covers a slot in the middle of a move. Once the move finishes, A answers MOVED.' },
+      { text: 'The write fails until the app server restarts', why: 'Redirects teach a client the new owner without a restart.' },
+      { text: 'A replies MOVED, and the client updates its map and retries on E', correct: true, why: 'MOVED names the slot\'s new permanent owner, so the client fixes its map.' },
+    ],
+  },
+];
+
+export const ringNodes = [
+  { id: 'app', kind: 'server', x: 70, y: 150, label: 'App server', sublabel: 'slot map' },
+  { id: 'a', kind: 'database', x: 300, y: 50, label: 'Shard A' },
+  { id: 'b', kind: 'database', x: 300, y: 250, label: 'Shard B' },
+  { id: 'e', kind: 'database', x: 530, y: 150, label: 'Shard E', sublabel: 'new' },
+];
+
+export const ringEdges = [
+  { from: 'app', to: 'a' },
+  { from: 'app', to: 'b' },
+  { from: 'app', to: 'e' },
+  { from: 'a', to: 'e', dashed: true },
+  { from: 'b', to: 'e', dashed: true },
+];
+
+export const ringSteps = [
+  {
+    title: 'Each slot has one owner',
+    text: 'The app server caches the slot map. Slot 7000 belongs to shard A, so every key in that slot goes to A.',
+    nodes: ['app', 'a', 'b'],
+    flows: ['app>a'],
+  },
+  {
+    title: 'Add an empty shard',
+    text: 'Shard E joins the cluster with no slots. The map does not list it yet, so no traffic reaches it.',
+    nodes: ['e'],
+  },
+  {
+    title: 'Copy one slot while A serves it',
+    text: 'A marks slot 7000 MIGRATING and E marks it IMPORTING. A copies the keys to E in batches and keeps serving the keys it still holds.',
+    nodes: ['app', 'a', 'e'],
+    flows: ['app>a', 'a>e'],
+  },
+  {
+    title: 'ASK for a key that already moved',
+    text: 'For a key it already copied, A replies ASK with E\'s address. The client sends that one request to E, preceded by ASKING, and keeps its map.',
+    nodes: ['app', 'e'],
+    flows: ['app>e'],
+  },
+  {
+    title: 'Cut over to the new owner',
+    text: 'With the last key copied, the cluster assigns slot 7000 to E. A client with the old map still asks A, which replies MOVED, so the client updates its map.',
+    nodes: ['app', 'a', 'e'],
+    flows: ['app>e'],
+  },
+  {
+    title: 'Repeat until even',
+    text: 'The operator moves slots from A and B one at a time until E holds an even share, with no downtime.',
+    nodes: ['app', 'a', 'b', 'e'],
+    flows: ['a>e', 'b>e'],
+  },
+];
+
+<Recall questions={recall} />
+
+<Objectives>
+
+- Explain why hash mod N moves most keys when N changes, and how a hash ring moves only the arc a new shard covers.
+- Use virtual nodes to even out a ring, and read the movement and balance numbers to choose how many.
+- Describe hash slots and how a cluster moves one slot while clients keep reading and writing it.
+- Plan a rebalance that copies data first, switches the owner in one step, and redirects stale clients.
+
+</Objectives>
+
+## The failure: mod N moves almost everything
+
+The [sharding lesson](../sharding/) placed each link with `shard = hash(code) mod N`. The spread was even, and the
+trouble came when N changed. Going from 4 shards to 5 moved 188 of 240 links (78%), while the new shard needed only its
+fair share: 1 link in 5.
+
+Each moved link is a network copy made while the shards serve traffic, so moving four fifths of a large dataset takes
+days. A [cache tier](../caching/) routed with mod N fares worse: it loses most of its hits the moment a node joins or
+fails.
+
+The goal: when a shard joins, move only the links it needs for an even share, and take them from the shards that hold
+too many.
+
+## The ring
+
+Bend the range of hash values into a circle. Hash each shard's name to a point on the circle, and hash each key the same
+way. A key belongs to the first shard you meet walking clockwise from the key's point, so each shard owns the arc between
+the shard before it and itself.
+
+Add shard E and it lands at one point, splitting one arc in two. Keys in the part of the arc before E now meet E first,
+so they move to E. Every other key still meets the same shard and stays put. Remove a shard and only its own keys move,
+all to the next shard clockwise.
+
+<Analogy>
+
+Waiters stand around a round table, and each guest is served by the first waiter clockwise from their seat. A new
+waiter who steps into a gap takes over only the guests in that gap. Every other guest keeps the same waiter.
+
+</Analogy>
+
+<Predict
+  client:visible
+  id="scaling/consistent-hashing/predict-1"
+  ordered
+  question="Four shards sit on a ring with one point each, holding 240 links. You add shard E. How many links move, and from where?"
+  options={['About 190, from every shard', 'About 60, from every shard', 'A few, all from one shard', 'None until you rebalance']}
+  answer={2}
+>
+
+**A few, all from one shard.** E's single point splits one arc, so only that arc's links move. In the simulation
+below, 15 links (6%) move, every one from shard C, against a reference share of 20%. Movement is small, and the load
+stays uneven: C still holds 110 links while D holds 13.
+
+</Predict>
+
+<ShardingWidget client:visible placement="ring" virtualNodes={1} />
+
+What to look for:
+
+- **Only one arc moves.** With one point per shard, adding E moves 15 links, all from C to E.
+- **Movement is small, balance is poor.** Each shard owns an arc of random length, so the busiest shard holds 2.08× an
+  even share with 4 shards and 2.29× after E joins.
+
+## Virtual nodes even out the load
+
+The fix gives each shard many points, called **virtual nodes** (Cassandra calls them tokens). Shard A hashes `A#0`,
+`A#1`, and so on up to `A#63` onto the ring, and owns all 64 small arcs. Many random arcs average out, so every shard's
+total lands near an even share.
+
+Raise **Virtual nodes per shard** to 64 in the simulation above, then add and remove a shard.
+
+- **The load evens out.** With 64 points per shard, the busiest of 4 shards holds 1.07× an even share, and 1.10× after
+  E joins.
+- **The new shard takes from everyone.** E's 64 points land all around the ring, so it takes 17 links from A, 11 from
+  B, 8 from C and 11 from D.
+- **Movement matches the fair share.** 47 links move (20%), right at the reference share. With one point, only 15
+  moved, and E got less than a third of its share.
+- **Removal spreads too.** Remove E again and its 47 links scatter back across all four shards.
+
+More points cost a bigger map and more peers per shard.
+
+<details>
+<summary>Go deeper: how many virtual nodes, and rings that place copies</summary>
+
+The router keeps 64 entries per shard instead of one. Each shard also shares data with more peers, so a node rebuild or
+a failure touches more machines. Cassandra's production guide recommends 16 tokens for clusters that grow and shrink
+often, and fewer for very large clusters, because more tokens per node lower availability when nodes fail.
+
+Rings also place copies. Dynamo stores each key on its owner and the next distinct shards clockwise, so three copies
+live on three different machines. [Replication](../read-replicas/) covered why copies matter, and
+[quorums](../../distributed-data/quorums/) later shows how reads and writes choose among them.
+
+</details>
+
+## Hash slots: a fixed number of buckets
+
+A ring drops shard points at random. Many systems fix the buckets instead. Redis Cluster splits the key space into
+**16384 hash slots**. A key's slot is `CRC16(key) mod 16384`, and that number never changes, because 16384 never
+changes. A small table maps each slot to a shard, so 4 shards own 4096 slots each.
+
+Adding a shard leaves every key's slot alone and edits only the table: the new shard takes about 3277 slots, a fifth of
+the total, and each moved slot carries its keys with it.
+
+Fixed slots buy three things:
+
+- **Balance by choice.** The operator gives every shard an equal count of slots.
+- **Small units of work.** One slot holds about 1/16384 of the keys, so a rebalance can pause at any slot boundary.
+- **A small map.** Every client holds all 16384 owners and routes a request in one hop.
+
+## Rebalancing step by step
+
+A slot moves while clients keep using its keys. Redis Cluster marks it **MIGRATING** on the old owner and
+**IMPORTING** on the new one, then copies keys in batches.
+
+<StepDiagram client:visible title="Moving one slot to a new shard" nodes={ringNodes} edges={ringEdges} steps={ringSteps} height={300} />
+
+Two redirects keep every request correct during the move:
+
+- **ASK** means "this key has moved, try E for this one request." The client keeps its map, since most of the slot
+  still lives on A.
+- **MOVED** means "this slot belongs to E now." The client updates its map, so later requests skip the redirect.
+
+Any sharded store can follow the same pattern: copy in the background, catch up on writes made during the copy, switch
+the owner in one step, and redirect clients that hold the old map. Slots keep each step small.
+
+<details>
+<summary>Go deeper: jump hash, rendezvous hashing, and Dynamo's comparison</summary>
+
+**Jump consistent hash** maps a key to one of N numbered buckets with a short loop and no stored ring at all. Growing
+from N to N + 1 buckets moves 1 key in N + 1 on average, exactly the new bucket's share. Its limit: buckets are
+numbered, so you can add or remove only the last one. That fits storage shards that each keep their own replicas, and it
+fits poorly with a cache cluster where any node can die.
+
+**Rendezvous hashing** (highest random weight) scores every shard for each key with `hash(key, shard)` and picks the
+highest score. Removing a shard moves only its keys, each to its own second choice, so they spread evenly with no
+virtual nodes. The cost is one hash per shard on every lookup, which is fine for tens of shards and slow for thousands.
+
+**Dynamo's comparison.** The Dynamo paper compared three placement strategies and found that fixed, equal size
+partitions spread the load most evenly and kept the membership data smallest, the same conclusion hash slots reach.
+
+</details>
+
+## Trade-offs
+
+<TradeoffTable title="Placement and rebalancing choices">
+
+| Choice                    | What it buys                                     | What it costs                                              |
+| ------------------------- | ------------------------------------------------ | ---------------------------------------------------------- |
+| hash mod N                | One line of code, even spread                    | Changing N moves almost every key                          |
+| Ring, one point per shard | Adding a shard moves only one arc                | Uneven arcs, and one neighbor carries every move           |
+| Ring with virtual nodes   | Even load, and each move draws from every shard  | A bigger map, and each shard shares data with more peers   |
+| Fixed hash slots          | Exact balance, small units to move               | A table to sync, and the slot count caps the shards        |
+| Jump hash                 | No stored map, minimal movement                  | You can add or remove only the last bucket                 |
+| Rendezvous hashing        | Even spread with no virtual nodes                | One hash per shard on every lookup                         |
+
+</TradeoffTable>
+
+**When not to use consistent hashing.** A database that changes its shard count once a year can keep mod N and pay for
+one planned migration. A system with one central router can keep a table of key ranges and rebalance by splitting a
+range.
+
+<Callout variant="warning" title="Common mistakes">
+
+- **One point per shard.** The arcs come out uneven, and one shard runs at twice its share.
+- **Counting only moved keys.** A change that moves very few keys can leave the new shard nearly empty. Check the
+  balance too.
+- **Switching the owner before the copy finishes.** Reads for keys not yet copied come back empty. Copy, catch up,
+  then cut over.
+- **Expecting consistent hashing to fix a hot key.** Every placement sends one key to one owner. Hot keys still need
+  copies or salting.
+
+</Callout>
+
+<KeyTakeaways>
+
+- Hash mod N moves about N in N + 1 keys when a shard joins.
+- On a ring, a joining shard takes only the arcs it covers, and a leaving shard hands on only its own keys.
+- Virtual nodes even out the load and spread each move across every shard, at the cost of a bigger map and more peers.
+- Fixed hash slots separate a key's bucket from its owner, so a rebalance edits a small table and copies whole slots.
+- Copy first, switch the owner in one step, and redirect clients that still hold the old map.
+
+</KeyTakeaways>
+
+The URL shortener now spreads its links across shards and adds a shard without a long migration. The next module keeps
+it working when those parts slow down or fail, starting with [timeouts](../../reliability/timeouts/).
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+A cache tier of 10 nodes routes keys with `hash(key) mod 10`. One node fails, the client drops it and switches to
+mod 9, and the database load jumps far past what one lost node explains. Explain the jump, and propose a placement that
+limits the damage.
+
+<div slot="answer">
+
+- **The jump.** Going from mod 10 to mod 9 sends about 9 keys in 10 to a different node, so almost every read misses at
+  once and falls through to the database.
+- **The fix.** Place the nodes on a ring with virtual nodes. Losing one node moves only its tenth of the keys, spread
+  across the other nine, so about 90% of reads still hit.
+- **How many points.** Start with about 64 per node and check the busiest node's share, as in the simulation above.
+
+</div>
+
+</Challenge>
