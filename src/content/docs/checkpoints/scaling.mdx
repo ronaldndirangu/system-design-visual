@@ -1,6 +1,6 @@
 ---
 title: 'Checkpoint 2: Scaling the URL shortener'
-description: Ten questions on load balancing, caching, CDNs, object storage, replication, sharding, and consistent hashing. Score 70% to pass.
+description: Twelve questions on load balancing, caching, CDNs, object storage, replication, sharding, consistent hashing, and hot counters. Score 70% to pass.
 ---
 
 import Checkpoint from '../../../components/review/Checkpoint';
@@ -88,6 +88,26 @@ export const quiz = [
     ],
   },
   {
+    id: 'checkpoint/scaling/q11',
+    prompt: 'A viral link takes 240 click counter increments a second, all on one key, and its cache node is overloaded. Which fix spreads that write load?',
+    options: [
+      { text: 'Copy the key to every cache node', why: 'Copies spread reads, since any copy can answer. Every increment would have to change every copy, so writes get worse.' },
+      { text: 'Add more cache nodes to the tier', why: 'The key still hashes to one node, so all 240 increments still land there. More nodes only take cold keys away.' },
+      { text: 'Give the counter key a longer TTL', why: 'A TTL controls how long a cached value lives. It does nothing to spread increments across nodes.' },
+      { text: 'Split the counter into parts that land on different nodes', correct: true, why: 'Each click adds to a random part, such as abc123#0 to abc123#7, so the writes spread out. Reading the total means adding up all the parts.' },
+    ],
+  },
+  {
+    id: 'checkpoint/scaling/q12',
+    prompt: 'To ease a hot counter, each app server now counts clicks in memory and adds its total to the shared counter once a second. What do you give up?',
+    options: [
+      { text: 'The count trails by up to a second, and a crash loses the unsent part', correct: true, why: 'Batching trades freshness and a small loss window for far fewer writes. That suits a click count, where a few lost clicks do little harm.' },
+      { text: 'Every read must gather and add up all the counter parts', why: 'That is the cost of splitting a key into parts. Batching keeps one counter and sends fewer writes to it.' },
+      { text: 'A delete must reach every copy of the counter', why: 'That is the cost of copying a hot key to every node. Batching keeps a single shared counter.' },
+      { text: 'Nothing, because the shared counter stays exact at all times', why: 'The shared counter lags the in memory counts by up to a second, and those counts vanish if a server crashes before sending them.' },
+    ],
+  },
+  {
     id: 'checkpoint/scaling/q9',
     prompt: 'The links table has one index, on (user_id, created_at). A daily report runs SELECT count(*) FROM links WHERE created_at > ?. How does the database find the rows?',
     options: [
@@ -108,7 +128,7 @@ export const quiz = [
   },
 ];
 
-Answer every question, then check your score. You need 7 of 10 to pass. A pass marks the module checkpoint complete on this device.
+Answer every question, then check your score. You need 9 of 12 to pass. A pass marks the module checkpoint complete on this device.
 
 Missed one? The explanation names the idea, and the module’s lessons cover it in depth:
 
@@ -119,5 +139,6 @@ Missed one? The explanation names the idea, and the module’s lessons cover it 
 - [Replication](../../scaling/read-replicas/)
 - [Sharding and partitioning](../../scaling/sharding/)
 - [Consistent hashing and rebalancing](../../scaling/consistent-hashing/)
+- [Access patterns and hot keys](../../thinking/access-patterns/)
 
 <Checkpoint client:load moduleId="scaling" questions={quiz} />
