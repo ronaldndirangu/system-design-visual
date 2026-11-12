@@ -487,19 +487,43 @@ const modules: ModuleInput[] = [
     number: 6,
     title: 'Case studies',
     summary:
-      'Twelve products, each chosen for one constraint that dominates its design. Start each one as soon as you finish the module it builds on. Beginner route: News feed and Notifications, then Ticketing, Payments and Chat, then Video streaming, Search, Ride sharing, Metrics and Collaborative editor. File sync and Key-value store are extra cases off the route.',
+      'Fourteen products. The two sho.rt cases put a finished module under load, and the other twelve each turn on one constraint that dominates the design. Start each one as soon as you finish the module it builds on. Beginner route: Shortener at scale and Shortener bad day, then News feed and Notifications, then Ticketing, Payments and Chat, then Video streaming, Search, Ride sharing, Metrics and Collaborative editor. File sync and Key-value store are extra cases off the route.',
     example: 'A different system per lesson',
     sharedExample: false,
     lessons: [
       {
-        id: 'case-studies/search',
-        title: 'Search',
+        id: 'case-studies/shortener-at-scale',
+        title: 'Shortener at scale',
         summary:
-          'Keep a news index fresh, give each ranking signal its own clock, then add typeahead as an extension.',
-        minutes: 50,
-        difficulty: 3,
-        buildsOn: ['foundations/indexes', 'scaling/sharding', 'scaling/caching'],
+          'Put sho.rt through a viral link, a dead app server, and a new region, and size each fix with Module 2 numbers.',
+        minutes: 21,
+        difficulty: 2,
+        buildsOn: [
+          'scaling/load-balancing',
+          'scaling/caching',
+          'scaling/cdn',
+          'scaling/read-replicas',
+          'scaling/sharding',
+        ],
         bestAfter: 'scaling',
+      },
+      {
+        id: 'case-studies/shortener-bad-day',
+        title: 'Shortener bad day',
+        summary:
+          'Keep sho.rt redirecting through a slow dependency, a retry storm, and a duplicate click with the Module 3 tools.',
+        minutes: 21,
+        difficulty: 2,
+        buildsOn: [
+          'reliability/timeouts',
+          'reliability/retries',
+          'reliability/idempotency',
+          'reliability/queues-and-backpressure',
+          'reliability/rate-limiting',
+          'reliability/circuit-breakers',
+          'reliability/observability',
+        ],
+        bestAfter: 'reliability',
       },
       {
         id: 'case-studies/news-feed',
@@ -511,14 +535,14 @@ const modules: ModuleInput[] = [
         bestAfter: 'reliability',
       },
       {
-        id: 'case-studies/video-streaming',
-        title: 'Video streaming',
+        id: 'case-studies/notifications',
+        title: 'Notifications',
         summary:
-          'Store large files in object storage, upload them in parts, transcode a bitrate ladder, and pay for bandwidth wisely.',
-        minutes: 30,
-        difficulty: 3,
-        buildsOn: ['scaling/cdn', 'reliability/idempotency', 'reliability/queues-and-backpressure'],
-        bestAfter: 'reliability',
+          'Deliver through external providers with deadlines and preferences, and contrast it with chat.',
+        minutes: 36,
+        difficulty: 2,
+        buildsOn: ['reliability/queues-and-backpressure', 'reliability/retries', 'async/delivery-semantics'],
+        bestAfter: 'async',
       },
       {
         id: 'case-studies/ticketing',
@@ -549,13 +573,28 @@ const modules: ModuleInput[] = [
         bestAfter: 'async',
       },
       {
-        id: 'case-studies/notifications',
-        title: 'Notifications',
+        id: 'case-studies/video-streaming',
+        title: 'Video streaming',
         summary:
-          'Deliver through external providers with deadlines and preferences, and contrast it with chat.',
-        minutes: 36,
-        difficulty: 2,
-        buildsOn: ['reliability/queues-and-backpressure', 'reliability/retries', 'async/delivery-semantics'],
+          'Store large files in object storage, upload them in parts, transcode a bitrate ladder, and pay for bandwidth wisely.',
+        minutes: 30,
+        difficulty: 3,
+        buildsOn: ['scaling/cdn', 'reliability/idempotency', 'reliability/queues-and-backpressure'],
+        bestAfter: 'reliability',
+      },
+      {
+        id: 'case-studies/search',
+        title: 'Search',
+        summary:
+          'Keep a news index fresh, give each ranking signal its own clock, then add typeahead as an extension.',
+        minutes: 50,
+        difficulty: 3,
+        buildsOn: [
+          'foundations/indexes',
+          'scaling/sharding',
+          'scaling/caching',
+          'reliability/queues-and-backpressure',
+        ],
         bestAfter: 'async',
       },
       {
@@ -578,6 +617,15 @@ const modules: ModuleInput[] = [
         bestAfter: 'async',
       },
       {
+        id: 'case-studies/collaborative-editor',
+        title: 'Collaborative editor',
+        summary: 'Merge concurrent edits so every copy of the document converges.',
+        minutes: 35,
+        difficulty: 3,
+        buildsOn: ['foundations/real-time', 'distributed-data/consistency-models'],
+        bestAfter: 'distributed-data',
+      },
+      {
         id: 'case-studies/file-sync',
         title: 'File sync',
         summary:
@@ -586,15 +634,6 @@ const modules: ModuleInput[] = [
         difficulty: 2,
         buildsOn: ['reliability/idempotency', 'foundations/data-modeling', 'async/delivery-semantics'],
         bestAfter: 'async',
-      },
-      {
-        id: 'case-studies/collaborative-editor',
-        title: 'Collaborative editor',
-        summary: 'Merge concurrent edits so every copy of the document converges.',
-        minutes: 35,
-        difficulty: 3,
-        buildsOn: ['foundations/real-time', 'distributed-data/consistency-models'],
-        bestAfter: 'distributed-data',
       },
       {
         id: 'case-studies/kv-store',

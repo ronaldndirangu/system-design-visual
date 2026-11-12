@@ -1,0 +1,522 @@
+---
+title: Shortener bad day
+description: Take sho.rt through a slow analytics service, a retry storm, and a double click on Shorten, and fix each with the tools from the reliability module.
+furtherReading:
+  - title: 'AWS Builders Library: Timeouts, retries and backoff with jitter'
+    url: https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/
+    note: How Amazon picks timeouts, caps retries, and spreads them out with jitter.
+  - title: 'AWS Builders Library: Making retries safe with idempotent APIs'
+    url: https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/
+    note: Client request tokens and the edge cases that make them hard to get right.
+  - title: 'Google SRE book: Handling overload'
+    url: https://sre.google/sre-book/handling-overload/
+    note: Per client limits, criticality, and how a server rejects work cheaply.
+  - title: 'Google SRE book: Addressing cascading failures'
+    url: https://sre.google/sre-book/addressing-cascading-failures/
+    note: How one slow piece spreads overload, and the fixes that stop it.
+---
+
+import Recall from '../../../components/lesson/Recall.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import Challenge from '../../../components/lesson/Challenge.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+import StepDiagram from '../../../components/lesson/StepDiagram';
+
+export const nodes = [
+  { id: 'reader', kind: 'client', x: 70, y: 60, label: 'Reader', sublabel: 'clicks' },
+  { id: 'lb', kind: 'loadBalancer', x: 230, y: 60, label: 'Load balancer' },
+  { id: 'app', kind: 'server', x: 390, y: 60, label: 'App servers', sublabel: '16 workers each' },
+  { id: 'cache', kind: 'cache', x: 550, y: 60, label: 'Cache', sublabel: 'hot codes' },
+  { id: 'creator', kind: 'client', x: 70, y: 200, label: 'Creator', sublabel: 'makes links' },
+  { id: 'buffer', kind: 'queue', x: 390, y: 200, label: 'Click buffer', sublabel: 'local' },
+  { id: 'analytics', kind: 'server', x: 550, y: 200, label: 'Analytics ingest' },
+  { id: 'primary', kind: 'database', x: 550, y: 340, label: 'Primary', sublabel: 'links and keys' },
+];
+
+export const edges = [
+  { from: 'reader', to: 'lb' },
+  { from: 'creator', to: 'lb' },
+  { from: 'lb', to: 'app' },
+  { from: 'app', to: 'cache' },
+  { from: 'app', to: 'analytics' },
+  { from: 'app', to: 'buffer' },
+  { from: 'buffer', to: 'analytics' },
+  { from: 'app', to: 'primary' },
+];
+
+export const steps = [
+  {
+    title: 'A healthy click',
+    text: 'A reader clicks a sho.rt link. One of 16 workers on an app server finds the code in the cache. The whole redirect takes about 3.5 ms.',
+    nodes: ['reader', 'lb', 'app', 'cache'],
+    flows: ['reader>lb', 'lb>app', 'app>cache'],
+  },
+  {
+    title: 'The old click report',
+    text: 'Before it sends the 302, the worker reports the click to analytics ingest. That call takes 1 ms on a good day.',
+    nodes: ['app', 'analytics'],
+    flows: ['app>analytics'],
+  },
+  {
+    title: 'Ingest hangs',
+    text: 'Ingest slows to 3 s. Every worker waits on it, the line on each server fills, and readers get nothing.',
+    nodes: ['reader', 'app', 'analytics'],
+    flows: ['app>analytics'],
+  },
+  {
+    title: 'Report into a buffer',
+    text: 'The fix: the worker appends the click to a local buffer and sends the 302 at once. Redirects no longer wait on ingest.',
+    nodes: ['app', 'buffer'],
+    flows: ['app>buffer'],
+  },
+  {
+    title: 'Upload behind a breaker',
+    text: 'An uploader sends batches from the buffer. A circuit breaker stops the uploads while ingest is sick and probes gently before it resumes.',
+    nodes: ['buffer', 'analytics'],
+    flows: ['buffer>analytics'],
+  },
+  {
+    title: 'A create that is safe to retry',
+    text: 'A creator presses Shorten with an idempotency key. The primary stores the key with the new link, so a second press returns the same code.',
+    nodes: ['creator', 'lb', 'app', 'primary'],
+    flows: ['creator>lb', 'lb>app', 'app>primary'],
+  },
+];
+
+export const quiz = [
+  {
+    id: 'case-studies/shortener-bad-day/q1',
+    prompt: 'sho.rt sets a 20 ms timeout on the ingest call, and ingest stays down. Why do 16 servers still fall short of the 50,000 peak?',
+    options: [
+      {
+        text: 'The timeout is too short, so healthy reports fail',
+        why: 'Healthy calls finish in 6 ms at p99, well inside 20 ms.',
+      },
+      {
+        text: 'A timeout cancels the redirect along with the report',
+        why: 'The worker abandons only the report. The redirect still goes out.',
+      },
+      {
+        text: 'Each redirect still holds a worker for about 22.5 ms, so the fleet finishes about 11,000 a second',
+        correct: true,
+        why: '16 ÷ 0.0225 ≈ 710 a second per server, and 16 servers give about 11,000. A timeout caps the wait and still pays it.',
+      },
+      {
+        text: 'The load balancer ignores timeouts set on app servers',
+        why: 'The timeout lives on the app server and works. The cost is the time each worker spends waiting.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/shortener-bad-day/q2',
+    prompt: 'Edges try a failed redirect 3 times, and app servers try each ingest call 4 times. Which change stops the multiplication?',
+    options: [
+      {
+        text: 'Retry at one layer only, inside a budget of about 10% of fresh requests',
+        correct: true,
+        why: 'One layer means no multiplying, and the budget caps extra load at 10% even in a full outage.',
+      },
+      {
+        text: 'Add jitter at every layer and keep all the retries',
+        why: 'Jitter spreads retries out in time. The 12 calls per click are still there.',
+      },
+      {
+        text: 'Raise every timeout so fewer calls count as failed',
+        why: 'Longer timeouts hold workers longer and make the pileup worse.',
+      },
+      {
+        text: 'Retry without limit at the edge, which sits closest to the reader',
+        why: 'Unlimited retries from thousands of edges are the storm itself.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/shortener-bad-day/q3',
+    prompt: 'A creator’s second press of Shorten arrives while the first create is still running. Both carry the same idempotency key. What should the server do?',
+    options: [
+      {
+        text: 'Create a second link with a fresh code',
+        why: 'That is the bug the key exists to stop: two codes for one press.',
+      },
+      {
+        text: 'Run the create again and keep whichever finishes last',
+        why: 'Both runs write a link, and the creator may see a code that is later replaced.',
+      },
+      {
+        text: 'Drop the request and send no response',
+        why: 'The client then times out and retries again, with no answer to show.',
+      },
+      {
+        text: 'Answer 409 with Retry-After, then return the stored code when the client tries again',
+        correct: true,
+        why: 'The key is pending, so the server holds off. Once it is done, every retry gets the same code.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/shortener-bad-day/q4',
+    prompt: 'Which alert should have paged the on-call engineer at 8:04 p.m.?',
+    options: [
+      {
+        text: 'CPU above 80% on any app server',
+        why: 'Workers waiting on ingest sit idle. CPU stayed low through the whole outage.',
+      },
+      {
+        text: 'Redirect error budget burning more than 14.4 times too fast over both 5 minutes and 1 hour',
+        correct: true,
+        why: 'Burn rate tracks what readers feel. At a burn rate near 1,000, both windows cross 14.4 within a couple of minutes.',
+      },
+      {
+        text: 'Disk usage above 70% on the ingest hosts',
+        why: 'That warns about one cause. It says nothing about whether readers get their redirects.',
+      },
+      {
+        text: 'Any single 5xx response from a redirect',
+        why: 'A few errors happen every minute. Paging on each one trains people to ignore the pager.',
+      },
+    ],
+  },
+];
+
+export const recall = [
+  {
+    id: 'case-studies/shortener-bad-day/recall-1',
+    prompt: 'What does a retry budget limit?',
+    options: [
+      {
+        text: 'Retries as a share of fresh requests, such as 10%',
+        correct: true,
+        why: 'The budget counts retries across all requests, so an outage raises load by at most that share.',
+      },
+      {
+        text: 'The number of tries one request may make',
+        why: 'That is an attempt limit. A budget works across all requests at once.',
+      },
+      {
+        text: 'How long a client waits between tries',
+        why: 'That is backoff. A budget caps how many retries happen.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/shortener-bad-day/recall-2',
+    prompt: 'A circuit breaker is half open. What does it do with calls?',
+    options: [
+      {
+        text: 'Sends every call through as normal',
+        why: 'That is the closed state.',
+      },
+      {
+        text: 'Fails every call at once',
+        why: 'That is the open state.',
+      },
+      {
+        text: 'Lets a few probe calls through and watches how they go',
+        correct: true,
+        why: 'Good probes close the breaker. A failed probe opens it again.',
+      },
+    ],
+  },
+  {
+    id: 'case-studies/shortener-bad-day/recall-3',
+    prompt: 'Which response tells a client to slow down and when to try again?',
+    options: [
+      {
+        text: 'A 500 Internal Server Error',
+        why: 'A 500 says something broke. It gives the client no timing.',
+      },
+      {
+        text: 'A 429 Too Many Requests with a Retry-After header',
+        correct: true,
+        why: 'The status says slow down, and Retry-After says how long to wait.',
+      },
+      {
+        text: 'A 302 Found pointing at a waiting page',
+        why: 'A redirect hides the overload, and the client cannot tell it should back off.',
+      },
+    ],
+  },
+];
+
+<Recall questions={recall} />
+
+<Objectives>
+
+- Explain how a slow analytics service took down every sho.rt redirect.
+- Pick a timeout and a deadline from latency numbers, and count the capacity they leave.
+- Cap retries with one retry layer and a budget.
+- Move the click report behind a buffer and a circuit breaker.
+- Make link creation safe to retry with an idempotency key.
+- Shed load early, and page on error budget burn.
+
+</Objectives>
+
+**Route:** Intermediate, case 2 of 12 on the beginner route through Module 6. Next on the route:
+[News feed](../news-feed/).
+
+## The brief
+
+You scaled sho.rt in the last case. Tonight a helper service fails, and three reliability gaps show up in one evening.
+Work each step on paper first. A reference answer sits under each step, folded away.
+
+**The numbers**
+
+| Constraint        | Target                                                      |
+| ----------------- | ----------------------------------------------------------- |
+| Redirects         | 50,000 per second at peak, spread over 16 app servers       |
+| Workers           | 16 per server; a healthy redirect holds one for 3.5 ms      |
+| Click report      | 1 ms at p50 and 6 ms at p99 on a healthy day                |
+| Redirect SLO      | 99.9% succeed within 100 ms, measured over 30 days          |
+| New links         | 100 per second; one press of Shorten makes one link         |
+| Click counts      | Visible within a minute; none lost in an outage under 5 min |
+
+## How to work this case
+
+Give each step five minutes. Write numbers, then a sentence on why. Score yourself with this rubric before you open
+the answer.
+
+| Step                     | Partial              | Solid                                                      |
+| ------------------------ | -------------------- | ---------------------------------------------------------- |
+| Timeouts and a deadline  | "Add a timeout"      | A timeout from the p99, one deadline, and the capacity left |
+| Retries with a budget    | "Add backoff"        | One retry layer, a 10% budget, and full jitter             |
+| A breaker and a buffer   | "Make it async"      | A sized buffer, breaker thresholds, and a capped drain     |
+| An idempotency key       | "Dedupe on the URL"  | A client key, a pending state, and a retention window      |
+| Load shedding and 429    | "Autoscale"          | A bounded line, a shed order, and Retry-After              |
+| Dashboards and burn rate | "Alert on errors"    | An SLO, a burn rate page, and RED plus USE views           |
+
+## The failure: analytics slows down
+
+At 8:03 p.m., the analytics ingest service starts compacting a full disk, and its calls slow from 1 ms to 3 s. Each
+sho.rt worker reports the click to ingest before it sends the 302, so every redirect now waits 3 s. Within a second,
+all 16 workers on every server are waiting. New clicks queue, then time out at the load balancer.
+
+At 8:05, edges start retrying failed redirects, and app servers retry each failed ingest call. At 8:09, ingest
+recovers, yet the retries keep load at several times normal and the outage continues. Meanwhile, creators whose
+Shorten button spun for ten seconds press it again: 340 of them end up with two codes for one URL.
+
+<Predict
+  client:visible
+  id="case-studies/shortener-bad-day/predict-1"
+  question="Each server runs 16 workers, and every redirect now waits 3 s for the click report. About how many redirects a second can one server finish?"
+  options={['About 0.5', 'About 5', 'About 50', 'About 4,500']}
+  ordered
+  answer={1}
+  why={[
+    'That would mean each redirect takes 32 s.',
+    'Each worker finishes one redirect every 3 s, and 16 ÷ 3 ≈ 5.',
+    'That needs each redirect to finish in about 320 ms.',
+    'That is the healthy rate, when a redirect takes 3.5 ms.',
+  ]}
+>
+
+**About 5.** Each worker holds one redirect for 3 s, so 16 workers finish 16 ÷ 3 ≈ 5 a second. Across 16 servers that
+is about 85 a second against 50,000 arriving. The redirect code works fine, and the site is down anyway.
+
+</Predict>
+
+## The idea: the click never waits on the count
+
+A redirect has one job: send the 302. Counting the click matters, and it can happen a few seconds later. Every fix in
+this case keeps the core job independent of its helpers: bound each wait, cap each retry, park side work in a buffer,
+and make every write safe to repeat.
+
+<StepDiagram client:visible title="One click on a bad day" nodes={nodes} edges={edges} steps={steps} height={400} />
+
+## Step 1: Timeouts and a deadline
+
+Set a timeout for the ingest call and a deadline for the whole redirect. Then count how many redirects a second the
+fleet finishes if every ingest call runs into your timeout. Use
+[how long a timeout should be](../../reliability/timeouts/#how-long-should-a-timeout-be) for the first number.
+
+<details>
+<summary>Show one possible answer</summary>
+
+- **Ingest timeout**: 20 ms, about three times the healthy p99 of 6 ms.
+- **Deadline**: 100 ms for the whole redirect, the same as the latency target. Each call gets the time that remains,
+  and the worker skips the click report when less than 20 ms is left. See
+  [one deadline for the whole trip](../../reliability/timeouts/#one-deadline-for-the-whole-trip).
+- **Capacity with ingest down**: each redirect holds a worker for 2.5 + 20 = 22.5 ms. 16 ÷ 0.0225 ≈ 710 a second per
+  server, about 11,000 across 16 servers. That is under a quarter of the peak.
+- The timeout keeps servers alive and still fails most clicks. Step 3 removes the wait.
+
+</details>
+
+## Step 2: Retries with a budget
+
+Two layers retry today. CDN edges try a failed redirect up to 3 times, and app servers try each ingest call up to 4
+times. Decide where retries belong and how many each layer may send.
+
+<Predict
+  client:visible
+  id="case-studies/shortener-bad-day/predict-2"
+  question="Edges try each failed redirect up to 3 times, and app servers try each failed ingest call up to 4 times. While ingest hangs, how many ingest calls can one reader click cause?"
+  options={['About 1', 'About 3', 'About 4', 'About 12']}
+  ordered
+  answer={3}
+  why={[
+    'That holds only when nothing retries.',
+    'That counts the edge tries and skips the app tries inside each one.',
+    'That counts the app tries for a single edge try.',
+    'Each of 3 edge tries runs 4 app tries: 3 × 4 = 12.',
+  ]}
+>
+
+**About 12.** Retries multiply across layers. Each of the 3 edge tries runs up to 4 ingest calls, so one click sends
+12 calls to the service that is already struggling. This is how
+[retries made the outage worse](../../reliability/retries/#why-retries-made-it-worse) after ingest recovered.
+
+</Predict>
+
+<details>
+<summary>Show one possible answer</summary>
+
+- **One layer**: edges keep one retry for redirects. App servers stop retrying ingest inside a request.
+- **Budget**: retries stay under 10% of fresh requests. At 50,000 a second, that allows 5,000 retries, so a full
+  outage raises load by at most 10%. On a normal day about 0.1% of redirects fail, and the budget never binds. See
+  [attempt limits and retry budgets](../../reliability/retries/#cap-the-total-attempt-limits-and-retry-budgets).
+- **Backoff**: exponential with full jitter, so retries from thousands of readers spread out in time.
+- **Only safe requests**: redirects are reads and safe to retry. Creates wait for the key in Step 4.
+
+</details>
+
+## Step 3: A breaker and a buffer
+
+Take the click report out of the redirect. Size a local buffer that rides out a five minute ingest outage, and decide
+when the uploader stops calling ingest and how it comes back.
+
+<details>
+<summary>Show one possible answer</summary>
+
+- **Buffer**: the worker appends the click and sends the 302. A redirect drops to 2.5 ms, so the fleet carries the
+  peak with ingest down. This is [the click analytics buffer](../../reliability/queues-and-backpressure/#the-click-analytics-buffer).
+- **Size**: 3,125 clicks a second per server × 300 s ≈ 940,000 clicks. At 64 bytes each, about 60 MB per server.
+  Keep it on local disk if a crash must not lose clicks.
+- **Breaker**: open when half the batches fail over 10 s. While open, the uploader stops calling and the buffer
+  fills. After 30 s, go half open and send one probe batch, as in
+  [probe gently](../../reliability/circuit-breakers/#probe-gently).
+- **Full buffer**: drop the oldest clicks, count the drops, and mark that window on the dashboard as incomplete.
+- **Drain**: cap uploads at twice the normal rate, so the backlog does not flatten ingest as it recovers.
+
+</details>
+
+## Step 4: An idempotency key
+
+Make the Shorten button safe to press twice. Say what the client sends, what the server stores, and what a second
+request gets while the first is still running.
+
+<details>
+<summary>Show one possible answer</summary>
+
+- **Client**: makes a random key when the form opens and sends it as an Idempotency-Key header on every try.
+- **Server**: inserts the key with status pending under a unique constraint, creates the link, then marks the key
+  done with the code, all on the primary. A duplicate that finds done gets the stored code. One that finds pending
+  gets 409 with Retry-After: 1. See
+  [duplicates that arrive while the first is still running](../../reliability/idempotency/#duplicates-that-arrive-while-the-first-is-still-running).
+- **Retention**: keep keys 24 hours. 100 creates a second × 86,400 ≈ 8.6 million rows a day, about 1 GB at 120
+  bytes each.
+- **Scope**: tie each key to the account, so two users never share a result.
+
+</details>
+
+## Step 5: Load shedding and 429
+
+When ingest recovers at 8:09, readers, edges, and creators all come back at once. Bound each server's line, choose
+what to reject first, and say what a rejected client hears.
+
+<details>
+<summary>Show one possible answer</summary>
+
+- **Bounded line**: 64 requests per server. With 16 workers at 2.5 ms, a full line waits 64 × 2.5 ÷ 16 = 10 ms, well
+  inside the deadline. A request that finds the line full gets an immediate 503 with Retry-After: 1. See
+  [push back when the line is full](../../reliability/queues-and-backpressure/#push-back-when-the-line-is-full).
+- **Shed order**: dashboard reads and the bulk API go first, creates next, and redirects last.
+- **Create limit**: a token bucket per account allows 10 creates a second with bursts of 20. Past the limit, answer
+  429 with Retry-After: 1, as in
+  [telling clients to slow down](../../reliability/rate-limiting/#telling-clients-to-slow-down).
+- **Clients**: wait Retry-After plus jitter, and stop after 3 tries.
+
+</details>
+
+## Step 6: Dashboards and burn rate
+
+Pick the alert that would have paged at 8:04, and name the two views an on-call engineer opens first.
+
+<details>
+<summary>Show one possible answer</summary>
+
+- **Budget**: a 99.9% SLO leaves 0.1% of redirects to fail, about 43 minutes of full outage in 30 days.
+- **Burn rate**: at 8:04, about 99.8% of redirects failed, a burn rate near 1,000. At that pace the month's budget
+  lasts about 43 minutes. Page when the burn rate passes 14.4 over both the last 5 minutes and the last hour, and open
+  a ticket for slow burns.
+- **Views**: RED on redirects shows rate down, errors up, and duration at the deadline. USE on workers shows 100%
+  utilization and a full line. See
+  [RED and USE](../../reliability/observability/#two-ways-to-read-a-dashboard-red-and-use).
+- **Cause**: one trace shows the ingest span filling 3 s of a 3 s redirect.
+
+</details>
+
+## Reading your score
+
+Count your solid answers. Four or more means the reliability module has stuck. Two or three means the ideas are there
+and the numbers need practice: redo Steps 1 and 3. Fewer than two means a lesson needs another pass. Steps 1 and 2 map
+to timeouts and retries, Step 3 to queues and circuit breakers, Step 4 to idempotency, Step 5 to backpressure and rate
+limiting, and Step 6 to observability.
+
+Common misses: trusting a timeout to save capacity, retrying at every layer, and deduplicating creates on the long URL,
+which merges two creators who shorten the same page.
+
+## Trade-offs
+
+<TradeoffTable title="Choices sho.rt made on a bad day">
+
+| Choice                            | What it buys                            | What it costs                                  |
+| --------------------------------- | --------------------------------------- | ---------------------------------------------- |
+| Click report into a local buffer  | Redirects ignore ingest health          | Counts lag, and a long outage drops clicks     |
+| A timeout plus one deadline       | A hung call frees its worker            | A few slow but healthy calls fail              |
+| One retry layer, 10% budget       | Load rises at most 10% in an outage     | Some failures a second retry would have saved  |
+| Breaker on the uploader           | Ingest gets room to recover             | Counts pause while the breaker is open         |
+| Idempotency keys                  | One link per press of Shorten           | A keys table and a daily cleanup               |
+| Bounded lines, 503s, and 429s     | Fast, honest rejections                 | Some users see errors during a surge           |
+
+</TradeoffTable>
+
+<KeyTakeaways>
+
+- A side job on the request path can take down the whole site: one 3 s call cut each server from 4,500 redirects a
+  second to about 5.
+- A timeout frees workers, and a 20 ms wait still caps the fleet near 11,000 a second. Remove the wait.
+- Retries multiply across layers: 3 edge tries × 4 app tries = 12 calls per click. Retry at one layer, inside a 10%
+  budget.
+- A local buffer and a circuit breaker keep redirects fast while analytics is down. A capped drain protects it on the
+  way back.
+- An idempotency key with a pending state makes Shorten safe to press twice.
+- Bounded lines and 429s with Retry-After shed load early, and burn rate alerts page within minutes.
+
+</KeyTakeaways>
+
+<Quiz client:visible questions={quiz} />
+
+<Challenge>
+
+**Lose the cache.** The cache cluster fails at peak. Every redirect now reads a replica, and four replicas handle 8,000
+reads a second against 50,000 arriving.
+
+1. What do you shed, and where?
+2. Which retries still run, and how much load do they add?
+3. When does the burn rate alert page?
+
+<div slot="answer">
+
+- **Shed**: cap replica reads at 500 a second per server (8,000 ÷ 16), and answer the rest with a fast 503 and
+  Retry-After. Keep shedding dashboard reads and the bulk API first.
+- **Retries**: the edge's one retry stays inside the 10% budget, so it adds at most 5,000 a second, and every retry
+  meets the same fast 503.
+- **Alert**: about 84% of redirects fail, a burn rate of 840. The 1 hour window crosses 14.4 within about a minute,
+  so the page goes out in a minute or two.
+
+</div>
+
+</Challenge>

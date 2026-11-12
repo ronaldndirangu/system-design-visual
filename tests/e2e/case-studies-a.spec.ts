@@ -216,7 +216,9 @@ for (const [from, to] of [
 ] as const) {
   test(`case-studies/${from}/ links to its contrast pair ${to}`, async ({ page }) => {
     await page.goto(`case-studies/${from}/`);
-    const links = page.locator(`main a[href$="case-studies/${to}/"]`);
-    expect(await links.count()).toBeGreaterThan(0);
+    const paths = await page
+      .locator('main a[href]')
+      .evaluateAll((anchors) => anchors.map((a) => new URL((a as HTMLAnchorElement).href).pathname));
+    expect(paths.some((path) => path.endsWith(`case-studies/${to}/`))).toBe(true);
   });
 }
