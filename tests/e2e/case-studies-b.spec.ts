@@ -12,6 +12,25 @@ async function axeViolations(page: Page): Promise<string[]> {
   );
 }
 
+for (const { path, width, axe } of [
+  { path: 'case-studies/collaborative-editor/', width: 390, axe: true },
+  { path: 'case-studies/metrics/', width: 320, axe: false },
+]) {
+  test(`/${path} code blocks wrap without horizontal scroll at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(path);
+    const overflowing = await page
+      .locator('.expressive-code pre')
+      .evaluateAll((blocks) =>
+        blocks
+          .filter((pre) => pre.scrollWidth > pre.clientWidth + 1)
+          .map((pre) => pre.textContent?.slice(0, 40)),
+      );
+    expect(overflowing).toEqual([]);
+    if (axe) expect(await axeViolations(page)).toEqual([]);
+  });
+}
+
 test('/case-studies/collaborative-editor/ convergence duel shows index edits diverging and CRDT ids converging', async ({
   page,
 }) => {

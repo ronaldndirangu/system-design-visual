@@ -26,7 +26,16 @@ export default defineConfig({
       editLink: { baseUrl: `${repository}/edit/main/` },
       lastUpdated: false,
       customCss: ['./src/styles/fonts.css', './src/styles/theme.css', './src/styles/components.css'],
-      expressiveCode: { defaultProps: { wrap: true } },
+      expressiveCode: {
+        defaultProps: { wrap: true },
+        plugins: [
+          {
+            name: 'sdv-wrap-anywhere',
+            // A wrapped line breaks inside long tokens too, so no code block ever scrolls sideways on a phone.
+            baseStyles: 'pre.wrap .ec-line .code { overflow-wrap: anywhere; }',
+          },
+        ],
+      },
       head: [
         { tag: 'script', content: earlyClickReplay },
         // Sliders and selects would drift from the widget state if dragged before their island hydrates.
