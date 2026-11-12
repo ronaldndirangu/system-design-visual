@@ -42,37 +42,37 @@ export const steps = [
   {
     title: 'Doors open',
     text: 'At 10:00 a million fans press Buy. Every request lands in the waiting room first, which hands each fan a place in line.',
-    nodes: ['fans', 'room'],
+    focus: { active: 'fans', involved: ['room'] },
     flows: ['fans>room'],
   },
   {
     title: 'Let fans in at a steady rate',
     text: 'The waiting room admits fans in arrival order, only as fast as the servers behind it can serve them.',
-    nodes: ['room', 'app'],
+    focus: { active: 'room', involved: ['app'] },
     flows: ['room>app'],
   },
   {
     title: 'Show the seat map from the cache',
     text: 'The seat map can be a second old. It only helps fans choose. The database decides who gets the seat.',
-    nodes: ['app', 'map'],
+    focus: { active: 'app', involved: ['map'] },
     flows: ['app>map', 'map>app'],
   },
   {
     title: 'Claim the seat with a conditional write',
     text: 'The server sends UPDATE seats SET holder = me WHERE seat = A10 AND holder IS NULL. The database runs the check and the write as one step, so exactly one fan changes the row.',
-    nodes: ['app', 'db'],
+    focus: { active: 'app', involved: ['db'] },
     flows: ['app>db'],
   },
   {
     title: 'Lose the race, pick again',
     text: 'Every other fan who asked for A10 gets zero rows changed. The server answers 409 Conflict and offers the next best seat.',
-    nodes: ['app', 'db'],
+    focus: { active: 'app', involved: ['db'] },
     flows: ['db>app'],
   },
   {
     title: 'Pay before the hold expires',
     text: 'The winner has a few minutes to pay. Every claim gets a fresh hold id, and the payment carries it. Pressing Pay claims the hold with one more conditional write and a fresh deadline. If the buyer leaves, or the claim outlasts its deadline, the seat goes back on sale and a late payment is voided, even when the same buyer has claimed the seat again. A unique constraint on (event, seat) in the orders table guards the very last step.',
-    nodes: ['app', 'db'],
+    focus: { active: 'app', involved: ['db'] },
     flows: ['app>db', 'db>app'],
   },
 ];

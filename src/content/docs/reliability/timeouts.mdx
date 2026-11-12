@@ -42,37 +42,37 @@ export const steps = [
   {
     title: 'A click arrives',
     text: 'A visitor opens sho.rt/abc123, and one of 16 workers takes the request.',
-    nodes: ['client', 'server'],
+    focus: { active: 'client', involved: ['server'] },
     flows: ['client>server'],
   },
   {
     title: 'The worker looks up the link',
     text: 'The worker borrows a database connection and asks a replica for the long URL. A healthy replica answers in 10 to 30 ms.',
-    nodes: ['server', 'a'],
+    focus: { active: 'server', involved: ['a'] },
     flows: ['server>a', 'a>server'],
   },
   {
     title: 'Replica C stops answering',
     text: 'Replica C accepts the query and never replies. The worker waits, holding its connection.',
-    nodes: ['server', 'c'],
+    focus: { active: 'server', involved: ['c'] },
     flows: ['server>c'],
   },
   {
     title: 'With no timeout, workers pile up',
     text: 'A third of lookups go to C, and each traps a worker. Soon all 16 wait, and lookups routed to healthy replicas A and B queue with nobody to serve them.',
-    nodes: ['client', 'server', 'c'],
+    focus: { active: 'client', involved: ['server', 'c'] },
     flows: ['client>server', 'server>c'],
   },
   {
     title: 'A timeout frees the worker',
     text: 'With a 150 ms timeout, the worker gives up, answers 504 Gateway Timeout, and takes the next request. Only the lookups routed to C fail.',
-    nodes: ['client', 'server'],
+    focus: { active: 'client', involved: ['server'] },
     flows: ['server>client'],
   },
   {
     title: 'Cancellation frees the database',
     text: 'The timeout also cancels the query, so the connection returns to the pool and C can drop the query.',
-    nodes: ['server', 'c'],
+    focus: { active: 'server', involved: ['c'] },
   },
 ];
 

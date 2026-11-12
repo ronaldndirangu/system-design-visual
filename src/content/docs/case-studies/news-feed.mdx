@@ -54,37 +54,37 @@ export const steps = [
   {
     title: 'A post goes up',
     text: "Lena posts a photo. In one transaction, the post service stores the post once in the posts table under a time-sortable id and adds an outbox row that records the fanout it still owes. It answers her in milliseconds. Nobody's feed shows the post yet.",
-    nodes: ['author', 'post', 'posts'],
+    focus: { active: 'author', involved: ['post', 'posts'] },
     flows: ['author>post', 'post>posts'],
   },
   {
     title: 'Publish the fanout job',
     text: "A relay in the post service reads the outbox and publishes one job on the fanout queue: put this post in the feed of everyone who follows Lena. It marks the outbox row sent only after the queue confirms, so a crash can publish a job twice but never drops one. The queue absorbs bursts, so posting stays fast even when the workers fall behind.",
-    nodes: ['post', 'fanout'],
+    focus: { active: 'post', involved: ['fanout'] },
     flows: ['post>fanout'],
   },
   {
     title: 'Write every feed',
     text: "A worker in the fanout fleet reads Lena's 200 followers from the follow graph and adds the post id to the front of each follower's feed list in the feed cache. One post becomes 200 small writes.",
-    nodes: ['fanout', 'fleet', 'graph', 'cache'],
+    focus: { active: 'fanout', involved: ['fleet', 'graph', 'cache'] },
     flows: ['fanout>fleet', 'fleet>graph', 'fleet>cache'],
   },
   {
     title: 'Skip the celebrity',
     text: 'A pop star with 30 million followers posts. Fan out on write would turn that post into 30 million feed writes and bury every later post behind them. Hybrid fan-out stores the post once and skips the fanout queue for any author above a follower threshold.',
-    nodes: ['author', 'post', 'posts'],
+    focus: { active: 'author', involved: ['post', 'posts'] },
     flows: ['author>post', 'post>posts'],
   },
   {
     title: 'Load a feed',
     text: 'Ben opens the app. The feed service reads his precomputed list from the feed cache in one lookup, then asks the follow graph which celebrities he follows. That short list rarely changes, so it caches well.',
-    nodes: ['reader', 'feed', 'cache', 'graph'],
+    focus: { active: 'reader', involved: ['feed', 'cache', 'graph'] },
     flows: ['reader>feed', 'feed>cache', 'feed>graph'],
   },
   {
     title: 'Merge at read time',
     text: "The feed service reads each followed celebrity's latest posts, merges them into Ben's list by time, and fetches the post bodies for the first page. The pop star's post shows up seconds after it went up, and nobody wrote 30 million feeds.",
-    nodes: ['reader', 'feed', 'posts'],
+    focus: { active: 'reader', involved: ['feed', 'posts'] },
     flows: ['feed>posts'],
   },
 ];

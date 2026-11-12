@@ -50,31 +50,31 @@ export const steps = [
   {
     title: 'A hot query hits the cache',
     text: 'A reader searches for storm coast. During a big story, thousands of readers type the same words, so a result cache keyed by the normalized query answers most repeats without touching the index.',
-    nodes: ['reader', 'cache'],
+    focus: { active: 'reader', involved: ['cache'] },
     flows: ['reader>cache'],
   },
   {
     title: 'On a miss, fan out and merge',
     text: "The query service sends the query to every index shard and to the live segments. Each one returns its own top 10, and the service merges those lists into one top 10.",
-    nodes: ['cache', 'query', 'shards', 'live'],
+    focus: { active: 'cache', involved: ['query', 'shards', 'live'] },
     flows: ['cache>query', 'query>shards', 'query>live'],
   },
   {
     title: 'A new story is searchable after an assumed 1 s refresh',
     text: 'The publishing system appends each new story to a queue. The indexer buffers new documents and flushes them into a small, immutable live segment on each refresh, assumed here to run every second. After the refresh, the story is searchable, ranked on text match only.',
-    nodes: ['queue', 'indexer', 'live'],
+    focus: { active: 'queue', involved: ['indexer', 'live'] },
     flows: ['queue>indexer', 'indexer>live'],
   },
   {
     title: 'Small segments merge in the background',
     text: 'Every query pays for every live segment, so the indexer merges 4 small segments into 1 bigger one. While it rewrites them, it drops documents marked as deleted.',
-    nodes: ['indexer', 'live'],
+    focus: { active: 'indexer', involved: ['live'] },
     flows: ['indexer>live'],
   },
   {
     title: 'The nightly build folds everything in',
     text: "At 02:00 a batch job writes new shards for every document so far, with each document's current popularity and quality scores baked in. The build takes 3 h, so the shards go live at 05:00, and the live tier drops every document the build now covers.",
-    nodes: ['build', 'shards', 'live'],
+    focus: { active: 'build', involved: ['shards', 'live'] },
     flows: ['build>shards', 'build>live'],
   },
 ];

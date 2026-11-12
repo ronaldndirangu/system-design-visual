@@ -50,41 +50,41 @@ export const steps = [
   {
     title: 'A request arrives',
     text: 'A customer\u2019s 50 ft green Verdant hose is out of stock. The assistant has an illustrative 50 ms to pick five replacements from 3,000,000 items.',
-    nodes: ['catalog', 'shown'],
+    focus: { active: 'catalog', involved: ['shown'] },
   },
   {
     title: 'Build the sources ahead of time',
     text: 'Background jobs (dashed lines) build an embedding per item, bought together lists, and category best sellers.',
-    nodes: ['catalog', 'embed', 'together', 'category'],
+    focus: { active: 'catalog', involved: ['embed', 'together', 'category'] },
     flows: ['catalog>embed', 'catalog>together', 'catalog>category'],
   },
   {
     title: 'Ask three cheap sources',
     text: '300 nearest neighbors, 125 bought together, and 75 popular make 500 candidates. The sources run in parallel, so the slowest (8 ms) sets the time.',
-    nodes: ['embed', 'together', 'category', 'merge'],
+    focus: { active: 'embed', involved: ['together', 'category', 'merge'] },
     flows: ['embed>merge', 'together>merge', 'category>merge'],
   },
   {
     title: 'Merge, dedupe, and check eligibility',
     text: 'Merging drops 11 duplicates. Eligibility removes a cart that does not ship here and a recalled timer, leaving 487 after 9 ms.',
-    nodes: ['merge'],
+    focus: { active: 'merge' },
   },
   {
     title: 'Rank with rich features',
     text: 'The ranker scores all 487 at an illustrative 10 microseconds each (4.87 ms) and keeps 15.',
-    nodes: ['merge', 'ranker'],
+    focus: { active: 'merge', involved: ['ranker'] },
     flows: ['merge>ranker'],
   },
   {
     title: 'Check live stock',
     text: 'A live check drops one out of stock hose. Fourteen remain after 0.5 ms.',
-    nodes: ['ranker', 'filters'],
+    focus: { active: 'ranker', involved: ['filters'] },
     flows: ['ranker>filters'],
   },
   {
     title: 'Re-rank for variety and pick five',
     text: 'At most two per brand, so a third Verdant hose is skipped. Five replacements reach the chat after 14.87 ms.',
-    nodes: ['filters', 'shown'],
+    focus: { active: 'filters', involved: ['shown'] },
     flows: ['filters>shown'],
   },
 ];

@@ -51,37 +51,37 @@ export const steps = [
   {
     title: 'Ask for a notification',
     text: 'Ana signs in on a new laptop. The login service asks the notifier to text her a code, with the type "security", a deadline a few minutes out, and an idempotency key. If the login service retries the request, the notifier finds the key and creates nothing new.',
-    nodes: ['app', 'notifier'],
+    focus: { active: 'app', involved: ['notifier'] },
     flows: ['app>notifier'],
   },
   {
     title: 'Check preferences first',
     text: "The notifier reads Ana's preferences: the channels she allows for each type, her opt-outs, and her quiet hours in her own time zone. A code she asked for always goes. A campaign she opted out of stops here, before it takes any queue space or provider capacity.",
-    nodes: ['notifier', 'prefs'],
+    focus: { active: 'notifier', involved: ['prefs'] },
     flows: ['notifier>prefs'],
   },
   {
     title: 'Enqueue by priority',
     text: 'The notifier writes the notification row and an outbox row in one transaction, so a stored notification always has its publish recorded. A relay publishes each unsent outbox row to a lane: codes and security alerts to the priority lane, social updates to the normal lane, and campaigns to the bulk lane. Senders drain the higher lanes first, so a campaign of millions never stands in front of a code.',
-    nodes: ['notifier', 'lanes'],
+    focus: { active: 'notifier', involved: ['lanes'] },
     flows: ['notifier>lanes'],
   },
   {
     title: "Send under the provider's limit",
     text: 'Each provider caps how many sends per second it accepts. Senders take tokens from one bucket per provider to stay under that cap. A code still waiting at its deadline leaves the queue unsent, because a late code only wastes a send.',
-    nodes: ['lanes', 'senders', 'providers'],
+    focus: { active: 'lanes', involved: ['senders', 'providers'] },
     flows: ['lanes>senders', 'senders>providers'],
   },
   {
     title: 'Retry, or fail over',
     text: 'The SMS provider rejects the send. The sender retries after 0.5 s, then 1 and 2 s. After several failures in a row, a circuit breaker stops calling that provider and routes codes to a backup, while a health check probes the primary until it recovers.',
-    nodes: ['senders', 'providers'],
+    focus: { active: 'senders', involved: ['providers'] },
     flows: ['senders>providers'],
   },
   {
     title: 'Deliver and record',
     text: "The sender records the handoff in the sent log under the notification's ID, and a sender that restarts checks the log before it sends again. The provider then hands the text to Ana's phone, and its delivery receipt updates that row later, sometimes minutes later and sometimes never.",
-    nodes: ['providers', 'phone', 'senders', 'log'],
+    focus: { active: 'providers', involved: ['phone', 'senders', 'log'] },
     flows: ['providers>phone', 'senders>log'],
   },
 ];

@@ -44,31 +44,31 @@ export const steps = [
   {
     title: 'One leader sends heartbeats',
     text: 'Node 2 leads term 1. Its heartbeat every 50 ms restarts each follower’s election timer.',
-    nodes: ['n1', 'n2', 'n3', 'n4', 'n5'],
+    focus: { active: 'n1', involved: ['n2', 'n3', 'n4', 'n5'] },
     flows: ['n2>n1', 'n2>n3', 'n2>n4', 'n2>n5'],
   },
   {
     title: 'The leader goes quiet',
     text: 'Node 2 crashes. Each follower sees heartbeats stop while its random 150 to 300 ms timer drains.',
-    nodes: ['n1', 'n3', 'n4', 'n5'],
+    focus: { active: 'n1', involved: ['n3', 'n4', 'n5'] },
     flows: [],
   },
   {
     title: 'The first timer out asks for votes',
     text: 'Node 3 runs out first. It moves to term 2, votes for itself, and asks the others for votes.',
-    nodes: ['n1', 'n3', 'n4', 'n5'],
+    focus: { active: 'n1', involved: ['n3', 'n4', 'n5'] },
     flows: ['n3>n1', 'n3>n4', 'n3>n5'],
   },
   {
     title: 'A majority says yes',
     text: 'Node 1 and Node 4 hold no newer log and have not voted in term 2. With 3 of 5 votes, Node 3 leads.',
-    nodes: ['n1', 'n3', 'n4'],
+    focus: { active: 'n1', involved: ['n3', 'n4'] },
     flows: ['n1>n3', 'n4>n3'],
   },
   {
     title: 'Commit on a majority',
     text: 'Node 3 appends “noon?” and commits it once 3 of 5 servers store it.',
-    nodes: ['n1', 'n3', 'n4', 'n5'],
+    focus: { active: 'n1', involved: ['n3', 'n4', 'n5'] },
     flows: ['n3>n1', 'n3>n4', 'n3>n5'],
   },
 ];

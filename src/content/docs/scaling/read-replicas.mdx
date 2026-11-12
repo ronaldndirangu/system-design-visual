@@ -66,31 +66,31 @@ export const steps = [
   {
     title: 'Every write goes to the primary',
     text: 'Creating a link changes data, so the app sends it to one database: the primary. Only the primary accepts writes.',
-    nodes: ['app', 'primary'],
+    focus: { active: 'app', involved: ['primary'] },
     flows: ['app>primary'],
   },
   {
     title: 'The primary copies each write',
     text: 'In the background, the primary streams every change to its replicas. That usually takes milliseconds, and under heavy load it can take seconds. Each replica trails by its own amount.',
-    nodes: ['primary', 'r1', 'r2'],
+    focus: { active: 'primary', involved: ['r1', 'r2'] },
     flows: ['primary>r1', 'primary>r2'],
   },
   {
     title: 'Reads spread across the replicas',
     text: 'Each replica holds a full copy, so it can answer any read. Two replicas take the reads off the primary entirely.',
-    nodes: ['app', 'r1', 'r2'],
+    focus: { active: 'app', involved: ['r1', 'r2'] },
     flows: ['app>r1', 'app>r2'],
   },
   {
     title: 'The lag window',
     text: 'Someone creates a link and opens it right away. The read lands on Replica 1 before the copy arrives, and it answers Not found.',
-    nodes: ['app', 'r1'],
+    focus: { active: 'app', involved: ['r1'] },
     flows: ['app>r1'],
   },
   {
     title: 'Read your own writes',
     text: "Each write returns its position in the replication log, and the app sends that position with the person's next reads. A replica that has not applied it yet hands the read to the primary. Everyone else keeps reading from replicas.",
-    nodes: ['app', 'primary'],
+    focus: { active: 'app', involved: ['primary'] },
     flows: ['app>primary'],
   },
 ];
@@ -114,30 +114,30 @@ export const failSteps = [
   {
     title: 'One primary, watched by a majority',
     text: 'The primary streams changes to Replica 1. Three monitors check its heartbeat every second.',
-    nodes: ['app', 'old', 'new', 'watch'],
+    focus: { active: 'app', involved: ['old', 'new', 'watch'] },
     flows: ['app>old', 'old>new'],
   },
   {
     title: 'The network splits',
     text: 'A fault cuts the primary off from the monitors. It keeps running, and some app servers still reach it.',
-    nodes: ['old', 'watch'],
+    focus: { active: 'old', involved: ['watch'] },
   },
   {
     title: 'A majority promotes Replica 1',
     text: 'Two of three monitors agree the primary is gone and promote the most caught up replica.',
-    nodes: ['app', 'new', 'watch'],
+    focus: { active: 'app', involved: ['new', 'watch'] },
     flows: ['watch>new', 'app>new'],
   },
   {
     title: 'Without fencing: split brain',
     text: 'Both primaries take writes and hand out the next id from the same counter, so code k9x means a recipe on one and a scam page on the other.',
-    nodes: ['app', 'old', 'new'],
+    focus: { active: 'app', involved: ['old', 'new'] },
     flows: ['app>old', 'app>new'],
   },
   {
     title: 'With fencing: one primary',
     text: 'The old primary could not renew its lease from a majority, so it stopped taking writes before the promotion.',
-    nodes: ['app', 'new'],
+    focus: { active: 'app', involved: ['new'] },
     flows: ['app>new'],
   },
 ];

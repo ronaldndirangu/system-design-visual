@@ -45,31 +45,31 @@ export const steps = [
   {
     title: 'Fail and classify',
     text: 'The handler fails on the click at the head of the partition. A timeout is transient. A parse failure is permanent.',
-    nodes: ['topic', 'consumer'],
+    focus: { active: 'topic', involved: ['consumer'] },
     flows: ['topic>consumer'],
   },
   {
     title: 'Retry a few times',
     text: 'For a transient error, the consumer retries a few times. Each retry holds the partition.',
-    nodes: ['consumer'],
+    focus: { active: 'consumer' },
     flows: [],
   },
   {
     title: 'Park and move on',
     text: 'After the last try, or at once for a permanent error, the consumer durably writes the click to the dead-letter queue, then commits the offset.',
-    nodes: ['consumer', 'dlq'],
+    focus: { active: 'consumer', involved: ['dlq'] },
     flows: ['consumer>dlq'],
   },
   {
     title: 'Keep counting',
     text: 'The waiting clicks flow to Click counts again, and lag drains.',
-    nodes: ['topic', 'consumer', 'counts'],
+    focus: { active: 'topic', involved: ['consumer', 'counts'] },
     flows: ['topic>consumer', 'consumer>counts'],
   },
   {
     title: 'Alert, fix, replay',
     text: 'The first park alerts the owner. After the fix, a replay job republishes parked clicks to an idempotent consumer.',
-    nodes: ['dlq', 'replay', 'topic'],
+    focus: { active: 'dlq', involved: ['replay', 'topic'] },
     flows: ['dlq>replay', 'replay>topic'],
   },
 ];
@@ -95,25 +95,25 @@ export const choreoSteps = [
   {
     title: 'Publish',
     text: 'The click service publishes click.recorded without knowing who reads it.',
-    nodes: ['click', 'topic'],
+    focus: { active: 'click', involved: ['topic'] },
     flows: ['click>topic'],
   },
   {
     title: 'React',
     text: 'Analytics and fraud scoring each read it in their own consumer group.',
-    nodes: ['topic', 'analytics', 'fraud'],
+    focus: { active: 'topic', involved: ['analytics', 'fraud'] },
     flows: ['topic>analytics', 'topic>fraud'],
   },
   {
     title: 'Chain',
     text: 'Billing charges only clean clicks, so it reads click.scored from fraud scoring.',
-    nodes: ['fraud', 'scored', 'billing'],
+    focus: { active: 'fraud', involved: ['scored', 'billing'] },
     flows: ['fraud>scored', 'scored>billing'],
   },
   {
     title: 'Find the flow',
     text: 'No service holds the whole flow. The billing rule lives in a subscription.',
-    nodes: ['click', 'topic', 'analytics', 'fraud', 'scored', 'billing'],
+    focus: { active: 'click', involved: ['topic', 'analytics', 'fraud', 'scored', 'billing'] },
     flows: [],
   },
 ];
@@ -139,25 +139,25 @@ export const orchSteps = [
   {
     title: 'Start a run',
     text: 'Each click starts a workflow run, saved so a restart resumes it.',
-    nodes: ['click', 'workflow', 'state'],
+    focus: { active: 'click', involved: ['workflow', 'state'] },
     flows: ['click>workflow', 'workflow>state'],
   },
   {
     title: 'Score',
     text: 'The workflow asks fraud scoring for a score and waits.',
-    nodes: ['workflow', 'fraud'],
+    focus: { active: 'workflow', involved: ['fraud'] },
     flows: ['workflow>fraud'],
   },
   {
     title: 'Bill and count',
     text: 'A clean score sends a charge to billing and a count to analytics: the billing rule is one if statement.',
-    nodes: ['workflow', 'billing', 'analytics'],
+    focus: { active: 'workflow', involved: ['billing', 'analytics'] },
     flows: ['workflow>billing', 'workflow>analytics'],
   },
   {
     title: 'Handle failure',
     text: 'A failed charge is retried, then marked unbilled. A late failure compensates earlier steps.',
-    nodes: ['workflow', 'billing', 'state'],
+    focus: { active: 'workflow', involved: ['billing', 'state'] },
     flows: ['workflow>billing', 'workflow>state'],
   },
 ];

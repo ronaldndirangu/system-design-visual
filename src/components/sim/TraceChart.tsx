@@ -1,5 +1,7 @@
-import { useRef } from 'react';
+import { useId, useRef, useState } from 'react';
 import { niceScale } from '../../lib/niceScale';
+import { safeId } from '../viz/SystemNode';
+import { BADGE_SIZE, layoutMarkers } from './traceMarkers';
 import { useElementWidth } from './useElementWidth';
 
 export type SeriesVariant = 'a' | 'b' | 'c';
@@ -32,9 +34,10 @@ interface Props {
   summary: string;
 }
 
-const HEIGHT = 190;
+const BASE_HEIGHT = 190;
 const pad = { top: 26, right: 12, bottom: 26, left: 36 };
-const MARKER_GAP = 24;
+const LANE_STEP = 22;
+const BADGE_Y = 12;
 
 /** Solid, dashed, then dotted, so the lines differ without color. */
 export function SeriesSwatch({ variant }: { variant: SeriesVariant }) {
@@ -47,13 +50,25 @@ export function SeriesSwatch({ variant }: { variant: SeriesVariant }) {
 
 export function TraceChart({ title, series, length, tickSeconds, markers, minMax = 10, summary }: Props) {
   const frameRef = useRef<HTMLDivElement>(null);
+  const listId = safeId(useId(), 'trace-markers');
+  const [openGroup, setOpenGroup] = useState<number | null>(null);
   const width = useElementWidth(frameRef, 640);
   const plotWidth = Math.max(1, width - pad.left - pad.right);
-  const plotHeight = HEIGHT - pad.top - pad.bottom;
+  const atX = (tick: number) => pad.left + (tick / length) * plotWidth;
+  const layout = layoutMarkers(
+    markers.map((marker) => ({ number: marker.number, x: atX(marker.tick) })),
+    2,
+    width - 2,
+  );
+  const extra = (layout.lanes - 1) * LANE_STEP;
+  const height = BASE_HEIGHT + extra;
+  const top = pad.top + extra;
+  const badgeY = (lane: number) => BADGE_Y + (layout.lanes - 1 - lane) * LANE_STEP;
+  const plotHeight = height - top - pad.bottom;
   const highest = Math.max(minMax, ...series.flatMap((line) => line.values));
   const scale = niceScale(highest);
-  const x = (tick: number) => pad.left + (tick / length) * plotWidth;
-  const y = (value: number) => pad.top + plotHeight - (value / scale.max) * plotHeight;
+  const x = atX;
+  const y = (value: number) => top + plotHeight - (value / scale.max) * plotHeight;
   const seconds = length * tickSeconds;
   const xTicks = Array.from({ length: Math.floor(seconds / 5) + 1 }, (_, index) => index * 5);
   const yTicks = Array.from(
@@ -61,13 +76,10 @@ export function TraceChart({ title, series, length, tickSeconds, markers, minMax
     (_, index) => index * scale.step,
   );
 
-  let lastLabel = -Infinity;
-  const placed = markers.map((marker) => {
-    const at = x(marker.tick);
-    const label = Math.min(pad.left + plotWidth, Math.max(at, lastLabel + MARKER_GAP));
-    lastLabel = label;
-    return { ...marker, x: at, label };
-  });
+  const tickOf = new Map(markers.map((marker) => [marker.number, marker.tick]));
+  const formatSeconds = (tick: number) => `${Number((tick * tickSeconds).toFixed(1))} s`;
+  const groups = layout.labels.filter((label) => label.kind === 'group');
+  const openLabel = groups.find((label) => label.numbers[0] === openGroup);
 
   return (
     <figure className="sdv-trace">
@@ -83,7 +95,7 @@ export function TraceChart({ title, series, length, tickSeconds, markers, minMax
         </span>
       </figcaption>
       <div ref={frameRef} className="sdv-trace__frame">
-        <svg width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} role="img" aria-label={summary}>
+        <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={summary}>
           {yTicks.map((value) => (
             <g key={`y${value}`}>
               <line
@@ -103,21 +115,38 @@ export function TraceChart({ title, series, length, tickSeconds, markers, minMax
               key={`x${second}`}
               className="sdv-trace__tick"
               x={x(second / tickSeconds)}
-              y={HEIGHT - 8}
+              y={height - 8}
               textAnchor={second === 0 ? 'start' : second === seconds ? 'end' : 'middle'}
             >
               {second} s
             </text>
           ))}
-          {placed.map((marker) => (
-            <g key={`m${marker.number}`} className="sdv-trace__marker">
-              <line x1={marker.x} x2={marker.x} y1={pad.top - 4} y2={pad.top + plotHeight} />
-              <circle cx={marker.label} cy={12} r="9" />
-              <text x={marker.label} y={12} dy="0.35em" textAnchor="middle">
-                {marker.number}
-              </text>
+          {layout.labels.map((label) => (
+            <g key={`m${label.numbers[0]}`} className="sdv-trace__marker">
+              {label.xs.map((at, index) => (
+                <g key={label.numbers[index]}>
+                  <line x1={at} x2={at} y1={top - 4} y2={top + plotHeight} />
+                  <line
+                    className="sdv-trace__connector"
+                    x1={label.x}
+                    x2={at}
+                    y1={badgeY(label.lane) + BADGE_SIZE / 2}
+                    y2={top - 4}
+                  />
+                </g>
+              ))}
             </g>
           ))}
+          {layout.labels
+            .filter((label) => label.kind === 'single')
+            .map((label) => (
+              <g key={`b${label.numbers[0]}`} className="sdv-trace__marker">
+                <circle cx={label.x} cy={badgeY(label.lane)} r={BADGE_SIZE / 2} />
+                <text x={label.x} y={badgeY(label.lane)} dy="0.35em" textAnchor="middle">
+                  {label.text}
+                </text>
+              </g>
+            ))}
           {series.map((line) => (
             <polyline
               key={line.label}
@@ -129,7 +158,38 @@ export function TraceChart({ title, series, length, tickSeconds, markers, minMax
             />
           ))}
         </svg>
+        {groups.map((label) => {
+          const first = label.numbers[0] ?? 0;
+          const last = label.numbers.at(-1) ?? first;
+          const open = openGroup === first;
+          return (
+            <button
+              key={`g${first}`}
+              type="button"
+              className="sdv-trace__group"
+              style={{
+                left: label.x - label.width / 2,
+                top: badgeY(label.lane) - BADGE_SIZE / 2,
+                width: label.width,
+                height: BADGE_SIZE,
+              }}
+              aria-expanded={open}
+              aria-controls={listId}
+              aria-label={`Events ${first} to ${last}`}
+              onClick={() => setOpenGroup(open ? null : first)}
+            >
+              {label.text}
+            </button>
+          );
+        })}
       </div>
+      <ul id={listId} className="sdv-trace__group-list" hidden={!openLabel}>
+        {openLabel?.numbers.map((number) => (
+          <li key={number}>
+            Event {number} at {formatSeconds(tickOf.get(number) ?? 0)}
+          </li>
+        ))}
+      </ul>
     </figure>
   );
 }

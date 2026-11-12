@@ -48,43 +48,43 @@ export const steps = [
   {
     title: 'The redirect asks for one code',
     text: 'A browser opens sho.rt/bATJ4g and the handler looks up the code. The table holds 10 million links: 100,000 pages of about 100 rows.',
-    nodes: ['browser', 'handler'],
+    focus: { active: 'browser', involved: ['handler'] },
     flows: ['browser>handler'],
   },
   {
     title: 'Without an index: every page',
     text: 'With no index on code, the database reads all 100,000 pages, even after a match, since another row could share the code.',
-    nodes: ['handler', 'table'],
+    focus: { active: 'handler', involved: ['table'] },
     flows: ['handler>table'],
   },
   {
     title: 'Root page: pick a range',
     text: 'A B-tree on code starts at one root page of sorted separator keys. One read picks the branch whose range holds bATJ4g.',
-    nodes: ['handler', 'root'],
+    focus: { active: 'handler', involved: ['root'] },
     flows: ['handler>root'],
   },
   {
     title: 'Branch page: narrow again',
     text: 'In this toy model each page splits its range up to 500 ways, so every level divides the search by 500.',
-    nodes: ['root', 'branch'],
+    focus: { active: 'root', involved: ['branch'] },
     flows: ['root>branch'],
   },
   {
     title: 'Leaf page: the key and a row pointer',
     text: 'The leaf holds codes in order, each with its row\'s location. It finds bATJ4g, or proves no such code exists.',
-    nodes: ['branch', 'leaf'],
+    focus: { active: 'branch', involved: ['leaf'] },
     flows: ['branch>leaf'],
   },
   {
     title: 'One table page, then the redirect',
     text: 'One table page returns long_url: 4 page reads in total, against 100,000 for the scan.',
-    nodes: ['leaf', 'table', 'handler', 'browser'],
+    focus: { active: 'leaf', involved: ['table', 'handler', 'browser'] },
     flows: ['leaf>table', 'table>handler', 'handler>browser'],
   },
   {
     title: 'Grow the table 1,000 times',
     text: 'At 10 billion links the scan reads 100,000,000 pages, and the tree grows one level: 5 reads. Four levels hold up to 62.5 billion keys.',
-    nodes: ['root', 'branch', 'leaf', 'table'],
+    focus: { active: 'root', involved: ['branch', 'leaf', 'table'] },
   },
 ];
 

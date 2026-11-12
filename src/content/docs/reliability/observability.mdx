@@ -48,37 +48,37 @@ export const steps = [
   {
     title: 'The gateway names the request',
     text: 'A shopper opens the browse page. The gateway creates trace ID 3c11a85c0587 and forwards it in the traceparent header.',
-    nodes: ['client', 'gateway'],
+    focus: { active: 'client', involved: ['gateway'] },
     flows: ['client>gateway'],
   },
   {
     title: 'Each hop opens a span',
     text: 'The API opens a child span, api.browse. Each span records a name, start, duration, and parent, so one request forms a tree.',
-    nodes: ['gateway', 'api'],
+    focus: { active: 'gateway', involved: ['api'] },
     flows: ['gateway>api'],
   },
   {
     title: 'Waiting is work too',
     text: 'All 5 database connections are busy, so the span db.pool.acquire records 727 ms of waiting before the 20 ms query starts.',
-    nodes: ['api', 'db'],
+    focus: { active: 'api', involved: ['db'] },
     flows: ['api>db'],
   },
   {
     title: 'Three signals leave every service',
     text: 'Each service sends the collector log lines tagged with the trace ID, counter and histogram updates, and finished spans.',
-    nodes: ['gateway', 'api', 'db', 'collector'],
+    focus: { active: 'gateway', involved: ['api', 'db', 'collector'] },
     flows: ['gateway>collector', 'api>collector', 'db>collector'],
   },
   {
     title: 'Metrics say something is wrong',
     text: 'Thousands of requests roll into one number per second: browse p99 is over 1 s. Metrics say when and where, never which request.',
-    nodes: ['collector'],
+    focus: { active: 'collector' },
     flows: [],
   },
   {
     title: 'The trace and its logs say why',
     text: 'One slow trace shows the 727 ms wait. Searching the logs for its trace ID returns every line about that request.',
-    nodes: ['collector', 'db'],
+    focus: { active: 'collector', involved: ['db'] },
     flows: [],
   },
 ];

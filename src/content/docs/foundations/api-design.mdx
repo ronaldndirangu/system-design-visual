@@ -43,31 +43,31 @@ export const steps = [
   {
     title: 'Page 1',
     text: 'The dashboard asks for page=1&size=10 and gets rows 1 to 10, newest first: links #50 to #41.',
-    nodes: ['dash', 'api', 'db'],
+    focus: { active: 'dash', involved: ['api', 'db'] },
     flows: ['dash>api', 'api>db', 'db>api', 'api>dash'],
   },
   {
     title: 'A new link lands on top',
     text: 'Another tab creates #51. It sorts first, so every older link moves down one row. Link #41 is now row 11.',
-    nodes: ['tab', 'api', 'db'],
+    focus: { active: 'tab', involved: ['api', 'db'] },
     flows: ['tab>api', 'api>db'],
   },
   {
     title: 'Page 2 repeats a link',
     text: 'Page 2 means rows 11 to 20. Row 11 now holds #41, which page 1 already showed. No error, just a duplicate.',
-    nodes: ['dash', 'api', 'db'],
+    focus: { active: 'dash', involved: ['api', 'db'] },
     flows: ['dash>api', 'api>db', 'db>api', 'api>dash'],
   },
   {
     title: 'Fix: ask for what comes after #41',
     text: 'The dashboard sends after=41 instead and gets #40 to #31. New links on top cannot move that answer.',
-    nodes: ['dash', 'api', 'db'],
+    focus: { active: 'dash', involved: ['api', 'db'] },
     flows: ['dash>api', 'api>db', 'db>api', 'api>dash'],
   },
   {
     title: 'Deletes and deep pages',
     text: 'A delete slides rows up, so an offset skips a link. An offset also walks past every earlier row, while a cursor seeks straight to its spot.',
-    nodes: ['tab', 'api', 'db'],
+    focus: { active: 'tab', involved: ['api', 'db'] },
     flows: ['tab>api', 'api>db'],
   },
 ];

@@ -8,6 +8,7 @@ import type { Tone } from '../sim/StatTable';
 import { DiagramScroll } from '../viz/DiagramScroll';
 import { type Flow, FlowDots } from '../viz/FlowDots';
 import { link } from '../viz/geometry';
+import { UiIcon } from '../viz/icons';
 import { ArrowDefs, Edge, SystemNode, safeId } from '../viz/SystemNode';
 
 const TICKS_PER_SECOND = 5;
@@ -45,6 +46,7 @@ interface Props {
 /** A cache in front of the database, with a live chart of which links it holds. */
 export default function CacheWidget({ capacity = 0, skew = 1 }: Props) {
   const arrow = safeId(useId(), 'cache-arrow');
+  const restartHint = safeId(useId(), 'cache-restart-hint');
   const make = () => new CacheSim({ capacity, skew });
   const simRef = useRef<CacheSim | null>(null);
   simRef.current ??= make();
@@ -182,11 +184,19 @@ export default function CacheWidget({ capacity = 0, skew = 1 }: Props) {
               onChange={(ttl) => change({ ttl })}
             />
             <div className="sdv-control">
-              <button type="button" className="sdv-button" onClick={flush} disabled={cached.size === 0}>
-                Restart the cache (empty it)
+              <button
+                type="button"
+                className="sdv-button"
+                onClick={flush}
+                disabled={cached.size === 0}
+                aria-describedby={restartHint}
+              >
+                <UiIcon name="reset" /> Restart cache
               </button>
-              <p className="sdv-control__hint">
-                A restarted cache is cold: every request misses until it fills again.
+              <p className="sdv-control__hint" id={restartHint}>
+                {cached.size === 0
+                  ? 'Cache is already empty. Run some traffic to fill it first.'
+                  : 'Restarting empties the cache. Every request misses until it fills again.'}
               </p>
             </div>
           </>

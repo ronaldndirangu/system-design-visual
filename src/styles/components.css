@@ -3,6 +3,26 @@
  * Tokens live in theme.css. Every status color here pairs with a shape, icon, or label.
  */
 
+/* ---------- Shared overline ---------- */
+
+/* Short labels only (four words or fewer). Longer captions and titles stay in sentence case. */
+.sdv-overline,
+.sdv-hero__kicker,
+.sdv-lesson-head__module,
+.sdv-lesson-head__label,
+.sdv-callout__title,
+.sdv-predict__eyebrow,
+.sdv-steps__count,
+.sdv-strip__label,
+.sdv-trace__log-title {
+  font-size: var(--sdv-text-2xs);
+  font-weight: var(--sdv-weight-heading);
+  letter-spacing: var(--sdv-tracking-overline);
+  line-height: var(--sdv-leading-ui);
+  margin: 0;
+  text-transform: uppercase;
+}
+
 /* ---------- Landing hero ---------- */
 
 .sdv-hero {
@@ -19,10 +39,6 @@
 .sdv-hero__kicker {
   color: var(--sl-color-text-accent);
   font-size: var(--sdv-text-sm);
-  font-weight: 700;
-  letter-spacing: var(--sdv-tracking-overline);
-  margin: 0;
-  text-transform: uppercase;
 }
 .sdv-hero h1 {
   color: var(--sl-color-white);
@@ -220,14 +236,9 @@
   border-radius: var(--sdv-radius-pill);
   color: var(--sdv-accent-text);
   display: inline-flex;
-  font-size: var(--sdv-text-2xs);
-  font-weight: var(--sdv-weight-heading);
-  letter-spacing: var(--sdv-tracking-overline);
-  line-height: var(--sdv-leading-ui);
   min-height: 1.75rem;
   padding: var(--sdv-space-1) var(--sdv-space-3);
   text-decoration: none;
-  text-transform: uppercase;
   transition: border-color var(--sdv-duration-fast) var(--sdv-ease-out);
 }
 @media (pointer: coarse) {
@@ -295,11 +306,7 @@
 }
 .sdv-lesson-head__label {
   color: var(--sdv-text-2);
-  font-size: var(--sdv-text-2xs);
-  font-weight: var(--sdv-weight-heading);
-  letter-spacing: var(--sdv-tracking-overline);
   margin-inline-end: var(--sdv-space-1);
-  text-transform: uppercase;
 }
 .sdv-lesson-head__chip,
 .sdv-lesson-head__jump {
@@ -391,8 +398,10 @@ main section.sdv-sim[id] {
 
 .sdv-callout {
   --sdv-callout-tone: var(--sdv-text-2);
-  background: var(--sdv-surface-2);
-  border-radius: var(--sdv-radius-md);
+  background: var(--sdv-surface-1);
+  border: 1px solid var(--sdv-border);
+  border-radius: var(--sdv-radius);
+  box-shadow: none;
   color: var(--sdv-text-1);
   padding: var(--sdv-space-4) var(--sdv-space-5);
 }
@@ -410,13 +419,7 @@ main section.sdv-sim[id] {
   align-items: center;
   color: var(--sdv-callout-tone);
   display: flex;
-  font-size: var(--sdv-text-2xs);
-  font-weight: var(--sdv-weight-heading);
   gap: var(--sdv-space-2);
-  letter-spacing: var(--sdv-tracking-overline);
-  line-height: var(--sdv-leading-ui);
-  margin: 0;
-  text-transform: uppercase;
 }
 .sdv-callout__icon {
   fill: none;
@@ -528,26 +531,47 @@ main section.sdv-sim[id] {
 .sdv-predict,
 .sdv-quiz,
 .sdv-complete {
-  background: var(--sdv-surface);
+  background: var(--sdv-surface-1);
   border: 1px solid var(--sdv-border);
   border-radius: var(--sdv-radius);
+  box-shadow: none;
   padding: 1.1rem 1.25rem;
 }
 .sdv-predict {
-  border-inline-start: 4px solid var(--sl-color-text-accent);
+  position: relative;
+}
+.sdv-predict::before {
+  background: var(--sdv-accent);
+  border-radius: 0 3px 3px 0;
+  content: "";
+  inset-block: 1rem;
+  inset-inline-start: 0;
+  position: absolute;
+  width: 3px;
 }
 .sdv-predict__eyebrow {
   color: var(--sl-color-text-accent);
-  font-size: var(--sl-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.08em;
   margin: 0 0 0.35rem;
-  text-transform: uppercase;
 }
 .sdv-predict__figure {
   margin-block: var(--sdv-space-3);
   max-width: 100%;
   overflow-x: auto;
+}
+.sdv-predict__figure table {
+  border-collapse: collapse;
+  font-size: var(--sdv-text-sm);
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+.sdv-predict__figure :is(th, td) {
+  border-bottom: 1px solid var(--sdv-border);
+  padding: 0.5rem 0.75rem;
+  text-align: start;
+}
+.sdv-predict__figure th {
+  color: var(--sdv-text-2);
+  font-weight: 600;
 }
 .sdv-predict__why {
   color: var(--sdv-text-2);
@@ -929,12 +953,7 @@ button[data-tone="bad"] {
 }
 .sdv-steps__count {
   color: var(--sl-color-text-accent);
-  font-size: var(--sl-text-xs);
-  font-weight: 700;
   grid-column: 1 / -1;
-  letter-spacing: 0.06em;
-  margin: 0;
-  text-transform: uppercase;
 }
 .sdv-steps__title {
   color: var(--sl-color-white);
@@ -1009,10 +1028,10 @@ button[data-tone="bad"] {
 /* ---------- Simulation frame ---------- */
 
 .sdv-sim {
-  background: var(--sdv-surface);
+  background: var(--sdv-surface-1);
   border: 1px solid var(--sdv-border);
   border-radius: var(--sdv-radius);
-  box-shadow: var(--sdv-shadow);
+  box-shadow: none;
   display: grid;
   gap: 0.9rem;
   padding: 1.1rem 1.25rem 1.25rem;
@@ -1133,7 +1152,7 @@ button[data-tone="bad"] {
 }
 /* A row of options wider than one cell takes the whole row, so it stays radios while the widget has room. */
 .sdv-sim__controls
-  > .sdv-segmented[data-fit]:not([data-fit="8"], [data-fit="10"], [data-fit="12"], [data-fit="14"]) {
+> .sdv-segmented[data-fit]:not([data-fit="8"], [data-fit="10"], [data-fit="12"], [data-fit="14"]) {
   grid-column: 1 / -1;
 }
 
@@ -1145,13 +1164,13 @@ button[data-tone="bad"] {
   width: 100%;
 }
 .sdv-stats caption {
-  color: var(--sl-color-gray-3);
-  font-size: var(--sl-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  color: var(--sdv-text-2);
+  font-size: var(--sdv-text-sm);
+  font-weight: 600;
+  letter-spacing: 0;
   padding-bottom: 0.35rem;
   text-align: start;
-  text-transform: uppercase;
+  text-transform: none;
 }
 .sdv-stats th,
 .sdv-stats td {
@@ -1218,6 +1237,9 @@ button[data-tone="bad"] {
   font-variant-numeric: tabular-nums;
   font-weight: var(--sdv-weight-ui);
   text-align: end;
+}
+.sdv-control > .sdv-button {
+  justify-self: start;
 }
 .sdv-control__hint {
   color: var(--sdv-text-3);
@@ -1697,11 +1719,6 @@ button[data-tone="bad"] {
 }
 .sdv-strip__label {
   color: var(--sl-color-gray-3);
-  font-size: var(--sl-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  margin: 0;
-  text-transform: uppercase;
 }
 .sdv-strip__items {
   display: flex;
@@ -2610,9 +2627,124 @@ a.sdv-map__link:hover {
   display: inline-flex;
   gap: 0.35rem;
 }
+.sdv-fence {
+  display: grid;
+  gap: 0.75rem;
+  margin-block: 0.75rem;
+}
+.sdv-fence__legend {
+  color: var(--sl-color-gray-3);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--sl-text-xs);
+  gap: 0.25rem 0.9rem;
+  margin: 0;
+}
+.sdv-fence__lane {
+  min-width: 0;
+}
+.sdv-fence__title {
+  align-items: center;
+  display: flex;
+  font-size: var(--sl-text-sm);
+  gap: 0.4rem;
+  margin: 0 0 0.25rem;
+}
+.sdv-fence__frame {
+  min-width: 0;
+  overflow: hidden;
+  width: 100%;
+}
+.sdv-fence__frame svg {
+  display: block;
+}
+.sdv-fence__grid {
+  stroke: var(--sdv-border);
+  stroke-dasharray: 2 4;
+}
+.sdv-fence__rule {
+  stroke: var(--sdv-border);
+}
+.sdv-fence__row-label {
+  fill: var(--sl-color-gray-2);
+  font-size: 11px;
+}
+.sdv-fence__note {
+  fill: var(--sl-color-gray-2);
+  font-size: 11px;
+}
+.sdv-fence__note--strong {
+  fill: var(--sl-color-white);
+  font-weight: 600;
+}
+.sdv-fence__bar--a {
+  fill: var(--sdv-series-a);
+}
+.sdv-fence__bar--b {
+  fill: var(--sdv-accent);
+}
+.sdv-fence__hatch-line {
+  stroke: var(--sdv-warn);
+  stroke-width: 2;
+}
+.sdv-fence__pause {
+  stroke: var(--sdv-warn);
+}
+.sdv-fence__slow {
+  stroke: var(--sdv-warn);
+  stroke-dasharray: 4 3;
+  stroke-width: 2;
+}
+.sdv-fence__cut {
+  fill: none;
+  stroke: var(--sdv-warn);
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+.sdv-fence__expire line {
+  stroke: var(--sdv-border-strong);
+  stroke-dasharray: 5 3;
+  stroke-width: 1.5;
+}
+.sdv-fence__write {
+  stroke: var(--sl-color-gray-3);
+  stroke-width: 1.5;
+}
+.sdv-fence__write--b {
+  stroke: var(--sdv-accent);
+}
+.sdv-fence__flight {
+  stroke: var(--sl-color-gray-3);
+  stroke-dasharray: 2 3;
+}
+.sdv-fence__send {
+  fill: var(--sl-color-bg);
+  stroke: var(--sl-color-gray-2);
+  stroke-width: 1.5;
+}
+.sdv-fence__stale--accepted .sdv-fence__glyph {
+  fill: var(--sdv-bad);
+}
+.sdv-fence__stale--rejected .sdv-fence__glyph rect {
+  fill: var(--sl-color-bg);
+  stroke: var(--sdv-ok);
+  stroke-width: 2;
+}
+.sdv-fence__stale--rejected .sdv-fence__glyph path {
+  stroke: var(--sdv-ok);
+  stroke-width: 2;
+}
+.sdv-fence__now {
+  stroke: var(--sl-color-text-accent);
+  stroke-width: 2;
+}
+.sdv-fence .is-future {
+  opacity: 0.3;
+}
 .sdv-trace__frame {
   min-width: 0;
   overflow: hidden;
+  position: relative;
   width: 100%;
 }
 .sdv-trace__frame svg {
@@ -2649,8 +2781,36 @@ a.sdv-map__link:hover {
   stroke: var(--sl-color-gray-3);
   stroke-dasharray: 2 3;
 }
+.sdv-trace__marker .sdv-trace__connector {
+  stroke-dasharray: none;
+}
 .sdv-trace__marker circle {
   fill: var(--sl-color-text-accent);
+}
+.sdv-trace__group {
+  background: var(--sl-color-text-accent);
+  border: 0;
+  border-radius: 9px;
+  color: var(--sl-color-black);
+  cursor: pointer;
+  font: 700 11px / 1 var(--sl-font, inherit);
+  font-variant-numeric: tabular-nums;
+  padding: 0;
+  position: absolute;
+}
+.sdv-trace__group:focus-visible {
+  outline: 2px solid var(--sl-color-text-accent);
+  outline-offset: 2px;
+}
+.sdv-trace__group-list {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+}
+.sdv-trace__group-list[hidden] {
+  display: none;
 }
 .sdv-trace__marker text {
   fill: var(--sl-color-black);
@@ -2663,11 +2823,6 @@ a.sdv-map__link:hover {
 }
 .sdv-trace__log-title {
   color: var(--sl-color-gray-3);
-  font-size: var(--sl-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  margin: 0;
-  text-transform: uppercase;
 }
 .sdv-trace__log ol {
   display: grid;

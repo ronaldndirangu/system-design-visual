@@ -47,37 +47,37 @@ export const steps = [
   {
     title: 'Append',
     text: 'The service appends one click event per redirect to a partition. The hash of the short code picks the partition, so every /cat click lands in P1.',
-    nodes: ['redirect', 'topic'],
+    focus: { active: 'redirect', involved: ['topic'] },
     flows: ['redirect>topic'],
   },
   {
     title: 'Keep',
     text: 'The log keeps events for days, read or not. Each event gets an offset: its position in its partition, counting from 0.',
-    nodes: ['topic'],
+    focus: { active: 'topic' },
     flows: [],
   },
   {
     title: 'Split the reading',
     text: 'The analytics group shares the partitions. Each partition has exactly one reader in the group, which reads it in offset order.',
-    nodes: ['topic', 'a1', 'a2'],
+    focus: { active: 'topic', involved: ['a1', 'a2'] },
     flows: ['topic>a1', 'topic>a2'],
   },
   {
     title: 'Save progress',
     text: 'Readers update the click counts and every few seconds save (commit) the offset they reached. A new reader starts there.',
-    nodes: ['a1', 'a2', 'counts'],
+    focus: { active: 'a1', involved: ['a2', 'counts'] },
     flows: ['a1>counts', 'a2>counts'],
   },
   {
     title: 'Publish once, subscribe many',
     text: 'A second group, the spam check, reads the same events with its own offsets and pace. Every group still shares the brokers\' disks, network, and CPU.',
-    nodes: ['topic', 'spam'],
+    focus: { active: 'topic', involved: ['spam'] },
     flows: ['topic>spam'],
   },
   {
     title: 'Lag',
     text: 'Lag is the newest offset minus the read position, summed over every partition. Rising lag means the dashboard shows older and older numbers.',
-    nodes: ['topic', 'a1', 'a2'],
+    focus: { active: 'topic', involved: ['a1', 'a2'] },
     flows: [],
   },
 ];

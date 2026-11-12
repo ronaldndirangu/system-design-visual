@@ -52,37 +52,37 @@ export const steps = [
   {
     title: 'Ana writes to R2',
     text: 'Ana sends “Lunch at noon?”. R2 stores it and confirms at once. R1 and R3 do not have it yet.',
-    nodes: ['ana', 'lb', 'r2'],
+    focus: { active: 'ana', involved: ['lb', 'r2'] },
     flows: ['ana>lb', 'lb>r2'],
   },
   {
     title: 'Copies travel in the background',
     text: 'R2 copies the message to R1 and R3 with different delays: R1 gets it at tick 4, R3 at tick 7.',
-    nodes: ['r2', 'r1', 'r3'],
+    focus: { active: 'r2', involved: ['r1', 'r3'] },
     flows: ['r2>r1', 'r2>r3'],
   },
   {
     title: 'Ben replies through R3',
     text: 'Ben read the question from R2 at tick 2. At tick 3 his reply lands on R3, which still lacks the question.',
-    nodes: ['ben', 'lb', 'r3'],
+    focus: { active: 'ben', involved: ['lb', 'r3'] },
     flows: ['ben>lb', 'lb>r3'],
   },
   {
     title: 'Carla reads R3',
     text: 'R3 answers with what it holds right now: a reply with no question above it.',
-    nodes: ['carla', 'lb', 'r3'],
+    focus: { active: 'carla', involved: ['lb', 'r3'] },
     flows: ['carla>lb', 'lb>r3'],
   },
   {
     title: 'The fix is a promise',
     text: 'A consistency model tells the replicas what they may answer. Under causal consistency, Ben’s reply waits at R3 until the question arrives.',
-    nodes: ['lb', 'r1', 'r2', 'r3'],
+    focus: { active: 'lb', involved: ['r1', 'r2', 'r3'] },
     flows: [],
   },
   {
     title: 'Linearizable: one leader orders everything',
     text: 'Every request goes to R1, and a write waits until a majority stores it. Ben reads an empty chat at tick 2, the last confirmed state. A real leader also checks with a quorum, or holds a lease, before it answers a read. This toy skips that round trip.',
-    nodes: ['ana', 'ben', 'lb', 'r1'],
+    focus: { active: 'ana', involved: ['ben', 'lb', 'r1'] },
     flows: ['ben>lb', 'lb>r1'],
   },
 ];

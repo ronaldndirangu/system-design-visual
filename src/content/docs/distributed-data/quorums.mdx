@@ -43,31 +43,31 @@ export const steps = [
   {
     title: 'Three copies of one cart',
     text: 'The service hashes cart:sam onto the ring and walks clockwise. The first three replicas, A, D, and B, form the preference list, so N = 3.',
-    nodes: ['service', 'a', 'd', 'b'],
+    focus: { active: 'service', involved: ['a', 'd', 'b'] },
     flows: ['service>a', 'service>d', 'service>b'],
   },
   {
     title: 'A write waits for W copies',
     text: 'Sam adds the book. The service sends it to all three copies and confirms once W apply it. With W = 1, D alone is enough, while the book still travels to A.',
-    nodes: ['sam', 'service', 'd'],
+    focus: { active: 'sam', involved: ['service', 'd'] },
     flows: ['sam>service', 'service>d'],
   },
   {
     title: 'A read asks R copies',
     text: 'Sam opens the cart. With R = 1, the service asks only A, which lacks the book: the write set and the read set never met.',
-    nodes: ['sam', 'service', 'a'],
+    focus: { active: 'sam', involved: ['service', 'a'] },
     flows: ['sam>service', 'service>a'],
   },
   {
     title: 'Make the sets overlap',
     text: 'With W = 2, the add waits for D and B. With R = 2, the view asks A and B. Any two of three replicas share one, so B answers with the book.',
-    nodes: ['sam', 'service', 'a', 'b'],
+    focus: { active: 'sam', involved: ['service', 'a', 'b'] },
     flows: ['sam>service', 'service>a', 'service>b'],
   },
   {
     title: 'Lose a replica',
     text: 'D goes down. With W = 2 and R = 2, A and B still form both sets. With W = 3, the service refuses adds until D returns.',
-    nodes: ['service', 'a', 'b'],
+    focus: { active: 'service', involved: ['a', 'b'] },
     flows: ['service>a', 'service>b'],
   },
 ];

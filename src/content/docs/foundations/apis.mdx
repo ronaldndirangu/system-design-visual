@@ -39,25 +39,25 @@ export const steps = [
   {
     title: 'First attempt',
     text: 'The server inserts x7Kp2 and answers 201. The tunnel swallows the response.',
-    nodes: ['phone', 'api', 'db'],
+    focus: { active: 'phone', involved: ['api', 'db'] },
     flows: ['phone>api', 'api>db', 'db>api'],
   },
   {
     title: 'Silence, then a retry',
     text: 'After 10 seconds the app stops waiting. A lost request and a lost response look the same, so it resends.',
-    nodes: ['phone', 'api'],
+    focus: { active: 'phone', involved: ['api'] },
     flows: ['phone>api'],
   },
   {
     title: 'A second link',
     text: 'Nothing marks the retry as a repeat. The server inserts q9Rt4, and the user has two links.',
-    nodes: ['phone', 'api', 'db'],
+    focus: { active: 'phone', involved: ['api', 'db'] },
     flows: ['phone>api', 'api>db', 'db>api', 'api>phone'],
   },
   {
     title: 'Fix: one key for both attempts',
     text: 'Both attempts carry one Idempotency-Key. The server finds it, skips the insert, and replays the stored 201.',
-    nodes: ['phone', 'api', 'db'],
+    focus: { active: 'phone', involved: ['api', 'db'] },
     flows: ['phone>api', 'api>db', 'db>api', 'api>phone'],
   },
 ];

@@ -45,37 +45,37 @@ export const steps = [
   {
     title: 'Three services, three databases',
     text: 'Checkout touches Inventory, Payments, and Shipping. Each owns its database, so no single transaction covers all three.',
-    nodes: ['orders', 'inventory', 'payments', 'shipping', 'stock', 'ledger', 'bookings'],
+    focus: { active: 'orders', involved: ['inventory', 'payments', 'shipping', 'stock', 'ledger', 'bookings'] },
     flows: [],
   },
   {
     title: 'Reserve stock and commit',
     text: 'Inventory holds the item and commits right away. Other shoppers now see one fewer in stock.',
-    nodes: ['orders', 'inventory', 'stock'],
+    focus: { active: 'orders', involved: ['inventory', 'stock'] },
     flows: ['orders>inventory', 'inventory>stock'],
   },
   {
     title: 'Charge the card and commit',
     text: 'Payments charges $75 and commits. No database rollback can bring the money back.',
-    nodes: ['orders', 'payments', 'ledger'],
+    focus: { active: 'orders', involved: ['payments', 'ledger'] },
     flows: ['orders>payments', 'payments>ledger'],
   },
   {
     title: 'A failure mid saga',
     text: 'Shipping finds no courier. Two steps have already committed in two other databases.',
-    nodes: ['orders', 'shipping'],
+    focus: { active: 'orders', involved: ['shipping'] },
     flows: ['orders>shipping', 'shipping>orders'],
   },
   {
     title: 'Compensate in reverse',
     text: 'Orders asks Payments to refund the $75, then asks Inventory to release the item. Each undo is a new local transaction, newest first.',
-    nodes: ['orders', 'inventory', 'payments', 'stock', 'ledger'],
+    focus: { active: 'orders', involved: ['inventory', 'payments', 'stock', 'ledger'] },
     flows: ['orders>payments', 'payments>ledger', 'orders>inventory', 'inventory>stock'],
   },
   {
     title: 'The books balance',
     text: 'The ledger shows $75 charged and $75 refunded, and the item is back on sale.',
-    nodes: ['orders', 'stock', 'ledger'],
+    focus: { active: 'orders', involved: ['stock', 'ledger'] },
     flows: [],
   },
 ];

@@ -37,31 +37,31 @@ export const steps = [
   {
     title: 'Both handlers read',
     text: 'Clicks 2 and 3 on sho.rt/launch land a moment apart. Handler A reads clicks = 1, and so does Handler B, because A has not written yet.',
-    nodes: ['a', 'b', 'db'],
+    focus: { active: 'a', involved: ['b', 'db'] },
     flows: ['db>a', 'db>b'],
   },
   {
     title: 'A writes 2',
     text: 'Handler A adds 1 to what it read and writes clicks = 2. Correct so far.',
-    nodes: ['a', 'db'],
+    focus: { active: 'a', involved: ['db'] },
     flows: ['a>db'],
   },
   {
     title: 'B writes 2 over it',
     text: 'Handler B also computed 1 + 1, so it writes 2 as well. The row should say 3. One click is gone, and nothing reports it.',
-    nodes: ['b', 'db'],
+    focus: { active: 'b', involved: ['db'] },
     flows: ['b>db'],
   },
   {
     title: 'Fix: let the database do the math',
     text: 'Send UPDATE links SET clicks = clicks + 1 instead. The database applies each increment to the current value, one writer at a time, so the row ends at 3.',
-    nodes: ['a', 'b', 'db'],
+    focus: { active: 'a', involved: ['b', 'db'] },
     flows: ['a>db', 'b>db'],
   },
   {
     title: 'Same gap, other data',
     text: 'Any read, decide, write cycle has this gap: two editors saving one destination, two users claiming one alias.',
-    nodes: ['a', 'b', 'db'],
+    focus: { active: 'a', involved: ['b', 'db'] },
   },
 ];
 

@@ -47,31 +47,31 @@ export const steps = [
   {
     title: 'Is the channel private?',
     text: 'The HTTPS edge proves it holds the certificate for sho.rt, so the request and its cookie cross the cafe Wi-Fi as ciphertext.',
-    nodes: ['client', 'edge'],
+    focus: { active: 'client', involved: ['edge'] },
     flows: ['client>edge'],
   },
   {
     title: 'Who is calling?',
     text: "The sign-in check verifies the credential's signature with a key from the secret manager, then its expiry. A missing, forged, or expired credential gets 401 Unauthorized.",
-    nodes: ['edge', 'signin', 'vault'],
+    focus: { active: 'edge', involved: ['signin', 'vault'] },
     flows: ['edge>signin', 'vault>signin'],
   },
   {
     title: 'May Ben delete this link?',
     text: "The handler deletes only for the link's owner or an admin. Everyone else gets 403 Forbidden, whatever client sent the request.",
-    nodes: ['signin', 'handler', 'db'],
+    focus: { active: 'signin', involved: ['handler', 'db'] },
     flows: ['signin>handler', 'db>handler'],
   },
   {
     title: 'Delete and record',
     text: 'The handler deletes the row and logs Ben, the link code, the time, and the result, with no cookie, token, or password.',
-    nodes: ['handler', 'db'],
+    focus: { active: 'handler', involved: ['db'] },
     flows: ['handler>db'],
   },
   {
     title: 'Where do the keys live?',
     text: 'The signing key and database password live only in the secret manager, injected at deploy. The repo, build logs, and laptop clones hold none, so rotating a key means changing one place.',
-    nodes: ['vault', 'signin', 'handler'],
+    focus: { active: 'vault', involved: ['signin', 'handler'] },
     flows: ['vault>signin', 'vault>handler'],
   },
 ];

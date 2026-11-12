@@ -121,36 +121,36 @@ export const ringSteps = [
   {
     title: 'Each slot has one owner',
     text: 'The app server caches the slot map. Slot 7000 belongs to shard A, so every key in that slot goes to A.',
-    nodes: ['app', 'a', 'b'],
+    focus: { active: 'app', involved: ['a', 'b'] },
     flows: ['app>a'],
   },
   {
     title: 'Add an empty shard',
     text: 'Shard E joins the cluster with no slots. The map does not list it yet, so no traffic reaches it.',
-    nodes: ['e'],
+    focus: { active: 'e' },
   },
   {
     title: 'Copy one slot while A serves it',
     text: 'A marks slot 7000 MIGRATING and E marks it IMPORTING. A copies the keys to E in batches and keeps serving the keys it still holds.',
-    nodes: ['app', 'a', 'e'],
+    focus: { active: 'app', involved: ['a', 'e'] },
     flows: ['app>a', 'a>e'],
   },
   {
     title: 'ASK for a key that already moved',
     text: 'For a key it already copied, A replies ASK with E\'s address. The client sends that one request to E, preceded by ASKING, and keeps its map.',
-    nodes: ['app', 'e'],
+    focus: { active: 'app', involved: ['e'] },
     flows: ['app>e'],
   },
   {
     title: 'Cut over to the new owner',
     text: 'With the last key copied, the cluster assigns slot 7000 to E. A client with the old map still asks A, which replies MOVED, so the client updates its map.',
-    nodes: ['app', 'a', 'e'],
+    focus: { active: 'app', involved: ['a', 'e'] },
     flows: ['app>e'],
   },
   {
     title: 'Repeat until even',
     text: 'The operator moves slots from A and B one at a time until E holds an even share, with no downtime.',
-    nodes: ['app', 'a', 'b', 'e'],
+    focus: { active: 'app', involved: ['a', 'b', 'e'] },
     flows: ['a>e', 'b>e'],
   },
 ];

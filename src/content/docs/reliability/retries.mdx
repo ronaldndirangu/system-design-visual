@@ -43,37 +43,37 @@ export const steps = [
   {
     title: 'A normal day',
     text: 'Redirect servers send 150 clicks a second, and eight workers handle about 200 a second, so the queue stays short.',
-    nodes: ['redirect', 'queue', 'ingest', 'store'],
+    focus: { active: 'redirect', involved: ['queue', 'ingest', 'store'] },
     flows: ['redirect>queue', 'queue>ingest', 'ingest>store'],
   },
   {
     title: 'The service slows down',
     text: 'At 3 s every attempt takes twice as long. The workers handle about 100 a second, so the queue grows by about 50 a second.',
-    nodes: ['queue', 'ingest'],
+    focus: { active: 'queue', involved: ['ingest'] },
     flows: ['redirect>queue', 'queue>ingest'],
   },
   {
     title: 'The wait passes the timeout',
     text: 'A full queue takes 750 ms to drain at full speed, longer than the 500 ms the sender waits. Workers still finish timed out attempts, for nobody.',
-    nodes: ['queue', 'ingest'],
+    focus: { active: 'queue', involved: ['ingest'] },
     flows: ['queue>ingest'],
   },
   {
     title: 'Every timeout becomes a retry',
     text: 'Each timed out click is sent again, up to four attempts within its 2 s deadline. The retries land in the same full queue.',
-    nodes: ['redirect', 'queue'],
+    focus: { active: 'redirect', involved: ['queue'] },
     flows: ['redirect>queue'],
   },
   {
     title: 'The trigger ends, the overload stays',
     text: 'At 6 s the service is fast again, yet fresh clicks plus retries still exceed 200 a second, so the queue stays full.',
-    nodes: ['redirect', 'queue', 'ingest'],
+    focus: { active: 'redirect', involved: ['queue', 'ingest'] },
     flows: ['redirect>queue', 'queue>ingest'],
   },
   {
     title: 'Late copies reach the store',
     text: 'A timed out attempt and its retry can both finish. The click ID works as an idempotency key, so the store records the click once.',
-    nodes: ['ingest', 'store'],
+    focus: { active: 'ingest', involved: ['store'] },
     flows: ['ingest>store'],
   },
 ];

@@ -41,25 +41,25 @@ export const steps = [
   {
     title: 'Pick what to count: the SLI',
     text: 'The load balancer times every redirect it answers. A redirect counts as good when it finishes in under 100 ms. The SLI is the share of redirects that are good.',
-    nodes: ['client', 'lb'],
+    focus: { active: 'client', involved: ['lb'] },
     flows: ['client>lb'],
   },
   {
     title: 'Set the target: the SLO',
     text: 'The SLO promises that 99% of redirects are good over a window. Real windows run 28 or 30 days. The toy run below lasts 20 s and gets 19,921 redirects.',
-    nodes: ['client', 'lb', 'server'],
+    focus: { active: 'client', involved: ['lb', 'server'] },
     flows: ['client>lb', 'lb>server'],
   },
   {
     title: 'Count the allowance: the error budget',
     text: '1% of 19,921 is 199, so the run may spend 199 slow redirects before it breaks the promise.',
-    nodes: ['lb'],
+    focus: { active: 'lb' },
     flows: [],
   },
   {
     title: 'Find the slow ones',
     text: 'Most redirects hit the cache and return fast. The 5% that miss also wait for a database read, and in this run they make most of the slow redirects. A p99 promise is about them.',
-    nodes: ['server', 'cache', 'db'],
+    focus: { active: 'server', involved: ['cache', 'db'] },
     flows: ['server>cache', 'server>db'],
   },
 ];

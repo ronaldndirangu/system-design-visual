@@ -213,13 +213,11 @@
   width: 100%;
 }
 .sdv-cqrs__events caption {
-  color: var(--sl-color-gray-3);
-  font-size: var(--sl-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  color: var(--sdv-text-2);
+  font-size: var(--sdv-text-sm);
+  font-weight: 600;
   padding-bottom: 0.35rem;
   text-align: start;
-  text-transform: uppercase;
 }
 .sdv-cqrs__events th,
 .sdv-cqrs__events td {
