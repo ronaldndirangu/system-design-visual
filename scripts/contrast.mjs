@@ -70,9 +70,10 @@ export const PAIRS = [
   { fg: 'ok', bg: 'ok-soft', min: TEXT },
   { fg: 'warn', bg: 'warn-soft', min: TEXT },
   { fg: 'bad', bg: 'bad-soft', min: TEXT },
-  { fg: '#ffffff', bg: 'accent', min: TEXT },
-  { fg: '#ffffff', bg: 'accent-hover', min: TEXT },
+  { fg: 'on-accent', bg: 'accent', min: TEXT },
+  { fg: 'on-accent', bg: 'accent-hover', min: TEXT },
   ...['surface-1', 'surface-2', 'sunken'].map((bg) => ({ fg: 'border-control', bg, min: NON_TEXT })),
+  ...['surface-1', 'surface-2', 'sunken'].map((bg) => ({ fg: 'accent', bg, min: NON_TEXT })),
   ...['client', 'server', 'lb', 'cache', 'db', 'queue', 'edge-kind', 'model'].flatMap((fg) =>
     ['bg', 'surface-1', 'sunken'].map((bg) => ({ fg, bg, min: TEXT })),
   ),

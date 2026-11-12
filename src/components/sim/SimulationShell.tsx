@@ -1,12 +1,12 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { UiIcon } from '../viz/icons';
+import { Button, IconButton } from '../ui/Button';
+import { type Speed, SpeedControl } from '../ui/SpeedControl';
 import { type StatRow, StatTable, type Tone, ToneBadge } from './StatTable';
 import { useAnnouncer } from './useAnnouncer';
 import { useTicker } from './useTicker';
 
 /** Lets the widget rerender with the new state before the summary is read. */
 const SETTLE_MS = 50;
-const speeds = [0.5, 1, 2, 4] as const;
 
 export interface SimulationShellProps {
   title: string;
@@ -63,12 +63,12 @@ export function SimulationShell({
 }: SimulationShellProps) {
   const rootRef = useRef<HTMLElement>(null);
   const [running, setRunning] = useState(false);
-  const [speed, setSpeed] = useState<(typeof speeds)[number]>(1);
+  const [speed, setSpeed] = useState<Speed>('1');
   const { message, announce, push, pushEvent, cancel } = useAnnouncer();
   const summaryRef = useRef(summary);
   summaryRef.current = summary;
 
-  useTicker(running, ticksPerSecond * speed, onTick, rootRef);
+  useTicker(running, ticksPerSecond * Number(speed), onTick, rootRef);
 
   // Every paused event in one burst (Step, Reset, Pause, a finished run, a new scenario) speaks the summary once.
   const summaryTimer = useRef<number | undefined>(undefined);
@@ -137,10 +137,6 @@ export function SimulationShell({
     onReset();
     announceSummary();
   };
-  const nextSpeed = () => {
-    const index = speeds.indexOf(speed);
-    setSpeed(speeds[(index + 1) % speeds.length] ?? 1);
-  };
 
   return (
     <section ref={rootRef} className="sdv-sim not-content" aria-label={`Simulation: ${title}`}>
@@ -152,26 +148,12 @@ export function SimulationShell({
       <div className="sdv-sim__stage">{children}</div>
       {/* biome-ignore lint/a11y/useSemanticElements: a labelled group of buttons, not a form section */}
       <div className="sdv-sim__toolbar" role="group" aria-label="Simulation controls">
-        <button type="button" className="sdv-button sdv-button--primary" onClick={toggle}>
-          <UiIcon name={running ? 'pause' : 'play'} />
+        <Button variant="primary" icon={running ? 'pause' : 'play'} onClick={toggle}>
           {running ? 'Pause' : finished ? 'Replay' : 'Play'}
-        </button>
-        <button type="button" className="sdv-button" onClick={step}>
-          <UiIcon name="step" />
-          Step
-        </button>
-        <button type="button" className="sdv-button" onClick={reset}>
-          <UiIcon name="reset" />
-          Reset
-        </button>
-        <button
-          type="button"
-          className="sdv-button"
-          onClick={nextSpeed}
-          aria-label={`Speed ${speed} times. Change speed`}
-        >
-          {speed}×
-        </button>
+        </Button>
+        <IconButton label="Step" icon="step" onClick={step} />
+        <IconButton label="Reset" icon="reset" onClick={reset} />
+        <SpeedControl value={speed} onChange={setSpeed} />
       </div>
       {controls && <div className="sdv-sim__controls">{controls}</div>}
       {readout ?? <StatTable rows={stats} />}

@@ -28,6 +28,7 @@
   --sdv-accent-text: #a5b4fc;
   --sdv-accent-subtle: #1c1d3f;
   --sdv-accent-border: #3b3a85;
+  --sdv-on-accent: #ffffff;
 
   /* Component kinds tint strokes, icons and labels. No kind uses a green, orange or red hue,
      so a kind color never reads as a status. */
@@ -472,10 +473,10 @@ body {
 
 .sdv-button {
   align-items: center;
-  background: var(--sdv-surface-raised);
+  background: var(--sdv-surface-2);
   border: 1px solid var(--sdv-border-control);
   border-radius: var(--sdv-radius-sm);
-  color: var(--sl-color-white);
+  color: var(--sdv-text-1);
   cursor: pointer;
   display: inline-flex;
   font: inherit;
@@ -486,9 +487,13 @@ body {
   min-height: var(--sdv-target);
   min-width: var(--sdv-target);
   padding: 0.25rem 0.875rem;
+  transition:
+    background-color var(--sdv-duration-fast) var(--sdv-ease-out),
+    border-color var(--sdv-duration-fast) var(--sdv-ease-out),
+    color var(--sdv-duration-fast) var(--sdv-ease-out);
 }
 .sdv-button:hover:not(:disabled) {
-  border-color: var(--sdv-accent-text);
+  background: var(--sdv-surface-3);
 }
 .sdv-button:disabled {
   cursor: not-allowed;
@@ -497,19 +502,50 @@ body {
 .sdv-button--primary {
   background: var(--sdv-accent);
   border-color: var(--sdv-accent);
-  color: #ffffff;
+  color: var(--sdv-on-accent);
 }
 .sdv-button--primary:hover:not(:disabled) {
   background: var(--sdv-accent-hover);
   border-color: var(--sdv-accent-hover);
 }
+.sdv-button--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--sdv-text-2);
+}
+.sdv-button--ghost:hover:not(:disabled) {
+  background: var(--sdv-surface-3);
+  color: var(--sdv-text-1);
+}
+.sdv-button--destructive {
+  background: transparent;
+  border-color: var(--sdv-bad);
+  color: var(--sdv-bad);
+}
+.sdv-button--destructive:hover:not(:disabled) {
+  background: var(--sdv-bad-soft);
+}
+.sdv-button--icon {
+  justify-content: center;
+  padding: 0;
+  width: var(--sdv-target);
+}
 .sdv-button svg {
   width: 1rem;
   height: 1rem;
+  flex: none;
 }
 
-:where(.sdv-button, .sdv-choice, .sdv-segmented label, input[type="range"], summary):focus-visible,
-.sdv-segmented input:focus-visible + span {
+:where(
+  .sdv-button,
+  .sdv-choice,
+  .sdv-select,
+  .sdv-segmented label,
+  input[type="range"],
+  summary
+):focus-visible,
+.sdv-segmented input:focus-visible + span,
+.sdv-toggle input:focus-visible + .sdv-toggle__track {
   outline: 3px solid var(--sdv-accent-text);
   outline-offset: 2px;
 }

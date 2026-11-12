@@ -59,13 +59,14 @@ function ScaleControl({ value, onChange }: { value: Choice; onChange: (id: Choic
   const hydrated = useHydrated();
   return (
     <div className="sdv-estimator__scale">
-      <Segmented label="Scale" value={value} options={presetOptions} onChange={onChange} />
+      <Segmented label="Scale" value={value} options={presetOptions} onChange={onChange} fallback="none" />
       <div className="sdv-control sdv-estimator__scale-select">
         <div className="sdv-control__row">
           <label htmlFor={id}>Scale</label>
         </div>
         <select
           id={id}
+          className="sdv-select"
           value={value}
           disabled={!hydrated}
           onChange={(event) => onChange(event.currentTarget.value as Choice)}

@@ -568,6 +568,7 @@ export default function TimedRoundWidget() {
                               value: String(level.score) as ScoreChoice,
                               label: level.label,
                             }))}
+                            placeholder="Not scored"
                             onChange={(choice) => {
                               if (choice === '') return;
                               setRound((state) =>
