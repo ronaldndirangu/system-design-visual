@@ -9,6 +9,7 @@ import {
   summarize,
 } from '../../lib/models/rateLimit';
 import { BallLegend } from '../physics/BallLegend';
+import { PhysicsStage, type StagePlayback } from '../physics/PhysicsStage';
 import { usePhysicsScene } from '../physics/runtime';
 import { TokenBucketScene } from '../physics/TokenBucketScene';
 import { Slider, Toggle } from '../sim/controls';
@@ -21,6 +22,8 @@ import { useHydrated } from '../sim/useHydrated';
 import { usePrefersReducedMotion } from '../sim/usePrefersReducedMotion';
 import { chartMarkers, RunTranscript } from './RunTranscript';
 import './TokenBucketWidget.css';
+
+const TICKS_PER_SECOND = 10;
 
 interface Props {
   scenarios?: BucketId[];
@@ -63,9 +66,13 @@ export default function TokenBucketWidget({
   const burstRef = useRef(limits.burst);
   burstRef.current = limits.burst;
 
-  const { canvasRef, scene } = usePhysicsScene((context) => new TokenBucketScene(context, burstRef.current), {
+  const [playback, setPlayback] = useState<StagePlayback>({ playing: false, speed: 1 });
+  const physics = usePhysicsScene((context) => new TokenBucketScene(context, burstRef.current), {
     enabled: showPhysics,
+    paused: !playback.playing,
+    speed: playback.speed,
   });
+  const { scene, advance, repaint } = physics;
 
   const lane = run.lanes[0];
   const tokens = Math.floor(lane?.allowanceOf(0) ?? 0);
@@ -76,7 +83,8 @@ export default function TokenBucketWidget({
     scene.setTokens(Math.floor(model.allowanceOf(0)), burstRef.current);
     const counts = summarize(model);
     scene.syncCounts(counts.served, counts.rejections);
-  }, [scene]);
+    repaint();
+  }, [scene, repaint]);
 
   useEffect(() => {
     syncScene();
@@ -92,6 +100,8 @@ export default function TokenBucketWidget({
   const onTick = () => {
     const [result] = run.step();
     if (result) scene?.applyTick(result, limits.burst);
+    // A Step press arrives while paused, so move the tokens through the same tick of time.
+    if (!playback.playing) advance(1000 / TICKS_PER_SECOND);
     rerender();
   };
 
@@ -169,6 +179,7 @@ export default function TokenBucketWidget({
       title={title}
       instructions={instructions}
       onTick={onTick}
+      ticksPerSecond={TICKS_PER_SECOND}
       onReset={() => restart(scenarioId)}
       summary={summary}
       stats={rows}
@@ -213,24 +224,26 @@ export default function TokenBucketWidget({
         }))}
         onChange={chooseScenario}
       />
-      {showPhysics ? (
-        // biome-ignore lint/a11y/noAriaHiddenOnFocusable: the canvas is not focusable; the stats table carries the same data
-        <canvas ref={canvasRef} className="sdv-farm__canvas" aria-hidden="true" data-testid="bucket-canvas" />
-      ) : (
-        <LoadBars
-          label="Token bucket"
-          flagFull={false}
-          bars={[
-            {
-              id: 'tokens',
-              label: 'Tokens left for client A',
-              fill: limits.burst > 0 ? tokens / limits.burst : 0,
-              value: `${tokens} of ${limits.burst}`,
-              down: tokens === 0 && run.ticks > 0,
-            },
-          ]}
-        />
-      )}
+      <PhysicsStage
+        physics={physics}
+        testId="bucket-canvas"
+        onPlayback={setPlayback}
+        readout={
+          <LoadBars
+            label="Token bucket"
+            flagFull={false}
+            bars={[
+              {
+                id: 'tokens',
+                label: 'Tokens left for client A',
+                fill: limits.burst > 0 ? tokens / limits.burst : 0,
+                value: `${tokens} of ${limits.burst}`,
+                down: tokens === 0 && run.ticks > 0,
+              },
+            ]}
+          />
+        }
+      />
       <div className="sdv-farm__footer">
         {showPhysics && (
           <BallLegend>

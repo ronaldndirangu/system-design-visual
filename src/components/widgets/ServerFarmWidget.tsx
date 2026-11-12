@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { type FarmStats, type FarmTick, ServerFarm, type Strategy } from '../../lib/models/serverFarm';
 import { BallLegend } from '../physics/BallLegend';
 import { type BucketView, FarmScene } from '../physics/FarmScene';
+import { PhysicsStage, type StagePlayback } from '../physics/PhysicsStage';
 import { usePhysicsScene } from '../physics/runtime';
 import { Segmented, Slider, Toggle } from '../sim/controls';
 import { LoadBars } from '../sim/LoadBars';
@@ -12,6 +13,7 @@ import { usePrefersReducedMotion } from '../sim/usePrefersReducedMotion';
 const BALL_VALUE = 5;
 const QUEUE_LIMIT = 60;
 const MAX_SERVERS = 4;
+const TICKS_PER_SECOND = 10;
 
 const sizes = {
   small: { label: 'Small', capacity: 100 },
@@ -125,17 +127,22 @@ export default function ServerFarmWidget({
   const ticksRef = useRef(0);
   const [snap, setSnap] = useState<Snapshot>(() => snapshot(farmRef.current as ServerFarm, 0));
 
-  const { canvasRef, scene } = usePhysicsScene((context) => new FarmScene(context, BALL_VALUE, QUEUE_LIMIT), {
+  const [playback, setPlayback] = useState<StagePlayback>({ playing: false, speed: 1 });
+  const physics = usePhysicsScene((context) => new FarmScene(context, BALL_VALUE, QUEUE_LIMIT), {
     enabled: showPhysics,
+    paused: !playback.playing,
+    speed: playback.speed,
   });
+  const { scene, advance, repaint } = physics;
 
   const farm = () => farmRef.current as ServerFarm;
   const sync = useCallback(() => {
     const current = farmRef.current;
     if (!current) return;
     scene?.applyTick(emptyTick, views(current));
+    repaint();
     setSnap(snapshot(current, ticksRef.current));
-  }, [scene]);
+  }, [scene, repaint]);
 
   useEffect(() => {
     sync();
@@ -159,6 +166,8 @@ export default function ServerFarmWidget({
     const tick = current.step();
     ticksRef.current += 1;
     scene?.applyTick(tick, views(current));
+    // A Step press arrives while paused, so move the balls through the same tick of time.
+    if (!playback.playing) advance(1000 / TICKS_PER_SECOND);
     setSnap(snapshot(current, ticksRef.current));
   };
 
@@ -228,6 +237,7 @@ export default function ServerFarmWidget({
       title={title}
       instructions={instructions}
       onTick={onTick}
+      ticksPerSecond={TICKS_PER_SECOND}
       onReset={onReset}
       summary={summary}
       stats={rows}
@@ -302,12 +312,12 @@ export default function ServerFarmWidget({
         </>
       }
     >
-      {showPhysics ? (
-        // biome-ignore lint/a11y/noAriaHiddenOnFocusable: the canvas is not focusable; the stats table carries the same data
-        <canvas ref={canvasRef} className="sdv-farm__canvas" aria-hidden="true" data-testid="farm-canvas" />
-      ) : (
-        <FarmBars servers={snap.servers} />
-      )}
+      <PhysicsStage
+        physics={physics}
+        testId="farm-canvas"
+        readout={<FarmBars servers={snap.servers} />}
+        onPlayback={setPlayback}
+      />
       <div className="sdv-farm__footer">
         {showPhysics && <BallLegend>{<li>1 ball = {BALL_VALUE} requests</li>}</BallLegend>}
         <Toggle label="Physics animation" checked={showPhysics} onChange={setPhysicsChoice} />

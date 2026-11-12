@@ -1,3 +1,4 @@
+import { nodeSize } from './geometry';
 import { KindIcon, StatusBadge } from './icons';
 import { type ComponentKind, kinds, type NodeStatus } from './kinds';
 
@@ -11,8 +12,11 @@ export interface SystemNodeProps {
   status?: NodeStatus;
   highlight?: boolean;
   dim?: boolean;
+  /** Minimum size; the node grows when its label needs more room. */
   width?: number;
   height?: number;
+  /** Floor for label and sublabel size in px, so text stays legible in a shrunken SVG. */
+  minFontSize?: number;
 }
 
 /**
@@ -29,9 +33,12 @@ export function SystemNode({
   status,
   highlight = false,
   dim = false,
-  width = 112,
-  height = 64,
+  width,
+  height,
+  minFontSize,
 }: SystemNodeProps) {
+  const box = nodeSize(kind, label, minFontSize, width, height);
+  const { w, h } = box;
   const classes = ['sdv-node', `sdv-node--${kind}`];
   if (highlight) classes.push('sdv-node--highlight');
   if (status === 'bad') classes.push('sdv-node--down');
@@ -39,17 +46,33 @@ export function SystemNode({
 
   return (
     <g className={classes.join(' ')} transform={`translate(${x} ${y})`}>
-      <Shape kind={kind} w={width} h={height} />
-      <KindIcon kind={kind} size={18} x={-9} y={-height / 2 + (kind === 'database' ? 16 : 10)} />
-      <text className="sdv-node__label" textAnchor="middle" y={height / 2 - (kind === 'database' ? 10 : 12)}>
-        {label}
+      <Shape kind={kind} w={w} h={h} />
+      <KindIcon kind={kind} size={18} x={-9} y={-h / 2 + (kind === 'database' ? 16 : 10)} />
+      <text
+        className="sdv-node__label"
+        textAnchor="middle"
+        y={box.baselines[0]}
+        style={minFontSize ? { fontSize: `${box.px}px` } : undefined}
+      >
+        {box.lines.length === 1
+          ? label
+          : box.lines.map((line, i) => (
+              <tspan key={line} x={0} y={box.baselines[i]}>
+                {line}
+              </tspan>
+            ))}
       </text>
       {sublabel && (
-        <text className="sdv-node__sublabel" textAnchor="middle" y={height / 2 + 16}>
+        <text
+          className="sdv-node__sublabel"
+          textAnchor="middle"
+          y={box.sublabelY}
+          style={minFontSize ? { fontSize: `${box.subPx}px` } : undefined}
+        >
           {sublabel}
         </text>
       )}
-      {status && <StatusBadge status={status} x={width / 2 - 4} y={-height / 2 + 4} />}
+      {status && <StatusBadge status={status} x={w / 2 - 4} y={-h / 2 + 4} />}
     </g>
   );
 }
@@ -124,7 +147,7 @@ function Shape({ kind, w, h }: { kind: ComponentKind; w: number; h: number }) {
     case 'queue':
       return (
         <>
-          <rect className="sdv-node__shape" x={left} y={top} width={w} height={h} rx={h / 2} />
+          <rect className="sdv-node__shape" x={left} y={top} width={w} height={h} rx={Math.min(h / 2, 32)} />
           <path
             className="sdv-node__detail"
             d={[-0.3, 0.3].map((f) => `M${f * w} ${top + 8}V${-top - 8}`).join(' ')}

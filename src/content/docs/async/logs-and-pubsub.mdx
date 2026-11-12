@@ -209,7 +209,7 @@ One log on one machine has a speed limit, so a **topic** splits into **partition
 its own disk. A **consumer group** is a set of workers that shares the partitions: each partition has exactly one
 reader in the group at a time.
 
-<StepDiagram client:visible title="How a partitioned log carries clicks" nodes={nodes} edges={edges} steps={steps} height={330} />
+<StepDiagram client:visible title="How a partitioned log carries clicks" layout="stack" nodes={nodes} edges={edges} steps={steps} height={330} />
 
 This is **publish/subscribe** (pub/sub): the producer publishes once, and any number of groups subscribe. Each group sees
 every event and keeps its own offsets.
