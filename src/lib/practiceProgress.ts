@@ -8,6 +8,7 @@ export const PRACTICE_STORAGE_KEY = 'sdv:practice-rounds';
 export const PRACTICE_VERSION = 1;
 export const MAX_SAVED_ROUNDS = 10;
 const CHANGE_EVENT = 'sdv:practice-rounds-change';
+const PROBE_KEY = 'sdv:probe';
 
 export interface SavedRound {
   promptId: string;
@@ -89,6 +90,7 @@ function storage(): Storage | undefined {
 /** Fallback when storage is blocked or full, so saved rounds last for this page at least. */
 let memoryRaw: string | null = null;
 let useMemory = false;
+let probedOk = false;
 let cachedRaw: string | null | undefined;
 let cachedData: PracticeData = emptyPractice();
 
@@ -138,6 +140,25 @@ export function saveRound(round: SavedRound): void {
 
 export function clearPractice(): void {
   writeRaw(null);
+}
+
+/**
+ * False when saved rounds live only in this tab's memory: storage is blocked,
+ * full, or the last write failed. The UI then says so instead of "Saved".
+ */
+export function isPracticePersistent(): boolean {
+  if (useMemory) return false;
+  if (probedOk) return true;
+  try {
+    const store = storage();
+    if (!store) return false;
+    store.setItem(PROBE_KEY, '1');
+    store.removeItem(PROBE_KEY);
+    probedOk = true;
+  } catch {
+    return false;
+  }
+  return true;
 }
 
 /** Notifies on changes from this tab and from other tabs. */

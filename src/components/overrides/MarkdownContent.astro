@@ -13,6 +13,7 @@ const sources = entry.data.furtherReading ?? [];
 ---
 
 <Default><slot /></Default>
+{lesson && <span hidden data-lesson-id={lesson.id} />}
 {lesson && <FurtherReading sources={sources} />}
 {
   lesson && (
@@ -25,3 +26,10 @@ const sources = entry.data.furtherReading ?? [];
     />
   )
 }
+
+<script>
+  import { recordVisit } from '../../lib/progress';
+
+  const marker = document.querySelector<HTMLElement>('span[data-lesson-id]');
+  if (marker?.dataset.lessonId) recordVisit(marker.dataset.lessonId);
+</script>

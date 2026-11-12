@@ -40,7 +40,7 @@ const skipId = `sdv-recall-end-${routeId?.replaceAll('/', '-') ?? 'lesson'}`;
             <a class="sdv-recall__skip" href={`#${skipId}`}>
               Skip recall
             </a>
-            <Quiz client:visible title="From earlier lessons" questions={questions} />
+            <Quiz client:visible title="From earlier lessons" questions={questions} record={false} />
           </>
         )}
       </Callout>

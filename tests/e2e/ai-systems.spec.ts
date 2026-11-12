@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { island } from './helpers';
 
 function collectErrors(page: Page): string[] {
   const errors: string[] = [];
@@ -159,8 +160,7 @@ test.describe('/ai-systems/gateway', () => {
     const widget = page.getByRole('region', { name: 'Interactive: Two caches: answers versus prompt work' });
     await widget.scrollIntoViewIfNeeded();
     await expect(widget.getByText('Every hit is the right answer', { exact: true })).toBeVisible();
-    const store = widget.getByRole('switch', { name: 'Store (tenant)' });
-    await expect(store).toBeEnabled();
+    const store = await island(widget.getByRole('switch', { name: 'Store (tenant)' }));
     await store.focus();
     await page.keyboard.press('Space');
     await expect(store).not.toBeChecked();
@@ -517,8 +517,7 @@ test.describe('/ai-systems/support-assistant', () => {
     const quiz = page.getByRole('region', { name: 'Check your understanding' });
     await quiz.scrollIntoViewIfNeeded();
     const first = quiz.getByRole('group').first();
-    const option = first.getByRole('radio').first();
-    await expect(option).toBeEnabled();
+    const option = await island(first.getByRole('radio').first());
     await option.check();
     await quiz.getByRole('button', { name: 'Check answer' }).first().click();
     await expect(quiz.getByText(/^(Correct|Not quite)$/).first()).toBeVisible();

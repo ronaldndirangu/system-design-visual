@@ -1,5 +1,4 @@
 import { useId } from 'react';
-import { useHydrated } from './useHydrated';
 
 export interface ScenarioOption<T extends string> {
   value: T;
@@ -18,7 +17,6 @@ interface Props<T extends string> {
 /** Preset scenarios as radio chips. A single scenario renders as a plain note. */
 export function ScenarioChips<T extends string>({ label, value, options, onChange }: Props<T>) {
   const name = useId();
-  const hydrated = useHydrated();
   const only = options.length === 1 ? options[0] : undefined;
   if (only) {
     return (
@@ -28,7 +26,7 @@ export function ScenarioChips<T extends string>({ label, value, options, onChang
     );
   }
   return (
-    <fieldset className="sdv-chips" disabled={!hydrated}>
+    <fieldset className="sdv-chips">
       <legend>{label}</legend>
       <div className="sdv-chips__options">
         {options.map((option) => (

@@ -1,6 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { choiceOrder } from '../../lib/choiceOrder';
-import { useHydrated } from '../sim/useHydrated';
 import { UiIcon } from '../viz/icons';
 
 /**
@@ -10,7 +9,6 @@ import { UiIcon } from '../viz/icons';
 export function useChoiceCard(id: string, count: number, ordered = false) {
   const name = useId();
   const errorId = useId();
-  const hydrated = useHydrated();
   const [attempt, setAttempt] = useState(0);
   const [choice, setChoice] = useState<number | null>(null);
   const [submitted, setSubmitted] = useState(false);
@@ -30,7 +28,6 @@ export function useChoiceCard(id: string, count: number, ordered = false) {
   return {
     name,
     errorId,
-    hydrated,
     order,
     choice,
     submitted,
