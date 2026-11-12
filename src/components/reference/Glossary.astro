@@ -91,6 +91,15 @@ const groups = [...letters.entries()].map(([letter, entries]) => ({
     text-align: center;
     text-decoration: none;
   }
+  @media (pointer: coarse) {
+    .sdv-glossary__letters a {
+      align-items: center;
+      display: inline-flex;
+      justify-content: center;
+      min-block-size: var(--sdv-target);
+      min-inline-size: var(--sdv-target);
+    }
+  }
   .sdv-glossary__letter {
     border-bottom: 1px solid var(--sdv-border);
     font-size: var(--sl-text-xl);
@@ -111,6 +120,6 @@ const groups = [...letters.entries()].map(([letter, entries]) => ({
   }
   .sdv-glossary__source {
     font-size: var(--sl-text-sm);
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
 </style>

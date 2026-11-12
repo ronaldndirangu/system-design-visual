@@ -101,7 +101,7 @@ export const glossary: GlossaryEntry[] = [
   {
     term: 'Causal consistency',
     definition:
-      'Readers never see an effect before its cause, so a reply never shows up before the message it answers. It also gives read your writes and monotonic reads.',
+      'Readers never see an effect before its cause, so a reply never shows up before the message it answers. It also gives all four session guarantees: read your writes, monotonic reads, monotonic writes, and writes follow reads.',
     lesson: 'distributed-data/consistency-models',
   },
   {

@@ -13,7 +13,7 @@ import { Segmented, Toggle } from '../sim/controls';
 import { SimulationShell } from '../sim/SimulationShell';
 import { usePrefersReducedMotion } from '../sim/usePrefersReducedMotion';
 import { DiagramScroll } from '../viz/DiagramScroll';
-import { lerp, link, type Vec } from '../viz/geometry';
+import { lerp, link, nodeSize, readableFont, type Vec } from '../viz/geometry';
 import type { ComponentKind } from '../viz/kinds';
 import { ArrowDefs, Edge, SystemNode, safeId } from '../viz/SystemNode';
 
@@ -21,13 +21,21 @@ import { ArrowDefs, Edge, SystemNode, safeId } from '../viz/SystemNode';
 const MS_PER_TICK = 2;
 const TICKS_PER_SECOND = 30;
 
-const actors: Record<Actor, { kind: ComponentKind; label: string; sublabel: string; x: number; y: number }> =
-  {
-    browser: { kind: 'client', label: 'Browser', sublabel: 'you', x: 72, y: 120 },
-    dns: { kind: 'dns', label: 'DNS resolver', sublabel: 'name to IP', x: 296, y: 46 },
-    server: { kind: 'server', label: 'sho.rt server', sublabel: 'app', x: 296, y: 190 },
-    database: { kind: 'database', label: 'Database', sublabel: 'links', x: 520, y: 190 },
-  };
+interface Spot {
+  kind: ComponentKind;
+  label: string;
+  sublabel: string;
+  x: number;
+  y: number;
+}
+type Placed = Spot & ReturnType<typeof nodeSize>;
+
+const actors: Record<Actor, Spot> = {
+  browser: { kind: 'client', label: 'Browser', sublabel: 'you', x: 72, y: 120 },
+  dns: { kind: 'dns', label: 'DNS resolver', sublabel: 'name to IP', x: 296, y: 46 },
+  server: { kind: 'server', label: 'sho.rt server', sublabel: 'app', x: 296, y: 190 },
+  database: { kind: 'database', label: 'Database', sublabel: 'links', x: 520, y: 190 },
+};
 
 const wires: [Actor, Actor][] = [
   ['browser', 'dns'],
@@ -67,20 +75,35 @@ function legsFor(step: JourneyStep, inputs: JourneyInputs): Leg[] {
   }
 }
 
-function pointOnLeg(leg: Leg, t: number): Vec {
-  const a = actors[leg.from];
-  if (leg.from === leg.to) return [a.x, a.y - 44];
-  const segment = link(a, actors[leg.to]);
+function placeActors(minFont: number | undefined): Record<Actor, Placed> {
+  const placed = {} as Record<Actor, Placed>;
+  for (const id of Object.keys(actors) as Actor[]) {
+    const spot = actors[id];
+    placed[id] = { ...spot, ...nodeSize(spot.kind, spot.label, minFont) };
+  }
+  return placed;
+}
+
+function pointOnLeg(placed: Record<Actor, Placed>, leg: Leg, t: number): Vec {
+  const a = placed[leg.from];
+  if (leg.from === leg.to) return [a.x, a.y - a.h / 2 - 12];
+  const segment = link(a, placed[leg.to]);
   return lerp(segment.from, segment.to, t);
 }
 
-function packetAt(step: JourneyStep, inputs: JourneyInputs, elapsed: number, stepped: boolean): Vec {
+function packetAt(
+  placed: Record<Actor, Placed>,
+  step: JourneyStep,
+  inputs: JourneyInputs,
+  elapsed: number,
+  stepped: boolean,
+): Vec {
   const legs = legsFor(step, inputs);
   let clock = 0;
   for (const leg of legs) {
     if (elapsed < clock + leg.ms || leg === legs[legs.length - 1]) {
       const t = leg.ms === 0 ? 1 : Math.min(1, (elapsed - clock) / leg.ms);
-      return pointOnLeg(leg, stepped ? 1 : t);
+      return pointOnLeg(placed, leg, stepped ? 1 : t);
     }
     clock += leg.ms;
   }
@@ -95,6 +118,7 @@ function formatMs(ms: number): string {
 export default function RequestJourneyWidget() {
   const [inputs, setInputs] = useState<JourneyInputs>(defaultJourneyInputs);
   const [clock, setClock] = useState(0);
+  const [scale, setScale] = useState(1);
   const reduced = usePrefersReducedMotion();
   const arrow = safeId(useId(), 'journey-arrow');
 
@@ -119,7 +143,13 @@ export default function RequestJourneyWidget() {
     setClock(0);
   };
 
-  const packet = shown ? packetAt(shown, inputs, clock - shown.startMs, reduced) : undefined;
+  const minFont = readableFont(scale);
+  const placed = useMemo(() => placeActors(minFont), [minFont]);
+  const viewHeight = Math.max(
+    248,
+    ...Object.values(placed).map((spot) => Math.ceil(spot.y + spot.sublabelY + 6)),
+  );
+  const packet = shown ? packetAt(placed, shown, inputs, clock - shown.startMs, reduced) : undefined;
   const activeWire = shown ? [shown.from, shown.to].sort().join('>') : '';
   const summary = finished
     ? `Redirect complete after ${formatMs(total)}. ${Math.round(share * 100)} percent of the time was network travel.`
@@ -189,16 +219,16 @@ export default function RequestJourneyWidget() {
         </>
       }
     >
-      <DiagramScroll label="Scrollable diagram">
+      <DiagramScroll label="Scrollable diagram" onScale={setScale}>
         <svg
           className="sdv-journey"
-          viewBox="0 0 592 248"
+          viewBox={`0 0 592 ${viewHeight}`}
           role="img"
           aria-label={`Diagram of the browser, DNS resolver, server, and database. ${shown ? `Now: ${shown.label}.` : ''}`}
         >
           <ArrowDefs id={arrow} />
           {wires.map(([a, b]) => {
-            const segment = link(actors[a], actors[b]);
+            const segment = link(placed[a], placed[b]);
             return (
               <Edge
                 key={`${a}-${b}`}
@@ -209,8 +239,8 @@ export default function RequestJourneyWidget() {
               />
             );
           })}
-          {(Object.keys(actors) as Actor[]).map((id) => {
-            const actor = actors[id];
+          {(Object.keys(placed) as Actor[]).map((id) => {
+            const actor = placed[id];
             const involved = shown ? shown.from === id || shown.to === id : true;
             return (
               <SystemNode
@@ -222,6 +252,7 @@ export default function RequestJourneyWidget() {
                 sublabel={actor.sublabel}
                 highlight={Boolean(shown) && involved}
                 dim={Boolean(shown) && !involved}
+                minFontSize={minFont}
               />
             );
           })}

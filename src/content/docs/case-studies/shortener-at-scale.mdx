@@ -441,8 +441,9 @@ keys by range or by hash. Review [range or hash placement](../../scaling/shardin
 - **Year one**: one primary and four replicas hold 1.6 TB and serve 8,000 reads a second.
 - **Shard before the primary passes about 2 TB**, around year two, so backups and rebuilds stay quick.
 - **Key**: the code. Every redirect reads exactly one code, so every read hits one shard.
-- **Placement**: hash. New links get the most clicks, and range placement on a growing code space would send them all
-  to the newest shard.
+- **Placement**: hash. Random codes would spread evenly under range placement too, so either works today. Hash keeps
+  load even if sho.rt ever moves to counter or time ordered codes, where range placement would send every new link,
+  and most new clicks, to the newest shard.
 
 </details>
 
@@ -467,7 +468,7 @@ caching a 404 long enough to hide a brand new link.
 | Salted, batched click counters  | Hot writes spread across shards              | Reads gather 8 parts, and counts trail a second  |
 | 16 servers for a 50,000 peak    | One loss keeps survivors under 75%           | Idle capacity most of the day                    |
 | Freshness tokens                | Creators see their own links at once         | Some reads wait or travel to the primary         |
-| Hash placement on the code      | Even load, with new links spread out         | No cheap range scans by code                     |
+| Hash placement on the code      | Even load whatever the code scheme           | No cheap range scans by code                     |
 
 </TradeoffTable>
 

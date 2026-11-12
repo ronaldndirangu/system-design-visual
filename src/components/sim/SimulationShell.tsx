@@ -16,7 +16,6 @@ import { useTicker } from './useTicker';
 
 /** Lets the widget rerender with the new state before the summary is read. */
 const SETTLE_MS = 50;
-const MAX_STAGE_SCALE = 2;
 
 export const TOY_MODEL_ASSUMPTIONS =
   'The simulations are toy models: small and deterministic, so the same settings always produce the same result. Each one keeps the mechanism the lesson teaches and leaves out the rest on purpose, such as network jitter, garbage collection, and other tenants.';
@@ -73,8 +72,10 @@ export interface SimulationShellProps {
 }
 
 /**
- * How much the widest stage drawing is shrunk on screen, from 1 (full size) to 2.
- * Stage CSS multiplies SVG text sizes by it so labels stay readable on a phone.
+ * How much the widest stage drawing is shrunk on screen, from 1 (full size) up.
+ * Stage CSS multiplies SVG text sizes by it so labels keep their real pixel size
+ * on a phone. A DiagramScroll inside the stage publishes the same factor for its
+ * own drawing, which takes precedence there.
  */
 function useStageScale(stageRef: RefObject<HTMLDivElement | null>, resetKey?: string): number {
   const [scale, setScale] = useState(1);
@@ -95,8 +96,8 @@ function useStageScale(stageRef: RefObject<HTMLDivElement | null>, resetKey?: st
         }
       }
       if (widest) observer.observe(widest);
-      const next = widest ? Math.min(MAX_STAGE_SCALE, Math.max(1, widestViewBox / widest.clientWidth)) : 1;
-      const rounded = Math.round(next * 100) / 100;
+      const next = widest ? Math.max(1, widestViewBox / widest.clientWidth) : 1;
+      const rounded = Math.ceil(next * 100) / 100;
       setScale((current) => (current === rounded ? current : rounded));
     }
     observer.observe(root);

@@ -537,7 +537,7 @@ per second), and raise the average follow count from 300 to 3,000.
 **The fanout fleet breaks first.**
 
 - **The new numbers.** Posts stay at about 1,157 per second (3,472 at peak). Each post now becomes 3,000 feed writes:
-  about 3,472,222 writes per second, and 10,416,667 at peak, five times the 2 million the fleet runs. Fan out on read
+  about 3,472,222 writes per second, and 10,416,667 at peak, over five times the 2 million the fleet runs. Fan out on read
   is worse: 69,444 peak loads times 3,000 lookups is about 208,333,333 lookups per second. The feed cache stays at
   about 2.6 TB, because each list still holds 800 entries.
 - **The change.** Two options, often combined. Grow the fleet to about 12.5 million writes per second, which keeps 20%

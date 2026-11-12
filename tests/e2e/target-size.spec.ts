@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { documentOverflow } from './helpers';
 
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
@@ -6,6 +7,8 @@ const pages = [
   { name: 'home', path: './' },
   { name: 'curriculum', path: 'curriculum/' },
   { name: 'lesson', path: 'scaling/caching/' },
+  { name: 'case study', path: 'case-studies/shortener-at-scale/' },
+  { name: 'glossary', path: 'glossary/' },
   { name: '404', path: 'does-not-exist/' },
 ];
 
@@ -73,11 +76,15 @@ function undersized(page: Page, scope: string): Promise<Miss[]> {
         return rect;
       };
 
-      const targets = candidates.map((el) => ({ el, rect: hitArea(el) }));
       const inlineText = (el: HTMLElement) =>
         el.tagName === 'A' &&
         getComputedStyle(el).display === 'inline' &&
         el.closest('p, li, td, dd') !== null;
+      // A link that wraps onto two lines owns one box per line; its bounding box would cover unrelated neighbors.
+      const targets = candidates.map((el) => {
+        const rect = hitArea(el);
+        return { el, rect, boxes: inlineText(el) ? [...el.getClientRects()] : [rect] };
+      });
       const distance = (x: number, y: number, rect: DOMRect) =>
         Math.hypot(Math.max(rect.left - x, 0, x - rect.right), Math.max(rect.top - y, 0, y - rect.bottom));
 
@@ -93,7 +100,7 @@ function undersized(page: Page, scope: string): Promise<Miss[]> {
               other.el === el ||
               other.el.contains(el) ||
               el.contains(other.el) ||
-              distance(cx, cy, other.rect) >= minimum / 2,
+              other.boxes.every((box) => distance(cx, cy, box) >= minimum / 2),
           );
           if (spaced) continue;
         }
@@ -121,8 +128,9 @@ for (const { name, path } of pages) {
   test(`${name}: touch targets reach 44px or keep 24px spacing`, async ({ page }) => {
     await page.goto(path);
     expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+    // Starlight's mobile table of contents is a dropdown that overlays the page when open, so leave it shut.
     await page.evaluate(() => {
-      for (const details of document.querySelectorAll('details')) details.open = true;
+      for (const details of document.querySelectorAll('main details')) details.open = true;
     });
     expect.soft(await undersized(page, 'body')).toEqual([]);
 
@@ -134,3 +142,12 @@ for (const { name, path } of pages) {
     }
   });
 }
+
+test.describe('320px wide', () => {
+  test.use({ viewport: { width: 320, height: 844 } });
+
+  test('glossary: no horizontal document overflow', async ({ page }) => {
+    await page.goto('glossary/');
+    expect(await documentOverflow(page)).toBeLessThanOrEqual(0);
+  });
+});
