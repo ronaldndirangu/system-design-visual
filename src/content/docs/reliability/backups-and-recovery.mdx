@@ -44,31 +44,31 @@ export const steps = [
   {
     title: 'Orders flow, and the log ships every minute',
     text: 'The shop writes orders to the primary. The replica gets each change within a second, and the primary ships its log to the backup bucket every minute. A full snapshot lands there each midnight.',
-    nodes: ['app', 'primary', 'replica', 'store'],
+    focus: { active: 'app', involved: ['primary', 'replica', 'store'] },
     flows: ['app>primary', 'primary>replica', 'primary>store'],
   },
   {
     title: 'The delete lands at 15:40',
     text: 'A migration runs DELETE FROM orders. The replica applies it half a second later, and the archived log records it like any other write.',
-    nodes: ['primary', 'replica', 'store'],
+    focus: { active: 'primary', involved: ['replica', 'store'] },
     flows: ['primary>replica', 'primary>store'],
   },
   {
     title: 'Load the snapshot into a side copy',
     text: 'The primary keeps taking new orders. A fresh database loads last midnight’s snapshot: 1 TB at 500 GB per hour takes 2 hours.',
-    nodes: ['store', 'side'],
+    focus: { active: 'store', involved: ['side'] },
     flows: ['store>side'],
   },
   {
     title: 'Replay the log up to 15:39',
     text: 'Replaying 15 h 40 min of log at ten times real speed takes 94 minutes. Replay stops at the last transaction before the delete.',
-    nodes: ['store', 'side'],
+    focus: { active: 'store', involved: ['side'] },
     flows: ['store>side'],
   },
   {
     title: 'Copy the lost rows back',
     text: 'A script copies the deleted rows into the primary. Orders placed after 15:40 stay put.',
-    nodes: ['side', 'primary'],
+    focus: { active: 'side', involved: ['primary'] },
     flows: ['side>primary'],
   },
 ];

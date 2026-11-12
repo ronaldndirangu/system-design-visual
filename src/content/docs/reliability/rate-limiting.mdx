@@ -40,37 +40,37 @@ export const steps = [
   {
     title: 'A request arrives',
     text: 'Client A sends POST /links with API key a_123. The gateway looks up that key\u2019s bucket: 20 of 20 tokens.',
-    nodes: ['client', 'gateway', 'store'],
+    focus: { active: 'client', involved: ['gateway', 'store'] },
     flows: ['client>gateway', 'gateway>store'],
   },
   {
     title: 'Refill, then take one token',
     text: 'The bucket earns 10 tokens per second, capped at 20. It is full, so the request spends one token and leaves 19.',
-    nodes: ['gateway', 'store'],
+    focus: { active: 'gateway', involved: ['store'] },
     flows: ['gateway>store'],
   },
   {
     title: 'Forward the request',
     text: 'A token was there, so the gateway passes the request to the Link API.',
-    nodes: ['gateway', 'api'],
+    focus: { active: 'gateway', involved: ['api'] },
     flows: ['gateway>api'],
   },
   {
     title: 'A burst drains the bucket',
     text: 'A jumps to 30 requests per second. It spends 30 tokens a second and earns 10, so the 20 stored tokens last about one second.',
-    nodes: ['client', 'gateway', 'store'],
+    focus: { active: 'client', involved: ['gateway', 'store'] },
     flows: ['client>gateway', 'gateway>store'],
   },
   {
     title: 'An empty bucket answers 429',
     text: 'The next request finds 0 tokens. The gateway answers 429 with Retry-After: 1, and the Link API never sees it.',
-    nodes: ['client', 'gateway'],
+    focus: { active: 'client', involved: ['gateway'] },
     flows: ['gateway>client'],
   },
   {
     title: 'Everyone else is untouched',
     text: 'Clients B, C, and D have their own buckets, so their requests keep flowing.',
-    nodes: ['gateway', 'api'],
+    focus: { active: 'gateway', involved: ['api'] },
     flows: ['gateway>api'],
   },
 ];

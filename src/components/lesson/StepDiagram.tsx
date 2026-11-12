@@ -24,11 +24,16 @@ export interface DiagramEdge {
   dashed?: boolean;
 }
 
+export interface StepFocus {
+  active: string;
+  involved?: string[];
+}
+
 export interface DiagramStep {
   title: string;
   text: string;
-  /** Node ids to light up. Others fade back. */
-  nodes: string[];
+  /** The one node the step is about (ringed) and the other participants. Everything else fades back. */
+  focus: StepFocus;
   /** Edges that carry traffic in this step, written "from>to". */
   flows?: string[];
 }
@@ -124,8 +129,9 @@ export default function StepDiagram({ title, nodes: given, edges, steps, width, 
                 label={node.label}
                 sublabel={node.sublabel}
                 minFontSize={minFont}
-                highlight={step.nodes.includes(node.id)}
-                dim={!step.nodes.includes(node.id)}
+                active={step.focus.active === node.id}
+                involved={step.focus.involved?.includes(node.id) ?? false}
+                dim={step.focus.active !== node.id && !step.focus.involved?.includes(node.id)}
               />
             ))}
             {step.flows?.map((key) => {

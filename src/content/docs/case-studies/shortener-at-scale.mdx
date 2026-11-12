@@ -48,31 +48,31 @@ export const steps = [
   {
     title: 'A click at the edge',
     text: 'A reader clicks sho.rt/abc1234. The nearest CDN edge holds a cached 302 for that code and answers in a few milliseconds. The origin never hears about this click.',
-    nodes: ['reader', 'cdn'],
+    focus: { active: 'cdn', involved: ['reader'] },
     flows: ['reader>cdn'],
   },
   {
     title: 'An edge miss',
     text: 'Another edge has no copy. It asks the origin, where the load balancer picks one of 16 healthy app servers.',
-    nodes: ['cdn', 'lb', 'app'],
+    focus: { active: 'lb', involved: ['cdn', 'app'] },
     flows: ['cdn>lb', 'lb>app'],
   },
   {
     title: 'Cache first',
     text: 'The app server looks the code up in the cache. Nine lookups in ten end here.',
-    nodes: ['app', 'cache'],
+    focus: { active: 'cache', involved: ['app'] },
     flows: ['app>cache'],
   },
   {
     title: 'Replica on a cache miss',
     text: 'On a miss, the app server reads the link from a replica, stores it in the cache, and returns the 302.',
-    nodes: ['app', 'replica', 'cache'],
+    focus: { active: 'replica', involved: ['app', 'cache'] },
     flows: ['app>replica', 'app>cache'],
   },
   {
     title: 'A new link',
     text: 'A creator makes a link. The write goes to the primary, which streams it to every replica a few milliseconds later.',
-    nodes: ['creator', 'lb', 'app', 'primary', 'replica'],
+    focus: { active: 'primary', involved: ['creator', 'lb', 'app', 'replica'] },
     flows: ['creator>lb', 'lb>app', 'app>primary', 'primary>replica'],
   },
 ];

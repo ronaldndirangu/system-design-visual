@@ -43,37 +43,37 @@ export const steps = [
   {
     title: 'Checkout names the purchase',
     text: 'The shopper presses Pay. The checkout page creates an idempotency key, a random ID for this one purchase, and sends it with the request. A double click or a reloaded page sends the same key again.',
-    nodes: ['shopper', 'pay'],
+    focus: { active: 'shopper', involved: ['pay'] },
     flows: ['shopper>pay'],
   },
   {
     title: 'Write down the intent first',
     text: 'Before it calls the bank, the payment service stores a pending payment with the key and the amount. A unique constraint on the key means a repeat request finds this row instead of starting a second payment.',
-    nodes: ['pay', 'ledger'],
+    focus: { active: 'pay', involved: ['ledger'] },
     flows: ['pay>ledger'],
   },
   {
     title: 'Ask the bank, and pass the key along',
     text: 'The service asks the bank to charge $40 and includes the same key. The bank stores the key with its result, so a repeat returns the first answer.',
-    nodes: ['pay', 'bank'],
+    focus: { active: 'pay', involved: ['bank'] },
     flows: ['pay>bank'],
   },
   {
     title: 'Time out, then retry with the same key',
     text: 'No reply after 2 s. The service cannot tell a lost request from a slow reply, so it backs off and retries with the same key. If the first attempt did charge the card, the bank answers with that charge and moves no more money.',
-    nodes: ['pay', 'bank'],
+    focus: { active: 'pay', involved: ['bank'] },
     flows: ['pay>bank', 'bank>pay'],
   },
   {
     title: 'Record two entries that balance',
     text: 'When the bank confirms, the service writes two ledger entries in one transaction: $40 owed by the card network, and $40 owed to the merchant. Debits equal credits, and no entry is ever edited.',
-    nodes: ['pay', 'ledger'],
+    focus: { active: 'pay', involved: ['ledger'] },
     flows: ['pay>ledger'],
   },
   {
     title: 'Reconcile with the bank',
     text: "The reconciler settles stuck payments from evidence. A charge in the bank's settlement file completes a stuck payment. The file lags, so a missing line proves nothing: the reconciler looks the payment up by its key and marks it failed only when the bank's answer is final.",
-    nodes: ['recon', 'bank', 'ledger'],
+    focus: { active: 'recon', involved: ['bank', 'ledger'] },
     flows: ['bank>recon', 'recon>ledger'],
   },
 ];

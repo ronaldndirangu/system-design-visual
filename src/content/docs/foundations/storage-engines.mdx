@@ -42,31 +42,31 @@ export const steps = [
   {
     title: 'Append to the log, then flush it to disk',
     text: 'A user creates sho.rt/bATJ4g. The engine appends one record to the end of the write-ahead log and calls fsync, which returns once the drive reports the bytes stored. An append costs no seeks and no page rewrites.',
-    nodes: ['app', 'wal'],
+    focus: { active: 'app', involved: ['wal'] },
     flows: ['app>wal'],
   },
   {
     title: 'Insert into the memtable and answer',
     text: 'The engine adds the record to the memtable, a sorted structure in memory, and answers 201 Created. A crash now loses the memtable, and a restart rebuilds it from the log.',
-    nodes: ['app', 'memtable'],
+    focus: { active: 'app', involved: ['memtable'] },
     flows: ['app>memtable'],
   },
   {
     title: 'Flush a full memtable to a sorted file',
     text: 'At 64 MB, the engine writes the memtable out in key order as one immutable file, an SSTable (sorted string table), and deletes the matching part of the log.',
-    nodes: ['memtable', 'l0'],
+    focus: { active: 'memtable', involved: ['l0'] },
     flows: ['memtable>l0'],
   },
   {
     title: 'Read newest first',
     text: 'A redirect for bATJ4g checks the memtable, then each SSTable from newest to oldest, and stops at the first match. A small Bloom filter per file skips most files that cannot hold the code.',
-    nodes: ['app', 'memtable', 'l0'],
+    focus: { active: 'app', involved: ['memtable', 'l0'] },
     flows: ['app>memtable', 'memtable>l0'],
   },
   {
     title: 'Compact in the background',
     text: 'Each extra SSTable can add work to a read. A background job merges sorted files in one sequential pass, keeps the newest value of each key, and drops deleted keys.',
-    nodes: ['l0', 'l1'],
+    focus: { active: 'l0', involved: ['l1'] },
     flows: ['l0>l1'],
   },
 ];

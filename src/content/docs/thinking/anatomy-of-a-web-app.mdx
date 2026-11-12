@@ -40,37 +40,37 @@ export const steps = [
   {
     title: 'Find the address',
     text: 'Someone clicks sho.rt/abc123. The browser asks DNS for the IP address behind sho.rt and keeps the answer for a while, so the next click skips this step.',
-    nodes: ['client', 'dns'],
+    focus: { active: 'client', involved: ['dns'] },
     flows: ['client>dns'],
   },
   {
     title: 'Load static files nearby',
     text: 'The page for creating links loads its scripts from a CDN, a set of servers near the user that hold file copies. A redirect skips this step.',
-    nodes: ['client', 'cdn'],
+    focus: { active: 'client', involved: ['cdn'] },
     flows: ['client>cdn'],
   },
   {
     title: 'Spread the load',
     text: 'The request reaches the load balancer, which forwards it to one healthy app server. The user never learns which one.',
-    nodes: ['client', 'lb', 'app'],
+    focus: { active: 'client', involved: ['lb', 'app'] },
     flows: ['client>lb', 'lb>app'],
   },
   {
     title: 'Check memory first',
     text: 'The app server asks the cache, an in-memory store, for abc123. A hit answers in under a millisecond and never touches the database.',
-    nodes: ['app', 'cache'],
+    focus: { active: 'app', involved: ['cache'] },
     flows: ['app>cache'],
   },
   {
     title: 'Fall back to the source of truth',
     text: 'On a miss, the app server reads the database, which keeps every link on disk through restarts. It copies the answer into the cache for the next click, then sends the redirect.',
-    nodes: ['app', 'db', 'cache'],
+    focus: { active: 'app', involved: ['db', 'cache'] },
     flows: ['app>db'],
   },
   {
     title: 'Hand slow work to a queue',
     text: 'When someone creates a link, the app server stores it and puts a job on a queue to check the long URL against a list of malware sites. A worker runs the check later, so creating a link stays fast.',
-    nodes: ['app', 'db', 'queue'],
+    focus: { active: 'app', involved: ['db', 'queue'] },
     flows: ['app>db', 'app>queue'],
   },
 ];

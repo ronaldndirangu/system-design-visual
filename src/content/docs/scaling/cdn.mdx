@@ -54,37 +54,37 @@ export const steps = [
   {
     title: 'Connect to the edge nearby',
     text: 'DNS sends the person to the CDN edge in their own city. TCP and TLS finish over 50 km, so the three round trips of a fresh click take 1.5 ms instead of 471 ms.',
-    nodes: ['person', 'edge'],
+    focus: { active: 'person', involved: ['edge'] },
     flows: ['person>edge', 'edge>person'],
   },
   {
     title: 'Hit: answer at the edge',
     text: 'The edge holds a fresh copy of the redirect for sho.rt/abc123 and answers at once. The click takes about 3.5 ms, and the origin never hears about it.',
-    nodes: ['person', 'edge'],
+    focus: { active: 'person', involved: ['edge'] },
     flows: ['edge>person'],
   },
   {
     title: 'Miss: one trip to the origin',
     text: 'The edge has no copy. It forwards the request over a connection it already keeps open to Virginia, so the click crosses the ocean once instead of three times: about 161 ms.',
-    nodes: ['edge', 'origin'],
+    focus: { active: 'edge', involved: ['origin'] },
     flows: ['edge>origin', 'origin>edge'],
   },
   {
     title: 'Fill the edge with a TTL',
     text: 'The origin marks its answer cacheable for 60 seconds. The edge stores the copy, and every Sydney click on abc123 in the next minute is a hit.',
-    nodes: ['edge', 'origin'],
+    focus: { active: 'edge', involved: ['origin'] },
     flows: ['origin>edge'],
   },
   {
     title: 'Shield: one cache for all edges',
     text: 'With an origin shield, an edge miss asks one shared cache beside the origin first. When another edge already fetched abc123, the shield answers and the origin does no work.',
-    nodes: ['edge', 'shield', 'origin'],
+    focus: { active: 'edge', involved: ['shield', 'origin'] },
     flows: ['edge>shield', 'shield>edge'],
   },
   {
     title: 'Purge: delete every copy',
     text: 'abc123 turns out to point at a scam. The team deletes it at the origin and sends a purge, which removes the cached copy from every edge and the shield.',
-    nodes: ['edge', 'shield', 'origin'],
+    focus: { active: 'edge', involved: ['shield', 'origin'] },
     flows: ['origin>shield', 'origin>edge'],
   },
 ];

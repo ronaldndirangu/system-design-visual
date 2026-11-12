@@ -36,6 +36,23 @@ describe('fencing model', () => {
     expect(lease).toMatchObject({ entries: 15, staleAccepted: 0, staleRejected: 0, clashes: 0 });
   });
 
+  it('places the handover at the same times in both lanes, so only the log verdict differs', () => {
+    const { duel } = run('pause');
+    const [lease, fenced] = duel.lanes;
+    const handover = (lane: typeof lease) =>
+      lane.marks.filter((mark) => mark.kind === 'expire' || (mark.kind === 'grant' && mark.server === 'B'));
+    expect(handover(lease)).toEqual(handover(fenced));
+    expect(handover(lease)).toEqual([
+      { kind: 'expire', t: 13, token: 1 },
+      { kind: 'grant', t: 13.5, server: 'B', token: 2 },
+    ]);
+    const stale = (lane: typeof lease) => lane.marks.filter((mark) => mark.kind === 'stale');
+    expect(stale(lease)).toEqual([expect.objectContaining({ t: 17.5, token: 1, newest: 2, accepted: true })]);
+    expect(stale(fenced)).toEqual([
+      expect.objectContaining({ t: 17.5, token: 1, newest: 2, accepted: false }),
+    ]);
+  });
+
   it('runs a fixed number of ticks', () => {
     const duel = new FenceDuel(fenceScenarios.pause);
     let steps = 0;

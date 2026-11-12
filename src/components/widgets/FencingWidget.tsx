@@ -1,4 +1,4 @@
-import { useReducer, useRef, useState } from 'react';
+import { useMemo, useReducer, useRef, useState } from 'react';
 import {
   FENCE_RUN_S,
   FenceDuel,
@@ -15,6 +15,7 @@ import { SimulationShell } from '../sim/SimulationShell';
 import { type Tone, ToneBadge } from '../sim/StatTable';
 import { SeriesSwatch, type SeriesVariant } from '../sim/TraceChart';
 import { useHydrated } from '../sim/useHydrated';
+import { FenceTimeLanes } from './FenceTimeLanes';
 
 interface Props {
   scenarios?: FenceScenarioId[];
@@ -87,7 +88,7 @@ export default function FencingWidget({
   scenarios = ['pause', 'delay', 'skew', 'calm'],
   initial,
   title = 'One chat, two servers, one lease',
-  instructions = 'Pick a fault, then press Play. Both lanes replay the same script; only the chat log differs. On the right, the log refuses any write whose token is older than one it has already seen.',
+  instructions = 'Pick a fault, then press Play. Both lanes replay the same script; only the chat log differs. In the Lease plus fencing token lane, the log refuses any write whose token is older than one it has already seen. Use Step to move through the time lanes one half second at a time.',
 }: Props) {
   const hydrated = useHydrated();
   const [scenarioId, setScenarioId] = useState<FenceScenarioId>(initial ?? scenarios[0] ?? 'pause');
@@ -95,6 +96,11 @@ export default function FencingWidget({
   if (!duelRef.current) duelRef.current = new FenceDuel(fenceScenarios[scenarioId]);
   const duel = duelRef.current;
   const [, rerender] = useReducer((count: number) => count + 1, 0);
+  const poster = useMemo(() => {
+    const full = new FenceDuel(fenceScenarios[scenarioId]);
+    while (!full.done) full.step();
+    return full;
+  }, [scenarioId]);
 
   const restart = (id: FenceScenarioId) => {
     duelRef.current = new FenceDuel(fenceScenarios[id]);
@@ -179,6 +185,13 @@ export default function FencingWidget({
           diff: fenceScenarios[id].diff,
         }))}
         onChange={chooseScenario}
+      />
+      <FenceTimeLanes
+        lanes={poster.lanes}
+        scenario={fenceScenarios[scenarioId]}
+        variants={variants}
+        now={seconds}
+        stepping={started && !duel.done}
       />
       <div className="sdv-duel__lanes">
         {duel.lanes.map((lane, index) => (

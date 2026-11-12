@@ -50,29 +50,29 @@ export const steps = [
   {
     title: 'Normal: the phone reaches a nearby region',
     text: 'GeoDNS sends the phone in Berlin to Frankfurt. Its conversation lives in Virginia, so each send goes to the Virginia primary, which streams it to the Frankfurt replica 0.5 s later.',
-    nodes: ['phone', 'dns', 'lbFr', 'chatFr', 'dbVa', 'dbFr'],
+    focus: { active: 'phone', involved: ['dns', 'lbFr', 'chatFr', 'dbVa', 'dbFr'] },
     flows: ['phone>dns', 'phone>lbFr', 'lbFr>chatFr', 'chatFr>dbVa', 'dbVa>dbFr'],
   },
   {
     title: 'Virginia goes dark',
     text: 'Probes fail three times, 10 s apart, so the alarm fires after 30 s. The phone keeps its timed out sends as pending.',
-    nodes: ['lbVa', 'chatVa', 'dbVa', 'chatFr'],
+    focus: { active: 'lbVa', involved: ['chatVa', 'dbVa', 'chatFr'] },
   },
   {
     title: 'Promote Frankfurt, fence Virginia',
     text: 'Virginia’s lease expires without a majority to renew it, so it stops taking writes. With 2 of 3 votes, a controller then promotes Frankfurt under a higher epoch. If Virginia homes half the conversations, its last 0.5 s of sends, about 5,800 acknowledged messages, never left it.',
-    nodes: ['dbFr', 'dbVa'],
+    focus: { active: 'dbFr', involved: ['dbVa'] },
   },
   {
     title: 'Reroute the phones',
     text: 'GeoDNS drops Virginia. Phones reconnect to Frankfurt with their cursor and retry pending sends with the same client ID.',
-    nodes: ['phone', 'dns', 'lbFr', 'chatFr'],
+    focus: { active: 'phone', involved: ['dns', 'lbFr', 'chatFr'] },
     flows: ['phone>dns', 'phone>lbFr', 'lbFr>chatFr'],
   },
   {
     title: 'Frankfurt carries everything',
     text: 'Frankfurt now stores every message. It copes because it ran at half its capacity or less.',
-    nodes: ['phone', 'lbFr', 'chatFr', 'dbFr'],
+    focus: { active: 'phone', involved: ['lbFr', 'chatFr', 'dbFr'] },
     flows: ['phone>lbFr', 'lbFr>chatFr', 'chatFr>dbFr'],
   },
 ];

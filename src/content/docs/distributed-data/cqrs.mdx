@@ -47,31 +47,31 @@ export const steps = [
   {
     title: 'The write model checks each command',
     text: 'RemoveItem socks arrives. The write model folds the cart’s events, finds no socks, and rejects it, so nothing reaches the log.',
-    nodes: ['shopper', 'write'],
+    focus: { active: 'shopper', involved: ['write'] },
     flows: ['shopper>write'],
   },
   {
     title: 'Accepted commands become events',
     text: 'AddItem mug becomes ItemAdded mug at the next log position, say event 42. Nobody edits or deletes an event.',
-    nodes: ['write', 'log'],
+    focus: { active: 'write', involved: ['log'] },
     flows: ['write>log'],
   },
   {
     title: 'Readers follow the log at their own pace',
     text: 'Each reader keeps its own position and applies new events in order. A slow reader grows its own lag and never holds up writes.',
-    nodes: ['log', 'cart', 'top', 'email'],
+    focus: { active: 'log', involved: ['cart', 'top', 'email'] },
     flows: ['log>cart', 'log>top', 'log>email'],
   },
   {
     title: 'Reads land on a view that runs behind',
     text: 'The cart page reads its own table. Until that view reaches event 42, the shopper sees the cart without the mug.',
-    nodes: ['shopper', 'cart'],
+    focus: { active: 'shopper', involved: ['cart'] },
     flows: ['shopper>cart'],
   },
   {
     title: 'Rebuild a view by replaying the log',
     text: 'Replay from position 0 through the fixed code into a new table, then switch reads to it. The email sender keeps its position, so no receipt goes out twice.',
-    nodes: ['log', 'cart'],
+    focus: { active: 'log', involved: ['cart'] },
     flows: ['log>cart'],
   },
 ];

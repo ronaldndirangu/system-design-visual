@@ -12,7 +12,7 @@
 }
 
 .sdv-raft__link {
-  stroke: var(--sl-color-gray-5);
+  stroke: var(--sdv-border-strong);
   stroke-width: 1;
 }
 .sdv-raft__link--cut {
@@ -23,11 +23,6 @@
 .sdv-raft__panel {
   fill: var(--sdv-surface);
   stroke: var(--sdv-border);
-}
-.sdv-raft__star {
-  fill: var(--sl-color-text-accent);
-  stroke: var(--sdv-surface);
-  stroke-width: 1;
 }
 .sdv-raft__timer {
   fill: var(--sdv-surface);

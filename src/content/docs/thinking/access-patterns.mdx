@@ -40,25 +40,25 @@ export const steps = [
   {
     title: 'Count who reads what',
     text: 'Log every click for one second and group the clicks by short code. A few links get far more clicks than the rest. That uneven spread is part of the access pattern.',
-    nodes: ['client', 'server'],
+    focus: { active: 'client', involved: ['server'] },
     flows: ['client>server'],
   },
   {
     title: 'Each code has one home',
     text: 'The app server hashes the short code into a number that picks a cache node, so abc123 always lands on Cache 2. Thousands of codes with no favorite spread evenly.',
-    nodes: ['server', 'c1', 'c2', 'c3', 'c4'],
+    focus: { active: 'server', involved: ['c1', 'c2', 'c3', 'c4'] },
     flows: ['server>c1', 'server>c2', 'server>c3', 'server>c4'],
   },
   {
     title: 'One code goes viral',
     text: 'abc123 now draws about 240 of 400 clicks a second. Hashing sends all 240 to Cache 2, which serves 150. The other nodes stay quiet.',
-    nodes: ['client', 'server', 'c2'],
+    focus: { active: 'client', involved: ['server', 'c2'] },
     flows: ['client>server', 'server>c2'],
   },
   {
     title: 'Look node by node',
     text: 'The tier has room for 600 clicks a second and gets 400. Cache 2 receives about 280 (abc123 plus its share of the rest) against its 150, and each other node gets about 40. Only per-node load shows it.',
-    nodes: ['c1', 'c2', 'c3', 'c4'],
+    focus: { active: 'c1', involved: ['c2', 'c3', 'c4'] },
     flows: ['server>c2'],
   },
 ];

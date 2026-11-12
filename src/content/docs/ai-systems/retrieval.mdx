@@ -54,43 +54,43 @@ export const steps = [
   {
     title: 'Chunk every store\u2019s documents',
     text: 'Split each policy into short chunks labeled with store and reader.',
-    nodes: ['docs', 'chunker'],
+    focus: { active: 'docs', involved: ['chunker'] },
     flows: ['docs>chunker'],
   },
   {
     title: 'Index each chunk twice',
     text: 'A keyword index records words. A vector index stores an embedding that places similar meanings close.',
-    nodes: ['chunker', 'kwIndex', 'vecIndex'],
+    focus: { active: 'chunker', involved: ['kwIndex', 'vecIndex'] },
     flows: ['chunker>kwIndex', 'chunker>vecIndex'],
   },
   {
     title: 'Scope the question first',
     text: 'Limit both searches to chunks this store and role may read.',
-    nodes: ['query', 'filter'],
+    focus: { active: 'query', involved: ['filter'] },
     flows: ['query>filter'],
   },
   {
     title: 'Search both indexes',
     text: 'Keyword search catches TRAIL25. Vector search catches paraphrases. Each returns its top 5.',
-    nodes: ['filter', 'kwIndex', 'vecIndex'],
+    focus: { active: 'filter', involved: ['kwIndex', 'vecIndex'] },
     flows: ['filter>kwIndex', 'filter>vecIndex'],
   },
   {
     title: 'Fuse the lists by rank',
     text: 'Add 1/(60 + rank) from each list, so agreement wins.',
-    nodes: ['kwIndex', 'vecIndex', 'fuse'],
+    focus: { active: 'kwIndex', involved: ['vecIndex', 'fuse'] },
     flows: ['kwIndex>fuse', 'vecIndex>fuse'],
   },
   {
     title: 'Send the top 3 with their ids',
     text: 'The model gets the top 3 with ids and cites the ids it used.',
-    nodes: ['fuse', 'llm'],
+    focus: { active: 'fuse', involved: ['llm'] },
     flows: ['fuse>llm'],
   },
   {
     title: 'Abstain when the evidence is weak',
     text: 'If no chunk clears the evidence bar, offer a person.',
-    nodes: ['llm'],
+    focus: { active: 'llm' },
   },
 ];
 

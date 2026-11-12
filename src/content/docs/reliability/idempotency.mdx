@@ -53,36 +53,36 @@ export const steps = [
   {
     title: 'The app makes one key per purchase',
     text: 'Before the first attempt, the app creates a random key for this purchase, such as 8e03…f324, and sends it with POST /purchases in an Idempotency-Key header.',
-    nodes: ['client', 'server'],
+    focus: { active: 'client', involved: ['server'] },
     flows: ['client>server'],
   },
   {
     title: 'The server claims the key',
     text: 'The server records the key as in progress in the key store, in one atomic step. If another copy of this purchase already claimed it, the server stops here.',
-    nodes: ['server', 'keys'],
+    focus: { active: 'server', involved: ['keys'] },
     flows: ['server>keys'],
   },
   {
     title: 'The server charges the card',
     text: 'Only the request that won the claim calls the payment provider. The provider charges $5 and answers.',
-    nodes: ['server', 'pay'],
+    focus: { active: 'server', involved: ['pay'] },
     flows: ['server>pay', 'pay>server'],
   },
   {
     title: 'The server saves the receipt, then answers',
     text: 'The receipt goes into the key store under the same key, and then back to the app.',
-    nodes: ['client', 'server', 'keys'],
+    focus: { active: 'client', involved: ['server', 'keys'] },
     flows: ['server>keys', 'server>client'],
   },
   {
     title: 'The receipt gets lost',
     text: 'The phone loses signal in a tunnel and the receipt never arrives. After 1 s of silence, the app cannot tell whether the charge happened.',
-    nodes: ['client'],
+    focus: { active: 'client' },
   },
   {
     title: 'The retry gets the saved receipt',
     text: 'The app sends the same purchase with the same key. The server finds the saved receipt and returns it. The card is charged once.',
-    nodes: ['client', 'server', 'keys'],
+    focus: { active: 'client', involved: ['server', 'keys'] },
     flows: ['client>server', 'server>keys', 'server>client'],
   },
 ];

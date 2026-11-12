@@ -46,37 +46,37 @@ export const steps = [
   {
     title: 'Any node can coordinate',
     text: 'The app server sends put(user:218) to any node in the cluster, often through a client library that knows the ring. That node becomes the coordinator for this one request.',
-    nodes: ['client', 'coord'],
+    focus: { active: 'client', involved: ['coord'] },
     flows: ['client>coord'],
   },
   {
     title: 'Hash the key onto the ring',
     text: 'The coordinator hashes user:218 to a point on the ring and walks clockwise. The first three distinct nodes it meets, D, B, and E, are the key’s homes: its preference list.',
-    nodes: ['coord', 'd', 'b', 'e'],
+    focus: { active: 'coord', involved: ['d', 'b', 'e'] },
     flows: [],
   },
   {
     title: 'Write to three, answer after two',
     text: 'The coordinator sends the new value to all three homes at once. With W = 2 it tells the app server “stored” after the second acknowledgment, and the third copy lands a moment later.',
-    nodes: ['coord', 'd', 'b', 'e'],
+    focus: { active: 'coord', involved: ['d', 'b', 'e'] },
     flows: ['coord>d', 'coord>b', 'coord>e'],
   },
   {
     title: 'A home stops answering',
     text: 'Node B is down. A sloppy quorum keeps walking the ring and sends the third copy to C, tagged with a hint that names B. A strict quorum writes to D and E only and keeps the hint itself.',
-    nodes: ['coord', 'd', 'e', 'c'],
+    focus: { active: 'coord', involved: ['d', 'e', 'c'] },
     flows: ['coord>d', 'coord>e', 'coord>c'],
   },
   {
     title: 'Read two, repair the older',
     text: 'A get asks the homes and waits for R = 2 answers. The coordinator returns the newest version and writes it back to any replica that answered with an older one: read repair.',
-    nodes: ['client', 'coord', 'd', 'e'],
+    focus: { active: 'client', involved: ['coord', 'd', 'e'] },
     flows: ['client>coord', 'coord>d', 'coord>e'],
   },
   {
     title: 'Hand the hint back',
     text: 'Gossip tells C that B is back. C replays the hinted write to B, deletes its own copy, and the key has its three homes again.',
-    nodes: ['c', 'b'],
+    focus: { active: 'c', involved: ['b'] },
     flows: ['c>b'],
   },
 ];

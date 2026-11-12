@@ -48,31 +48,31 @@ export const steps = [
   {
     title: 'Stamp the event time',
     text: 'The redirect server writes clickedAt into each click. That time never changes, however late the click arrives.',
-    nodes: ['redirect'],
+    focus: { active: 'redirect' },
     flows: [],
   },
   {
     title: 'Write to the topic',
     text: 'Most clicks arrive within 0.3 s. A retry arrives seconds late, and an edge region sends its buffer when it reconnects.',
-    nodes: ['redirect', 'topic'],
+    focus: { active: 'redirect', involved: ['topic'] },
     flows: ['redirect>topic'],
   },
   {
     title: 'Window by event time',
     text: 'The job adds each click to the 2 s window that holds clickedAt. A restart delays the count and moves no click.',
-    nodes: ['topic', 'job'],
+    focus: { active: 'topic', involved: ['job'] },
     flows: ['topic>job'],
   },
   {
     title: 'Publish at the watermark',
     text: 'The watermark is the newest clickedAt seen, minus a wait. Once it passes the end of a window, the job publishes that count.',
-    nodes: ['job', 'counts'],
+    focus: { active: 'job', involved: ['counts'] },
     flows: ['job>counts'],
   },
   {
     title: 'Handle late clicks',
     text: 'A click for a published window is late. The job drops it, revises the count, or saves it for the nightly batch.',
-    nodes: ['job', 'side', 'batch', 'counts'],
+    focus: { active: 'job', involved: ['side', 'batch', 'counts'] },
     flows: ['job>side', 'side>batch', 'batch>counts'],
   },
 ];

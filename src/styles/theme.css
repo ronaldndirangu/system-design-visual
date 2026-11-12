@@ -73,6 +73,8 @@
   --sdv-shard-7: var(--sdv-queue);
 
   --sdv-shadow-overlay: 0 12px 32px rgb(0 0 0 / 0.35);
+  /* Cards sit flat on the page; only real overlays use --sdv-shadow-overlay. */
+  --sdv-shadow-card: none;
 
   /* Type */
   --sdv-font-sans: "Inter Variable", "Inter Fallback", system-ui, sans-serif;
@@ -139,7 +141,7 @@
   --sdv-surface-raised: var(--sdv-surface-2);
   --sdv-border: var(--sdv-border-strong);
   --sdv-radius: var(--sdv-radius-lg);
-  --sdv-shadow: var(--sdv-shadow-overlay);
+  --sdv-shadow: var(--sdv-shadow-card);
 
   /* Starlight mapping */
   --sl-color-accent-low: var(--sdv-accent-subtle);
@@ -359,7 +361,40 @@ body {
 }
 .sdv-node--highlight .sdv-node__shape {
   stroke-width: 3.5;
-  filter: drop-shadow(0 0 6px color-mix(in oklab, var(--node) 70%, transparent));
+}
+.sdv-node--involved .sdv-node__shape {
+  stroke-width: 2.5;
+}
+.sdv-node__ring .sdv-node__shape {
+  fill: none;
+  stroke: var(--sdv-accent);
+  stroke-width: 2;
+}
+.sdv-node__ring .sdv-node__detail {
+  display: none;
+}
+.sdv-node--leader .sdv-node__shape {
+  fill: var(--sdv-accent);
+  stroke: var(--sdv-accent);
+}
+.sdv-node--leader :is(.sdv-node__detail, .sdv-node__icon) {
+  stroke: var(--sdv-on-accent);
+}
+.sdv-node--leader :is(.sdv-node__label, .sdv-node__sublabel) {
+  fill: var(--sdv-on-accent);
+}
+.sdv-node--candidate .sdv-node__shape {
+  stroke: var(--sdv-accent);
+  stroke-dasharray: 6 4;
+}
+.sdv-node__badge rect {
+  fill: var(--sdv-accent);
+}
+.sdv-node__badge text {
+  fill: var(--sdv-on-accent);
+  font-family: var(--sl-font);
+  font-size: 12px;
+  font-weight: 600;
 }
 .sdv-node--down .sdv-node__shape {
   stroke-dasharray: 4 3;
@@ -529,8 +564,10 @@ body {
   background: var(--sdv-surface-3);
 }
 .sdv-button:disabled {
+  background: transparent;
+  border-style: dashed;
+  color: var(--sdv-text-3);
   cursor: not-allowed;
-  opacity: 0.5;
 }
 .sdv-button--primary {
   background: var(--sdv-accent);
@@ -643,7 +680,4 @@ body {
     transition-duration: 0.01ms !important;
   }
   /* biome-ignore-end lint/complexity/noImportantStyles: end of the reduced-motion net */
-  .sdv-node--highlight .sdv-node__shape {
-    filter: none;
-  }
 }

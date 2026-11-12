@@ -1,4 +1,4 @@
-import { nodeSize } from './geometry';
+import { nodeSize, textWidth } from './geometry';
 import { KindIcon, StatusBadge } from './icons';
 import { type ComponentKind, kinds, type NodeStatus } from './kinds';
 
@@ -11,6 +11,14 @@ export interface SystemNodeProps {
   sublabel?: string;
   status?: NodeStatus;
   highlight?: boolean;
+  /** The single focus of a step: an offset ring plus a heavier outline. */
+  active?: boolean;
+  /** Takes part in a step without being its focus. */
+  involved?: boolean;
+  /** Consensus role: a leader is filled with the accent, a candidate gets a dashed accent outline. */
+  role?: 'leader' | 'candidate';
+  /** Short pill above the node, such as "Leader, term 3". */
+  badge?: string;
   dim?: boolean;
   /** Minimum size; the node grows when its label needs more room. */
   width?: number;
@@ -18,6 +26,25 @@ export interface SystemNodeProps {
   /** Floor for label and sublabel size in px, so text stays legible in a shrunken SVG. */
   minFontSize?: number;
 }
+
+const BADGE_PX = 12;
+const BADGE_H = 20;
+
+function NodeBadge({ text, top }: { text: string; top: number }) {
+  const bw = textWidth(text, BADGE_PX) + 16;
+  const y = top - BADGE_H - 6;
+  return (
+    <g className="sdv-node__badge">
+      <rect x={-bw / 2} y={y} width={bw} height={BADGE_H} rx={BADGE_H / 2} />
+      <text textAnchor="middle" x={0} y={y + BADGE_H / 2 + BADGE_PX * 0.35}>
+        {text}
+      </text>
+    </g>
+  );
+}
+
+/** Space between a node and its focus ring. */
+const RING_GAP = 4;
 
 /**
  * One component in a diagram. Shape, color, and icon come from its kind, so
@@ -32,6 +59,10 @@ export function SystemNode({
   sublabel,
   status,
   highlight = false,
+  active = false,
+  involved = false,
+  role,
+  badge,
   dim = false,
   width,
   height,
@@ -40,12 +71,20 @@ export function SystemNode({
   const box = nodeSize(kind, label, minFontSize, width, height);
   const { w, h } = box;
   const classes = ['sdv-node', `sdv-node--${kind}`];
-  if (highlight) classes.push('sdv-node--highlight');
+  if (highlight || active) classes.push('sdv-node--highlight');
+  if (active) classes.push('sdv-node--active');
+  if (involved) classes.push('sdv-node--involved');
+  if (role) classes.push(`sdv-node--${role}`);
   if (status === 'bad') classes.push('sdv-node--down');
   if (dim) classes.push('sdv-node--dim');
 
   return (
     <g className={classes.join(' ')} transform={`translate(${x} ${y})`}>
+      {active && (
+        <g className="sdv-node__ring">
+          <Shape kind={kind} w={w + RING_GAP * 2} h={h + RING_GAP * 2} />
+        </g>
+      )}
       <Shape kind={kind} w={w} h={h} />
       <KindIcon kind={kind} size={18} x={-9} y={-h / 2 + (kind === 'database' ? 16 : 10)} />
       <text
@@ -73,6 +112,7 @@ export function SystemNode({
         </text>
       )}
       {status && <StatusBadge status={status} x={w / 2 - 4} y={-h / 2 + 4} />}
+      {badge && <NodeBadge text={badge} top={-h / 2} />}
     </g>
   );
 }

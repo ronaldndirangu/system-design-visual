@@ -20,7 +20,7 @@ import { usePrefersReducedMotion } from '../sim/usePrefersReducedMotion';
 import { DiagramScroll } from '../viz/DiagramScroll';
 import { lerp, link, nodeSize, readableFont, textWidth, type Vec } from '../viz/geometry';
 import { UiIcon } from '../viz/icons';
-import { SystemNode, safeId } from '../viz/SystemNode';
+import { ArrowDefs, Edge, SystemNode, safeId } from '../viz/SystemNode';
 import './RaftWidget.css';
 
 const scenarioIds: RaftScenarioId[] = ['crash', 'split', 'partition', 'old-entry'];
@@ -47,23 +47,15 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-function starPoints(cx: number, cy: number, outer: number, inner: number): string {
-  const points: string[] = [];
-  for (let i = 0; i < 10; i += 1) {
-    const radius = i % 2 === 0 ? outer : inner;
-    const angle = -Math.PI / 2 + (i * Math.PI) / 5;
-    points.push(
-      `${(cx + radius * Math.cos(angle)).toFixed(1)},${(cy + radius * Math.sin(angle)).toFixed(1)}`,
-    );
-  }
-  return points.join(' ');
-}
-
 function roleLabel(node: RaftNode, cutOff: boolean): string {
   if (!node.up) return 'Down';
   if (node.role === 'leader') return `Leader, term ${node.term}${cutOff ? ', cut off' : ''}`;
   if (node.role === 'candidate') return `Candidate, term ${node.term}`;
   return `Follower, term ${node.term}`;
+}
+
+function nodeRole(node: RaftNode): 'leader' | 'candidate' | undefined {
+  return node.up && (node.role === 'leader' || node.role === 'candidate') ? node.role : undefined;
 }
 
 function timerMs(node: RaftNode, ticks: number): number {
@@ -112,6 +104,7 @@ export default function RaftWidget() {
   const hydrated = useHydrated();
   const reducedMotion = usePrefersReducedMotion();
   const hatchId = safeId(useId(), 'raft-hatch');
+  const arrowId = safeId(useId(), 'raft-arrow');
   const [scenarioId, setScenarioId] = useState<RaftScenarioId>('crash');
   const [unsafeCommit, setUnsafeCommit] = useState(false);
   const [scale, setScale] = useState(1);
@@ -222,6 +215,9 @@ export default function RaftWidget() {
   for (let a = 0; a < nodes.length; a += 1) for (let b = a + 1; b < nodes.length; b += 1) pairs.push([a, b]);
 
   const flights = cluster.inFlight.slice(0, MAX_GLYPHS);
+  const busyLinks = [...new Set(flights.map((flight) => `${flight.from}>${flight.to}`))].map(
+    (key) => key.split('>').map(Number) as [number, number],
+  );
 
   const rows: StatRow[] = [
     { label: 'Time', value: formatSeconds(ticks), detail: `Each tick is an illustrative ${MS_PER_TICK} ms` },
@@ -443,6 +439,7 @@ export default function RaftWidget() {
           />
           <DiagramScroll label="Five servers and the messages between them" onScale={setScale}>
             <svg viewBox={`0 0 600 ${viewHeight}`} role="img" aria-label={diagramLabel}>
+              <ArrowDefs id={arrowId} />
               {pairs.map(([a, b]) => {
                 const ends = link(box(a), box(b));
                 const cut = !cluster.connected(a, b);
@@ -456,6 +453,13 @@ export default function RaftWidget() {
                     y2={ends.to[1]}
                   />
                 );
+              })}
+              {busyLinks.map(([from, to]) => {
+                const ends = link(
+                  { x: center(from)[0], y: center(from)[1] },
+                  { x: center(to)[0], y: center(to)[1] },
+                );
+                return <Edge key={`${from}>${to}`} from={ends.from} to={ends.to} marker={arrowId} active />;
               })}
               <rect
                 className="sdv-raft__panel"
@@ -496,17 +500,12 @@ export default function RaftWidget() {
                       x={x}
                       y={y}
                       label={nodeName(node.id)}
-                      sublabel={roleLabel(node, isCutOff(node))}
+                      sublabel={leader ? (isCutOff(node) ? 'Cut off' : undefined) : roleLabel(node, false)}
                       status={nodeStatus}
-                      highlight={leader && working === node.id}
+                      role={nodeRole(node)}
+                      badge={leader ? `Leader, term ${node.term}` : undefined}
                       minFontSize={minFont}
                     />
-                    {leader && (
-                      <polygon
-                        className="sdv-raft__star"
-                        points={starPoints(x - nodeBox.w / 2, y - nodeBox.h / 2, 10, 4.5)}
-                      />
-                    )}
                     {showTimer && (
                       <g>
                         <rect
@@ -590,9 +589,28 @@ export default function RaftWidget() {
             </li>
             <li>
               <LegendGlyph>
-                <polygon className="sdv-raft__star" points={starPoints(0, 0, 7, 3)} />
+                <rect className="sdv-raft__glyph-fill" x={-7} y={-5} width={14} height={10} rx={2} />
               </LegendGlyph>{' '}
-              Leader
+              Filled: leader
+            </li>
+            <li>
+              <LegendGlyph>
+                <rect
+                  className="sdv-raft__glyph-line sdv-raft__glyph-line--dashed"
+                  x={-7}
+                  y={-5}
+                  width={14}
+                  height={10}
+                  rx={2}
+                />
+              </LegendGlyph>{' '}
+              Dashed outline: candidate
+            </li>
+            <li>
+              <LegendGlyph>
+                <line className="sdv-edge sdv-edge--active" x1={-7} y1={0} x2={7} y2={0} />
+              </LegendGlyph>{' '}
+              Bold link: message in flight
             </li>
             <li>
               <LegendGlyph>

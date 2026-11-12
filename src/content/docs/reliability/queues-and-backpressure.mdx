@@ -40,37 +40,37 @@ export const steps = [
   {
     title: 'Requests join the line',
     text: 'Visitors click sho.rt links at 40 per second. Each request waits in line until a worker is free.',
-    nodes: ['client', 'queue'],
+    focus: { active: 'client', involved: ['queue'] },
     flows: ['client>queue'],
   },
   {
     title: 'Workers drain the line',
     text: 'Five workers each finish a redirect in about 100 ms, so they drain about 50 per second. At 40 per second the line stays short.',
-    nodes: ['queue', 'server'],
+    focus: { active: 'queue', involved: ['server'] },
     flows: ['queue>server'],
   },
   {
     title: 'A short burst fills the line',
     text: 'For one second, 90 requests arrive and 50 leave, so about 40 wait. Then the line empties.',
-    nodes: ['client', 'queue', 'server'],
+    focus: { active: 'client', involved: ['queue', 'server'] },
     flows: ['client>queue', 'queue>server'],
   },
   {
     title: 'Traffic stays high',
     text: 'A viral link holds traffic at 75 per second. The line grows by 25 every second and never drains.',
-    nodes: ['client', 'queue'],
+    focus: { active: 'client', involved: ['queue'] },
     flows: ['client>queue'],
   },
   {
     title: 'The line is full, so the server pushes back',
     text: 'A bounded line stops at 40. The next request gets 503 with Retry-After at once, while its visitor can still act.',
-    nodes: ['client', 'queue'],
+    focus: { active: 'client', involved: ['queue'] },
     flows: ['queue>client'],
   },
   {
     title: 'Admitted requests still have time',
     text: '40 requests drained at 50 per second wait 0.8 s, just under the 1 s that visitors wait.',
-    nodes: ['queue', 'server'],
+    focus: { active: 'queue', involved: ['server'] },
     flows: ['queue>server'],
   },
 ];

@@ -49,37 +49,37 @@ export const steps = [
   {
     title: 'Requests arrive and wait',
     text: 'Each chat turn arrives as a prompt and joins a first come, first served queue.',
-    nodes: ['requests', 'queue'],
+    focus: { active: 'requests', involved: ['queue'] },
     flows: ['requests>queue'],
   },
   {
     title: 'Admit when the prompt fits',
     text: 'The next request starts only if a batch slot is open and free KV blocks can hold its whole prompt.',
-    nodes: ['queue', 'scheduler', 'kv'],
+    focus: { active: 'queue', involved: ['scheduler', 'kv'] },
     flows: ['queue>scheduler', 'scheduler>kv'],
   },
   {
     title: 'Prefill: read the whole prompt in one pass',
     text: 'The model runs all prompt tokens at once, caches their keys and values, and emits the first token.',
-    nodes: ['scheduler', 'model', 'kv'],
+    focus: { active: 'scheduler', involved: ['model', 'kv'] },
     flows: ['scheduler>model', 'model>kv'],
   },
   {
     title: 'Decode: one token per request per step',
     text: 'Each step adds one token per running request and rereads every weight, so small batches wait on memory.',
-    nodes: ['model', 'kv'],
+    focus: { active: 'model', involved: ['kv'] },
     flows: ['model>kv'],
   },
   {
     title: 'Refill a slot the moment it frees',
     text: 'A finished request returns its blocks, and the next waiting request joins at the next step.',
-    nodes: ['queue', 'scheduler', 'model'],
+    focus: { active: 'queue', involved: ['scheduler', 'model'] },
     flows: ['queue>scheduler', 'scheduler>model'],
   },
   {
     title: 'Preempt when the pool runs dry',
     text: 'With no free block, the latest arrival is evicted, its blocks freed, and later recomputed in one prefill.',
-    nodes: ['scheduler', 'kv', 'queue'],
+    focus: { active: 'scheduler', involved: ['kv', 'queue'] },
     flows: ['kv>queue'],
   },
 ];

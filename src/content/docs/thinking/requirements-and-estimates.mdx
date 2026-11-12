@@ -37,24 +37,24 @@ export const steps = [
   {
     title: 'Two features, nothing more',
     text: 'People paste a long URL and get a short one back. Anyone who opens the short link lands on the long URL. Analytics and custom names stay out of scope for now.',
-    nodes: ['client'],
+    focus: { active: 'client' },
   },
   {
     title: 'Create a link: one write',
     text: 'POST /links sends the long URL. The server picks a short code such as abc123 and stores the pair in the database.',
-    nodes: ['client', 'server', 'db'],
+    focus: { active: 'client', involved: ['server', 'db'] },
     flows: ['client>server', 'server>db'],
   },
   {
     title: 'Follow a link: one read',
     text: 'GET /abc123 asks for the code. The server looks it up and answers with a redirect to the long URL.',
-    nodes: ['client', 'server', 'db'],
+    focus: { active: 'client', involved: ['server', 'db'] },
     flows: ['db>server', 'server>client'],
   },
   {
     title: 'Count the arrows',
     text: 'Each link is written once and clicked many times. That read to write ratio, often 100 to 1 for shorteners, shapes every later design decision.',
-    nodes: ['server', 'db'],
+    focus: { active: 'server', involved: ['db'] },
     flows: ['client>server'],
   },
 ];

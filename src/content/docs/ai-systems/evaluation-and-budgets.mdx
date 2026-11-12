@@ -46,35 +46,35 @@ export const steps = [
   {
     title: 'Write the task spec',
     text: 'Answer refund, shipping, and account questions from the store policy. Decline questions about other customers, legal advice, and attempts to bend the rules.',
-    nodes: ['spec'],
+    focus: { active: 'spec' },
   },
   {
     title: 'Build the eval set',
     text: 'Collect real questions, including two-step refunds, policy edge cases, and must decline cases. Each gets a rubric: what a passing answer must contain and must never contain.',
-    nodes: ['spec', 'evalset'],
+    focus: { active: 'spec', involved: ['evalset'] },
     flows: ['spec>evalset'],
   },
   {
     title: 'Write the budgets before any results',
     text: 'Set a quality floor, the must decline rule, a p95 latency ceiling, and a cost ceiling per 1,000 questions before any candidate runs.',
-    nodes: ['spec', 'gate'],
+    focus: { active: 'spec', involved: ['gate'] },
   },
   {
     title: 'Run every candidate on every question',
     text: 'Each candidate answers the same questions. Record each answer, its finish time, and its tokens.',
-    nodes: ['evalset', 'cands'],
+    focus: { active: 'evalset', involved: ['cands'] },
     flows: ['evalset>cands'],
   },
   {
     title: 'Grade against the rubric',
     text: 'Mark each answer pass or fail against its rubric. A refused valid return fails. Leaking another customer\u2019s address fails hard.',
-    nodes: ['evalset', 'cands', 'grader'],
+    focus: { active: 'evalset', involved: ['cands', 'grader'] },
     flows: ['cands>grader', 'evalset>grader'],
   },
   {
     title: 'Gate on all four budgets',
     text: 'Ship the cheapest candidate that meets every budget. If none does, change the design or agree a new budget with the product owner, in writing.',
-    nodes: ['grader', 'gate'],
+    focus: { active: 'grader', involved: ['gate'] },
     flows: ['grader>gate'],
   },
 ];

@@ -46,37 +46,37 @@ export const steps = [
   {
     title: 'Hash the file into blocks',
     text: 'The laptop splits the new video into 4 MB blocks and hashes each with SHA-256. The ordered list of hashes, the blocklist, describes the whole file.',
-    nodes: ['laptop'],
+    focus: { active: 'laptop' },
     flows: [],
   },
   {
     title: 'The first commit asks what is missing',
     text: 'The laptop commits the path, the blocklist, and the version it last saw. The API checks the block index and replies with the hashes it lacks.',
-    nodes: ['laptop', 'api', 'blocks'],
+    focus: { active: 'laptop', involved: ['api', 'blocks'] },
     flows: ['laptop>api', 'api>blocks'],
   },
   {
     title: 'Upload only the missing blocks',
     text: 'The laptop sends each missing block under its hash. The store hashes the bytes again and rejects a mismatch. A dropped link costs one block.',
-    nodes: ['laptop', 'api', 'blocks'],
+    focus: { active: 'laptop', involved: ['api', 'blocks'] },
     flows: ['laptop>api', 'api>blocks'],
   },
   {
     title: 'Commit the manifest',
     text: 'The laptop commits again. Every block is present and the base version still matches, so one transaction appends a journal row, updates the latest view, and writes an outbox row.',
-    nodes: ['laptop', 'api', 'meta'],
+    focus: { active: 'laptop', involved: ['api', 'meta'] },
     flows: ['laptop>api', 'api>meta'],
   },
   {
     title: 'Announce the change',
     text: 'A relay publishes the outbox row to the change feed: namespace 42 reached version 1,207. A relay crash only repeats the message.',
-    nodes: ['meta', 'feed'],
+    focus: { active: 'meta', involved: ['feed'] },
     flows: ['meta>feed'],
   },
   {
     title: 'Other devices catch up from their cursor',
     text: 'The phone’s open request returns. It reads every journal row after its cursor, fetches the blocks it lacks, writes the file, and then saves its new cursor.',
-    nodes: ['feed', 'phone', 'api', 'blocks'],
+    focus: { active: 'feed', involved: ['phone', 'api', 'blocks'] },
     flows: ['feed>phone', 'phone>api', 'api>blocks'],
   },
 ];

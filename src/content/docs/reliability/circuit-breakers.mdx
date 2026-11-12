@@ -40,37 +40,37 @@ export const steps = [
   {
     title: 'Closed: calls go through',
     text: 'Each redirect calls ingest to record the click in 30 to 50 ms. About 2% fail at random, far below the threshold, so the breaker stays closed.',
-    nodes: ['users', 'redirect', 'ingest'],
+    focus: { active: 'users', involved: ['redirect', 'ingest'] },
     flows: ['users>redirect', 'redirect>ingest'],
   },
   {
     title: 'Ingest hangs, workers get stuck',
     text: 'At 3 s ingest stops answering. Each call holds a worker for the 500 ms timeout, so 16 workers finish about 31 redirects a second while 150 arrive.',
-    nodes: ['users', 'redirect', 'ingest'],
+    focus: { active: 'users', involved: ['redirect', 'ingest'] },
     flows: ['users>redirect', 'redirect>ingest'],
   },
   {
     title: 'The breaker opens',
     text: 'At 4.1 s, 18 of the last 20 calls have failed, so the breaker opens. Redirects buffer the click in 10 ms and answer.',
-    nodes: ['users', 'redirect', 'buffer'],
+    focus: { active: 'users', involved: ['redirect', 'buffer'] },
     flows: ['users>redirect', 'redirect>buffer'],
   },
   {
     title: 'Half-open: three probes',
     text: 'After a 2 s cooldown, 3 redirects call ingest as probes. The rest keep buffering.',
-    nodes: ['redirect', 'ingest', 'buffer'],
+    focus: { active: 'redirect', involved: ['ingest', 'buffer'] },
     flows: ['redirect>ingest', 'redirect>buffer'],
   },
   {
     title: 'A probe fails, the breaker reopens',
     text: 'Ingest still hangs, so a probe times out at 6.6 s and the breaker opens for another 2 s.',
-    nodes: ['redirect', 'buffer'],
+    focus: { active: 'redirect', involved: ['buffer'] },
     flows: ['redirect>buffer'],
   },
   {
     title: 'The probes succeed, the breaker closes',
     text: 'Ingest heals at 12 s. The next 3 probes succeed, and at 13.7 s the breaker closes and the buffer uploads its clicks.',
-    nodes: ['redirect', 'ingest', 'buffer'],
+    focus: { active: 'redirect', involved: ['ingest', 'buffer'] },
     flows: ['redirect>ingest', 'buffer>ingest'],
   },
 ];

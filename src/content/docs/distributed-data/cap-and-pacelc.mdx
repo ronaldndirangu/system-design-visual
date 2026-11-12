@@ -41,31 +41,31 @@ export const steps = [
   {
     title: 'One cart, two datacenters',
     text: 'Each device talks to its nearby datacenter. Every change crosses the link, so both sides hold the same cart.',
-    nodes: ['phone', 'west', 'east', 'laptop'],
+    focus: { active: 'phone', involved: ['west', 'east', 'laptop'] },
     flows: ['phone>west', 'west>east', 'laptop>east'],
   },
   {
     title: 'The link is cut',
     text: 'Both datacenters stay up and reachable. Only the link is down, so neither side hears the other.',
-    nodes: ['west', 'east'],
+    focus: { active: 'west', involved: ['east'] },
     flows: [],
   },
   {
     title: 'Choice one: refuse',
     text: 'The phone taps Add book. West cannot check with East, so it times out and refuses. The copies never disagree, and the phone gets an error.',
-    nodes: ['phone', 'west'],
+    focus: { active: 'phone', involved: ['west'] },
     flows: ['phone>west'],
   },
   {
     title: 'Choice two: accept',
     text: 'West adds the book and answers at once. East never hears, so the laptop reads a cart without the book. Both devices get answers, and the copies drift apart.',
-    nodes: ['phone', 'west', 'laptop', 'east'],
+    focus: { active: 'phone', involved: ['west', 'laptop', 'east'] },
     flows: ['phone>west', 'laptop>east'],
   },
   {
     title: 'The link heals',
     text: 'The sides swap what they missed. After a refusal nothing needs fixing. After accepting, each side holds a version the other never saw, and a merge rule must combine them.',
-    nodes: ['west', 'east'],
+    focus: { active: 'west', involved: ['east'] },
     flows: ['west>east', 'east>west'],
   },
 ];

@@ -65,31 +65,31 @@ export const steps = [
   {
     title: 'Ask the cache first',
     text: 'A click on sho.rt/abc123 arrives. The server asks the cache for abc123 before touching the database.',
-    nodes: ['server', 'cache'],
+    focus: { active: 'server', involved: ['cache'] },
     flows: ['server>cache'],
   },
   {
     title: 'Hit: answer from memory',
     text: 'The cache has it. The long URL comes back in under a millisecond, and the database never hears about it.',
-    nodes: ['cache', 'server'],
+    focus: { active: 'cache', involved: ['server'] },
     flows: ['cache>server'],
   },
   {
     title: 'Miss: go to the database',
     text: 'The cache does not have it. The server reads the database, which takes 3 to 4 times longer than a hit.',
-    nodes: ['server', 'db'],
+    focus: { active: 'server', involved: ['db'] },
     flows: ['server>db', 'db>server'],
   },
   {
     title: 'Fill the cache',
     text: 'The server stores the answer in the cache with an expiry time (TTL). The next click on abc123 is a hit.',
-    nodes: ['server', 'cache'],
+    focus: { active: 'server', involved: ['cache'] },
     flows: ['server>cache'],
   },
   {
     title: 'Full? Evict the least recently used',
     text: 'When the cache runs out of room, it drops the link nobody has clicked for the longest time (LRU).',
-    nodes: ['cache'],
+    focus: { active: 'cache' },
   },
 ];
 
@@ -108,25 +108,25 @@ export const herdSteps = [
   {
     title: 'A hot link expires',
     text: 'A viral link reaches its TTL. In the next second, 500 requests for it all miss.',
-    nodes: ['servers', 'cache'],
+    focus: { active: 'servers', involved: ['cache'] },
     flows: ['servers>cache'],
   },
   {
     title: 'Stampede: every miss reads the database',
     text: 'All 500 misses read the same row at once. The database queues them, and every other query slows down.',
-    nodes: ['servers', 'db'],
+    focus: { active: 'servers', involved: ['db'] },
     flows: ['servers>db'],
   },
   {
     title: 'Single-flight: one reader per key',
     text: 'The first miss claims the key and reads the database. The other 499 wait for its answer.',
-    nodes: ['servers', 'db'],
+    focus: { active: 'servers', involved: ['db'] },
     flows: ['servers>db', 'db>servers'],
   },
   {
     title: 'Refill once, answer everyone',
     text: 'The reader refills the cache and every waiting request gets its answer. The next clicks hit.',
-    nodes: ['servers', 'cache'],
+    focus: { active: 'servers', involved: ['cache'] },
     flows: ['servers>cache', 'cache>servers'],
   },
 ];

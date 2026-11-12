@@ -50,37 +50,37 @@ export const steps = [
   {
     title: 'The gateway decides who is asking',
     text: 'The gateway reads the store and the role (customer or staff) from the sign-in token, never from the request body or the model, and checks that store\u2019s budget share.',
-    nodes: ['customer', 'gateway'],
+    focus: { active: 'customer', involved: ['gateway'] },
     flows: ['customer>gateway'],
   },
   {
     title: 'Look in the cache, per store',
     text: 'A policy question can reuse a recent answer. The cache key holds the store, the role, the model and its settings, the prompt version, the index version, the earlier turns, and the question, so Pine never reads Harbor\u2019s answer and a reindex retires old entries. Questions about one customer\u2019s order skip the cache.',
-    nodes: ['gateway', 'cache'],
+    focus: { active: 'gateway', involved: ['cache'] },
     flows: ['gateway>cache'],
   },
   {
     title: 'Search inside the store, then gate on evidence',
     text: 'On a miss, search filters by store and visibility before ranking. If the best hit scores under 0.6, the assistant hands off to staff without calling the model.',
-    nodes: ['gateway', 'index'],
+    focus: { active: 'gateway', involved: ['index'] },
     flows: ['gateway>index'],
   },
   {
     title: 'The model answers from the evidence',
     text: 'The model gets the question and the retrieved chunks, and returns an answer with citations or a refund request.',
-    nodes: ['index', 'model'],
+    focus: { active: 'index', involved: ['model'] },
     flows: ['index>model'],
   },
   {
     title: 'Check before anything leaves',
     text: 'Code checks the schema, that every citation is a chunk search returned, and that the cited passage states the claim. A failure goes to staff. For a refund, code also checks the written policy: the order belongs to this customer at this store, the amount matches the order, and the item is inside the return window and not final sale. A refund that fails a rule is declined with that rule.',
-    nodes: ['model', 'checks', 'staff'],
+    focus: { active: 'model', involved: ['checks', 'staff'] },
     flows: ['model>checks', 'checks>staff'],
   },
   {
     title: 'One action, with a person and a key',
     text: 'Only a refund that passes the policy check reaches staff, as a second gate on money. If they approve, the refund tool runs with an idempotency key, so a double submit returns the first result instead of paying twice.',
-    nodes: ['checks', 'staff', 'tool'],
+    focus: { active: 'checks', involved: ['staff', 'tool'] },
     flows: ['checks>staff', 'staff>tool'],
   },
 ];

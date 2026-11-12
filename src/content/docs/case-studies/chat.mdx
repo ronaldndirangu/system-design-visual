@@ -50,37 +50,37 @@ export const steps = [
   {
     title: 'Send over an open socket',
     text: 'The sender types a message. Her phone already holds an open socket to a gateway, so the text goes out at once with a client message ID. If the upload stalls and the phone resends, the server spots the same ID and stores the message once.',
-    nodes: ['sender', 'gwIn', 'chat'],
+    focus: { active: 'sender', involved: ['gwIn', 'chat'] },
     flows: ['sender>gwIn', 'gwIn>chat'],
   },
   {
     title: 'Number it within the conversation',
     text: 'The chat service gives the message the next sequence number for this conversation, say 42, and appends it to the message log. That number is the official order. Every phone in the group will show 41 above 42.',
-    nodes: ['chat', 'log'],
+    focus: { active: 'chat', involved: ['log'] },
     flows: ['chat>log'],
   },
   {
     title: 'Publish and push',
     text: "The service publishes the message on the conversation's topic. Push workers pick it up and hand it to the gateway that holds each reader's socket. With several workers, a stalled one lets later messages overtake earlier ones.",
-    nodes: ['chat', 'bus', 'gwOut'],
+    focus: { active: 'chat', involved: ['bus', 'gwOut'] },
     flows: ['chat>bus', 'bus>gwOut'],
   },
   {
     title: 'Deliver, and keep the line alive',
     text: 'The gateway writes the message to the reader\'s socket. Every so often the phone and the gateway trade a heartbeat. When heartbeats stop, the gateway knows the socket died, even though no goodbye arrived.',
-    nodes: ['gwOut', 'reader'],
+    focus: { active: 'gwOut', involved: ['reader'] },
     flows: ['gwOut>reader', 'reader>gwOut'],
   },
   {
     title: 'Show in sequence order',
     text: 'The phone shows message 42 only after 41. If 43 lands first, the phone holds it in a reorder buffer until 42 arrives. After a short wait it asks the server for the gap instead of waiting forever.',
-    nodes: ['reader'],
+    focus: { active: 'reader' },
     flows: [],
   },
   {
     title: 'Reconnect with a cursor',
     text: 'After a tunnel, the phone opens a new socket and says the last message it showed is 29. The gateway asks the chat service, which reads everything after 29 from the log and sends it down. Messages that vanished into the dead socket come back.',
-    nodes: ['reader', 'gwOut', 'chat', 'log'],
+    focus: { active: 'reader', involved: ['gwOut', 'chat', 'log'] },
     flows: ['reader>gwOut', 'gwOut>chat', 'log>chat'],
   },
 ];

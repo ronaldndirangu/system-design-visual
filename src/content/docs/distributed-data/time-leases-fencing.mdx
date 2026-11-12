@@ -42,31 +42,31 @@ export const steps = [
   {
     title: 'A holds the lease and writes with token 1',
     text: 'The lock service grants server A a 10 second lease on the conversation with token 1. A renews every 3 seconds and appends seq 1 and seq 2, each tagged with token 1.',
-    nodes: ['a', 'lock', 'log'],
+    focus: { active: 'a', involved: ['lock', 'log'] },
     flows: ['a>lock', 'a>log'],
   },
   {
     title: 'A freezes, and the lease runs out',
     text: 'At 5 s, A picks seq 3 and freezes in a garbage collection pause. No renewal arrives, so the lease expires in the lock service at 13 s.',
-    nodes: ['a', 'lock'],
+    focus: { active: 'a', involved: ['lock'] },
     flows: [],
   },
   {
     title: 'B takes over with token 2',
     text: 'Server B gets the lease with token 2. Before its first append, it registers token 2 with the log, so the log now refuses anything older.',
-    nodes: ['b', 'lock', 'log'],
+    focus: { active: 'b', involved: ['lock', 'log'] },
     flows: ['b>lock', 'b>log'],
   },
   {
     title: 'A wakes and sends a stale write',
     text: 'At 17.5 s, A wakes, still sure it owns the chat, and sends seq 3 with token 1. B already wrote seq 3. Token 1 is below token 2, so the log rejects it.',
-    nodes: ['a', 'log'],
+    focus: { active: 'a', involved: ['log'] },
     flows: ['a>log'],
   },
   {
     title: 'A learns it lost',
     text: 'The rejection tells A that someone newer owns the chat, so A steps down. Phones see one message per sequence number.',
-    nodes: ['a', 'lock'],
+    focus: { active: 'a', involved: ['lock'] },
     flows: ['a>lock'],
   },
 ];

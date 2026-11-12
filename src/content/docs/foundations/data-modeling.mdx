@@ -40,30 +40,30 @@ export const steps = [
   {
     title: 'The redirect knows only the code',
     text: 'A browser asks for sho.rt/bATJ4g. The handler knows only the code and must return the long URL, about 20,000 times a second.',
-    nodes: ['browser', 'handler'],
+    focus: { active: 'browser', involved: ['handler'] },
     flows: ['browser>handler'],
   },
   {
     title: 'Documents are keyed by user',
     text: 'Each user is one document with its links inside, and only _id is indexed. To find bATJ4g, the database opens all 300 documents, 981 KB.',
-    nodes: ['handler', 'docs'],
+    focus: { active: 'handler', involved: ['docs'] },
     flows: ['handler>docs', 'docs>handler'],
   },
   {
     title: 'One document keeps growing',
     text: 'User 1 owns 469 links in one 148 KB document. Every new link grows it, and MongoDB refuses documents over 16 MB.',
-    nodes: ['docs'],
+    focus: { active: 'docs' },
   },
   {
     title: 'Fix: give the redirect its own key',
     text: 'Store one key-value record per code, and the redirect becomes a single get. Tables stay the source of truth.',
-    nodes: ['handler', 'kv'],
+    focus: { active: 'handler', involved: ['kv'] },
     flows: ['handler>kv', 'kv>handler'],
   },
   {
     title: 'The inverse failure',
     text: 'Key-value alone answers only by key, so the dashboard and takedown page through all 3,300 keys in 33 round trips.',
-    nodes: ['handler', 'kv'],
+    focus: { active: 'handler', involved: ['kv'] },
     flows: ['handler>kv'],
   },
 ];

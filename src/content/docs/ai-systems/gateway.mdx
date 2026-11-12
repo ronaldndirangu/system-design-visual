@@ -52,36 +52,36 @@ export const steps = [
   {
     title: 'One door for every model call',
     text: 'Every model call goes to the gateway, which knows which store sent it.',
-    nodes: ['app', 'gateway'],
+    focus: { active: 'app', involved: ['gateway'] },
     flows: ['app>gateway'],
   },
   {
     title: 'Check the store\u2019s quota',
     text: 'Each store has a token bucket. An empty bucket gets a 429 with Retry-After, and the model never sees the request.',
-    nodes: ['app', 'gateway'],
+    focus: { active: 'app', involved: ['gateway'] },
   },
   {
     title: 'Look up the response cache',
     text: 'The key holds every field that shapes the answer, starting with the store. A hit skips the model call.',
-    nodes: ['gateway', 'cache'],
+    focus: { active: 'gateway', involved: ['cache'] },
     flows: ['gateway>cache'],
   },
   {
     title: 'Route or cascade',
     text: 'A router picks Small or Medium before the call. A cascade tries Small and escalates when a checker rejects it.',
-    nodes: ['gateway', 'small', 'medium'],
+    focus: { active: 'gateway', involved: ['small', 'medium'] },
     flows: ['gateway>small', 'gateway>medium'],
   },
   {
     title: 'Validate the reply',
     text: 'The validator checks the schema and business rules. A rejected reply gets one retry, counted against the store\u2019s quota.',
-    nodes: ['small', 'medium', 'validator'],
+    focus: { active: 'small', involved: ['medium', 'validator'] },
     flows: ['small>validator', 'medium>validator'],
   },
   {
     title: 'Fall back, and stop calling a failing model',
     text: 'After three errors in a row, a circuit breaker sends requests to Small for a while. A reply that fails validation twice goes to an agent.',
-    nodes: ['medium', 'validator', 'fallback'],
+    focus: { active: 'medium', involved: ['validator', 'fallback'] },
     flows: ['medium>fallback', 'validator>fallback'],
   },
 ];

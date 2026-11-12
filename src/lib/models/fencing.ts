@@ -67,6 +67,22 @@ export interface LogEntry {
   t: number;
 }
 
+/** Structured moments the time lanes draw; the events carry the same story as text. */
+export type FenceMark =
+  | { kind: 'grant'; t: number; server: ServerId; token: number }
+  | { kind: 'expire'; t: number; token: number }
+  | { kind: 'stop'; t: number; server: ServerId }
+  | {
+      kind: 'stale';
+      t: number;
+      sentAt: number;
+      server: ServerId;
+      seq: number;
+      token: number;
+      newest: number;
+      accepted: boolean;
+    };
+
 interface ServerState {
   role: 'standby' | 'owner' | 'out';
   token: number;
@@ -105,6 +121,7 @@ export class FenceLane {
     B: { role: 'standby', token: 0, nextSeq: 1, leaseFromLocal: 0 },
   };
   readonly events: FenceEvent[] = [];
+  readonly marks: FenceMark[] = [];
   staleAccepted = 0;
   staleRejected = 0;
   inFlight = 0;
@@ -190,6 +207,12 @@ export class FenceLane {
     const state = this.servers[server];
     state.role = 'owner';
     state.token = this.lock.token;
+    this.marks.push({ kind: 'grant', t, server, token: this.lock.token });
+  }
+
+  private stop(server: ServerId, t: number) {
+    this.servers[server].role = 'out';
+    this.marks.push({ kind: 'stop', t, server });
   }
 
   private startA() {
@@ -207,7 +230,7 @@ export class FenceLane {
     const a = this.servers.A;
     if (a.role !== 'owner' || this.frozen(t)) return;
     if (!this.aBelievesLease(t)) {
-      a.role = 'out';
+      this.stop('A', t);
       const waiting =
         this.inFlight > 0
           ? ` ${this.inFlight} of its writes are still on the way, and nothing can call them back.`
@@ -250,7 +273,7 @@ export class FenceLane {
         return;
       }
       if (a.role === 'owner') {
-        a.role = 'out';
+        this.stop('A', arrive);
         this.log(arrive, "The lock service refuses A's renewal because B holds the lease. A stops.");
       }
     });
@@ -261,6 +284,7 @@ export class FenceLane {
     if (b.role !== 'standby') return;
     const lock = this.lock;
     if (lock.holder !== null && t < lock.expiresAt) return;
+    this.marks.push({ kind: 'expire', t: lock.expiresAt, token: lock.token });
     this.log(lock.expiresAt, `Server A's lease expires in the lock service. No renewal arrived in time.`);
     this.grant('B', t);
     if (this.policy === 'fenced') this.maxToken = Math.max(this.maxToken, b.token);
@@ -285,24 +309,27 @@ export class FenceLane {
     const slowLink = this.scenario.slowLink;
     const arrive = server === 'A' && slowLink && t >= slowLink.from ? t + slowLink.delay : t;
     if (arrive === t) {
-      this.append(server, seq, token, t);
+      this.append(server, seq, token, t, t);
       return;
     }
     this.inFlight += 1;
     this.at(arrive, () => {
       this.inFlight -= 1;
-      this.append(server, seq, token, arrive);
+      this.append(server, seq, token, arrive, t);
     });
   }
 
-  private append(server: ServerId, seq: number, token: number, t: number) {
+  private append(server: ServerId, seq: number, token: number, t: number, sentAt: number) {
     const stale = token < this.lock.token;
+    const mark = { kind: 'stale', t, sentAt, server, seq, token } as const;
     if (this.policy === 'fenced') {
       if (token < this.maxToken) {
         if (stale) this.staleRejected += 1;
+        this.marks.push({ ...mark, newest: this.maxToken, accepted: false });
         const writer = this.servers[server];
         const stepDown = writer.role === 'owner' ? ` Server ${server} steps down.` : '';
-        writer.role = 'out';
+        if (writer.role === 'owner') this.stop(server, t);
+        else writer.role = 'out';
         this.log(
           t,
           `The log rejects seq ${seq} because token ${token} is older than token ${this.maxToken}.${stepDown}`,
@@ -313,6 +340,7 @@ export class FenceLane {
     }
     if (stale) {
       this.staleAccepted += 1;
+      this.marks.push({ ...mark, newest: this.lock.token, accepted: true });
       const taken = this.entries.some((entry) => entry.seq === seq);
       this.log(
         t,
