@@ -1,0 +1,45 @@
+---
+import { casesAfter, moduleClosedBy, pathNeighbours } from '../../data/coursePath';
+import { difficultyLabels, findModule } from '../../data/curriculum';
+import { lessonHref } from '../../lib/paths';
+
+interface Props {
+  /** Current lesson id. The card renders only on the last core lesson of a module with cases. */
+  lessonId: string;
+}
+
+const { lessonId } = Astro.props;
+const moduleId = moduleClosedBy(lessonId);
+const cases = moduleId ? casesAfter(moduleId) : [];
+const moduleTitle = moduleId ? findModule(moduleId)?.title : undefined;
+const next = pathNeighbours(lessonId)?.next;
+---
+
+{
+  cases.length > 0 && (
+    <section class="sdv-apply not-content" aria-labelledby="sdv-apply-title">
+      <h2 id="sdv-apply-title" class="sdv-apply__title">
+        Apply it now
+      </h2>
+      <p class="sdv-apply__intro">
+        You finished {moduleTitle}. These case studies use what it taught. Take one now, or continue with the next
+        concept.
+      </p>
+      <ul class="sdv-apply__list">
+        {cases.map((lesson) => (
+          <li>
+            <a href={lessonHref(lesson.id)}>{lesson.title}</a>
+            <span class="sdv-apply__meta">
+              {lesson.minutes} min, {difficultyLabels[lesson.difficulty]}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {next && (
+        <p class="sdv-apply__next">
+          Next concept: <a href={lessonHref(next.id)}>{next.title}</a>
+        </p>
+      )}
+    </section>
+  )
+}
