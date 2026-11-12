@@ -3,6 +3,7 @@ title: Transactions and constraints
 description: Two requests write the same row at once and one silently vanishes. Keep one database correct with atomic statements, conditional updates, row locks, isolation levels, and unique keys.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -11,6 +12,29 @@ import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
 import TransactionsWidget from '../../../components/widgets/TransactionsWidget';
+
+export const recall = [
+  {
+    id: 'foundations/transactions/recall-1',
+    prompt: 'Links live as documents, and a new release adds an expires_at field. The document database accepts it with no migration. What still needs care?',
+    options: [
+      { text: 'Nothing, since a schemaless database has no schema', why: 'The database skips checking the shape. The app still expects one, so the schema moves into the code.' },
+      { text: 'Every reader must handle documents with and without expires_at', correct: true, why: 'Old documents still exist. Readers handle both shapes until a background job or the next write upgrades them.' },
+      { text: 'The database rewrites every old document to add the field', why: 'It rewrites nothing on its own. Old documents keep their old shape until the app changes them.' },
+      { text: 'An ALTER TABLE must run before the release', why: 'That is how tables change. A document database takes the new field as soon as the app writes it.' },
+    ],
+  },
+  {
+    id: 'foundations/transactions/recall-2',
+    prompt: 'Which value is the best candidate to copy onto every link row, so a read skips a join?',
+    options: [
+      { text: 'The click count', why: 'It changes on every redirect, the busiest path. Keeping the copy doubles writes from 20,000 to 40,000 a second.' },
+      { text: 'The owner’s display name', correct: true, why: 'Previews read it constantly and owners rename rarely. Reads of the copy vastly outnumber the writes that keep it fresh.' },
+      { text: 'The time of the latest click', why: 'It changes with every click too, so the copy pays the same bill on the hot path as a click count.' },
+      { text: 'Today’s click total', why: 'It rises with every click. A value that changes on a hot path is better kept once.' },
+    ],
+  },
+];
 
 export const nodes = [
   { id: 'a', kind: 'server', x: 80, y: 60, label: 'Handler A', sublabel: 'click 2' },
@@ -105,6 +129,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

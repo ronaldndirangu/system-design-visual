@@ -1,0 +1,127 @@
+---
+title: 'Checkpoint 6: Case studies'
+description: Ten questions on search, feeds, video, ticketing, payments, ride sharing, metrics, and live editing, plus two from earlier modules. Score 70% to pass.
+---
+
+import Checkpoint from '../../../components/review/Checkpoint';
+
+export const quiz = [
+  {
+    id: 'checkpoint/case-studies/q1',
+    prompt: 'Every search fans out to 18 index shards. One shard’s disk starts failing, and every search now takes 2 s. What keeps search fast?',
+    options: [
+      { text: 'A 200 ms deadline per shard plus a hedged request, then a partial page', correct: true, why: 'A query that waits for all 18 shards runs at the speed of the slowest. The deadline caps the wait, and a partial page misses only about 1 in 18 documents.' },
+      { text: 'More shards, so each one holds less data', why: 'Every query still waits for every shard, so the failing one still sets the time. More shards add more chances for one to lag.' },
+      { text: 'A 10 minute cache for every result page', why: 'Repeat queries get faster, and every new query still waits on the slow shard. Fresh queries keep arriving all day.' },
+      { text: 'A client timeout raised from 2 s to 5 s', why: 'That stops the errors and leaves every search at 2 s. Users feel the slow shard on every query.' },
+    ],
+  },
+  {
+    id: 'checkpoint/case-studies/q2',
+    prompt: 'Fan out on write needs more peak writes than the feed fleet can handle. Data shows two thirds of followers have not opened the app this week. What cuts the writes most?',
+    options: [
+      { text: 'Pull every feed on read, for all users', why: 'That ends the writes and makes every active reader gather hundreds of accounts at the evening peak.' },
+      { text: 'Cap each cached feed at 200 entries', why: 'A shorter list saves memory. Each post still writes to every follower’s list, so peak writes stay the same.' },
+      { text: 'Skip fan out for inactive users and rebuild their feeds on read', correct: true, why: 'Writes go only to feeds someone reads, so peak writes fall to about a third. A returning user’s first load is slow while it rebuilds.' },
+      { text: 'Batch the fan out writes every 5 minutes', why: 'Batching makes the same writes a little later, and every post shows up minutes late.' },
+    ],
+  },
+  {
+    id: 'checkpoint/case-studies/q3',
+    ordered: true,
+    prompt: 'Behind a CDN with a 90% hit ratio, the video origin serves 10 TB a day. Tuning lifts the hit ratio to 98%, and viewing stays the same. About how much does the origin serve now?',
+    options: [
+      { text: '0.2 TB', why: 'That takes 2% of the origin’s old 10 TB. The 2% applies to all 100 TB that viewers receive.' },
+      { text: '2 TB', correct: true, why: 'Viewers receive 10 TB ÷ 10% = 100 TB a day. At 98%, the origin serves the 2% that misses: 2 TB.' },
+      { text: '5 TB', why: 'That assumes the misses halve. They fall from 10% to 2% of traffic, a fivefold drop.' },
+      { text: '9.2 TB', why: 'That trims the origin’s 10 TB by 8%. The 8 points come off all 100 TB, which leaves 2 TB.' },
+    ],
+  },
+  {
+    id: 'checkpoint/case-studies/q4',
+    prompt: 'A flash sale’s seat database copies to its standby asynchronously. The primary dies mid sale, and the standby is promoted. What can go wrong?',
+    options: [
+      { text: 'Nothing, since the standby holds every committed sale', why: 'Async replication confirms a sale before the standby has it. The last few commits can vanish in the failover.' },
+      { text: 'The sale stalls until the old primary returns', why: 'Promotion lets the sale carry on from the standby. The danger is what the standby never received.' },
+      { text: 'Every seat on hold is released at once', why: 'Holds that reached the standby survive the failover. Only the commits it never received can vanish.' },
+      { text: 'A seat sold just before the failover can sell again', correct: true, why: 'The last few commits never reached the standby, so their seats look free. Synchronous replication keeps every committed sale, and seat writes pay for it in latency.' },
+    ],
+  },
+  {
+    id: 'checkpoint/case-studies/q5',
+    prompt: 'A card payment stays pending because the bank’s webhook never arrived. What moves it to its final state?',
+    options: [
+      { text: 'Waiting for the webhook, since banks always resend', why: 'Webhooks get lost. A payment that relies on them alone can stay pending forever.' },
+      { text: 'A second charge under a new idempotency key', why: 'If the first charge went through, the customer pays twice. The first charge’s outcome must be found first.' },
+      { text: 'A status lookup by idempotency key, backed by the reconciler', correct: true, why: 'A lookup by key asks the bank what happened to this exact charge. The reconciler reads the bank’s settlement file and catches anything both paths missed.' },
+      { text: 'Marking it failed after an hour and telling the customer', why: 'The bank may have charged the card already. The customer then pays for an order you cancelled.' },
+    ],
+  },
+  {
+    id: 'checkpoint/case-studies/q6',
+    prompt: 'Drivers send a location ping every 4 s, and some pings get lost on weak cell signal. A teammate proposes retrying each lost ping with backoff. What do you say?',
+    options: [
+      { text: 'Drop the lost ping, since the next one arrives 4 s later with fresher data', correct: true, why: 'A location is only useful while it is fresh. The next ping replaces the lost one, so a retry adds load and saves nothing.' },
+      { text: 'Agree, since every ping must reach the location store', why: 'A retried ping arrives after a fresher one is already on its way. It spends load to deliver an old position.' },
+      { text: 'Agree, and queue unsent pings on the phone', why: 'A queue replays old positions once the signal returns. Matching needs where the driver is now.' },
+      { text: 'Send every ping twice to cover the losses', why: 'That doubles the write load on every ping to cover a few losses. The next ping already covers them.' },
+    ],
+  },
+  {
+    id: 'checkpoint/case-studies/q7',
+    prompt: 'A deploy adds a user ID label to a request counter. One target now exports more series than its Prometheus sample_limit allows. What happens?',
+    options: [
+      { text: 'Prometheus keeps series up to the limit and drops the rest', why: 'The limit never truncates. Prometheus fails the whole scrape of a target that exports too many.' },
+      { text: 'Only the new user ID series get dropped', why: 'The limit covers the whole scrape. Every series from that target goes missing, old and new alike.' },
+      { text: 'The whole scrape fails, so every metric from that target vanishes', correct: true, why: 'sample_limit fails the whole scrape of a target that exports too many. Its dashboards and alerts go blank until the label comes out.' },
+      { text: 'Prometheus scrapes that target less often', why: 'The scrape interval stays the same. Past the limit, each scrape fails outright.' },
+    ],
+  },
+  {
+    id: 'checkpoint/case-studies/q8',
+    prompt: 'An editor client drops its connection, reconnects, and resends its last 5 ops because it never saw their acks. Two of them had already reached the server. What happens to those two?',
+    options: [
+      { text: 'They apply twice, and the client deletes the extra text', why: 'A doubled op would duplicate text in every copy of the document. The server stops the duplicate before it reaches the log.' },
+      { text: 'The unique (doc_id, op_id) key turns each one into a re-ack', correct: true, why: 'The server already logged those op ids, so the second insert fails and it acks again. The other 3 ops apply once each.' },
+      { text: 'The server rejects all 5 and tells the client to reload', why: 'Rejecting the batch throws away 3 new ops. The key handles each op on its own.' },
+      { text: 'They apply twice, and a nightly job removes the copies', why: 'Every reader sees the doubled text until the job runs. The unique key stops the copy at insert time.' },
+    ],
+  },
+  {
+    id: 'checkpoint/case-studies/q9',
+    prompt: 'An alert should fire on 5 failed logins within 60 s. An attacker fails 3 times at 0:58 and 3 more times at 1:02. Which window catches it?',
+    options: [
+      { text: 'A tumbling window of 60 s', why: 'The burst straddles the boundary at 1:00, so each window counts only 3. Neither reaches 5.' },
+      { text: 'A tumbling window of 30 s', why: 'Shorter windows split the burst the same way. 0:30 to 1:00 sees 3, and 1:00 to 1:30 sees 3.' },
+      { text: 'A sliding window of 60 s that slides every 10 s', correct: true, why: 'The window from 0:10 to 1:10 holds all 6 failures. The Stream processing lesson shows sliding windows catch a burst that straddles a tumbling boundary.' },
+      { text: 'Either 60 s window, since all 6 fall within 4 s', why: 'A tumbling window resets at 1:00, so its two windows count 3 each. Only overlapping windows see all 6 together.' },
+    ],
+  },
+  {
+    id: 'checkpoint/case-studies/q10',
+    prompt: 'A bad migration corrupts a 12 TB database. Restores load at 400 GB/h on one machine, and the RTO is 4 h. What meets the RTO?',
+    options: [
+      { text: 'Take backups every hour instead of every day', why: 'Backup cadence sets how much data you lose, the RPO. Loading 12 TB still takes 30 h.' },
+      { text: 'Double the restore speed to 800 GB/h', why: '12,000 GB ÷ 800 GB/h is still 15 h, far past the 4 h RTO.' },
+      { text: 'Restore from a replica that trails the primary by seconds', why: 'The replica applied the bad migration within seconds too. It holds the same corrupt data.' },
+      { text: 'Split it into 8 shards that restore in parallel', correct: true, why: 'One stream takes 12,000 ÷ 400 = 30 h. Eight shards loading at once take about 30 ÷ 8 ≈ 3.75 h, as the Backups and recovery lesson’s sharded restore shows.' },
+    ],
+  },
+];
+
+Answer every question, then check your score. You need 7 of 10 to pass. A pass marks the module checkpoint complete on this device.
+
+Missed one? The explanation names the idea, and the module’s lessons cover it in depth:
+
+- [Search](../../case-studies/search/)
+- [News feed](../../case-studies/news-feed/)
+- [Video streaming](../../case-studies/video-streaming/)
+- [Flash-sale ticketing](../../case-studies/ticketing/)
+- [Payments](../../case-studies/payments/)
+- [Chat](../../case-studies/chat/)
+- [Notifications](../../case-studies/notifications/)
+- [Ride sharing](../../case-studies/ride-sharing/)
+- [Metrics and alerting](../../case-studies/metrics/)
+- [Collaborative editor](../../case-studies/collaborative-editor/)
+
+<Checkpoint client:load moduleId="case-studies" questions={quiz} />

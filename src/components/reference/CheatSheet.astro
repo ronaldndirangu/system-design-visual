@@ -1,0 +1,88 @@
+---
+import { findModule } from '../../data/curriculum';
+import { lessonHref } from '../../lib/paths';
+import { extractTakeaways, inlineMarkdown } from '../../lib/takeaways';
+
+interface Props {
+  /** Curriculum module id, for example 'scaling'. */
+  moduleId: string;
+}
+
+const sources = import.meta.glob<string>('../../content/docs/**/*.mdx', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
+
+const module = findModule(Astro.props.moduleId);
+if (!module) throw new Error(`Cheat sheet names an unknown module: ${Astro.props.moduleId}`);
+
+const lessons = module.lessons.map((lesson) => {
+  const source = sources[`../../content/docs/${lesson.id}.mdx`];
+  if (source === undefined) throw new Error(`Cheat sheet cannot find the page for ${lesson.id}`);
+  return {
+    ...lesson,
+    anchor: `sdv-cheat-${lesson.id.replaceAll('/', '-')}`,
+    href: lessonHref(lesson.id),
+    takeaways: extractTakeaways(source).map(inlineMarkdown),
+  };
+});
+---
+
+<div class="sdv-cheat not-content">
+  <p class="sdv-cheat__intro">
+    Module {module.number}: {module.title}. {lessons.length} lessons with their key points. Print the page to keep a
+    paper copy.
+  </p>
+  {
+    lessons.map((lesson) => (
+      <section class="sdv-cheat__lesson" aria-labelledby={lesson.anchor}>
+        <h2 id={lesson.anchor} class="sdv-cheat__title">
+          <a href={lesson.href}>{lesson.title}</a>
+        </h2>
+        <p class="sdv-cheat__summary">{lesson.summary}</p>
+        {lesson.takeaways.length > 0 && (
+          <ul class="sdv-cheat__points">
+            {lesson.takeaways.map((point) => (
+              <li set:html={point} />
+            ))}
+          </ul>
+        )}
+      </section>
+    ))
+  }
+</div>
+
+<style>
+  .sdv-cheat {
+    display: grid;
+    gap: 0.75rem;
+    margin-block: 1rem;
+  }
+  .sdv-cheat__intro {
+    color: var(--sl-color-gray-2);
+    margin: 0;
+  }
+  .sdv-cheat__lesson {
+    background: var(--sdv-surface);
+    border: 1px solid var(--sdv-border);
+    border-radius: var(--sdv-radius);
+    padding: 0.75rem 1.1rem;
+    break-inside: avoid;
+  }
+  .sdv-cheat__title {
+    font-size: var(--sl-text-lg);
+    margin: 0 0 0.25rem;
+  }
+  .sdv-cheat__summary {
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+    margin: 0;
+  }
+  .sdv-cheat__points {
+    display: grid;
+    gap: 0.3rem;
+    margin: 0.6rem 0 0;
+    padding-inline-start: 1.1rem;
+  }
+</style>

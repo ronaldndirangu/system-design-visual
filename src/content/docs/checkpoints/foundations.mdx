@@ -1,0 +1,128 @@
+---
+title: 'Checkpoint 1: Foundations'
+description: Ten questions on clicks, APIs, data models, IDs, transactions, indexes, real-time transport, and security. Score 70% to pass.
+---
+
+import Checkpoint from '../../../components/review/Checkpoint';
+
+export const quiz = [
+  {
+    id: 'checkpoint/foundations/q1',
+    ordered: true,
+    prompt: 'A user in Australia clicks a sho.rt link served from Frankfurt, 150 ms away. The first click takes about 490 ms. The browser keeps the connection open and caches the DNS answer. About how long does the next click on another link take?',
+    options: [
+      { text: 'About 10 ms', why: 'That is a round trip near the user. The request and response still cross the ocean once, which costs 150 ms.' },
+      { text: 'About 160 ms', correct: true, why: 'The cached DNS answer and the open connection skip the lookup and both handshakes. One 150 ms round trip plus a few ms of server work remains.' },
+      { text: 'About 340 ms', why: 'That skips only the TLS handshake. A reused connection skips the TCP handshake too, and the DNS answer is cached.' },
+      { text: 'About 490 ms', why: 'That pays every step again. An open connection skips TCP and TLS, which saves two round trips, about 300 ms.' },
+    ],
+  },
+  {
+    id: 'checkpoint/foundations/q2',
+    prompt: 'A client sends well-formed JSON to POST /links, but expires_at holds a date in the past. Which response fits best?',
+    options: [
+      { text: '400 Bad Request', why: '400 means the request is malformed, such as broken JSON or a missing field. This body parses fine.' },
+      { text: '409 Conflict', why: '409 means the request clashes with current state, such as an alias someone already took. A past date clashes with no other record.' },
+      { text: '422 Unprocessable Content', correct: true, why: 'The request is well formed and breaks a rule. The error body should name the field so the client can fix it.' },
+      { text: '500 Internal Server Error', why: '500 blames the server, so clients may retry. Retrying the same past date fails every time.' },
+    ],
+  },
+  {
+    id: 'checkpoint/foundations/q3',
+    prompt: 'The abuse team wants every account that shares a payment card or device with a banned account, then the accounts linked to those, three hops out. Which store fits that query best?',
+    options: [
+      { text: 'A key-value store keyed by account ID', why: 'Key-value lookups fetch one account by its key. Following shared cards three hops out takes many round trips joined in code.' },
+      { text: 'A wide column store partitioned by day', why: 'Wide column stores excel at time ranges inside one partition. They have no notion of edges between accounts.' },
+      { text: 'A document store with one document per account', why: 'Each document holds one account well. Finding who shares a card means scanning or joining documents in code.' },
+      { text: 'A graph store with accounts, cards, and devices as nodes', correct: true, why: 'Graph stores follow edges several hops out in one query. That is exactly what an abuse ring search needs.' },
+    ],
+  },
+  {
+    id: 'checkpoint/foundations/q4',
+    ordered: true,
+    prompt: 'sho.rt creates 5,000 links a second across its app servers. Each server takes a block of 1,000 IDs from a central counter at a time. About how many requests a second reach the counter?',
+    options: [
+      { text: '5', correct: true, why: 'Each request covers 1,000 inserts, so 5,000 ÷ 1,000 = 5. A crashed server wastes the rest of its block, and the gap does no harm.' },
+      { text: '50', why: 'That divides by 100. Each block holds 1,000 IDs, so the counter sees one request per 1,000 links.' },
+      { text: '1,000', why: 'That is the block size. The counter sees one request per block, and 5,000 links a second use up 5 blocks.' },
+      { text: '5,000', why: 'That asks the counter once per link, which is the load blocks remove. Each request now covers 1,000 links.' },
+    ],
+  },
+  {
+    id: 'checkpoint/foundations/q5',
+    prompt: 'A handler locks a link row with SELECT ... FOR UPDATE, calls a payment API that takes 2 s, then commits. What happens as traffic to that link grows?',
+    options: [
+      { text: 'The lock lapses during the call, so two writers can update the row at once', why: 'A row lock lasts until COMMIT or ROLLBACK, whatever the code does meanwhile. The danger runs the other way: the lock lasts too long.' },
+      { text: 'Every other writer to that row waits up to 2 s, so requests pile up', correct: true, why: 'Other writers queue behind the lock for the whole call. Hold locks for milliseconds, and make network calls outside the transaction.' },
+      { text: 'The database cancels the call, since transactions cannot span network calls', why: 'The database knows nothing about the call. It simply keeps the lock held while the code waits.' },
+      { text: 'Requests stay fast, since the lock covers only one row', why: 'One row is exactly where every click on a busy link lands. Each writer waits its turn for the full 2 s.' },
+    ],
+  },
+  {
+    id: 'checkpoint/foundations/q6',
+    prompt: 'The dashboard query seeks an index on (user_id, created_at), then reads a table page for each of its 20 rows to fetch code and long_url. You add INCLUDE (code, long_url) to the index. What do you gain, and what do you pay?',
+    options: [
+      { text: 'Gain: the index answers the query alone. Pay: a larger index and more bytes on every insert', correct: true, why: 'A covering index skips the 20 table reads. Every new link now writes code and long_url into the index too.' },
+      { text: 'Gain: queries filtering on long_url can seek. Pay: nothing, since included columns are free', why: 'Included columns ride along outside the sort key, so nothing can seek on them. They also cost space and write work.' },
+      { text: 'Gain: faster inserts, since the table is touched less. Pay: slower dashboard reads', why: 'It runs the other way. Reads skip table pages, and inserts write more bytes.' },
+      { text: 'Gain: no table reads. Pay: the index can no longer seek by user_id', why: 'INCLUDE adds columns after the key, and the (user_id, created_at) key stays the same. Seeks by user_id work as before.' },
+    ],
+  },
+  {
+    id: 'checkpoint/foundations/q7',
+    prompt: 'sho.rt streams live click counts to 50,000 dashboards over SSE. Right after each deploy, the new servers overload for a minute. Which fix targets the cause?',
+    options: [
+      { text: 'Switch from SSE to WebSocket', why: 'A WebSocket drops on restart just like SSE. The browsers would still reconnect all at once.' },
+      { text: 'Raise the proxy idle timeout to 10 minutes', why: 'The idle timeout drops quiet streams. Here the restart itself drops every stream at the same moment.' },
+      { text: 'Add a random delay before each browser reconnects', correct: true, why: 'A restart drops every stream it holds, and all those browsers reconnect at once. A random delay spreads the reconnects over several seconds.' },
+      { text: 'Send heartbeats every 5 s', why: 'Heartbeats keep idle streams alive through proxies. They do nothing for the reconnect wave after a restart.' },
+    ],
+  },
+  {
+    id: 'checkpoint/foundations/q8',
+    prompt: 'An attacker steals a user’s credential. Your API uses signed tokens that last 24 hours and checks them without a lookup. What happens when you try to cut the attacker off?',
+    options: [
+      { text: 'Deleting the user’s sessions blocks the token at once', why: 'A signed token needs no session row, so there is nothing to delete. The API checks only the signature and the expiry.' },
+      { text: 'Changing the user’s password blocks the token at once', why: 'The API verifies the signature and expiry without a lookup, so it never sees the password change.' },
+      { text: 'The API answers 401 to the token, since it is stolen', why: 'The stolen token is valid and unexpired, so the API cannot tell it from the real one. 401 covers missing, forged, or expired credentials.' },
+      { text: 'The token keeps working until it expires, up to 24 hours', correct: true, why: 'Keep token lifetimes to minutes and pair them with a refresh step. Server sessions give instant sign-out at the cost of a lookup per request.' },
+    ],
+  },
+  {
+    id: 'checkpoint/foundations/q9',
+    ordered: true,
+    prompt: 'You are sizing the links table. sho.rt expects 3 million new links a day and keeps each for 3 years, and each row takes about 500 bytes. About how much storage does the table need?',
+    options: [
+      { text: 'About 16 GB', why: 'That holds only about 11 days of links. Over 3 years the table grows to about 3.3 billion rows.' },
+      { text: 'About 160 GB', why: 'That holds only about 4 months of links. 3.3 billion rows at 500 bytes each comes to about 1.6 TB.' },
+      { text: 'About 1.6 TB', correct: true, why: '3 million × 365 × 3 ≈ 3.3 billion rows, and 3.3 billion × 500 bytes ≈ 1.6 TB. The requirements and estimates lesson runs the same math for a smaller shortener.' },
+      { text: 'About 16 TB', why: 'That is ten times too high. 3.3 billion rows × 500 bytes is about 1.6 trillion bytes, or 1.6 TB.' },
+    ],
+  },
+  {
+    id: 'checkpoint/foundations/q10',
+    prompt: 'Clicks are heavily skewed: a few links draw most of the traffic. How does that skew affect a cache in front of the database, and a database partitioned by link code?',
+    options: [
+      { text: 'It helps the cache and hurts the partitions', correct: true, why: 'A small hot set fits in memory, so the cache answers most clicks. The same hot links pile onto whichever partitions hold them, as the access patterns lesson shows.' },
+      { text: 'It hurts the cache and helps the partitions', why: 'It runs the other way. Skew concentrates traffic, which a cache gains from and a partition suffers from.' },
+      { text: 'It helps both, since hot links stay in memory everywhere', why: 'Partitions split data by key, so every click on a hot link still lands on one partition. Only the cache gains from the concentration.' },
+      { text: 'It hurts both, since every hot link needs a copy on each node', why: 'Copies are one fix for a hot key, and a cache needs no copies to gain from skew. A small hot set is what a cache serves best.' },
+    ],
+  },
+];
+
+Answer every question, then check your score. You need 7 of 10 to pass. A pass marks the module checkpoint complete on this device.
+
+Missed one? The explanation names the idea, and the module’s lessons cover it in depth:
+
+- [What happens when you click a link](../../foundations/what-happens-when-you-click/)
+- [APIs and contracts](../../foundations/apis/)
+- [Data modeling and storage choice](../../foundations/data-modeling/)
+- [Unique IDs](../../foundations/unique-ids/)
+- [Transactions and constraints](../../foundations/transactions/)
+- [Indexes](../../foundations/indexes/)
+- [Storage engines](../../foundations/storage-engines/)
+- [Real-time transport](../../foundations/real-time/)
+- [Security basics](../../foundations/security/)
+
+<Checkpoint client:load moduleId="foundations" questions={quiz} />

@@ -3,6 +3,7 @@ title: Rate limiting
 description: Watch one noisy client starve everyone else, then share capacity fairly with token buckets, sliding windows, and 429 responses that well-behaved clients respect.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -12,6 +13,29 @@ import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
 import RateLimitDuelWidget from '../../../components/widgets/RateLimitDuelWidget';
 import TokenBucketWidget from '../../../components/widgets/TokenBucketWidget';
+
+export const recall = [
+  {
+    id: 'reliability/rate-limiting/recall-1',
+    prompt: 'A partner’s app, its SDK, and its HTTP library each make up to 4 attempts. Your API fails every attempt during an outage. How many attempts can one tap on send produce?',
+    options: [
+      { text: 'About 12, four per layer', why: 'The layers nest, so their attempts multiply. Adding them undercounts.' },
+      { text: 'Up to 64, since the layers multiply', correct: true, why: '4 × 4 × 4 = 64 attempts reach your API. That is why only one layer should retry.' },
+      { text: 'Up to 4, since only the library talks to your API', why: 'The library runs its 4 attempts each time the SDK calls it, and the SDK runs each time the app does.' },
+      { text: 'About 10, 3 retries per layer plus the first', why: 'This adds the retries. Nested retries multiply, giving up to 64 attempts.' },
+    ],
+  },
+  {
+    id: 'reliability/rate-limiting/recall-2',
+    prompt: 'A server’s bounded line is full when a new request arrives. Which answer best protects both the server and the caller?',
+    options: [
+      { text: 'Accept it and let the line grow', why: 'Waits grow until answers arrive after callers have given up, so the work is wasted.' },
+      { text: 'Hold the connection until a worker frees up', why: 'That makes the line unbounded in practice, and the caller gets no signal to slow down.' },
+      { text: 'Answer 503 at once with a Retry-After header', correct: true, why: 'A fast no costs microseconds and no worker, and it tells the caller when to try again. That is backpressure.' },
+      { text: 'Drop it silently and close the connection', why: 'The caller learns nothing and may retry at once, which adds load.' },
+    ],
+  },
+];
 
 export const nodes = [
   { id: 'client', kind: 'client', x: 70, y: 150, label: 'Client A', sublabel: 'API key a_123' },
@@ -115,6 +139,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

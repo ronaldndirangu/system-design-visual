@@ -1,0 +1,123 @@
+---
+title: 'Checkpoint 2: Scaling the URL shortener'
+description: Ten questions on load balancing, caching, CDNs, object storage, replication, sharding, and consistent hashing. Score 70% to pass.
+---
+
+import Checkpoint from '../../../components/review/Checkpoint';
+
+export const quiz = [
+  {
+    id: 'checkpoint/scaling/q1',
+    prompt: 'The sho.rt dashboard keeps each user’s login in the memory of one app server, and the load balancer pins each user to that server with a cookie. What goes wrong as traffic grows?',
+    options: [
+      { text: 'Every request pays an extra hop to fetch the session', why: 'That hop is the cost of a shared session store. In-memory sessions skip it, which is their one appeal.' },
+      { text: 'The balancer must drop to layer 4 to pin users', why: 'Pinning with a cookie needs a layer 7 balancer, since layer 4 never reads cookies.' },
+      { text: 'Load turns uneven, and a crash logs its users out', correct: true, why: 'Busy users stay stuck to one server, and their sessions die with it. A shared session store lets any server answer any request.' },
+      { text: 'Health checks fail, since each server holds different state', why: 'A health check probes the server itself, whatever sessions it holds. Pinning changes only where requests go.' },
+    ],
+  },
+  {
+    id: 'checkpoint/scaling/q2',
+    prompt: 'At 09:00 a script warms the cache with the 100,000 most clicked links, each with a 1 hour TTL. At 10:00 database load spikes. Which fix targets the cause?',
+    options: [
+      { text: 'Add a random few minutes to each TTL', correct: true, why: 'Entries filled together expire together, so 100,000 misses hit the database at once. Jitter spreads the expiries out.' },
+      { text: 'Turn on single-flight for each key', why: 'Single-flight merges misses on the same key. Here 100,000 different keys miss at once, and each one still reads the database.' },
+      { text: 'Raise every TTL to 24 hours', why: 'The entries still expire together, one day later. The spike moves and stays just as large.' },
+      { text: 'Add a second cache node', why: 'More cache memory leaves the expiry times alone. The entries still expire together and miss together.' },
+    ],
+  },
+  {
+    id: 'checkpoint/scaling/q3',
+    prompt: 'A deleted link still draws 3,000 clicks a second from an old viral post. Each click misses the cache, queries the database, and finds nothing. Which fix stops those queries?',
+    options: [
+      { text: 'Add a read replica to absorb the misses', why: 'A replica adds capacity for wasted queries. Caching the empty answer removes them.' },
+      { text: 'Raise the TTL on live links', why: 'Live links already hit the cache. These misses come from a code with nothing cached for it.' },
+      { text: 'Answer 500 for unknown codes', why: 'The status code comes after the database lookup, so the query still runs. A 500 also invites clients to retry.' },
+      { text: 'Cache the “no such link” answer for a short time', correct: true, why: 'Negative caching reads the database once per TTL for that code. A short TTL means a code created later starts working quickly.' },
+    ],
+  },
+  {
+    id: 'checkpoint/scaling/q4',
+    prompt: 'Owners can change where a short link points, and the change must reach every user within a minute. Browsers should ask the CDN on every click, and edges may reuse a redirect for 60 s. Which header fits?',
+    options: [
+      { text: 'Cache-Control: max-age=60', why: 'Browsers would cache the redirect too. A browser could fetch a copy that sat 59 s at the edge and keep it 60 s more, so a change takes up to 2 minutes.' },
+      { text: 'Cache-Control: max-age=0, s-maxage=60', correct: true, why: 'A max-age of 0 makes the browser’s copy stale at once, and s-maxage applies only to shared caches such as CDN edges. A change reaches everyone within 60 s.' },
+      { text: 'Cache-Control: no-store', why: 'Nothing caches the redirect, so every click travels to the origin. That meets the minute and throws away 60 s of reuse at the edge.' },
+      { text: 'Cache-Control: max-age=31536000', why: 'A year suits versioned files, whose name changes with their content. A short link keeps its name when its target changes.' },
+    ],
+  },
+  {
+    id: 'checkpoint/scaling/q5',
+    prompt: 'Owners can attach a preview image of up to 5 MB to each link. Where should the image bytes and the details about them go?',
+    options: [
+      { text: 'Bytes in a BLOB column of the links table', why: 'Large blobs bloat the table, its backups, and every replica, and each byte passes through the database. Keep the database for small records you query.' },
+      { text: 'Bytes and details both in a bucket, found by listing keys', why: 'Listing a bucket is slow and can’t filter by owner or link. The database answers those questions.' },
+      { text: 'Bytes in a bucket, and the object key and size in the links table', correct: true, why: 'Object storage holds large bytes cheaply and serves them over HTTP. The database keeps the small record you query, such as which link owns which key.' },
+      { text: 'Bytes on the disk of the app server that took the upload', why: 'Other servers can’t read that disk, and the image dies with it. A bucket gives every server the same copy.' },
+    ],
+  },
+  {
+    id: 'checkpoint/scaling/q6',
+    prompt: 'The sho.rt primary has 2 replicas and uses semi-synchronous replication, which waits for any one replica to confirm each write. One replica loses its network for 5 minutes. What happens to writes?',
+    options: [
+      { text: 'Every write stalls until that replica returns', why: 'Waiting for every replica is synchronous replication. Semi-sync needs one confirmation, and the healthy replica gives it.' },
+      { text: 'Writes go on, confirmed by the healthy replica', correct: true, why: 'One confirmation is enough, so a single lost replica costs nothing. If neither replica answers, MySQL waits out a 10 s timeout and then falls back to async.' },
+      { text: 'The primary fails over to the healthy replica', why: 'Failover replaces a dead primary. A replica losing its network gives no reason to move the primary.' },
+      { text: 'Writes switch to async at once, so a crash could lose them', why: 'Semi-sync falls back to async only when no replica confirms within the timeout. The healthy replica still confirms.' },
+    ],
+  },
+  {
+    id: 'checkpoint/scaling/q7',
+    prompt: 'Links are sharded by code, and a global index sharded by user id lists each user’s codes. Ada creates a link and opens “My links” at once. What may she see?',
+    options: [
+      { text: 'An error, since the write touched two shards', why: 'The link write succeeds on its own shard. The index shard catches up a moment later.' },
+      { text: 'Her full list, gathered by querying every shard', why: 'That describes a local index, kept beside each shard’s data. A global index answers from one index shard.' },
+      { text: 'The new link listed twice', why: 'The index holds each code once. A delay can only hide a new entry for a moment.' },
+      { text: 'Her list without the new link, for a moment', correct: true, why: 'A write now touches two shards, so most systems update the global index a moment later. The link appears once the index catches up.' },
+    ],
+  },
+  {
+    id: 'checkpoint/scaling/q8',
+    ordered: true,
+    prompt: 'A Redis Cluster spreads its 16,384 hash slots evenly over 4 shards, 4,096 each. You add a 5th shard and even out the slots. About how many slots does the new shard take?',
+    options: [
+      { text: 'About 819', why: 'That is what each old shard gives up. Four shards giving about 819 each hand the new one about 3,277.' },
+      { text: 'About 3,277', correct: true, why: '16,384 ÷ 5 ≈ 3,277, a fifth of the slots. Only those slots move, and every key keeps its slot number.' },
+      { text: 'About 4,096', why: 'That is each shard’s share with 4 shards. With 5, each holds a fifth, about 3,277.' },
+      { text: 'About 13,107', why: 'That is four fifths of the slots, roughly what mod N hashing would move. Slots let the cluster move only what the new shard owns.' },
+    ],
+  },
+  {
+    id: 'checkpoint/scaling/q9',
+    prompt: 'The links table has one index, on (user_id, created_at). A daily report runs SELECT count(*) FROM links WHERE created_at > ?. How does the database find the rows?',
+    options: [
+      { text: 'It scans, since the index sorts by user_id first', correct: true, why: 'A composite index seeks only on its leftmost columns, so the query must fix user_id. The indexes lesson shows why an index that leads with created_at fits this report.' },
+      { text: 'It seeks straight to the last day’s rows in the index', why: 'Inside this index, created_at sorts only within each user_id. The last day’s rows sit scattered across every user.' },
+      { text: 'It refuses to run until the query names a user_id', why: 'A query runs with or without a usable index. Without one, the database reads the whole table.' },
+    ],
+  },
+  {
+    id: 'checkpoint/scaling/q10',
+    prompt: 'The load balancer reports a p99 redirect time of 40 ms, yet users in Sydney say redirects feel slow. The servers sit in Frankfurt, about 150 ms away. What explains the gap?',
+    options: [
+      { text: 'The p99 hides the slowest 1%, and Sydney users fall in it', why: 'Every Sydney click pays the trip across the ocean, so the slowness is no rare tail. The balancer’s clock misses that trip entirely.' },
+      { text: 'The balancer averages percentiles across servers', why: 'Averaging percentiles skews the number. Even a correct p99 from the balancer would miss the trip across the ocean.' },
+      { text: 'The balancer misses the time spent on the user’s network', correct: true, why: 'Each Sydney click crosses the ocean before the balancer sees it. The SLOs lesson measures in the browser to catch that, and a CDN edge near Sydney cuts it.' },
+      { text: 'Sydney users have slow phones, which no server fix touches', why: 'Distance alone adds 150 ms per round trip. A CDN edge near Sydney removes most of it.' },
+    ],
+  },
+];
+
+Answer every question, then check your score. You need 7 of 10 to pass. A pass marks the module checkpoint complete on this device.
+
+Missed one? The explanation names the idea, and the module’s lessons cover it in depth:
+
+- [The server melts](../../scaling/load-balancing/)
+- [Caching](../../scaling/caching/)
+- [CDNs](../../scaling/cdn/)
+- [Object storage](../../scaling/object-storage/)
+- [Replication](../../scaling/read-replicas/)
+- [Sharding and partitioning](../../scaling/sharding/)
+- [Consistent hashing and rebalancing](../../scaling/consistent-hashing/)
+
+<Checkpoint client:load moduleId="scaling" questions={quiz} />

@@ -3,6 +3,7 @@ title: Retries with backoff and jitter
 description: Watch retries turn a three second slowdown in sho.rt's click analytics into an outage that outlives it, then retry safely with exponential backoff, full jitter, and a retry budget.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -12,6 +13,29 @@ import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
 import RetriesWidget from '../../../components/widgets/RetriesWidget';
 import RetryHerdWidget from '../../../components/widgets/RetryHerdWidget';
+
+export const recall = [
+  {
+    id: 'reliability/retries/recall-1',
+    prompt: 'Calls to analytics ingest average 10 ms, and their p99.9 is 40 ms. To free workers fast, a teammate sets the timeout to 45 ms. What goes wrong?',
+    options: [
+      { text: 'Nothing, since 45 ms sits above the p99.9', why: '1 call in 1,000 is slower than 40 ms, and some of those pass 45 ms. A 5 ms margin leaves no room for normal variation.' },
+      { text: 'Workers still fill up, because 45 ms is too long', why: 'Filling the pool is the risk of a long timeout. At 45 ms, workers free quickly.' },
+      { text: 'Calls fail only while ingest is down', why: 'Normal slow moments also trip a tight timer, even when ingest is healthy.' },
+      { text: 'Healthy calls in the slow tail fail, and each may become a retry', correct: true, why: 'A timeout belongs a few times above the slowest healthy call, about 150 ms here, so normal variation never trips it.' },
+    ],
+  },
+  {
+    id: 'reliability/retries/recall-2',
+    prompt: 'A server keeps idempotency keys for 10 minutes. A phone loses signal during a purchase and retries it, with the same key, 2 hours later. What happens?',
+    options: [
+      { text: 'The key has expired, so the server charges again', correct: true, why: 'Once a key expires, a late retry looks new. Keep keys longer than any retry can arrive; Stripe keeps them at least 24 hours.' },
+      { text: 'The server returns the first receipt', why: 'It could only replay the receipt while it still held the key, and the key was deleted after 10 minutes.' },
+      { text: 'The server answers 409, since the purchase is in progress', why: '409 is for a copy that arrives while the first is still running. This one finished long ago.' },
+      { text: 'The server answers 422, since the key is too old', why: '422 is for a key reused with a different request body, and age plays no part in it.' },
+    ],
+  },
+];
 
 export const nodes = [
   { id: 'redirect', kind: 'client', x: 70, y: 150, label: 'Redirect servers', sublabel: '150 clicks/s' },
@@ -105,6 +129,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

@@ -3,6 +3,7 @@ title: Access patterns and hot keys
 description: Find out who reads what and how often, then watch one viral link overload a single cache node while the rest sit idle.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -11,6 +12,29 @@ import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
 import HotKeyWidget from '../../../components/widgets/HotKeyWidget';
+
+export const recall = [
+  {
+    id: 'thinking/access-patterns/recall-1',
+    prompt: 'Peak traffic is 1,400 requests a second and one server handles 500 a second. Using the sizing rule from the estimates lesson, how many servers do you plan for?',
+    options: [
+      { text: '3', why: '1,400 ÷ 500 rounds up to 3, but that runs every server about 93% busy at peak. The rule divides by 500 × 0.7 to leave headroom.' },
+      { text: '6', why: 'That runs each server under 50% busy. The rule asks for 70%, which 4 servers already meet.' },
+      { text: '2', why: 'Two servers would each need to handle 700 requests a second, more than their 500 limit.' },
+      { text: '4', correct: true, why: 'servers = peak ÷ (capacity × 0.7) = 1,400 ÷ 350 = 4. Each server runs at most 70% busy.' },
+    ],
+  },
+  {
+    id: 'thinking/access-patterns/recall-2',
+    prompt: 'You run 4 servers that each handle 350 of their 500 requests a second at peak. One server dies during the peak. What happens?',
+    options: [
+      { text: 'The other 3 overload and start dropping requests', why: 'That happens when servers run near 100% at peak. At 70%, each survivor has room for its extra 117 requests a second.' },
+      { text: 'The other 3 take its share at about 93% busy and keep up', correct: true, why: '1,400 ÷ 3 ≈ 467 requests a second each, still under 500. The 30% headroom exists so one lost server does not tip the rest over.' },
+      { text: 'Peak traffic falls by a quarter to match the smaller fleet', why: 'Users keep clicking at the same rate. The same load spreads over fewer servers.' },
+      { text: 'Nothing works until a 5th server comes online', why: 'The 3 survivors can handle 1,500 requests a second together, more than the 1,400 peak.' },
+    ],
+  },
+];
 
 export const nodes = [
   { id: 'client', kind: 'client', x: 70, y: 175, label: 'Clicks' },
@@ -96,6 +120,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

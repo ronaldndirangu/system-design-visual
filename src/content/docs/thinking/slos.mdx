@@ -3,6 +3,7 @@ title: SLOs and measurement
 description: Define fast enough with percentiles, an SLO, and an error budget, then use tracing to find which fix actually keeps the promise.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -11,6 +12,29 @@ import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
 import SloWidget from '../../../components/widgets/SloWidget';
+
+export const recall = [
+  {
+    id: 'thinking/slos/recall-1',
+    prompt: 'The shortener’s cache holds only 10% of all links, yet it answers 70% of clicks. Which property of the access pattern makes that work?',
+    options: [
+      { text: 'Reads outnumber writes about 100 to 1', why: 'A high read ratio makes caching worth doing. It does not explain why so few links cover so many clicks.' },
+      { text: 'Hashing spreads short codes evenly across nodes', why: 'Even spread decides where keys live. It says nothing about which keys draw the clicks.' },
+      { text: 'Popularity follows a long tail, so a few links draw most clicks', correct: true, why: 'That skew lets a small cache of popular links answer most requests. The same skew creates hot keys on a partition.' },
+      { text: 'Short codes are small, so many fit in memory', why: 'Small keys help, but a cache of 10% of links would still miss most clicks if every link were equally popular.' },
+    ],
+  },
+  {
+    id: 'thinking/slos/recall-2',
+    prompt: 'Your cache copies any link that passes 50 clicks a second to every node. A link jumps from quiet to 300 clicks a second at once. What happens in the first moment?',
+    options: [
+      { text: 'Every node shares the burst from the first click', why: 'Copies exist only after the server notices the link passing its threshold. Until then, hashing sends every click to one home node.' },
+      { text: 'The spare capacity on other nodes absorbs the burst', why: 'Spare room elsewhere does not help a key that hashes to one node. Routing decides where the load lands.' },
+      { text: 'Clicks wait in a queue until detection finishes', why: 'Nothing holds clicks back. They go straight to the home node, which serves what it can and turns away the rest.' },
+      { text: 'Its home node takes the first burst alone and may turn clicks away', correct: true, why: 'Detection lags. The copies arrive a tick after the spike, so the first burst still hits one node.' },
+    ],
+  },
+];
 
 export const nodes = [
   { id: 'client', kind: 'client', x: 70, y: 150, label: 'Clicks' },
@@ -110,6 +134,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

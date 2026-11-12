@@ -3,8 +3,32 @@ title: The design checklist
 description: Seven questions to ask about any system, from requirements to trade-offs, worked through for the URL shortener.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import { Steps } from '@astrojs/starlight/components';
 import Quiz from '../../../components/lesson/Quiz';
+
+export const recall = [
+  {
+    id: 'thinking/design-checklist/recall-1',
+    prompt: 'A product brief for the URL shortener lists four items. Which one is a non-functional requirement?',
+    options: [
+      { text: 'Anyone who opens a short link lands on the long URL', why: 'This says what the system does, so it is functional. Non-functional items say how well it does it.' },
+      { text: 'Redirects finish in under 100 ms', correct: true, why: 'Speed measures how well the system works. Latency, uptime, and durability targets are non-functional.' },
+      { text: 'A signed-in user can pick a custom alias', why: 'This is a feature a user can see and use, so it is functional.' },
+      { text: 'A user pastes a long URL and gets a short link', why: 'This is the core feature. It says what the system does, so it is functional.' },
+    ],
+  },
+  {
+    id: 'thinking/design-checklist/recall-2',
+    prompt: 'The shortener creates 1 million links a day, each about 500 bytes, and keeps them for 5 years. Roughly how much storage do the links need?',
+    options: [
+      { text: 'About 90 GB', why: 'That is 10 times too small. 1 million × 365 × 5 is about 1.8 billion links, and 1.8 billion × 500 bytes is about 900 GB.' },
+      { text: 'About 9 TB', why: 'That is 10 times too large. Recount the zeros: 1.8 billion links × 500 bytes is about 900 GB.' },
+      { text: 'About 900 GB', correct: true, why: '1 million × 365 × 5 ≈ 1.8 billion links. At 500 bytes each, that is about 900 GB, close to 1 TB.' },
+      { text: 'About 180 GB', why: 'That assumes 100 bytes per link. At 500 bytes, 1.8 billion links need about 900 GB.' },
+    ],
+  },
+];
 
 export const quiz = [
   {
@@ -28,6 +52,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 Every design in this course, and most design interviews, walks the same seven steps. Each step answers one question. The
 right column shows the answers for the URL shortener from the lessons you have already seen or will see next.

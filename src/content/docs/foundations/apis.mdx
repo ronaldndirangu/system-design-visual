@@ -3,6 +3,7 @@ title: APIs and contracts
 description: Design endpoints that are easy to call correctly and hard to call wrong. Resource names, status codes, request IDs, cursor pagination, and changes that keep old clients working.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -12,6 +13,29 @@ import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
 import PaginationWidget from '../../../components/widgets/PaginationWidget';
 import ContractChangeWidget from '../../../components/widgets/ContractChangeWidget';
+
+export const recall = [
+  {
+    id: 'foundations/apis/recall-1',
+    prompt: 'A person in Australia clicks a second sho.rt link 5 seconds after the first. The browser kept the connection to Frankfurt open and cached the DNS answer. Which steps does the second click skip?',
+    options: [
+      { text: 'Only the DNS lookup', why: 'The cached answer skips the lookup. The open connection also skips both the TCP and TLS handshakes.' },
+      { text: 'Only the TLS handshake', why: 'An open connection already finished both handshakes, so TCP is skipped too, and the cached answer skips DNS.' },
+      { text: 'The DNS lookup and both handshakes', correct: true, why: 'Only the request and response remain. Skipping TCP and TLS saves two round trips, about 300 ms from Australia.' },
+      { text: 'Nothing, since each click starts over', why: 'Browsers keep connections open and cache DNS answers so repeat clicks skip whole steps.' },
+    ],
+  },
+  {
+    id: 'foundations/apis/recall-2',
+    prompt: 'An API handler makes 3 calls to services in the same data center, one after another, and reads 4 KB from an SSD. About how long does that work take?',
+    options: [
+      { text: 'About 0.1 ms', why: 'That covers the SSD read alone. Each round trip inside a data center adds about 0.5 ms.' },
+      { text: 'About 1.6 ms', correct: true, why: '3 round trips at 0.5 ms each give 1.5 ms. The SSD read adds about 100 µs.' },
+      { text: 'About 120 ms', why: 'That prices each call as a round trip within a continent, at 40 ms. Calls inside one data center take about 0.5 ms.' },
+      { text: 'About 450 ms', why: 'That prices each call as a trip across an ocean, at 150 ms. These services sit in the same building.' },
+    ],
+  },
+];
 
 export const nodes = [
   { id: 'dash', kind: 'client', x: 80, y: 60, label: 'Dashboard', sublabel: 'paging' },
@@ -119,6 +143,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

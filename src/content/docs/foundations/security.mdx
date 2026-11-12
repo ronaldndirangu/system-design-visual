@@ -3,6 +3,7 @@ title: Security basics
 description: Any signed-in user can delete anyone's short link. Fix it by answering four questions on every request, in order, whether the channel is private, who is calling, whether they may touch this object, and where the keys live.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -11,6 +12,29 @@ import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
 import SecurityWidget from '../../../components/widgets/SecurityWidget';
+
+export const recall = [
+  {
+    id: 'foundations/security/recall-1',
+    prompt: 'A script calls POST /v1/links in a tight loop. Which response tells it to wait and then send the same request again?',
+    options: [
+      { text: '403 Forbidden, since the caller lacks permission', why: 'A 403 means this caller may not do this. Sending it again gets the same answer.' },
+      { text: '422 Unprocessable Content, since a rule failed', why: 'A 422 means the request breaks a rule. The client must change it before it tries again.' },
+      { text: '429 Too Many Requests, with a Retry-After header', correct: true, why: 'A 429 says slow down, and Retry-After says when. The same request may work after that wait.' },
+      { text: '409 Conflict, since the alias is already taken', why: 'A 409 means the request clashes with current state. Sending it unchanged clashes again.' },
+    ],
+  },
+  {
+    id: 'foundations/security/recall-2',
+    prompt: 'The shortener still runs TLS 1.2. A user 150 ms away by round trip opens a new connection. What does moving to TLS 1.3 save?',
+    options: [
+      { text: 'One round trip, about 150 ms', correct: true, why: 'TLS 1.3 agrees on keys in 1 round trip. TLS 1.2 needs 2.' },
+      { text: 'Two round trips, about 300 ms', why: 'A reused connection saves 2 round trips by skipping TCP and TLS. TLS 1.3 removes 1.' },
+      { text: 'The DNS lookup, about 30 ms', why: 'DNS runs before TLS, whatever the TLS version. A cached answer is what skips it.' },
+      { text: 'Nothing, since TLS costs only CPU time', why: 'TLS waits on the network. Each handshake round trip costs 150 ms at this distance.' },
+    ],
+  },
+];
 
 export const nodes = [
   { id: 'client', kind: 'client', x: 70, y: 80, label: "Ben's browser", sublabel: 'DELETE a link' },
@@ -113,6 +137,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

@@ -3,6 +3,7 @@ title: What happens when you click a link
 description: Follow one click on a short link through DNS, TCP, TLS, HTTP, and a database lookup, and see why distance beats code speed.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -11,6 +12,29 @@ import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import ArcDiagram from '../../../components/viz/ArcDiagram';
 import RequestJourneyWidget from '../../../components/widgets/RequestJourneyWidget';
+
+export const recall = [
+  {
+    id: 'foundations/what-happens-when-you-click/recall-1',
+    prompt: 'An SLO allows 0.1% of requests to fail over 30 days. Today 1% of requests fail. If that rate holds, when does the error budget run out?',
+    options: [
+      { text: 'In about 3 days', correct: true, why: 'Burn rate is the bad share divided by the allowed share: 1% ÷ 0.1% = 10x. A 30 day budget at 10x lasts 3 days.' },
+      { text: 'In about 10 days', why: 'That divides 30 days by 3. The burn rate is 10, so divide 30 days by 10.' },
+      { text: 'In about 1 day', why: 'That needs a burn rate of 30, with 3% of requests failing.' },
+      { text: 'At the end of the 30 days', why: 'That holds only at a burn rate of 1x. Failing 10 times the allowed share spends the budget 10 times faster.' },
+    ],
+  },
+  {
+    id: 'foundations/what-happens-when-you-click/recall-2',
+    prompt: 'The SLO says 99% of redirects finish in under 100 ms. A window holds 50,000 redirects, and 300 of them took longer. Did the team keep its promise?',
+    options: [
+      { text: 'No, because 300 is more than the budget of 50', why: 'A budget of 50 comes from a 99.9% target. At 99%, 1% of 50,000 is 500.' },
+      { text: 'No, because any redirect over 100 ms breaks the promise', why: 'The SLO allows 1% of redirects to be slow. That allowance is the error budget.' },
+      { text: 'Yes, because the average redirect is likely under 100 ms', why: 'The SLO counts slow redirects. An average can look fine while the slow tail breaks the promise.' },
+      { text: 'Yes, 300 of a 500 redirect budget is spent and 200 remain', correct: true, why: '1% of 50,000 is 500 slow redirects allowed. The team spent 300 and kept the promise.' },
+    ],
+  },
+];
 
 export const quiz = [
   {
@@ -44,6 +68,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

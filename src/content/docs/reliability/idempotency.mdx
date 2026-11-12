@@ -3,6 +3,7 @@ title: Idempotency
 description: Watch lost receipts and slow payments charge sho.rt customers twice, then make every retry safe with an idempotency key claimed before the charge.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -11,6 +12,29 @@ import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
 import IdempotencyWidget from '../../../components/widgets/IdempotencyWidget';
+
+export const recall = [
+  {
+    id: 'reliability/idempotency/recall-1',
+    prompt: 'A payment service starts 20 purchases a second, and each payment takes 3 s to finish. On average, how many payments are in progress at once?',
+    options: [
+      { text: 'About 7, the rate divided by the time', why: 'Little’s law multiplies the arrival rate by the time each item stays: 20 × 3 = 60.' },
+      { text: 'About 20, one second’s worth of purchases', why: 'Each payment stays 3 s, so three seconds of arrivals overlap at any moment.' },
+      { text: 'About 60, the rate times the time', correct: true, why: 'By Little’s law, 20 a second × 3 s = 60 payments in progress on average.' },
+      { text: 'No fixed number, since purchases arrive in bursts', why: 'Little’s law holds for averages whatever the arrival pattern. Bursts raise the peaks and leave the average alone.' },
+    ],
+  },
+  {
+    id: 'reliability/idempotency/recall-2',
+    prompt: 'A phone on a train sends POST /v1/links. The server creates the link, but the 201 Created response is lost. The app retries the same request. What happens?',
+    options: [
+      { text: 'The server spots the copy and returns the first link', why: 'A plain POST cannot tell a retry from a new request. Spotting copies needs an idempotency key, the subject of this lesson.' },
+      { text: 'The user ends up with 2 links, because POST is not idempotent', correct: true, why: 'Each POST creates something new, so sending it twice creates 2 links.' },
+      { text: 'The retry fails with 409 Conflict', why: '409 is for a request that clashes with current state, such as a custom alias someone already owns.' },
+      { text: 'Nothing new happens, because HTTP drops duplicates', why: 'HTTP has no memory of earlier requests. Each one arrives as if it were the first.' },
+    ],
+  },
+];
 
 export const nodes = [
   { id: 'client', kind: 'client', x: 70, y: 150, label: 'Phone app' },
@@ -103,6 +127,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

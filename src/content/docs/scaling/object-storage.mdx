@@ -3,10 +3,32 @@ title: Object storage
 description: Keep large files in buckets and their metadata in the database. Upload with presigned URLs and multipart, pick a storage tier, and see how erasure coding beats three copies on cost.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
+
+export const recall = [
+  {
+    id: 'scaling/object-storage/recall-1',
+    prompt: 'Edges cache assets for 1 year. How does a release show new files at once, with no purge?',
+    options: [
+      { text: 'Reuse the same file name', why: 'Edges keep the old copy for a year.' },
+      { text: 'Name each build, like app.3f9c2b.js', correct: true, why: 'Edges miss on new names and fetch them.' },
+      { text: 'Drop the TTL to 60 s', why: 'Users wait up to a minute, and origin load climbs.' },
+    ],
+  },
+  {
+    id: 'scaling/object-storage/recall-2',
+    prompt: 'Which content suits a push CDN best?',
+    options: [
+      { text: 'Large videos known before release', correct: true, why: 'You upload them once, before anyone asks.' },
+      { text: 'Redirects for millions of links', why: 'Nobody knows which link gets clicked next.' },
+      { text: 'Files few people download', why: 'Push bills storage for every file.' },
+    ],
+  },
+];
 
 export const quiz = [
   {
@@ -48,6 +70,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

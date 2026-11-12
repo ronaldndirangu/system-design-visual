@@ -3,6 +3,7 @@ title: Data modeling and storage choice
 description: List the URL shortener's five queries first, then run each one against tables, documents, and key-value records on the same data. The access pattern picks the shape, and one system often uses more than one.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -11,6 +12,29 @@ import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
 import DataModelingWidget from '../../../components/widgets/DataModelingWidget';
+
+export const recall = [
+  {
+    id: 'foundations/data-modeling/recall-1',
+    prompt: 'abc123 takes 240 counter increments a second, so you store its click count as 8 parts, abc123#0 to abc123#7. Each click adds to a random part. How does the stats page show the total?',
+    options: [
+      { text: 'It reads one random part and multiplies by 8', why: 'Random adds leave the parts close but uneven. Multiplying one part gives a guess, never the exact count.' },
+      { text: 'It reads abc123#0, which holds the total', why: 'No part holds the total. Each part holds only the clicks that landed on it.' },
+      { text: 'It reads all 8 parts and adds them up', correct: true, why: 'Splitting spreads the writes across nodes. The price lands on reads, which now gather 8 keys instead of 1.' },
+      { text: 'It locks all 8 parts and copies them to one key', why: 'A lock stalls the 240 writes a second that the split set out to spread. A plain read of all 8 parts is enough.' },
+    ],
+  },
+  {
+    id: 'foundations/data-modeling/recall-2',
+    prompt: 'Each app server counts clicks in memory and adds its total to the shared counter once a second. What does this batching give up?',
+    options: [
+      { text: 'Each redirect waits up to 1 second for the batch', why: 'The redirect answers at once. Only the count update waits for the next batch.' },
+      { text: 'The count trails by about 1 second, and a crash loses unsent clicks', correct: true, why: 'Clicks sit in one server’s memory until the next flush. A crash before the flush drops them.' },
+      { text: 'Every read must add up several parts', why: 'That is the cost of splitting a key into parts. Batching keeps one counter.' },
+      { text: 'Some clicks get counted twice', why: 'Each server adds only its own clicks, once per flush, so nothing repeats.' },
+    ],
+  },
+];
 
 export const nodes = [
   { id: 'browser', kind: 'client', x: 60, y: 140, label: 'Browser', sublabel: 'sho.rt/bATJ4g' },
@@ -117,6 +141,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

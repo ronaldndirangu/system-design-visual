@@ -3,6 +3,7 @@ title: CDNs
 description: Move bytes closer to people so distance stops dominating latency. Learn edge caching, TTLs and purges, hit ratio, origin shields, and push versus pull CDNs.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -12,6 +13,29 @@ import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
 import ArcDiagram from '../../../components/viz/ArcDiagram';
 import CdnWidget from '../../../components/widgets/CdnWidget';
+
+export const recall = [
+  {
+    id: 'scaling/cdn/recall-1',
+    prompt: 'A viral link’s cache entry expires while 500 people click it in the same second. Which fix sends just one of them to the database?',
+    options: [
+      { text: 'A longer TTL on every link', why: 'A longer TTL only delays the expiry. When it comes, all 500 still miss together.' },
+      { text: 'Single-flight, so later misses wait for the first', correct: true, why: 'The first miss reads the database, and the other 499 wait for its answer.' },
+      { text: 'More app servers in front of the cache', why: 'More servers pass the same 500 misses to the database, which is the part under strain.' },
+      { text: 'Negative caching for that link', why: 'Negative caching stores “no such link” for bad codes. This link exists.' },
+    ],
+  },
+  {
+    id: 'scaling/cdn/recall-2',
+    prompt: 'You give the DNS record for sho.rt a TTL of 6 hours. What does that long TTL cost?',
+    options: [
+      { text: 'More DNS lookups on first clicks', why: 'A long TTL means fewer lookups, since resolvers reuse the answer for hours.' },
+      { text: 'An extra TCP round trip on every click', why: 'The DNS TTL leaves the TCP handshake alone. It sets how long the address stays cached.' },
+      { text: 'No click counts reach the server', why: 'That is the cost of a 301 redirect, which browsers cache. The DNS TTL only affects the address lookup.' },
+      { text: 'Slow to move traffic off a broken server', correct: true, why: 'Resolvers keep the old address until the TTL runs out, so people can reach the broken server for hours.' },
+    ],
+  },
+];
 
 export const nodes = [
   { id: 'person', kind: 'client', x: 80, y: 140, label: 'Person', sublabel: 'in Sydney' },
@@ -96,6 +120,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

@@ -3,6 +3,7 @@ title: Indexes
 description: A redirect without an index reads the whole links table. Find one row among billions in a few page reads with a B-tree, and see what every extra index costs on write.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -12,6 +13,29 @@ import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
 import IndexesWidget from '../../../components/widgets/IndexesWidget';
 import IndexWriteCostWidget from '../../../components/widgets/IndexWriteCostWidget';
+
+export const recall = [
+  {
+    id: 'foundations/indexes/recall-1',
+    prompt: 'The takedown query finds every link that points at one domain, 3 times a day. Key-value and documents scan everything for it. How much should it weigh in picking the store?',
+    options: [
+      { text: 'It decides, since a full scan is the slowest query', why: 'A slow query 3 times a day costs little in total. The redirect runs 20,000 times a second, so its cost dominates.' },
+      { text: 'It rules out key-value for the whole system', why: 'A key-value scan 3 times a day stays cheap. How well the store serves the redirect matters far more.' },
+      { text: 'Very little, since a scan 3 times a day is affordable', correct: true, why: 'The redirect outnumbers every other query by about 250 to 1, so it picks the shape. Rare queries adapt to it.' },
+      { text: 'It rules out tables, since a domain index slows writes', why: 'The domain index adds one entry per new link, at 20 links a second. That cost is small, and tables answer the takedown well.' },
+    ],
+  },
+  {
+    id: 'foundations/indexes/recall-2',
+    prompt: 'A handler locks a link with SELECT ... FOR UPDATE, calls a safety service that takes 2 seconds, then writes and commits. What goes wrong?',
+    options: [
+      { text: 'Every other writer to that row waits the full 2 seconds', correct: true, why: 'Other writers queue for as long as the lock lives. Hold locks for milliseconds, never across a network call.' },
+      { text: 'Two writers save at once and one update vanishes', why: 'The lock prevents exactly that. The cost here is waiting, and the data stays correct.' },
+      { text: 'The database drops the lock after 1 millisecond', why: 'The lock lasts until COMMIT or ROLLBACK, however long the handler takes.' },
+      { text: 'Nothing, since the lock keeps the count correct', why: 'The count stays correct, and every other writer to the row stalls behind the slow call.' },
+    ],
+  },
+];
 
 export const nodes = [
   { id: 'browser', kind: 'client', x: 60, y: 140, label: 'Browser', sublabel: 'sho.rt/bATJ4g' },
@@ -125,6 +149,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

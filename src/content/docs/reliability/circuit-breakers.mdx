@@ -3,6 +3,7 @@ title: Circuit breakers
 description: Watch a hung analytics service take sho.rt's redirects down with it, then add a circuit breaker that fails fast, buffers the click, and probes gently until the service recovers.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -11,6 +12,29 @@ import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
 import CircuitBreakerWidget from '../../../components/widgets/CircuitBreakerWidget';
+
+export const recall = [
+  {
+    id: 'reliability/circuit-breakers/recall-1',
+    prompt: 'A service calls a partner API through an HTTP library that waits forever by default, and nobody set a timeout. The partner stops answering. What happens?',
+    options: [
+      { text: 'Workers pile up on hung calls until none are left', correct: true, why: 'Each hung call holds a worker forever. Once the pool is gone, even requests that never touch the partner fail.' },
+      { text: 'Each call fails fast with a connection error', why: 'A hung partner accepts the connection and then sends nothing, so there is no error to fail on.' },
+      { text: 'Only requests that call the partner slow down', why: 'Once every worker is stuck on the partner, no worker is left to run the other requests.' },
+      { text: 'The library gives up after a sensible default', why: 'Many libraries, such as Python’s requests, never time out unless you set a timeout.' },
+    ],
+  },
+  {
+    id: 'reliability/circuit-breakers/recall-2',
+    prompt: 'A sender makes 150 fresh calls a second with a retry budget: each fresh call earns 0.1 token, and each retry spends 1. The service fails every attempt for 10 s. About how many retries a second can the sender keep up?',
+    options: [
+      { text: 'About 450, three for every failed call', why: 'The budget caps the total no matter how many attempts each call allows.' },
+      { text: 'None, since the budget blocks retries during failures', why: 'Fresh calls keep earning tokens during the outage, so a trickle of retries still goes out.' },
+      { text: 'About 150, one retry per failed call', why: 'Each fresh call earns only 0.1 of a token, so 150 calls pay for 15 retries.' },
+      { text: 'About 15, plus a short burst from banked tokens', correct: true, why: '150 × 0.1 = 15 retries a second, plus up to 10 tokens banked before the outage.' },
+    ],
+  },
+];
 
 export const nodes = [
   { id: 'users', kind: 'client', x: 70, y: 150, label: 'Visitors', sublabel: '150 redirects/s' },
@@ -105,6 +129,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

@@ -3,6 +3,7 @@ title: Observability
 description: Watch a deploy break a page it never touched, then use metrics, traces, and logs to find out why. Covers RED and USE dashboards, correlation IDs, and head versus tail sampling.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -13,6 +14,29 @@ import StepDiagram from '../../../components/lesson/StepDiagram';
 import IncidentDashboardWidget from '../../../components/widgets/IncidentDashboardWidget';
 import SamplingDuelWidget from '../../../components/widgets/SamplingDuelWidget';
 import TraceHuntWidget from '../../../components/widgets/TraceHuntWidget';
+
+export const recall = [
+  {
+    id: 'reliability/observability/recall-1',
+    prompt: 'An SLO allows 0.1% of requests to fail over 30 days. For the past hour, 1% have failed. If that rate continues, when does the error budget run out?',
+    options: [
+      { text: 'In 30 days, the length of the window', why: 'That holds only at a burn rate of 1x. Here the budget burns 10 times faster.' },
+      { text: 'In about 1 hour', why: 'The budget is a share of the whole 30 day window, so one bad hour spends only part of it.' },
+      { text: 'In about 3 days, a burn rate of 10x', correct: true, why: 'Burn rate = share failing ÷ share allowed = 1% ÷ 0.1% = 10. At 10x, a 30 day budget is gone in 3 days.' },
+      { text: 'In about 27 days', why: 'This subtracts 3 days from the window. A 10x burn rate divides the window by 10.' },
+    ],
+  },
+  {
+    id: 'reliability/observability/recall-2',
+    prompt: 'A circuit breaker on analytics ingest has opened. What happens to a redirect that would have called ingest?',
+    options: [
+      { text: 'It waits for the 500 ms timeout, then buffers the click', why: 'An open breaker fails fast without touching ingest. Removing that wait is the whole point.' },
+      { text: 'It skips ingest, buffers the click in about 10 ms, and answers', correct: true, why: 'That is the open rule. After a 2 s cooldown, the breaker turns half-open and sends a few probes.' },
+      { text: 'It fails with a 503 until the breaker closes', why: 'The fallback keeps the main job working. The visitor only wants the redirect, so the click goes to a buffer.' },
+      { text: 'It calls ingest once more to see whether it has healed', why: 'Only the 3 half-open probes call ingest, and only after the 2 s cooldown.' },
+    ],
+  },
+];
 
 export const nodes = [
   { id: 'client', kind: 'client', x: 70, y: 150, label: 'Shopper', sublabel: 'GET /browse' },
@@ -120,6 +144,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

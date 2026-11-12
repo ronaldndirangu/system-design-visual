@@ -3,9 +3,33 @@ title: Real-time transport
 description: Four ways for a server to tell a browser that something changed. Polling, long polling, server-sent events, and WebSockets replay the same minute of clicks side by side.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import RealTimeWidget from '../../../components/widgets/RealTimeWidget';
+
+export const recall = [
+  {
+    id: 'foundations/real-time/recall-1',
+    prompt: 'Keeping HTTP connections open lets later requests skip the TCP and TLS handshakes. What does the server pay for that?',
+    options: [
+      { text: 'One extra round trip on every request', why: 'An open connection removes round trips. Later requests send right away.' },
+      { text: 'Memory for each connection it holds open', correct: true, why: 'Every open connection holds state on the server, even while it sits idle.' },
+      { text: 'Weaker encryption on the reused connection', why: 'The keys agreed at the TLS handshake keep protecting every later request.' },
+      { text: 'A fresh DNS lookup for each request', why: 'DNS runs before the connection opens. A reused connection needs no new lookup.' },
+    ],
+  },
+  {
+    id: 'foundations/real-time/recall-2',
+    prompt: 'A dashboard in Sydney opens a new HTTPS connection to a server 150 ms away by round trip. DNS is cached and the server runs TLS 1.3. About how long until the first response arrives?',
+    options: [
+      { text: 'About 150 ms, since only the request crosses', why: 'That is the cost on a reused connection. A new one pays for TCP and TLS first.' },
+      { text: 'About 300 ms, for TCP and the request', why: 'TLS needs its own round trip to agree on keys before the request goes out.' },
+      { text: 'About 450 ms, for TCP, TLS, and the request', correct: true, why: 'Each step waits one round trip of 150 ms, so the first answer lands at about 450 ms.' },
+      { text: 'About 600 ms, since TLS 1.3 takes 2 round trips', why: 'TLS 1.3 takes 1 round trip. TLS 1.2 takes 2.' },
+    ],
+  },
+];
 
 export const quiz = [
   {
@@ -81,6 +105,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 The shortener has a live dashboard: open a link's stats page and its click count should tick up as people click.
 Plain HTTP only lets the browser ask and the server answer, so the server has no way to speak first. Four transports

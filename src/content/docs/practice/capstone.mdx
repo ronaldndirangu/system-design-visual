@@ -3,10 +3,34 @@ title: Take sho.rt global
 description: Design sho.rt for three continents with multi-region redirects, click analytics, abuse limits, custom aliases, and a 99.99% SLO. Score each checklist step, then reveal a reference answer.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
+
+export const recall = [
+  {
+    id: 'practice/capstone/recall-1',
+    prompt: 'In the Data model step, the shortener’s main query looks up one link by its short code. What does that tell you?',
+    options: [
+      { text: 'The table needs joins across several entities', why: 'One lookup by key touches one row, so there is nothing to join.' },
+      { text: 'Pick the database first, then shape the table to fit it', why: 'The checklist runs the other way: the access pattern picks the store.' },
+      { text: 'Add an index on the long URL to speed up reads', why: 'Reads look up by short code. An index on the long URL serves a different query.' },
+      { text: 'Key the table by the code, so every read is one key lookup', correct: true, why: 'The checklist’s answer is one table keyed by the short code, so every read is a lookup by that key.' },
+    ],
+  },
+  {
+    id: 'practice/capstone/recall-2',
+    prompt: 'A region acknowledges 2,000 writes a second and copies them to another region asynchronously, about 1 s behind. The region fails suddenly, and the other is promoted. About how many acknowledged writes are missing?',
+    options: [
+      { text: 'About 2,000, the last second of writes still in flight', correct: true, why: 'Async replication acknowledges before the copy lands, so lag × rate = 1 s × 2,000 a second are lost. That lag is the failover’s RPO.' },
+      { text: 'None, since every write was acknowledged', why: 'An async acknowledgment means only the home region stored the write. The copy was still on its way.' },
+      { text: 'About 1, the last write before the failure', why: 'Every write from the last 1 s is still in flight, which is about 2,000 writes.' },
+      { text: 'All of them, since the replica rebuilds from scratch', why: 'The replica holds every write up to about 1 s before the failure.' },
+    ],
+  },
+];
 
 export const quiz = [
   {
@@ -50,6 +74,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

@@ -3,6 +3,7 @@ title: Queues and backpressure
 description: Watch a viral sho.rt link bury the server under a line it can never finish, then fix it with a bounded queue, a fast 503, and load shedding by expected wait.
 ---
 
+import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
@@ -11,6 +12,29 @@ import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 import StepDiagram from '../../../components/lesson/StepDiagram';
 import BackpressureWidget from '../../../components/widgets/BackpressureWidget';
+
+export const recall = [
+  {
+    id: 'reliability/queues-and-backpressure/recall-1',
+    prompt: 'A call to recommendations may hang. Calls arrive at 40 a second, each has a 500 ms timeout, and the pool holds 16 connections. Can the pool fill during an outage?',
+    options: [
+      { text: 'Yes: about 20 calls hang at once, more than the 16 connections', correct: true, why: '40 a second × 0.5 s = 20 calls waiting at once, which is more than 16. All 16 connections are taken within 0.4 s.' },
+      { text: 'No: the timeout frees every connection within 500 ms', why: 'Each connection frees after 500 ms, but new calls arrive faster than old ones expire, so 20 wait at once.' },
+      { text: 'Yes, but only if the outage lasts longer than 16 s', why: 'The pool fills in 0.4 s. 16 connections at 40 new calls a second last only that long.' },
+      { text: 'Yes: about 80 hang at once, five times the pool', why: 'That divides 40 by 0.5. Little’s law multiplies the rate by the time, which gives 20.' },
+    ],
+  },
+  {
+    id: 'reliability/queues-and-backpressure/recall-2',
+    prompt: 'A redirect reaches the server with 200 ms left of the client’s 1 s deadline. The server’s own database timeout is 5 s, and the query hangs. With the deadline passed along, when does the server stop waiting?',
+    options: [
+      { text: 'After 5 s, when its own timeout fires', why: 'That is the fixed timeout. It would hold a worker for 4.8 s after the client gave up.' },
+      { text: 'After 1 s, the client’s full deadline', why: 'A deadline is a moment in time. 800 ms of it was already spent before the request arrived.' },
+      { text: 'Only when the query finishes', why: 'A deadline stops every hop when it passes, whether or not the query has answered.' },
+      { text: 'After 200 ms, when the deadline passes', correct: true, why: 'Each hop passes the remaining time on, so the server and its query stop when the client gives up.' },
+    ],
+  },
+];
 
 export const nodes = [
   { id: 'client', kind: 'client', x: 70, y: 150, label: 'Visitors', sublabel: '40 to 75 req/s' },
@@ -102,6 +126,8 @@ export const quiz = [
     ],
   },
 ];
+
+<Recall questions={recall} />
 
 <Objectives>
 

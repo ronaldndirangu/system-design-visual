@@ -1,0 +1,92 @@
+---
+import { findLesson } from '../../data/curriculum';
+import { topicGroups } from '../../data/topics';
+import { lessonHref } from '../../lib/paths';
+
+const groups = topicGroups.map((group) => ({
+  ...group,
+  topics: group.topics.map((topic) => ({
+    ...topic,
+    lessons: topic.lessons.map((id) => {
+      const lesson = findLesson(id);
+      if (!lesson) throw new Error(`Topic ${topic.name} names an unknown lesson: ${id}`);
+      return { href: lessonHref(id), title: lesson.title, minutes: lesson.minutes };
+    }),
+  })),
+}));
+---
+
+<div class="sdv-topics not-content">
+  {
+    groups.map((group) => (
+      <section class="sdv-topics__group">
+        <h2 class="sdv-topics__heading">{group.title}</h2>
+        <ul class="sdv-topics__list">
+          {group.topics.map((topic) => (
+            <li class="sdv-topics__topic">
+              <p class="sdv-topics__name">{topic.name}</p>
+              <p class="sdv-topics__focus">{topic.focus}</p>
+              <ul class="sdv-topics__lessons">
+                {topic.lessons.map((lesson) => (
+                  <li>
+                    <a href={lesson.href}>{lesson.title}</a>
+                    <span class="sdv-badge sdv-badge--neutral">{lesson.minutes} min</span>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ))
+  }
+</div>
+
+<style>
+  .sdv-topics {
+    display: grid;
+    gap: 1.25rem;
+    margin-block: 1rem;
+  }
+  .sdv-topics__heading {
+    font-size: var(--sl-text-xl);
+    margin: 0 0 0.5rem;
+  }
+  .sdv-topics__list {
+    display: grid;
+    gap: 0.75rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .sdv-topics__topic {
+    background: var(--sdv-surface);
+    border: 1px solid var(--sdv-border);
+    border-radius: var(--sdv-radius);
+    padding: 0.75rem 1.1rem;
+  }
+  .sdv-topics__name {
+    color: var(--sl-color-white);
+    font-weight: 600;
+    margin: 0;
+  }
+  .sdv-topics__focus {
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+    margin: 0.15rem 0 0.5rem;
+  }
+  .sdv-topics__lessons {
+    display: grid;
+    gap: 0.35rem;
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0 0.9rem;
+    border-inline-start: 2px solid var(--sdv-border);
+  }
+  .sdv-topics__lessons li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
+    align-items: center;
+  }
+</style>

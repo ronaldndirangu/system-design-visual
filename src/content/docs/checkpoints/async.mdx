@@ -1,0 +1,122 @@
+---
+title: 'Checkpoint 4: Async and streaming'
+description: Ten questions on logs, consumer groups, delivery semantics, the outbox, event-driven design, and stream processing. Score 70% to pass.
+---
+
+import Checkpoint from '../../../components/review/Checkpoint';
+
+export const quiz = [
+  {
+    id: 'checkpoint/async/q1',
+    prompt: 'The click topic keeps 7 days of events. A slow consumer group’s lag starts at 0 and grows by 6 h every day. When does the group first lose events it never read?',
+    options: [
+      { text: 'After 7 days, when the first events expire', why: 'Expiry only hurts events the group has not read yet. After 7 days its lag is 42 h, so it has already read everything older.' },
+      { text: 'Never, since the broker keeps events until every group reads them', why: 'Retention deletes old segments on its own clock, read or unread. A log never waits for slow readers.' },
+      { text: 'Right away, since any lag means missed events', why: 'Lag only means the group reads behind the head. Events stay readable for as long as retention keeps them.' },
+      { text: 'After about 28 days, when its lag reaches 7 days', correct: true, why: 'Lag grows 6 h a day, so it takes 28 days to reach 168 h. From then on, retention deletes events before the group gets to them, which is why lag alerts fire at half of retention.' },
+    ],
+  },
+  {
+    id: 'checkpoint/async/q2',
+    prompt: 'A new consumer group starts replaying 30 days of clicks from the start of the topic. Within minutes, producers see their write latency spike. What is going on, and what helps?',
+    options: [
+      { text: 'The replay competes for the brokers’ disks and network. Cap it with a byte-rate quota or move it to its own cluster.', correct: true, why: 'Groups keep separate offsets but share the same brokers. A heavy reader pulls old data off disk and slows everyone, so a quota or a mirrored copy contains it.' },
+      { text: 'The new group takes partitions away from the other groups. Give it fewer consumers.', why: 'Partitions split only among the members of one group. Every group reads every partition with its own offsets.' },
+      { text: 'The replay moves the other groups’ offsets back 30 days. Reset them to the head.', why: 'Each group commits its own offsets. A new group reading from the start leaves the others’ positions alone.' },
+      { text: 'The replay deletes events as it reads them. Shorten the replay window.', why: 'Reading never removes anything from a log. Only retention deletes events, on its own schedule.' },
+    ],
+  },
+  {
+    id: 'checkpoint/async/q3',
+    prompt: 'An effectively-once consumer adds each click to a count in PostgreSQL, records the click id in Redis as a separate write, then commits its offset. It crashes right after the count. What happens after it restarts?',
+    options: [
+      { text: 'It skips the click, since the count already holds it', why: 'The skip check reads Redis, and the id never got there. Nothing tells the consumer the click was counted.' },
+      { text: 'It loses the click, since the offset moved past it', why: 'This consumer counts first and commits last, so the offset still sits before the click. The restart reads it again.' },
+      { text: 'It counts the click a second time', correct: true, why: 'The count landed and the id record did not, so the repeat check misses it. Write the count and the id in one transaction, or make the click id the key of the effect.' },
+      { text: 'The broker’s exactly-once mode rolls back the count', why: 'Broker transactions cover reads and writes inside the broker. They cannot undo a write to an outside database.' },
+    ],
+  },
+  {
+    id: 'checkpoint/async/q4',
+    prompt: 'The click log keeps 7 days, and the consumer trims its seen click ids after 3 days. A bug made the consumer skip some clicks over the last 5 days, so the team rewinds it 5 days to count them. What goes wrong?',
+    options: [
+      { text: 'Nothing, since the seen ids skip every repeat', why: 'The seen ids cover only the last 3 days. Repeats from 3 to 5 days ago find no record and count again.' },
+      { text: 'Clicks from 3 to 5 days ago that were already counted count again', correct: true, why: 'Their seen ids were trimmed, so the repeat check lets them through. Keep seen ids at least as long as the log and the dead-letter queue, one recovery horizon for all three.' },
+      { text: 'Clicks older than 3 days are gone, so the skipped ones stay missing', why: 'The log keeps 7 days, so it still holds every click the rewind asks for. The trim deletes only seen ids.' },
+      { text: 'The rewind fails, since 5 days reaches past the seen id window', why: 'Nothing checks the window, so the rewind runs to the end. The damage is silent: older repeats count twice.' },
+    ],
+  },
+  {
+    id: 'checkpoint/async/q5',
+    prompt: 'Click events carry only clickId and code. Billing looks up each link’s plan from the link service when it handles a click. The team replays last month’s clicks to fix a billing bug, and one owner moved from free to pro last week. What does the replay charge for that owner’s old clicks?',
+    options: [
+      { text: 'Free prices, since the replay rebuilds last month’s state', why: 'The events hold no plan, so billing has nothing from last month to rebuild from. Each lookup reads the link service as it stands today.' },
+      { text: 'A mix, since each lookup races the plan change', why: 'The plan changed last week, before the replay started. Every lookup during the replay sees pro.' },
+      { text: 'Nothing, since the link service rejects lookups for old clicks', why: 'The link service answers with current data and has no idea the click is old. The replay runs and quietly charges the wrong plan.' },
+      { text: 'Pro prices, since each lookup returns today’s plan', correct: true, why: 'A thin event makes consumers read current state, which is wrong for history. A fat event that carries ownerPlan (event-carried state transfer) replays the click as it was.' },
+    ],
+  },
+  {
+    id: 'checkpoint/async/q6',
+    prompt: 'A consumer gives up on a click after 3 retries. It commits the offset first, then writes the click to the dead-letter queue, and it crashes between the two writes. What happens to the click?',
+    options: [
+      { text: 'It lands in the dead-letter queue twice', why: 'Doubles come from the safe order: park, crash before the commit, park again. The click id makes that repeat harmless.' },
+      { text: 'It is lost: the offset moved past it, and the park never happened', correct: true, why: 'Committing first gives up the only way back to the click. Park it, wait for the dead-letter queue’s durable ack, then commit.' },
+      { text: 'The restart retries it from the saved offset', why: 'The saved offset already points past the click. The restart begins at the next one.' },
+      { text: 'The broker puts it back at the head of the partition', why: 'A log never moves events. The consumer’s own offset decides what it reads, and that offset has moved on.' },
+    ],
+  },
+  {
+    id: 'checkpoint/async/q7',
+    prompt: 'A stream job reads 6 partitions and takes the smallest per-partition watermark as its own. One partition gets no clicks for 10 minutes. What happens to the 1 minute windows?',
+    options: [
+      { text: 'They all wait about 10 minutes, since the quiet partition’s watermark stops moving', correct: true, why: 'The job’s watermark is the smallest one, so a quiet partition freezes it and no window closes. Engines add an idle timeout that leaves a quiet partition out of the minimum.' },
+      { text: 'Only the windows for that partition’s links wait', why: 'Windows close on the job’s single watermark. Every window waits on the slowest partition.' },
+      { text: 'They close on time, since the other 5 partitions keep moving', why: 'The job takes the smallest watermark of the 6, and the quiet one is the smallest. One stuck partition holds back every window.' },
+      { text: 'The job marks every click in those windows late', why: 'A click is late when it falls behind the watermark. Here the watermark stalls, so clicks stay on time and the results just wait.' },
+    ],
+  },
+  {
+    id: 'checkpoint/async/q8',
+    prompt: 'A stream job publishes 50 clicks for a 1 minute window, then an update of 53 after late clicks arrive. The sink adds each result it gets to the stored total. What total does the dashboard show?',
+    ordered: true,
+    options: [
+      { text: '3', why: 'That would need the job to send only the difference. It sends the full new count, 53.' },
+      { text: '50', why: 'The sink did get the update. It added 53 on top of the 50 it already held.' },
+      { text: '53', why: 'That is the right count, and a sink that replaces the row would show it. An adding sink stacks both results.' },
+      { text: '103', correct: true, why: 'The sink added 50, then 53. Store results by window with a revision number, and replace a row only when the new revision is higher.' },
+    ],
+  },
+  {
+    id: 'checkpoint/async/q9',
+    prompt: 'Producers write 2,000 click events a second on average, each about 500 B. The log keeps 7 days, and every partition has 3 copies. About how much broker disk does the topic need?',
+    ordered: true,
+    options: [
+      { text: '260 GB', why: 'That is 1 day of data with 3 copies. Retention holds 7 days.' },
+      { text: '600 GB', why: 'That is 7 days on one copy. Each of the 3 copies sits on its own disk, so multiply by 3.' },
+      { text: '1.8 TB', correct: true, why: '2,000 × 86,400 × 500 B ≈ 86 GB a day, × 7 days ≈ 600 GB, × 3 copies ≈ 1.8 TB. As with read replicas, every copy needs its own disk.' },
+      { text: '5.4 TB', why: 'That multiplies by a peak factor of 3. Peaks size servers, while disk holds total volume, which the average already measures.' },
+    ],
+  },
+  {
+    id: 'checkpoint/async/q10',
+    prompt: 'A deploy makes each click write 4 times slower. The click consumer now waits on the database at 30% CPU with zero errors, and the dashboard slips 2 h behind. Which alert catches this first?',
+    options: [
+      { text: 'Consumer CPU above 80%', why: 'The consumer spends its time waiting on writes, so CPU stays low. Utilization misses a backlog when the bottleneck sits downstream.' },
+      { text: 'Error rate above 1%', why: 'Every write succeeds, only slowly. A backlog can grow for hours without one error.' },
+      { text: 'Age of the oldest unread click above 5 minutes', correct: true, why: 'That is wait time for async work, and it climbs as soon as the consumer falls behind. The queues and backpressure lesson names it the early warning for a backlog.' },
+      { text: 'Broker disk use above 80%', why: 'The log keeps 7 days whether anyone reads or not. A 2 h lag barely changes disk use.' },
+    ],
+  },
+];
+
+Answer every question, then check your score. You need 7 of 10 to pass. A pass marks the module checkpoint complete on this device.
+
+Missed one? The explanation names the idea, and the module’s lessons cover it in depth:
+
+- [Logs and pub/sub](../../async/logs-and-pubsub/)
+- [Delivery semantics and the outbox](../../async/delivery-semantics/)
+- [Event-driven design](../../async/event-driven-design/)
+- [Stream processing](../../async/stream-processing/)
+
+<Checkpoint client:load moduleId="async" questions={quiz} />

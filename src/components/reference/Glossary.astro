@@ -1,0 +1,116 @@
+---
+import { findLesson } from '../../data/curriculum';
+import { glossary } from '../../data/glossary';
+import { lessonHref } from '../../lib/paths';
+
+interface Row {
+  term: string;
+  definition: string;
+  href: string;
+  source: string;
+}
+
+const letters = new Map<string, Row[]>();
+for (const entry of glossary) {
+  const lesson = findLesson(entry.lesson);
+  if (!lesson) throw new Error(`Glossary term ${entry.term} names an unknown lesson: ${entry.lesson}`);
+  const first = entry.term.charAt(0).toUpperCase();
+  const letter = /[A-Z]/.test(first) ? first : '0 to 9';
+  const group = letters.get(letter) ?? [];
+  group.push({
+    term: entry.term,
+    definition: entry.definition,
+    href: lessonHref(entry.lesson),
+    source: lesson.title,
+  });
+  letters.set(letter, group);
+}
+const groups = [...letters.entries()].map(([letter, entries]) => ({
+  letter,
+  id: `sdv-glossary-${letter.length === 1 ? letter.toLowerCase() : 'digits'}`,
+  entries,
+}));
+---
+
+<div class="sdv-glossary not-content">
+  <nav aria-label="Glossary letters">
+    <ul class="sdv-glossary__letters">
+      {
+        groups.map((group) => (
+          <li>
+            <a href={`#${group.id}`}>{group.letter}</a>
+          </li>
+        ))
+      }
+    </ul>
+  </nav>
+  {
+    groups.map((group) => (
+      <section class="sdv-glossary__group" aria-labelledby={group.id}>
+        <h2 id={group.id} class="sdv-glossary__letter">
+          {group.letter}
+        </h2>
+        <dl class="sdv-glossary__list">
+          {group.entries.map((entry) => (
+            <div class="sdv-glossary__entry">
+              <dt>{entry.term}</dt>
+              <dd>
+                {entry.definition}{' '}
+                <a class="sdv-glossary__source" href={entry.href}>
+                  Learn it in {entry.source}
+                </a>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+    ))
+  }
+</div>
+
+<style>
+  .sdv-glossary {
+    display: grid;
+    gap: 1rem;
+    margin-block: 1rem;
+  }
+  .sdv-glossary__letters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .sdv-glossary__letters a {
+    border: 1px solid var(--sdv-border);
+    border-radius: var(--sdv-radius);
+    display: inline-block;
+    min-width: 2rem;
+    padding: 0.2rem 0.5rem;
+    text-align: center;
+    text-decoration: none;
+  }
+  .sdv-glossary__letter {
+    border-bottom: 1px solid var(--sdv-border);
+    font-size: var(--sl-text-xl);
+    margin: 0 0 0.5rem;
+    padding-bottom: 0.25rem;
+  }
+  .sdv-glossary__list {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0;
+  }
+  .sdv-glossary__entry dt {
+    color: var(--sl-color-white);
+    font-weight: 600;
+  }
+  .sdv-glossary__entry dd {
+    margin: 0.15rem 0 0;
+  }
+  .sdv-glossary__source {
+    font-size: var(--sl-text-sm);
+    white-space: nowrap;
+  }
+</style>
