@@ -1,9 +1,18 @@
 ---
 title: The design checklist
 description: Seven questions to ask about any system, from requirements to trade-offs, worked through for the URL shortener.
+furtherReading:
+  - title: 'The System Design Primer: how to approach a system design interview question'
+    url: https://github.com/donnemartin/system-design-primer#how-to-approach-a-system-design-interview-question
+    note: The same loop in four steps, from use cases and constraints to scaling the design.
+  - title: Design Docs at Google
+    url: https://www.industrialempathy.com/posts/design-docs-at-google/
+    note: How Google engineers write down context, goals, non-goals and the trade-offs behind a design before coding.
 ---
 
 import { Steps } from '@astrojs/starlight/components';
+import Objectives from '../../../components/lesson/Objectives.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Quiz from '../../../components/lesson/Quiz';
 
 export const quiz = [
@@ -27,10 +36,30 @@ export const quiz = [
       { text: 'Pick the newest technology in the diagram', why: 'Novelty and risk are different things. Let the numbers point at the weak spot.' },
     ],
   },
+  {
+    id: 'thinking/design-checklist/q3',
+    prompt: 'Mid deep dive, product asks for a click count on every link. Which steps do you revisit?',
+    options: [
+      { text: 'Requirements, estimates, data model and trade-offs', correct: true, why: 'Every redirect now also writes, so writes jump from about 12 a second to about 1,170. Counts need storage, and a cached 301 would hide repeat clicks.' },
+      { text: 'Only the deep dive', why: 'The feature changes the load itself, so a deep dive on the old estimates answers the wrong question.' },
+      { text: 'None, because the design already has a database', why: 'That database was sized for about 12 writes a second, about 100 times too few.' },
+      { text: 'All seven, starting from a blank board', why: 'Most of the design still holds. Revisit only the steps the feature touches.' },
+    ],
+  },
 ];
 
-Every design in this course, and most design interviews, walks the same seven steps. Each step answers one question. The
-right column shows the answers for the URL shortener from the lessons you have already seen or will see next.
+Every design in this course, and most design interviews, walks the same seven steps. Each step answers one question.
+Under each step, the URL shortener from [requirements and estimates](../requirements-and-estimates/) shows a worked
+answer.
+
+<Objectives>
+
+- Name the seven steps of a design and the question each one answers.
+- Start a new design from requirements and numbers before naming any tool.
+- Choose where to deep dive from what your estimates say breaks first.
+- Explain why a new fact sends a design back to an earlier step.
+
+</Objectives>
 
 <Steps>
 
@@ -43,8 +72,9 @@ right column shows the answers for the URL shortener from the lessons you have a
 2. **Estimates: how big is it?** Work out peak requests per second, storage over the system's life, and the read to
    write ratio.
 
-   _URL shortener:_ 1 million new links a day is about 12 writes per second. At 100 clicks per link, reads dominate.
-   Five years of links need about 1 TB.
+   _URL shortener:_ 1 million new links a day is about 12 writes per second. At 100 clicks per link, reads dominate
+   at about 1,160 a second. Five years of links hold about 913 GB of raw data, or about 3.56 TB of disk with 3 copies
+   and indexes.
 
 3. **API: how do callers talk to it?** Name the endpoints, their inputs and outputs, and the errors they return.
 
@@ -54,14 +84,17 @@ right column shows the answers for the URL shortener from the lessons you have a
    them most.
 
    _URL shortener:_ one table keyed by the short code. Every read is a lookup by that key.
+   [Data modeling](../../foundations/data-modeling/) covers how to pick keys from the queries.
 
 5. **High-level design: which boxes, and how does a request flow?** Draw the read path and the write path separately.
 
-   _URL shortener:_ browser, load balancer, app servers, cache, and database.
+   _URL shortener:_ browser, load balancer, app servers, cache, and database. These are the boxes from the
+   [anatomy of a web app](../anatomy-of-a-web-app/).
 
 6. **Deep dive: where does it break first?** Take the riskiest part your estimates expose and design it in detail.
 
-   _URL shortener:_ a viral link floods one key, and the table outgrows one machine. Caching and sharding answer those.
+   _URL shortener:_ a viral link floods one key, and the table outgrows one machine. [Caching](../../scaling/caching/)
+   and [sharding](../../scaling/sharding/) answer those.
 
 7. **Trade-offs: what did you give up, and why?** Name the alternatives you rejected and the cost of the one you chose.
 
@@ -75,6 +108,14 @@ right column shows the answers for the URL shortener from the lessons you have a
 The steps run in order the first time, then loop. A deep dive often sends you back: a hot key changes your estimates, and
 a new query changes the data model. Revisiting an earlier step means the design is working.
 
-## Check yourself
+<KeyTakeaways>
+
+- Requirements and estimates come first. They decide every later choice, including the database.
+- The API and data model turn requirements into calls and keys before any boxes appear.
+- Spend the deep dive where your numbers say the design breaks first.
+- Every choice has a cost: a `301` saves traffic and hides repeat clicks.
+- The steps loop. A new fact sends you back to the step it changes.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />

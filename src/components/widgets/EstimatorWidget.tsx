@@ -2,12 +2,15 @@ import { m } from 'motion/react';
 import { useId, useMemo, useRef, useState } from 'react';
 import { logFraction, logRange, logTicks } from '../../lib/logAxis';
 import {
+  CLICK_WINDOW_DAYS,
   type EstimateInputs,
   estimate,
   formatBytes,
   formatCount,
+  INDEX_OVERHEAD,
   type PresetId,
   presets,
+  REPLICATION_FACTOR,
   TARGET_UTILIZATION,
 } from '../../lib/models/estimates';
 import { Segmented, Slider } from '../sim/controls';
@@ -129,7 +132,7 @@ export default function EstimatorWidget() {
   const shown = Math.min(result.serversNeeded, SERVER_ICONS_SHOWN);
   const code = SAMPLE_CODE.slice(0, result.shortCodeLength).padEnd(result.shortCodeLength, 'x');
 
-  const summary = `${formatRate(result.peakRequestsPerSecond)} requests per second at peak, ${formatBytes(result.storageBytes)} of storage, ${result.serversNeeded} app server${result.serversNeeded === 1 ? '' : 's'}, ${result.shortCodeLength} character codes.`;
+  const summary = `${formatRate(result.peakRequestsPerSecond)} requests per second at peak, ${formatBytes(result.storageBytes)} of replicated storage, ${result.serversNeeded} app server${result.serversNeeded === 1 ? '' : 's'}, ${result.shortCodeLength} character codes.`;
 
   return (
     <MotionRoot>
@@ -162,12 +165,17 @@ export default function EstimatorWidget() {
           {
             label: 'Storage',
             value: formatBytes(result.storageBytes),
-            detail: `links × ${inputs.bytesPerLink} bytes each`,
+            detail: `${formatCount(result.totalLinks)} links × ${inputs.bytesPerLink} bytes = ${formatBytes(result.rawStorageBytes)}, × ${REPLICATION_FACTOR} copies × ${1 + INDEX_OVERHEAD} for indexes`,
           },
           {
             label: 'Cache for hot links',
             value: formatBytes(result.cacheBytes),
-            detail: `${Math.round(inputs.hotFraction * 100)}% of a day's reads × ${inputs.bytesPerLink} bytes`,
+            detail: `${Math.round(inputs.hotFraction * 100)}% of the ${formatCount(result.distinctLinksReadPerDay)} distinct links read a day (about ${CLICK_WINDOW_DAYS} days of new links) × ${inputs.bytesPerLink} bytes`,
+          },
+          {
+            label: 'Bandwidth at peak',
+            value: `${formatBytes(result.peakBandwidthBytesPerSecond)}/s`,
+            detail: `peak requests × ${inputs.bytesPerLink} byte redirect`,
           },
           {
             label: 'App servers at peak',
