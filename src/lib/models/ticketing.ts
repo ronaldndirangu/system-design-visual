@@ -663,3 +663,156 @@ export function ticketingEstimates({
     seatTableKilobytes: Math.round((seats * bytesPerSeat) / 1000),
   };
 }
+
+/**
+ * One seat row and its order, for the same-buyer reacquire timeline. Every
+ * successful claim bumps holdId, and the payment authorization carries the
+ * holdId it was issued for. The 'claim' guard matches event, seat, hold id,
+ * holder, status and deadline. The 'holder' guard skips the hold id, so a late
+ * approval from a buyer's older checkout can sell the buyer's newer claim.
+ */
+export type SeatStatus = 'available' | 'held' | 'paying' | 'sold';
+export type ClaimGuard = 'holder' | 'claim';
+
+export interface SeatClaim {
+  event: string;
+  seat: string;
+  holder: string;
+  holdId: number;
+}
+
+export interface SeatRow {
+  event: string;
+  seat: string;
+  status: SeatStatus;
+  holder: string | null;
+  holdId: number;
+  expires: number;
+}
+
+export class SeatLedger {
+  readonly guard: ClaimGuard;
+  readonly row: SeatRow;
+  /** The order row, keyed by (event, seat), with the hold id its authorization named. */
+  order: SeatClaim | null = null;
+
+  constructor(event: string, seat: string, guard: ClaimGuard = 'claim') {
+    this.guard = guard;
+    this.row = { event, seat, status: 'available', holder: null, holdId: 0, expires: 0 };
+  }
+
+  /** A held or paying seat past its deadline is back on sale. */
+  onSale(now: number): boolean {
+    const { status, expires } = this.row;
+    return status === 'available' || (status !== 'sold' && now >= expires);
+  }
+
+  claim(holder: string, now: number, holdFor: number): SeatClaim | null {
+    if (!this.onSale(now)) return null;
+    const row = this.row;
+    row.status = 'held';
+    row.holder = holder;
+    row.holdId += 1;
+    row.expires = now + holdFor;
+    return { event: row.event, seat: row.seat, holder, holdId: row.holdId };
+  }
+
+  /** Pressing Pay moves the claim from held to paying with a deadline that covers a slow bank. */
+  pay(claim: SeatClaim, now: number, claimFor: number): boolean {
+    if (!this.matches(claim, 'held', now)) return false;
+    this.row.status = 'paying';
+    this.row.expires = now + claimFor;
+    return true;
+  }
+
+  /** The bank approved the authorization issued for this claim. False means void it. */
+  sell(claim: SeatClaim, now: number): boolean {
+    if (this.order || !this.matches(claim, 'paying', now)) return false;
+    this.row.status = 'sold';
+    this.order = { ...claim };
+    return true;
+  }
+
+  release(claim: SeatClaim, now: number): boolean {
+    if (!this.matches(claim, 'held', now) && !this.matches(claim, 'paying', now)) return false;
+    this.row.status = 'available';
+    this.row.holder = null;
+    return true;
+  }
+
+  private matches(claim: SeatClaim, status: SeatStatus, now: number): boolean {
+    const row = this.row;
+    const sameBuyer =
+      row.event === claim.event &&
+      row.seat === claim.seat &&
+      row.holder === claim.holder &&
+      row.status === status &&
+      now < row.expires;
+    return sameBuyer && (this.guard === 'holder' || row.holdId === claim.holdId);
+  }
+}
+
+export const HOLD_MINUTES = 8;
+export const CLAIM_MINUTES = 10;
+
+export interface SeatStep {
+  /** Minutes after the first claim. */
+  at: number;
+  checkout: 'A' | 'B';
+  action: 'claim' | 'pay' | 'approve';
+  /** The hold id the request names, or null for a claim. */
+  named: number | null;
+  /** The seat's hold id after the step. */
+  seatHoldId: number;
+  ok: boolean;
+}
+
+/**
+ * The same buyer reacquires a seat. Ana claims A10 as hold 1 and presses Pay,
+ * and the bank stalls past the claim's deadline. She claims A10 again as hold
+ * 2 and presses Pay. Then the approval for hold 1 arrives, and the approval
+ * for hold 2 follows. Only the 'claim' guard voids the stale approval.
+ */
+export function reacquireTimeline(guard: ClaimGuard) {
+  const ledger = new SeatLedger('E1', 'A10', guard);
+  const steps: SeatStep[] = [];
+  const captured: number[] = [];
+  const voided: number[] = [];
+  const record = (
+    at: number,
+    checkout: SeatStep['checkout'],
+    action: SeatStep['action'],
+    named: number | null,
+    ok: boolean,
+  ) => steps.push({ at, checkout, action, named, seatHoldId: ledger.row.holdId, ok });
+  const approve = (at: number, checkout: SeatStep['checkout'], claim: SeatClaim) => {
+    const ok = ledger.sell(claim, at);
+    (ok ? captured : voided).push(claim.holdId);
+    record(at, checkout, 'approve', claim.holdId, ok);
+  };
+
+  const a = ledger.claim('Ana', 0, HOLD_MINUTES);
+  record(0, 'A', 'claim', null, a !== null);
+  if (!a) throw new Error('Checkout A must claim a free seat');
+  record(1, 'A', 'pay', a.holdId, ledger.pay(a, 1, CLAIM_MINUTES));
+  const lapsesAt = ledger.row.expires;
+  const b = ledger.claim('Ana', 12, HOLD_MINUTES);
+  record(12, 'B', 'claim', null, b !== null);
+  if (!b) throw new Error('Checkout B must claim after A lapses');
+  record(13, 'B', 'pay', b.holdId, ledger.pay(b, 13, CLAIM_MINUTES));
+  approve(14, 'A', a);
+  approve(15, 'B', b);
+
+  return {
+    guard,
+    lapsesAt,
+    steps,
+    captured,
+    voided,
+    final: {
+      status: ledger.row.status,
+      holdId: ledger.row.holdId,
+      orderHoldId: ledger.order?.holdId ?? null,
+    },
+  };
+}
