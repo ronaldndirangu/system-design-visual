@@ -113,10 +113,20 @@ export const quiz = [
     id: 'distributed-data/sagas/q5',
     prompt: 'The store adds a confirmation email, which no one can take back once sent. Where should the saga send it?',
     options: [
-      { text: 'After the last step that can fail', correct: true, why: 'Once the courier is booked, nothing left can fail the order, so the email never needs taking back. Retry it until it goes out.' },
+      { text: 'After the pivot, the last step whose failure cancels the order', correct: true, why: 'Once the courier is booked, nothing left can cancel the order, so the email never needs taking back. The send itself can fail, so retry it until it goes out.' },
       { text: 'First, so the customer hears right away', why: 'If a later step fails, the saga cannot recall the email. The best it can do is send a second, apologetic one.' },
       { text: 'At the same time as the charge', why: 'The card might be declined, and then the email promises an order that will never ship.' },
       { text: 'Anywhere, since its compensation deletes it', why: 'No compensation can pull an email out of an inbox. A compensation is a new forward action, and it cannot erase what people already saw.' },
+    ],
+  },
+  {
+    id: 'distributed-data/sagas/q6',
+    prompt: 'In a two-phase commit, Inventory and Payments both vote yes. Then the coordinator crashes before it sends the decision. What do the two services do?',
+    options: [
+      { text: 'Keep their locks and wait to learn the decision', correct: true, why: 'Each one promised to commit if told to, and neither knows what the coordinator decided. The rows they locked stay locked, and other checkouts wait. That wait is why two-phase commit is called blocking.' },
+      { text: 'Commit, since they both voted yes', why: 'A participant knows only its own vote. Shipping may have voted no, and then the coordinator decided to abort.' },
+      { text: 'Abort after a timeout and release the locks', why: 'The coordinator may already have told another participant to commit. Aborting alone could leave the order half committed.' },
+      { text: 'Run their compensations, newest first', why: 'Two-phase commit has no compensations. Nothing has committed yet: the changes sit prepared behind locks.' },
     ],
   },
 ];
@@ -127,6 +137,7 @@ export const quiz = [
 - Design a compensation for each step, and run them in reverse order when a step fails mid saga.
 - Compare orchestration and choreography by messages sent, where the saga state lives, and how easily you can trace one order.
 - Explain why a saga gives up isolation and why every step must be safe to retry.
+- Walk through two-phase commit, and tell when one database with distributed transactions removes the need for a saga.
 
 </Objectives>
 
@@ -176,8 +187,9 @@ already finished, newest first. Releasing the stock undoes the reservation, and 
 
 A compensation is a new forward action, and it restores the business outcome without erasing history. The refund shows
 up as a second line on the customer's statement. Some actions have no undo at all: a sent email stays sent. Put those
-after the **pivot**, the last step that can fail. Here, booking the courier is the pivot: once it succeeds, the order
-will complete.
+after the **pivot**, the last step whose failure cancels the order. Here, booking the courier is the pivot: once it
+succeeds, the order will complete. A step after the pivot can still fail, and the saga retries it until it succeeds.
+It never compensates a step after the pivot.
 
 <StepDiagram client:visible title="A checkout saga with a failure mid saga" nodes={nodes} edges={edges} steps={steps} height={300} />
 
@@ -281,6 +293,36 @@ One more trap: a service must save its change and publish its event together. If
 stalls forever. The usual fix writes the event to an outbox table in the same local transaction, and a relay publishes
 it later. The [Event-driven design](../../async/event-driven-design/) lesson covers that pattern.
 
+## Two-phase commit, and when to skip the saga
+
+Two-phase commit is the classic way to make one change all or nothing across several databases. A coordinator runs
+two rounds:
+
+1. **Prepare.** The coordinator sends each participant its part of the change. A participant that can commit writes
+   the change and a yes vote to its own log, keeps its locks, and answers yes. A participant that cannot answers no.
+2. **Commit.** If every vote is yes, the coordinator writes “commit” to its log and tells everyone. One no, or a vote
+   that never arrives, makes it write “abort” instead. Each participant applies the decision and releases its locks.
+
+A participant that voted yes is **in doubt** until the decision arrives. It promised to commit if told to, so it cannot
+abort alone. It does not know what the others voted, so it cannot commit alone either. If the coordinator crashes
+after the votes, every participant keeps its locks and waits until the coordinator recovers and reads its log. That
+wait makes two-phase commit **blocking**. Application servers run it across databases and message brokers through the
+XA standard, and operators sometimes have to resolve an in-doubt transaction by hand.
+
+Distributed databases such as Google Spanner and CockroachDB still use two-phase commit, and they shrink the wait.
+Each participant, and the record that holds the decision, is a replicated group that runs consensus (Paxos in Spanner,
+Raft in CockroachDB; the [Raft](../raft/) lesson shows how). When a machine dies, a new leader takes over with the
+votes and the decision already on its disk, so participants wait seconds for an election instead of waiting for a
+repair. The price is extra round trips to replicate every vote and decision, and every table must live in that one
+database.
+
+That gives a simple rule:
+
+- **All the data in one database, even a distributed one:** use its transactions. You get all or nothing and
+  isolation, with no compensations to write.
+- **Separate services that each own a database, or outside parties such as card networks and couriers:** use a saga.
+  No shared transaction reaches them, so each step commits alone and a compensation undoes it if a later step fails.
+
 ## Trade-offs
 
 <TradeoffTable title="Coordinating a checkout across services">
@@ -288,6 +330,7 @@ it later. The [Event-driven design](../../async/event-driven-design/) lesson cov
 | Choice                                | What it buys                                              | What it costs                                                                   |
 | ------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | Two-phase commit                      | All or nothing across services, and held locks keep other writers off half-done rows | Locks held across services, one stalled service or coordinator blocks everyone, outside APIs cannot join |
+| One database with distributed transactions | All or nothing with isolation, and no compensations to write | Every table in one database, extra replication round trips on every commit, and outside APIs still cannot join |
 | Saga with compensations               | Each service commits alone, with no cross-service locks   | No isolation, and a compensation to write and test for every step              |
 | Orchestration                         | One place holds the flow and every saga's state           | One more service to run, and it can grow to know too much                       |
 | Choreography                          | Loose coupling, and new listeners need no other changes   | The flow is spread across services, so tracing one order is hard                |

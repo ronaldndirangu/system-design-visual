@@ -67,7 +67,7 @@ export const quiz = [
     prompt: 'A shopper adds a mug, and the cart page that loads right after shows the cart without it. What is the most likely cause?',
     options: [
       { text: 'The cart page view has not applied the ItemAdded event yet', correct: true, why: 'Read models catch up with the log after the write succeeds. In the normal run, 19 of 95 page loads landed in that gap.' },
-      { text: 'The event log lost the event', why: 'The write model answers only after the event is appended, and the log never drops events. The view simply has not reached it.' },
+      { text: 'The event log lost the event', why: 'The write model answers only after the log stores the event, and the log keeps every event for its retention period, which an event-sourced log sets to forever. The view reads at least once from its saved position, so it will apply the event; it simply has not reached it yet.' },
       { text: 'The write model rejected the command without saying so', why: 'A rejected command returns an error to the shopper. This one was accepted, so its event sits in the log.' },
       { text: 'The top items dashboard is slow', why: 'Each projection keeps its own position. A slow dashboard grows its own lag and leaves the cart page alone.' },
     ],
@@ -142,20 +142,23 @@ bring a new cost: the read side runs behind the writes.
 <Predict
   client:visible
   id="distributed-data/cqrs/predict-1"
-  question="The cart page moves to its own table, which a background reader updates from the stream of changes every 300 ms. Shoppers open the cart page 100 to 500 ms after each change. What share of page loads miss the shopper’s latest change?"
+  question="The cart page moves to its own table, which a background reader updates from the stream of changes every 300 ms. Shoppers open the cart page 100 to 500 ms after each change. What do those two intervals decide?"
   options={[
-    'None, because the change is saved first',
-    'About 1 in 5',
-    'About half',
-    'All of them',
+    'Nothing, because the change is saved before any page loads',
+    'Some loads miss the change, and a load 300 ms or more after it always sees it',
+    'Every load misses the change until the shopper refreshes',
+    'Exactly 1 in 5 loads miss the change on every run',
   ]}
   answer={1}
 >
 
-**About 1 in 5.** In the toy run below, 19 of 95 page loads show a cart without the change the shopper just made. The
-write succeeded and the event sits in the log, and the page read a view that had not applied it yet. Pooled across 30
-different seeds, 535 of 2,693 page loads are stale (19.9%). Single short runs swing from 9% to 27%. This is a **stale
-read**, and you can hide it from the shopper who made the change.
+**Some loads miss the change, and waiting longer hides the gap.** The reader applies a new event at its next poll, 100
+to 300 ms after the change. A page load before that poll shows a cart without the change the shopper just made: the
+write succeeded and the event sits in the log, and the page read a view that had not applied it yet. A load 300 ms or
+more after the change always sees it, because a poll has run in between. In the toy run below, 19 of 95 page loads are
+stale. Pooled across 30 different seeds, 535 of 2,693 page loads are stale (19.9%, about 1 in 5), and single short runs
+swing from 9% to 27%, so the share depends on the run. This is a **stale read**, and you can hide it from the shopper
+who made the change.
 
 </Predict>
 

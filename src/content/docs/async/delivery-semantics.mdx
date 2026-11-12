@@ -211,7 +211,8 @@ Where the consumer puts the commit decides what a crash costs:
 - **At most once**: commit the offset, then count. A crash loses the clicks in hand. A crash never makes the consumer
   count a click twice, though a relay duplicate at a new offset still gets counted again.
 - **At least once**: count, then commit. A crash makes the restarted consumer count the clicks since the last commit
-  again. Nothing is ever lost.
+  again. No crash loses a click, as long as the log still holds it when the consumer reads it: retention deletes old
+  entries whether or not every group has read them.
 - **Effectively once**: count, then commit, and make a repeat harmless. The consumer records each click id it counted
   **in the same transaction as the count**, and skips ids it has seen. The click id comes from the source (the outbox
   row id), so it catches both kinds of repeat: a reread after a consumer crash and a relay copy at a new offset.
@@ -269,8 +270,11 @@ Two details make effectively once work in a real system:
   the effect: insert one row per click id, let a unique key reject a repeat, and compute the count from those rows. A
   store that cannot write the effect and the id in one atomic step cannot give effectively once.
 
-The list of seen ids grows forever unless you trim it. Keep ids for longer than the longest redelivery you expect, such
-as the log's retention period.
+The list of seen ids grows forever unless you trim it, and each store deletes on its own clock: the log after its
+retention, the [dead-letter queue](../event-driven-design/) after its own, and the seen ids after their trim. Pick one
+**recovery horizon**, the age of the oldest event you promise to replay, such as 7 days. Keep the log and the
+dead-letter queue that long, and keep seen ids at least as long as either. Alert when consumer lag reaches half of
+retention: a consumer a full retention period behind never reads the events the log deleted.
 
 You will often read about **exactly once delivery**. No network protocol delivers a message exactly once in general:
 the sender cannot tell a lost message from a lost acknowledgment, so it either retries (at least once) or gives up (at

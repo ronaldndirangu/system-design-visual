@@ -10,6 +10,7 @@ import {
   type RaftScenarioId,
   raftScenarios,
 } from '../../lib/models/raft';
+import { Toggle } from '../sim/controls';
 import { MotionRoot } from '../sim/MotionRoot';
 import { ScenarioChips } from '../sim/ScenarioChips';
 import { SimulationShell } from '../sim/SimulationShell';
@@ -22,7 +23,7 @@ import { UiIcon } from '../viz/icons';
 import { SystemNode, safeId } from '../viz/SystemNode';
 import './RaftWidget.css';
 
-const scenarioIds: RaftScenarioId[] = ['crash', 'split', 'partition'];
+const scenarioIds: RaftScenarioId[] = ['crash', 'split', 'partition', 'old-entry'];
 
 const centers: Vec[] = [
   [300, 65],
@@ -112,8 +113,10 @@ export default function RaftWidget() {
   const reducedMotion = usePrefersReducedMotion();
   const hatchId = safeId(useId(), 'raft-hatch');
   const [scenarioId, setScenarioId] = useState<RaftScenarioId>('crash');
+  const [unsafeCommit, setUnsafeCommit] = useState(false);
   const clusterRef = useRef<RaftCluster | null>(null);
-  if (!clusterRef.current) clusterRef.current = new RaftCluster(raftScenarios[scenarioId].seed);
+  if (!clusterRef.current)
+    clusterRef.current = new RaftCluster(raftScenarios[scenarioId].seed, { unsafeCommit });
   const cluster = clusterRef.current;
   const runRef = useRef(0);
   const wordRef = useRef(0);
@@ -122,8 +125,8 @@ export default function RaftWidget() {
   const scenario = raftScenarios[scenarioId];
   const done = cluster.ticks >= scenario.length;
 
-  const restart = (id: RaftScenarioId) => {
-    clusterRef.current = new RaftCluster(raftScenarios[id].seed);
+  const restart = (id: RaftScenarioId, unsafe = unsafeCommit) => {
+    clusterRef.current = new RaftCluster(raftScenarios[id].seed, { unsafeCommit: unsafe });
     runRef.current += 1;
     wordRef.current = 0;
     rerender();
@@ -131,6 +134,10 @@ export default function RaftWidget() {
   const chooseScenario = (id: RaftScenarioId) => {
     setScenarioId(id);
     restart(id);
+  };
+  const chooseUnsafe = (unsafe: boolean) => {
+    setUnsafeCommit(unsafe);
+    restart(scenarioId, unsafe);
   };
   const onTick = () => {
     if (cluster.ticks >= scenario.length) return;
@@ -180,7 +187,11 @@ export default function RaftWidget() {
       ? `${scenario.label}. Press Play to start the run.`
       : `At ${formatSeconds(ticks)}, term ${stats.term}, ${
           working === null ? 'no server leads' : `${nodeName(working)} leads`
-        }. ${stats.committed} of ${stats.sent} chat messages committed.`;
+        }. ${stats.committed} of ${stats.sent} chat messages committed.${
+          stats.committedErased > 0
+            ? ` The unsafe rule let later leaders overwrite ${stats.committedErased} committed copies.`
+            : ''
+        }`;
 
   const centerLine =
     groups !== null ? 'Network split' : working === null ? 'No leader' : `Leader: ${nodeName(working)}`;
@@ -220,10 +231,19 @@ export default function RaftWidget() {
           label: 'Messages lost',
           value: String(stats.lost),
           tone: 'bad',
-          note: 'never committed',
+          note: stats.committedErased > 0 ? undefined : 'never committed',
           detail: `Erased copies: ${stats.erasedCopies}`,
         }
       : { label: 'Messages lost', value: '0', detail: `Erased copies: ${stats.erasedCopies}` },
+    stats.committedErased > 0
+      ? {
+          label: 'Committed copies erased',
+          value: String(stats.committedErased),
+          tone: 'bad',
+          note: 'safety broken',
+          detail: 'Copies a server had marked committed, then overwrote',
+        }
+      : { label: 'Committed copies erased', value: '0', detail: 'Raft never overwrites a committed entry' },
   ];
 
   const xAt = (tick: number) => TIMELINE_LEFT + (tick * TIMELINE_WIDTH) / scenario.length;
@@ -240,7 +260,7 @@ export default function RaftWidget() {
           summary={summary}
           status={status}
           finished={done}
-          resetKey={scenarioId}
+          resetKey={`${scenarioId}-${unsafeCommit ? 'unsafe' : 'raft'}`}
           controls={
             <div className="sdv-raft__actions">
               <button type="button" className="sdv-button" onClick={skipToEnd} disabled={!hydrated || done}>
@@ -265,6 +285,11 @@ export default function RaftWidget() {
               >
                 Recover servers
               </button>
+              <Toggle
+                label="Unsafe rule: commit any entry a majority stores"
+                checked={unsafeCommit}
+                onChange={chooseUnsafe}
+              />
               <p className="sdv-raft__hint">
                 Buttons act on the next tick. After a click, the run drifts from the numbers the lesson
                 quotes.
