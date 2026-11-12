@@ -235,7 +235,7 @@ export default function TokenBucketWidget({
         {showPhysics && (
           <BallLegend>
             <li>
-              <span className="sdv-bucket__token" aria-hidden="true" /> Token (amber diamond)
+              <span className="sdv-bucket__token" aria-hidden="true" /> Token (yellow diamond)
             </li>
             <li>Dropped requests got 429 and land in the tray</li>
           </BallLegend>

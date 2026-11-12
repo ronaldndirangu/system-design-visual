@@ -331,7 +331,16 @@ export class TokenBucketScene implements Scene {
 
     for (const reject of this.rejects) {
       const fade = Math.min(1, (REJECT_LIFE_MS - reject.age) / 600);
-      drawBall(ctx, reject.body.position.x, reject.body.position.y, BALL_R, 'cross', palette.bad, fade);
+      drawBall(
+        ctx,
+        reject.body.position.x,
+        reject.body.position.y,
+        BALL_R,
+        'cross',
+        palette.bad,
+        fade,
+        palette.ink,
+      );
     }
 
     for (const flight of this.flights) {

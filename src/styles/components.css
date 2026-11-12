@@ -3,55 +3,6 @@
  * Tokens live in theme.css. Every status color here pairs with a shape, icon, or label.
  */
 
-:root {
-  --sdv-shard-0: #60a5fa;
-  --sdv-shard-1: #f472b6;
-  --sdv-shard-2: #34d399;
-  --sdv-shard-3: #fbbf24;
-  --sdv-shard-4: #a78bfa;
-  --sdv-shard-5: #22d3ee;
-  --sdv-shard-6: #fb923c;
-  --sdv-shard-7: #a3e635;
-  --sdv-ink-on-shard: #0b0f19;
-}
-
-:root[data-theme="light"] {
-  --sdv-shard-0: #2563eb;
-  --sdv-shard-1: #db2777;
-  --sdv-shard-2: #059669;
-  --sdv-shard-3: #b45309;
-  --sdv-shard-4: #7c3aed;
-  --sdv-shard-5: #0e7490;
-  --sdv-shard-6: #c2410c;
-  --sdv-shard-7: #4d7c0f;
-  --sdv-ink-on-shard: #ffffff;
-}
-
-[data-shard="0"] {
-  --shard: var(--sdv-shard-0);
-}
-[data-shard="1"] {
-  --shard: var(--sdv-shard-1);
-}
-[data-shard="2"] {
-  --shard: var(--sdv-shard-2);
-}
-[data-shard="3"] {
-  --shard: var(--sdv-shard-3);
-}
-[data-shard="4"] {
-  --shard: var(--sdv-shard-4);
-}
-[data-shard="5"] {
-  --shard: var(--sdv-shard-5);
-}
-[data-shard="6"] {
-  --shard: var(--sdv-shard-6);
-}
-[data-shard="7"] {
-  --shard: var(--sdv-shard-7);
-}
-
 /* ---------- Landing hero ---------- */
 
 .sdv-hero {
@@ -865,13 +816,25 @@ button[data-tone="bad"] {
   mask-image: linear-gradient(
     to right,
     transparent,
-    #000 var(--sdv-fade-start),
-    #000 calc(100% - var(--sdv-fade-end)),
+    black var(--sdv-fade-start),
+    black calc(100% - var(--sdv-fade-end)),
     transparent
   );
 }
 .sdv-scroll-x:focus-visible {
   mask-image: none;
+  outline: 2px solid var(--sl-color-text-accent);
+  outline-offset: 2px;
+}
+.sdv-table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.sdv-table-scroll > table {
+  display: table;
+  overflow: visible;
+}
+.sdv-table-scroll:focus-visible {
   outline: 2px solid var(--sl-color-text-accent);
   outline-offset: 2px;
 }
@@ -1707,9 +1670,10 @@ button[data-tone="bad"] {
 .sdv-shards__cell {
   align-items: center;
   aspect-ratio: 1;
-  background: var(--shard);
+  background: color-mix(in oklab, var(--shard) 22%, var(--sdv-surface-1));
+  border: 1px solid var(--shard);
   border-radius: 3px;
-  color: var(--sdv-ink-on-shard);
+  color: var(--sdv-text-1);
   display: flex;
   font-size: 0.65rem;
   font-weight: 700;
