@@ -209,7 +209,9 @@ are the hard part.
 The chat service gives each message a **sequence number** within its conversation, so the order exists in one place. The
 phone shows messages in sequence order and holds back any that arrive early, in a **reorder buffer**. Heartbeats detect
 sockets that died silently. When a phone reconnects, it sends a **cursor**, the sequence number of the last message it
-showed, and the server replays everything after it from the **message log**.
+showed, and the server replays everything after it from the **message log**. One server owns each conversation and
+picks its numbers. The [Time, leases, and fencing](../../distributed-data/time-leases-fencing/) lesson shows how a new
+owner takes over without a paused one writing duplicates.
 
 <StepDiagram client:visible title="A chat message, step by step" nodes={nodes} edges={edges} steps={steps} height={290} />
 

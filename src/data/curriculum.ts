@@ -127,6 +127,16 @@ const modules: ModuleInput[] = [
         buildsOn: ['thinking/access-patterns'],
       },
       {
+        id: 'foundations/unique-ids',
+        title: 'Unique IDs',
+        summary:
+          'Mint IDs that never collide, from one counter to Snowflake, UUIDv7, and short base62 codes.',
+        format: 'card',
+        minutes: 10,
+        difficulty: 1,
+        buildsOn: ['foundations/data-modeling'],
+      },
+      {
         id: 'foundations/transactions',
         title: 'Transactions and constraints',
         summary:
@@ -143,6 +153,15 @@ const modules: ModuleInput[] = [
         minutes: 21,
         difficulty: 1,
         buildsOn: ['foundations/data-modeling', 'foundations/transactions'],
+      },
+      {
+        id: 'foundations/storage-engines',
+        title: 'Storage engines',
+        summary:
+          'Follow a write through the log, B-trees, and LSM trees, and see what each engine pays for speed.',
+        minutes: 22,
+        difficulty: 2,
+        buildsOn: ['foundations/indexes', 'foundations/transactions'],
       },
       {
         id: 'foundations/real-time',
@@ -193,6 +212,16 @@ const modules: ModuleInput[] = [
         minutes: 20,
         difficulty: 1,
         buildsOn: ['scaling/caching', 'foundations/what-happens-when-you-click'],
+      },
+      {
+        id: 'scaling/object-storage',
+        title: 'Object storage',
+        summary:
+          'Store large files in buckets with presigned URLs, multipart uploads, tiers, and erasure coding.',
+        format: 'card',
+        minutes: 10,
+        difficulty: 1,
+        buildsOn: ['scaling/cdn'],
       },
       {
         id: 'scaling/read-replicas',
@@ -355,6 +384,16 @@ const modules: ModuleInput[] = [
         difficulty: 2,
         buildsOn: ['distributed-data/cap-and-pacelc', 'scaling/sharding'],
         example: 'Shopping cart',
+      },
+      {
+        id: 'distributed-data/time-leases-fencing',
+        title: 'Time, leases, and fencing',
+        summary:
+          'See why clocks lie, why a lock can expire under you, and how a fencing token stops a stale writer.',
+        minutes: 24,
+        difficulty: 3,
+        buildsOn: ['distributed-data/quorums', 'reliability/idempotency'],
+        example: 'Chat',
       },
       {
         id: 'distributed-data/raft',

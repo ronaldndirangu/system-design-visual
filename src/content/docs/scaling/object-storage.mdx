@@ -1,0 +1,116 @@
+---
+title: Object storage
+description: Keep large files in buckets and their metadata in the database. Upload with presigned URLs and multipart, pick a storage tier, and see how erasure coding beats three copies on cost.
+---
+
+import Objectives from '../../../components/lesson/Objectives.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
+import Predict from '../../../components/lesson/Predict';
+import Quiz from '../../../components/lesson/Quiz';
+
+export const quiz = [
+  {
+    id: 'scaling/object-storage/q1',
+    prompt: 'Users upload 2 GB videos through your API servers, which forward the bytes to the bucket. Uploads time out and API memory spikes. What fixes the design?',
+    options: [
+      { text: 'Give the API servers more memory', why: 'Every upload still crosses your servers twice, and the next spike needs still more memory.' },
+      {
+        text: 'Hand the client a presigned URL and let it upload straight to the bucket in parts',
+        correct: true,
+        why: 'Right. The API only signs the request, and the bucket takes the bytes. Multipart lets a failed part retry alone.',
+      },
+      { text: 'Store the videos in the database as blobs', why: 'That moves the same bytes into a system built for small rows, and it bloats backups and replicas.' },
+      { text: 'Compress the videos on the API server first', why: 'Video is already compressed, and the bytes still pass through your servers.' },
+    ],
+  },
+  {
+    id: 'scaling/object-storage/q2',
+    prompt: 'A bucket stores 1 PB with 3 full copies. The team switches to an erasure code with 10 data and 4 parity pieces. How much raw disk does it need now?',
+    options: [
+      { text: '3 PB', why: 'That is the cost of 3 full copies, the setup before the switch.' },
+      { text: '1.4 PB', correct: true, why: 'Right. 14 pieces for every 10 pieces of data is 1.4 times the data size.' },
+      { text: '1 PB', why: 'Parity pieces take disk space too.' },
+      { text: '4 PB', why: 'Each of the 4 parity pieces is a small fragment, so together they add only 40%.' },
+    ],
+  },
+  {
+    id: 'scaling/object-storage/q3',
+    prompt: 'Monthly reports are read heavily for a week and almost never after 90 days, but must be kept for 7 years. What is the cheapest setup?',
+    options: [
+      { text: 'Keep everything in the standard tier', why: 'You pay the highest storage price for 7 years on files nobody reads.' },
+      { text: 'Move every file to archive on upload', why: 'The week of heavy reads would pay archive retrieval fees and wait hours per file.' },
+      {
+        text: 'A lifecycle rule: standard at first, infrequent access after 30 days, archive after 90',
+        correct: true,
+        why: 'Right. Each file sits in the cheapest tier that still fits how often it gets read.',
+      },
+      { text: 'Delete files after 90 days', why: 'The 7-year retention rule forbids it.' },
+    ],
+  },
+];
+
+<Objectives>
+
+- Explain why large files belong in object storage, with only their keys in the database.
+- Upload large files straight to a bucket with presigned URLs and multipart uploads.
+- Pick a storage tier, and compare full copies with erasure coding on cost.
+
+</Objectives>
+
+## Buckets and keys
+
+Object storage, such as Amazon S3, Azure Blob Storage, or Google Cloud Storage, keeps files called objects in buckets.
+You address each object by a key such as `exports/2025/03/report.csv`, and you read, write, or delete it whole. You
+cannot edit byte 500 in place. That limit lets the service spread trillions of objects across thousands of disks and
+serve them through a [CDN](../cdn/).
+
+A database row stores the key and metadata such as size and owner. The bytes stay in the bucket, so the database stays
+small and its backups stay fast.
+
+## Uploads that skip your servers
+
+A **presigned URL** is a bucket URL signed with your credentials and an expiry, such as 15 minutes. Your API checks the
+user, signs a URL for one key, and returns it. The client sends the bytes straight to the bucket.
+
+A **multipart upload** splits a file into parts, for example 100 MB each, sends them in parallel, and commits them as
+one object. A part that fails retries alone.
+
+<Predict
+  client:visible
+  id="scaling/object-storage/predict-1"
+  question="A 5 GB upload in one request fails at 4.9 GB. With 100 MB parts instead, how much data does the retry resend?"
+  options={['About 100 MB', 'About 2.5 GB', 'About 4.9 GB', 'All 5 GB']}
+  answer={0}
+>
+
+**About 100 MB.** Only the failed part goes again. With one request, the client starts over and resends all 5 GB.
+
+</Predict>
+
+## Tiers and durability
+
+| Tier              | Storage price | Read cost                         | Fits                        |
+| ----------------- | ------------- | --------------------------------- | --------------------------- |
+| Standard          | Highest       | Low, instant                      | Hot files read every day    |
+| Infrequent access | About half    | Per-GB retrieval fee, instant     | Files read a few times      |
+| Archive           | A tenth or less | Fee, plus minutes to hours to wait | Compliance copies         |
+
+A lifecycle rule moves objects between tiers by age, with no code.
+
+Buckets reach eleven nines of durability by storing data on many disks across zones. Three full copies cost 3 times
+the data. An **erasure code** cuts each object into 10 data pieces plus 4 parity pieces and spreads them across disks.
+Any 10 of the 14 pieces rebuild the object, so it survives 4 lost disks for 1.4 times the data size. A read must
+gather 10 pieces, so it costs more CPU and network than reading one copy.
+
+<KeyTakeaways>
+
+- Keep large files in buckets and their keys in the database.
+- Presigned URLs keep file bytes off your servers, and multipart uploads retry one part at a time.
+- Lifecycle rules move cold objects to cheaper tiers.
+- Erasure coding buys the safety of several copies at a fraction of the disk.
+
+</KeyTakeaways>
+
+## Check yourself
+
+<Quiz client:visible questions={quiz} />

@@ -490,7 +490,9 @@ a deadline. The rider sees one status, matching, the whole time.
 The trap is a stale message. Networks delay replies, and processes pause for garbage collection or a slow disk. The
 driver's accept can arrive after the lease expired and another ride reserved the same driver, and a paused matcher can
 wake up and fire its old timer. So every message names the ride and the version it answers, and the update matches
-both. The driver's accept also needs the lease to still be running:
+both. The version works as a fencing token, which the [Time, leases, and
+fencing](../../distributed-data/time-leases-fencing/) lesson covers. The driver's accept also needs the lease to still
+be running:
 
 ```sql
 UPDATE drivers
