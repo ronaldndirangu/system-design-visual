@@ -283,7 +283,7 @@ those two sets overlap.
 
 ## The idea: make every read meet every write
 
-The cart service places copies with the consistent hashing ring from [sharding](../../scaling/sharding/). It hashes
+The cart service places copies with the ring from [consistent hashing](../../scaling/consistent-hashing/). It hashes
 `cart:sam` onto the ring and walks clockwise. The first **N** replicas it meets hold copies, and that ordered list is
 the key’s **preference list**. Two more numbers decide each request:
 

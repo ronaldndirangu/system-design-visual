@@ -216,8 +216,8 @@ export const recall = [
 ];
 
 This case study builds on the **Scaling the URL shortener** module: [Caching](../../scaling/caching/),
-[Read replicas](../../scaling/read-replicas/), and [Sharding and consistent hashing](../../scaling/sharding/) all return
-here. The [Indexes](../../foundations/indexes/) lesson finds one row by its key with a B-tree. Search asks the reverse
+[Read replicas](../../scaling/read-replicas/), [Sharding and partitioning](../../scaling/sharding/), and [Consistent
+hashing and rebalancing](../../scaling/consistent-hashing/) all return here. The [Indexes](../../foundations/indexes/) lesson finds one row by its key with a B-tree. Search asks the reverse
 question: given a few words, which documents contain them, and which of those are best?
 
 <Recall questions={recall} />
@@ -503,7 +503,7 @@ instead of nightly. Each build still takes 3 h, so new indexes go live at 05:00,
 
 ### Sharding the index
 
-At 540 GB, the index needs 18 shards. [Sharding and consistent hashing](../../scaling/sharding/) gives two ways to split
+At 540 GB, the index needs 18 shards. [Sharding and partitioning](../../scaling/sharding/) gives two ways to split
 it:
 
 - **By document.** Each shard holds a complete inverted index for its slice of the documents. A query goes to all 18

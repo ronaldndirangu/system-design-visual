@@ -293,8 +293,9 @@ term 2 on the majority side. When the network heals, Node 2 sees term 2, steps d
 after a timeout and deduplicate by message ID, as [Idempotency](../../reliability/idempotency/) covers.
 
 The minority side refuses writes, the consistent choice from [CAP and PACELC](../cap-and-pacelc/). A cut-off leader
-still believes it leads, so before a read a leader confirms its majority (ReadIndex) or relies on a lease that assumes
-bounded clock drift. Either gives the linearizable reads from [Consistency models](../consistency-models/).
+still believes it leads, so before a read it confirms its majority (ReadIndex) or relies on a lease that followers
+honor by refusing to vote while it lasts. Either gives the linearizable reads from
+[Consistency models](../consistency-models/).
 
 <details>
 <summary>Go deeper: the full crash, split, and partition timelines</summary>
@@ -325,17 +326,43 @@ that each term has at most one leader and that every later leader holds every co
 <details>
 <summary>Go deeper: ReadIndex and leases</summary>
 
-**ReadIndex.** The leader records its commit point, sends a heartbeat round, and answers the read once a majority
-replies in its term. A deposed leader cannot collect that majority, so it never serves stale chat. The cost is one
-round trip per read, or per batch of reads.
+**A barrier once per term.** A new leader holds every committed entry, but its commit point can trail them: the old
+leader may have committed an entry and crashed before telling anyone. So each new leader appends one empty no-op entry
+from its own term and serves no reads until it commits. That commits everything before it too. The leader does this once
+per term, and every later read reuses the barrier. etcd’s Raft library postpones ReadIndex the same way.
 
-**Leases.** The leader skips the round trip for a while after a majority acknowledges a heartbeat. Followers that heard
-from it recently refuse to vote for anyone else until their election timeout passes, so no new leader can appear before
-the lease ends. This is only safe when clocks drift by a bounded amount, because a fast follower clock or a long leader
-pause can let an old leader answer after a new one has taken writes.
+**ReadIndex.** Once the barrier has committed, the leader serves a read in four steps:
 
-**Follower reads.** A follower can serve a read by asking the leader for its commit point, then waiting until it has
-applied entries up to it. This spreads read load while keeping reads linearizable.
+1. It records its commit point as the read index.
+2. It sends a heartbeat round and waits for a majority to reply in its term. A deposed leader cannot collect that
+   majority, so it never serves stale chat.
+3. It waits until it has applied every entry up to the read index.
+4. It answers from its own state.
+
+The cost is one round trip per read, or per batch of reads that share one heartbeat round.
+
+**Follower reads.** A follower asks the leader for a read index. The leader runs steps 1 and 2 and returns the index,
+and the follower waits until it has applied entries up to it before it answers. The follower’s own commit point is not
+enough, because it can trail the leader’s or come from a leader that a newer one has replaced. This spreads read load
+while keeping reads linearizable.
+
+**Leases.** The leader skips the heartbeat round for a while after a majority acknowledges one. Bounded clock drift alone
+does not make this safe. Elections must honor the lease: a follower that acknowledged the leader refuses to vote for
+anyone else until the lease could have run out, measured with conservative bounds on clock speed and process pauses.
+Without that rule, a new leader can win and take writes while the old one still answers reads from its lease.
+
+**A read that arrives before the next write.** This sketch follows real Raft with the no-op. The simulation skips the
+no-op, so the steps below use entry numbers instead of the widget’s messages and times.
+
+1. The term 1 leader stores entry 3 on 3 of 5 servers, including Node 3, commits it, and tells its sender it is sent.
+   Followers learn the new commit point only with the next heartbeat.
+2. The leader crashes before that heartbeat. Node 3 stores entry 3, but its commit point still sits at entry 2.
+3. Node 3 wins term 2, appends a no-op as entry 4, and holds reads.
+4. A read arrives before anyone sends another message. Answering at commit point 2 would hide entry 3, which its
+   sender already saw as sent. Node 3 waits.
+5. The no-op commits on 3 of 5 servers, and the commit point moves to entry 4. Entry 3 commits with it.
+6. Node 3 records read index 4, confirms its majority with a heartbeat round, applies through entry 4, and answers with
+   entry 3 included.
 
 </details>
 
@@ -407,7 +434,8 @@ Real Raft, as used in etcd (the store behind Kubernetes), Consul, and CockroachD
 **Pre-vote.** A server returning from a partition can bump the term and disrupt a healthy leader. Pre-vote first asks
 whether it could win, and randomized timeouts keep the remaining elections rare.
 
-**The no-op entry.** The model skips it, so earlier-term entries wait for the next chat message to commit.
+**The no-op entry.** The model skips it, so earlier-term entries wait for the next chat message to commit. Real
+leaders commit it before serving reads.
 
 **Client retries and reads.** Clients resend after a timeout, and leaders confirm leadership before reads, as the
 ReadIndex and lease notes above describe.
@@ -425,7 +453,7 @@ ReadIndex and lease notes above describe.
 | Five servers instead of three    | Survives two failures instead of one | Each commit waits for 3 copies instead of 2   |
 | Shorter election timeout         | Faster failover after a real crash   | Needless elections when a server is only slow |
 | Wider random timeout range       | Fewer split votes                    | A slower worst case before anyone stands      |
-| Lease reads instead of ReadIndex | Reads skip a majority round trip     | Safety depends on bounded clock drift         |
+| Lease reads instead of ReadIndex | Reads skip a majority round trip     | Elections must wait out every live lease      |
 
 </TradeoffTable>
 
