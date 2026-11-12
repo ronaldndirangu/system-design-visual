@@ -103,11 +103,16 @@ on a duplicate key. With 10 million links stored, a new code collides about once
 
 </Predict>
 
+The same ratio helps an attacker: a bot that tries 1 million random codes collects about 175 real links. Short codes
+suit public links. Private links such as shared documents need 16 or more random base62 characters (about 95 bits)
+plus a rate limit on misses.
+
 ## Choosing
 
 | Need                                  | Pick                                                                 |
 | ------------------------------------- | -------------------------------------------------------------------- |
-| Short, hard-to-guess public codes     | Random base62, with a unique constraint and retry                    |
+| Short public codes                    | Random base62, with a unique constraint and retry                    |
+| Private, unguessable links            | 16 or more random base62 characters, plus a rate limit on misses     |
 | Short codes with no retries           | Counter ranges, scrambled by a reversible shuffle before base62      |
 | Time-sorted IDs from many machines    | Snowflake or UUIDv7                                                  |
 | IDs minted offline on devices         | UUIDv4 or UUIDv7                                                     |

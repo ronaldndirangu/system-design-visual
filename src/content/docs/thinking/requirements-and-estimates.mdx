@@ -221,7 +221,7 @@ cache     = links read per day × 20% hot × bytes
 bandwidth = peak/s × bytes per response
 ```
 
-The 0.7 keeps each server at most 70% busy, so a traffic spike or one lost server does not tip the rest over. Here is
+The 0.7 keeps each server at most 70% busy, which leaves headroom for bursts. Losing a server is a separate check. Here is
 the growing startup: 1 million new links a day, 100 clicks per link, a 3× peak, 5 years, 500 bytes per link, and app
 servers that each handle about 2,000 redirects a second.
 
@@ -234,6 +234,9 @@ both    = 11.57 + 1,157 ≈ 1,169/s
 peak    = 1,169 × 3 ≈ 3,507/s
 servers = 3,507 ÷ (2,000 × 0.7) ≈ 2.5, so 3
 ```
+
+Then check **N-1**, the loss of one server: with 3 servers, the 2 survivors each run 88% busy. A fourth server keeps
+the 3 survivors at 58%. [Load balancing](../../scaling/load-balancing/) shows why waits climb near 100%.
 
 The peak is a **throughput** target, one of the four words from the [anatomy of a web app](../anatomy-of-a-web-app/).
 If each redirect takes 20 ms, about 3,507 × 0.02 ≈ 70 requests are in flight at once, about 23 per server.
@@ -305,8 +308,8 @@ cache fills.
 
 Traffic follows people's days: evenings run hotter than nights, and one viral post can multiply clicks within minutes.
 A factor of 2 to 3 over the daily average is a common first guess for consumer apps. Replace it with measured traffic as
-soon as you have some. The 70% target covers the rest: if one of the 3 servers dies at peak, the other two each take
-about 1,750 requests a second, near 88% busy but still standing.
+soon as you have some. The 70% target absorbs bursts within the peak minute; the N-1 check above covers a lost server.
+A fleet sized to run at 70% fails that check: lose 1 of 3 servers and the survivors hit 105%.
 
 </details>
 

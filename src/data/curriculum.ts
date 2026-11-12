@@ -146,16 +146,6 @@ const modules: ModuleInput[] = [
         buildsOn: ['thinking/access-patterns'],
       },
       {
-        id: 'foundations/unique-ids',
-        title: 'Unique IDs',
-        summary:
-          'Mint IDs that never collide, from one counter to Snowflake, UUIDv7, and short base62 codes.',
-        format: 'card',
-        minutes: 10,
-        difficulty: 1,
-        buildsOn: ['foundations/data-modeling'],
-      },
-      {
         id: 'foundations/transactions',
         title: 'Transactions and constraints',
         summary:
@@ -172,6 +162,16 @@ const modules: ModuleInput[] = [
         minutes: 26,
         difficulty: 1,
         buildsOn: ['foundations/data-modeling', 'foundations/transactions'],
+      },
+      {
+        id: 'foundations/unique-ids',
+        title: 'Unique IDs',
+        summary:
+          'Mint IDs that never collide, from one counter to Snowflake, UUIDv7, and short base62 codes.',
+        format: 'card',
+        minutes: 10,
+        difficulty: 1,
+        buildsOn: ['foundations/data-modeling', 'foundations/indexes'],
       },
       {
         id: 'foundations/storage-engines',

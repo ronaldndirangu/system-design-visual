@@ -192,7 +192,9 @@ rate, then needs its own work. Size the limit so that sum stays under the client
 - In the viral run, the line of 40 answers just 1 request late, at 12.3 s, when several slow redirects line up.
 
 A limit costs nothing while traffic stays below capacity. Pick **Steady traffic** in the simulation above: both lanes
-answer the same 800 requests in time, and neither line ever holds more than 7.
+answer the same 800 requests in time, and neither line ever holds more than 7. Waits still climb steeply as the workers
+near 100% busy, long before the line overflows; [load balancing](../../scaling/load-balancing/) puts numbers on that
+curve.
 
 ## Why have a line at all?
 

@@ -87,6 +87,29 @@ one object. A part that fails retries alone.
 
 </Predict>
 
+### Closing the loop
+
+The API signs a URL and never sees the upload finish. Four pieces close the loop:
+
+1. **Pending row first.** The API writes a `pending` row before it signs the URL.
+2. **Confirm, then verify.** A confirm call or object-created event marks the row `ready` once a worker
+   checks the stored size and file bytes. A signed `Content-Type` only labels the file.
+3. **Sweeper.** A nightly job deletes stale pending rows and orphaned objects.
+4. **Abort stale multipart uploads.** A lifecycle rule aborts them after 7 days.
+
+Serve user files from a separate domain, such as `usercontent.example.com`, so uploaded HTML cannot run
+scripts on your main site.
+
+<details>
+<summary>Go deeper: capping upload size, POST versus PUT</summary>
+
+A presigned **POST** carries a policy, and its `content-length-range` condition makes the bucket reject a body outside
+the range. A presigned **PUT** has no policy, so that condition does not apply; at most it signs one exact
+`Content-Length`. Either way, the size check in step 2 is the guard you rely on. Add
+`Content-Disposition: attachment` on the user-content domain so browsers download files instead of rendering them.
+
+</details>
+
 ## Tiers and durability
 
 | Tier              | Storage price | Read cost                         | Fits                        |

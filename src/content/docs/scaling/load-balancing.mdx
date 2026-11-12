@@ -149,9 +149,40 @@ adds about 600 ms. Press Play below to watch it happen.
 />
 
 Trouble starts well before 100%. Requests arrive in random bursts, so even when the average fits, a burst can outrun the
-server. At 50% busy, the line clears between bursts. At 95% busy, there is almost no quiet time to catch up. The rule
+server. At 50% busy, the line clears between bursts; at 95%, it never catches up. The rule
 of thumb from [requirements and estimates](../../thinking/requirements-and-estimates/) is **plan for about 70% busy at
-peak**. That 30% is queueing headroom that keeps waits short during bursts.
+peak**, which leaves headroom for bursts. A toy model, **W = S ÷ (1 − ρ)**, shows the shape: at 90% busy,
+a 10 ms request waits about 100 ms.
+
+<details>
+<summary>Go deeper: why waits explode near 100% busy</summary>
+
+In the toy model, S is the work one request needs and ρ (rho) is the fraction of time the server is busy. It assumes
+random arrivals and one server, so real numbers differ, yet the curve bends the same way.
+
+<Predict
+  client:visible
+  id="scaling/load-balancing/predict-4"
+  ordered
+  question="A request takes 10 ms of work. In the toy model, at 90% busy, what is the average response time?"
+  options={['11 ms', '20 ms', '100 ms', '1 s']}
+  answer={2}
+>
+
+**100 ms.** W = 10 ÷ (1 − 0.9) = 100 ms: nine parts waiting in line for every part of work.
+
+| Busy | Response time | Multiple of 10 ms |
+| ---- | ------------- | ----------------- |
+| 50%  | 20 ms         | 2×                |
+| 80%  | 50 ms         | 5×                |
+| 90%  | 100 ms        | 10×               |
+| 95%  | 200 ms        | 20×               |
+
+Going from 50% to 80% busy multiplies the wait by 2.5. Going from 90% to 95% doubles it again for only 5 points of load.
+
+</Predict>
+
+</details>
 
 ## Two ways out
 
