@@ -314,7 +314,9 @@ forbids.
 - Each question sends about 2,000 input tokens (instructions, the question, and retrieved chunks) and gets about 200
   output tokens back. That is 80 million input tokens and 8 million output tokens a day.
 - 500 stores with 300 documents each, cut into about 20 chunks per document, is 3 million chunks. A 1,024 dimension
-  embedding stored as 4 byte floats takes 4 KB, so the vectors need about 12 GB before index overhead.
+  embedding stored as 4 byte floats takes 4 KB, so the vectors need about 12 GB before index overhead. One store's
+  eligible share is about 6,000 vectors (24.576 MB), so filtered exact search is the baseline;
+  [retrieval](../retrieval/) compares it with an ANN index.
 
 Requests per second are small. The pressure sits on tokens, which set cost and latency, and on keeping 500 stores'
 documents apart in one index.

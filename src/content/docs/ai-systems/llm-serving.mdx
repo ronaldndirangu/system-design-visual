@@ -470,8 +470,14 @@ separate GPU pools for prefill and decode.
 <summary>Go deeper: more ways to serve faster</summary>
 
 **Speculative decoding.** A small draft model proposes several tokens, and the large model checks them all in one pass,
-which costs about one decode step while the step stays under the ridge. The large model keeps the proposed tokens up to
-the first one it disagrees with, so the output follows the same distribution as the large model alone.
+which costs about one decode step while the step stays under the ridge. With greedy decoding, the large model keeps the
+drafted prefix that matches its own top choices. Sampled decoding needs a different rule. Let p and q be the large and
+draft models' next token probabilities after the same accepted prefix, both after temperature and other decoding
+settings. The large model accepts a drafted token x with probability min(1, p(x) / q(x)). At the first rejection it
+samples a replacement from max(0, p minus q), normalized, and discards the rest of the draft. Example: the large model
+gives A 0.8 and B 0.2, and the draft gives A 0.6 and B 0.4. Every drafted A is accepted, and half of the drafted Bs. A
+rejected B resamples from the leftover mass, which sits entirely on A. A comes out 0.6 + 0.4 × 0.5 = 0.8 of the time
+and B 0.4 × 0.5 = 0.2, exactly the large model's distribution.
 [Leviathan et al. (2023)](https://arxiv.org/abs/2211.17192) report 2 to 3 times faster decoding on T5-XXL. The gain
 depends on how often the draft guesses right, and it shrinks at large batches, where steps are already compute bound.
 

@@ -22,6 +22,7 @@ export function ToneBadge({ tone, children }: { tone: Tone; children: string }) 
 }
 
 export function StatTable({ rows, caption = 'Live readout' }: { rows: StatRow[]; caption?: string }) {
+  if (rows.length === 0) return null;
   return (
     <table className="sdv-stats">
       <caption>{caption}</caption>

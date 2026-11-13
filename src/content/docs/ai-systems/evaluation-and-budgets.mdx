@@ -73,7 +73,7 @@ export const steps = [
   },
   {
     title: 'Gate on all four budgets',
-    text: 'Ship the cheapest candidate that meets every budget. If none does, change the design or agree a new budget with the product owner, in writing.',
+    text: 'The cheapest candidate that meets every budget becomes the one to validate. If none does, redesign or renegotiate a budget in writing.',
     focus: { active: 'grader', involved: ['gate'] },
     flows: ['grader>gate'],
   },
@@ -233,14 +233,18 @@ export const quiz = [
 
 ## The failure: picking a model from a demo
 
-The support team wants an assistant that answers customer questions about orders, refunds, and accounts. Someone runs a
-quick demo: five common questions, three candidate models. Small, the cheapest and fastest, answers all five perfectly,
-so the team plans to ship it.
+The support team wants an assistant that answers customer questions about orders, refunds, and accounts. The assistant
+is the **application**: prompts, rules, and code around a **model** that turns text into text. Each call, an
+**inference**, reads **input tokens** (word pieces) from its **context**: instructions, the question, and any
+**evidence** (documents an answer may cite). It writes **output tokens** as the reply.
+
+Someone runs a quick demo: five common questions, three candidate models. Small, the cheapest and fastest, answers all
+five perfectly, so the team plans to ship it.
 
 Then a customer asks for the address their neighbor's TV shipped to, and Small tells them.
 
-The demo never asked anything the assistant must refuse. Nobody had written down what the assistant must do, what it
-must decline, how fast it must answer, or how much it may cost.
+The demo never asked anything the assistant must refuse. Nobody had written down what it must do or decline, nor how
+fast or cheap it must be.
 
 <Predict
   client:visible
@@ -273,7 +277,7 @@ answer contains. **Budgets** turn the product's needs into four numbers a candid
 you compare models, so the results cannot move the bar. This is the
 [requirements and estimates](../../thinking/requirements-and-estimates/) habit applied to a model choice.
 
-<StepDiagram client:visible title="From task to ship decision" nodes={nodes} edges={edges} steps={steps} height={300} />
+<StepDiagram client:visible title="From task to release candidate" nodes={nodes} edges={edges} steps={steps} height={300} />
 
 <Analogy>
 
@@ -296,8 +300,8 @@ the interview each time.
 | Cost | 6,000 units or less per 1,000 questions | The support budget is fixed |
 
 Cost uses made-up **units**, since real prices change often. One unit is what Small spends on a typical answer: a
-400 token prompt plus a 75 token reply. Providers price the two sides apart, so the model does too. Each output token
-costs as much as 4 input tokens, which makes long answers expensive, and a prompt token served from the provider's
+400 token prompt plus a 75 token reply. Each output token costs as much as 4 input tokens, which makes long answers
+expensive, and a prompt token served from the provider's
 prompt cache costs a tenth of a fresh one. Each model multiplies both prices by its own ratio: Medium pays 4 times
 Small's price per token and Large pays 15 times.
 
@@ -317,10 +321,10 @@ What to look for:
   2 s line.
 
 This is a **toy model**. The grades are hand-written fixtures, and latency and cost come from a small seeded formula
-(time to first token, plus a fixed time per output token, with input and output tokens priced apart). No model runs in your browser,
-and every number is illustrative.
+(time to first token plus a fixed time per output token). No model runs in your browser, and every number is
+illustrative.
 
-With 24 questions, one case moves the pass rate about 4 points, so Medium clears the floor by one question.
+Medium clears the floor by one question, about 4 points.
 
 <details>
 <summary>Go deeper: reading a small eval honestly</summary>
@@ -331,6 +335,14 @@ With 24 questions, one case moves the pass rate about 4 points, so Medium clears
 - **p95 from 24 answers is a rough first read.** Only one answer sits above the 95th percentile, so a single slow answer
   decides the number. Measure latency again under real traffic.
 - **Keep failures.** Every bad answer from production becomes a new eval case, so the same mistake cannot ship twice.
+- **A pass here picks a candidate, nothing more.** Select and tune on this development set, then freeze the design and
+  the release criteria. Validate the frozen candidate on an independent locked set drawn from real traffic, check the
+  important slices, and load test at production concurrency before you ship.
+- **Fixed cases test regressions.** The six must decline cases catch known leaks. Nobody sampled them from real
+  traffic, so they cannot estimate how often production leaks.
+- **Intervals need representative samples.** If 21 of 24 came from independent, representative questions, a 95%
+  Wilson interval would run from about 69.0% to 95.7%. These handpicked fixtures are no such sample, so the interval
+  does not describe them.
 
 </details>
 
@@ -400,14 +412,14 @@ budget and the set of models that fit can go empty.
 >
 
 **None.** Medium's p95 of about 1.5 s misses the new ceiling, and Small still misses quality and must decline. Change
-the design (shorter answers, caching, or routing easy questions to Small) or agree a new budget with the product owner.
+the design (shorter answers, caching, or routing easy questions to Small) or renegotiate a budget.
 
 </Predict>
 
 <BudgetGateWidget client:visible />
 
 Try the **Lowered bar** preset. Small fits once you drop the quality floor to 70% and stop checking must decline cases.
-That is the trap from the demo: Small fits only after you remove the requirement that protects customers.
+That is the demo's trap: Small fits only without the customer protection.
 
 The next lesson, [The AI gateway](../gateway/), routes easy questions to a cheap model and escalates the rest, one way
 to fit budgets that no single model meets.
@@ -434,14 +446,14 @@ deterministic check already decides every answer.
 - **Setting budgets after the results.** The bar drifts toward a favorite. Write the four numbers first.
 - **Trusting an uncalibrated judge.** A biased judge can rank the wrong candidate first. Report its agreement with
   human labels before you use its grades.
-- **Dropping must decline cases to make a model fit.** That is the Lowered bar trap: the cheap model fits only because
-  the customer protection is gone.
+- **Dropping must decline cases to make a model fit.** The cheap model fits only because the customer protection is
+  gone.
 
 <KeyTakeaways>
 
 - A demo cannot separate candidates. An eval set with hard and must decline cases can.
-- Write the quality, must decline, p95 latency, and cost budgets before any run, then ship the cheapest candidate that
-  meets all four.
+- Write the quality, must decline, p95 latency, and cost budgets before any run. Validate the cheapest candidate
+  meeting all four on a locked set.
 - When nothing fits, change the design (routing, caching, shorter answers) or renegotiate the budget in writing.
 - An LLM judge scales grading. Calibrate it against human labels, and swap the answer order in pairwise runs.
 
