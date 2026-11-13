@@ -10,6 +10,7 @@ import {
   findModule,
   findModuleForLesson,
   lessonPosition,
+  mapSummary,
   runningExampleFor,
 } from '../../src/data/curriculum';
 
@@ -140,6 +141,16 @@ describe('curriculum', () => {
     expect(runningExampleFor('distributed-data/raft')).toBe('Chat');
     expect(runningExampleFor('case-studies/chat')).toBeUndefined();
     expect(runningExampleFor('practice/timed-round')).toBeUndefined();
+  });
+
+  it('uses a module brief on the summary map and falls back to its summary', () => {
+    const caseStudies = findModule('case-studies');
+    const scaling = findModule('scaling');
+    if (!caseStudies || !scaling) throw new Error('missing module');
+    expect(mapSummary(caseStudies)).toBe(caseStudies.brief);
+    expect(mapSummary(caseStudies)).not.toBe(caseStudies.summary);
+    expect(scaling.brief).toBeUndefined();
+    expect(mapSummary(scaling)).toBe(scaling.summary);
   });
 
   const cases = findModule('case-studies')?.lessons ?? [];

@@ -1,6 +1,6 @@
 ---
 import { checkpointFor } from '../../data/coursePath';
-import { anchorFor, curriculum, difficultyLabels, findModule } from '../../data/curriculum';
+import { anchorFor, curriculum, difficultyLabels, findModule, mapSummary } from '../../data/curriculum';
 import { lessonHref, withBase } from '../../lib/paths';
 import ContinueLesson from '../lesson/ContinueLesson.astro';
 
@@ -63,7 +63,7 @@ const Heading = headingLevel === 2 ? 'h2' : 'h3';
               {module.title}
             </Heading>
             {!summary && <span class="sdv-badge sdv-badge--ok">{module.lessons.length} lessons</span>}
-            <p class="sdv-map__summary">{module.summary}</p>
+            <p class="sdv-map__summary">{summary ? mapSummary(module) : module.summary}</p>
             {!summary && <p class="sdv-map__example">Running example: {module.example}</p>}
           </header>
           {summary ? (

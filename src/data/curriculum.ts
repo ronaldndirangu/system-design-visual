@@ -44,6 +44,8 @@ export interface CourseModule {
   number: number;
   title: string;
   summary: string;
+  /** Shorter line for the home page map. The full curriculum page keeps `summary`. */
+  brief?: string;
   /** The system this module uses as its running example. */
   example: string;
   /** False when each lesson brings its own system, so lesson headers show no example chip. */
@@ -491,6 +493,8 @@ const modules: ModuleInput[] = [
     title: 'Case studies',
     summary:
       'Fourteen products. The two sho.rt cases put a finished module under load, and the other twelve each turn on one constraint that dominates the design. Start each one as soon as you finish the module it builds on. Beginner route: Shortener at scale and Shortener bad day, then News feed and Notifications, then Ticketing, Payments and Chat, then Video streaming, Search, Ride sharing, Metrics and Collaborative editor. The beginner route is an order. Open the next case only after the Best after module on its card. File sync and Key-value store are extra cases off the route.',
+    brief:
+      "Apply each module to real products, from short links and chat to streaming and search. Check each case's prerequisites.",
     example: 'A different system per lesson',
     sharedExample: false,
     lessons: [
@@ -796,6 +800,10 @@ export function findModuleForLesson(id: string): CourseModule | undefined {
 export function lessonPosition(id: string): number | undefined {
   const index = allLessons.findIndex((lesson) => lesson.id === normalizeId(id));
   return index === -1 ? undefined : index + 1;
+}
+
+export function mapSummary(module: CourseModule): string {
+  return module.brief ?? module.summary;
 }
 
 /** Anchor id used on the curriculum page for a module or lesson. */
