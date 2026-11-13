@@ -40,8 +40,8 @@ export const quiz = [
     id: 'checkpoint/scaling/q4',
     prompt: 'Owners can change where a short link points, and the change must reach every user within a minute. Browsers should ask the CDN on every click, and edges may reuse a redirect for 60 s. Which header fits?',
     options: [
-      { text: 'Cache-Control: max-age=60', why: 'Browsers would cache the redirect too. A browser could fetch a copy that sat 59 s at the edge and keep it 60 s more, so a change takes up to 2 minutes.' },
-      { text: 'Cache-Control: max-age=0, s-maxage=60', correct: true, why: 'A max-age of 0 makes the browser’s copy stale at once, and s-maxage applies only to shared caches such as CDN edges. A change reaches everyone within 60 s.' },
+      { text: 'Cache-Control: max-age=60', why: 'Browsers would cache the redirect too. HTTP caches count the Age header, so a copy that sat 59 s at the edge has about 1 s left in the browser; only an application cache that restarts its own TTL on each fetch would add a full 60 s. It still fails: a browser reuses its fresh copy without asking the CDN on every click.' },
+      { text: 'Cache-Control: max-age=0, s-maxage=60', correct: true, why: 'A max-age of 0 makes the browser’s copy stale at once, so it asks the CDN on every click, and s-maxage lets edges serve a copy at most 60 s old. Headers alone cannot bound a stale origin replica or a cache configured to serve stale content.' },
       { text: 'Cache-Control: no-store', why: 'Nothing caches the redirect, so every click travels to the origin. That meets the minute and throws away 60 s of reuse at the edge.' },
       { text: 'Cache-Control: max-age=31536000', why: 'A year suits versioned files, whose name changes with their content. A short link keeps its name when its target changes.' },
     ],
