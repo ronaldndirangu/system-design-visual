@@ -2165,6 +2165,27 @@ svg text {
   color: var(--sdv-warn);
   font-weight: 600;
 }
+.sdv-shards__results {
+  min-width: 0;
+}
+.sdv-shards__all {
+  font-size: var(--sl-text-sm);
+  grid-column: 1 / -1;
+}
+.sdv-shards__all > summary {
+  align-content: center;
+  color: var(--sl-color-white);
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 44px;
+}
+.sdv-shards__all > summary:focus-visible {
+  outline: 2px solid var(--sl-color-text-accent);
+  outline-offset: 2px;
+}
+.sdv-shards__all[open] > summary {
+  margin-bottom: 0.5rem;
+}
 .sdv-shards__keys {
   display: grid;
   gap: 3px;

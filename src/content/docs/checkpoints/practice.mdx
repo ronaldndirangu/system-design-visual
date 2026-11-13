@@ -69,11 +69,11 @@ export const quiz = [
   {
     id: 'checkpoint/practice/q7',
     ordered: true,
-    prompt: 'Your sho.rt design uses 6 character codes from 62 symbols, about 56.8B in all. After 10 years, 36.5B are taken. About what share of random picks for a new link hit a used code?',
+    prompt: 'A shortener draws codes at random from the whole 6 character space of 62 symbols, about 56.8B in all, with no region prefix. After 10 years, 36.5B are taken. About what share of random picks for a new link hit a used code?',
     options: [
       { text: 'About 6%', why: 'That would need only about 3.4B codes taken. With 36.5B of 56.8B taken, most picks collide.' },
       { text: 'About 36%', why: 'That is the share still free: about 20.3B of 56.8B. A pick collides at the share taken.' },
-      { text: 'About 64%', correct: true, why: '36.5B ÷ 56.8B ≈ 64%, so a new link needs about 3 tries. Seven characters give 3.5T codes, about 1% full after 10 years.' },
+      { text: 'About 64%', correct: true, why: '36.5B ÷ 56.8B ≈ 64%, so a new link needs about 3 tries. The sho.rt capstone avoids this by using 7 characters: a region prefix plus 6 random characters per region.' },
       { text: 'About 100%', why: 'Over a third of the codes are still free, so a new link finds one in about 3 tries.' },
     ],
   },

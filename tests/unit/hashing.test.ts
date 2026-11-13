@@ -98,3 +98,22 @@ describe('summarizeLoad', () => {
     expect(load.imbalance).toBe(1);
   });
 });
+
+describe('sharding widget walkthrough', () => {
+  const codes = makeShortCodes(240);
+  const abcd = ['A', 'B', 'C', 'D'];
+
+  it('compares a vnode change against the layout before it', () => {
+    const before = assignKeys(codes, abcd, 'ring', 1);
+    const after = assignKeys(codes, abcd, 'ring', 64);
+    expect(countMoved(before, after)).toBe(177);
+    expect(summarizeLoad(before, abcd).imbalance.toFixed(2)).toBe('2.08');
+    expect(summarizeLoad(after, abcd).imbalance.toFixed(2)).toBe('1.07');
+  });
+
+  it('moves under a fifth of the keys when shard E joins at 64 vnodes', () => {
+    const before = assignKeys(codes, abcd, 'ring', 64);
+    const after = assignKeys(codes, [...abcd, 'E'], 'ring', 64);
+    expect(countMoved(before, after)).toBe(47);
+  });
+});

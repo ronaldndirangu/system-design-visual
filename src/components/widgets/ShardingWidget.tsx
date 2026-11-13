@@ -47,10 +47,13 @@ function arcPath(start: number, end: number): string {
 }
 
 interface Change {
+  kind: 'shards' | 'vnodes' | 'placement';
   label: string;
   before: Map<string, string>;
+  beforeImbalance: number;
   fromCount: number;
   toCount: number;
+  fromVnodes: number;
 }
 
 interface Props {
@@ -85,32 +88,73 @@ export default function ShardingWidget({
   const load = summarizeLoad(assignment, shards);
   const moved = change ? countMoved(change.before, assignment) : 0;
   const movedShare = moved / KEYS.length;
-  const referenceShare = change
-    ? Math.abs(change.toCount - change.fromCount) / Math.max(change.toCount, change.fromCount)
-    : 0;
-  const movedTooMuch = movedShare > referenceShare * 2;
+  const resizing = change?.kind === 'shards';
+  const referenceShare =
+    change && resizing
+      ? Math.abs(change.toCount - change.fromCount) / Math.max(change.toCount, change.fromCount)
+      : 0;
+  const movedTooMuch = resizing && movedShare > referenceShare * 2;
   const uneven = load.imbalance > 1.5;
 
-  const resize = (next: number) => {
+  const record = (kind: Change['kind'], label: string, toCount = count) => {
     setChange({
-      label: next > count ? `Added shard ${LETTERS[next - 1]}` : `Removed shard ${LETTERS[count - 1]}`,
+      kind,
+      label,
       before: assignment,
+      beforeImbalance: load.imbalance,
       fromCount: count,
-      toCount: next,
+      toCount,
+      fromVnodes: effectiveVnodes,
     });
-    setCount(next);
     setVersion((v) => v + 1);
   };
 
-  const clearChange = () => setChange(null);
+  const resize = (next: number) => {
+    record(
+      'shards',
+      next > count ? `Added shard ${LETTERS[next - 1]}` : `Removed shard ${LETTERS[count - 1]}`,
+      next,
+    );
+    setCount(next);
+  };
+
+  const changeVnodes = (exponent: number) => {
+    const next = 2 ** exponent;
+    // A slider drag fires many steps; compare against the configuration before the drag began.
+    if (change?.kind === 'vnodes') {
+      setChange({ ...change, label: `Changed virtual nodes per shard from ${change.fromVnodes} to ${next}` });
+      setVersion((v) => v + 1);
+    } else {
+      record('vnodes', `Changed virtual nodes per shard from ${vnodes} to ${next}`);
+    }
+    setVnodeExponent(exponent);
+  };
+
+  const changePlacement = (value: Placement) => {
+    const label = placements.find((option) => option.value === value)?.label ?? value;
+    record('placement', `Switched to ${label}`);
+    setPlacement(value);
+  };
 
   const status: { tone: Tone; text: string } = !change
     ? { tone: 'neutral', text: 'Add or remove a shard' }
-    : movedTooMuch
-      ? { tone: 'bad', text: 'Most keys moved' }
-      : uneven
-        ? { tone: 'warn', text: 'Few keys moved, and the load is uneven' }
-        : { tone: 'ok', text: 'A fair slice moved and the load stays even' };
+    : moved === 0
+      ? { tone: 'neutral', text: 'No keys moved' }
+      : movedTooMuch
+        ? { tone: 'bad', text: 'Most keys moved' }
+        : uneven
+          ? {
+              tone: 'warn',
+              text: resizing
+                ? 'Few keys moved, and the load is uneven'
+                : 'Keys moved, and the load is uneven',
+            }
+          : {
+              tone: 'ok',
+              text: resizing
+                ? 'A fair slice moved and the load stays even'
+                : 'Keys moved, and the load is even',
+            };
 
   const evenShare = 1 / count;
   const busiest = Math.max(...Object.values(load.counts));
@@ -120,27 +164,36 @@ export default function ShardingWidget({
     placement === 'ring'
       ? `a consistent hashing ring with ${vnodes} virtual ${vnodes === 1 ? 'node' : 'nodes'} per shard`
       : 'hash mod N';
+  const imbalanceShift = change
+    ? `The busiest shard went from ${change.beforeImbalance.toFixed(2)} to ${load.imbalance.toFixed(2)} times an even share.`
+    : '';
   const summary = change
-    ? `${change.label}. ${moved} of ${KEYS.length} keys moved (${Math.round(movedShare * 100)} percent) using ${scheme}. The busiest shard holds ${load.imbalance.toFixed(2)} times an even share.`
+    ? `${change.label}. ${moved} of ${KEYS.length} keys moved (${Math.round(movedShare * 100)} percent) using ${scheme}. ${imbalanceShift}`
     : `${count} shards using ${scheme}. The busiest shard holds ${load.imbalance.toFixed(2)} times an even share.`;
 
   return (
     <WidgetFrame
       title="Split the links across shards"
-      instructions="Each square is one short link, labeled with the shard that stores it. Add a shard and count how many links have to move."
+      instructions="Each link belongs to one shard. Add a shard, or change how a shard is picked, and count how many links have to move."
       summary={summary}
       status={status}
       stats={[
         {
           label: 'Links moved by the last change',
           value: change ? `${moved} of ${KEYS.length} (${Math.round(movedShare * 100)}%)` : 'No change yet',
-          detail: change ? `balanced reference share: about ${Math.round(referenceShare * 100)}%` : undefined,
-          tone: change ? (movedTooMuch ? 'bad' : 'ok') : undefined,
+          detail: change
+            ? resizing
+              ? `balanced reference share: about ${Math.round(referenceShare * 100)}%`
+              : change.label
+            : undefined,
+          tone: resizing ? (movedTooMuch ? 'bad' : 'ok') : undefined,
         },
         {
           label: 'Busiest shard',
           value: `${load.imbalance.toFixed(2)}× an even share`,
-          detail: '1.00× means perfectly even',
+          detail: change
+            ? `${change.beforeImbalance.toFixed(2)}× before the last change; 1.00× is even`
+            : '1.00× means perfectly even',
           tone: uneven ? 'warn' : undefined,
         },
         {
@@ -176,10 +229,7 @@ export default function ShardingWidget({
               label="How to pick a shard"
               value={placement}
               options={placements}
-              onChange={(value) => {
-                setPlacement(value);
-                clearChange();
-              }}
+              onChange={changePlacement}
             />
           )}
           {placement === 'ring' && (
@@ -190,10 +240,7 @@ export default function ShardingWidget({
               max={6}
               format={(v) => String(2 ** v)}
               hint="Each shard takes many small slices of the ring, which evens out the load."
-              onChange={(v) => {
-                setVnodeExponent(v);
-                clearChange();
-              }}
+              onChange={changeVnodes}
             />
           )}
         </>
@@ -288,42 +335,51 @@ export default function ShardingWidget({
             </div>
           )}
         </div>
-        <div className="sdv-shards__keys" aria-hidden="true">
-          {KEYS.map((key) => {
-            const owner = assignment.get(key);
-            const wasMoved = change !== null && change.before.get(key) !== owner;
-            return (
-              <span
-                key={wasMoved ? `${key}-${version}` : key}
-                className="sdv-shards__cell"
-                data-shard={indexOf(owner)}
-                data-moved={wasMoved ? 'true' : undefined}
-                title={`${key}: shard ${owner}`}
-              >
-                {owner}
-              </span>
-            );
-          })}
+        <div className="sdv-shards__results">
+          <LoadBars
+            label="Links per shard"
+            flagFull={false}
+            target={{ at: evenShare / scale, label: 'Even share' }}
+            bars={shards.map((shard) => {
+              const keys = load.counts[shard] ?? 0;
+              return {
+                id: shard,
+                label: `Shard ${shard}`,
+                fill: keys / KEYS.length / scale,
+                value: `${keys} links`,
+                data: { 'data-shard': String(indexOf(shard)) },
+              };
+            })}
+          />
+          <p className="sdv-control__hint">
+            The thin mark on each bar shows an even share. Outlined keys moved in the last change.
+          </p>
         </div>
+        <details className="sdv-shards__all">
+          <summary>Show all keys</summary>
+          <div
+            className="sdv-shards__keys"
+            role="img"
+            aria-label={`${KEYS.length} links, one square each, labeled with the shard that stores it.${change ? ` ${moved} moved in the last change.` : ''}`}
+          >
+            {KEYS.map((key) => {
+              const owner = assignment.get(key);
+              const wasMoved = change !== null && change.before.get(key) !== owner;
+              return (
+                <span
+                  key={wasMoved ? `${key}-${version}` : key}
+                  className="sdv-shards__cell"
+                  data-shard={indexOf(owner)}
+                  data-moved={wasMoved ? 'true' : undefined}
+                  title={`${key}: shard ${owner}`}
+                >
+                  {owner}
+                </span>
+              );
+            })}
+          </div>
+        </details>
       </div>
-      <LoadBars
-        label="Links per shard"
-        flagFull={false}
-        target={{ at: evenShare / scale, label: 'Even share' }}
-        bars={shards.map((shard) => {
-          const keys = load.counts[shard] ?? 0;
-          return {
-            id: shard,
-            label: `Shard ${shard}`,
-            fill: keys / KEYS.length / scale,
-            value: `${keys} links`,
-            data: { 'data-shard': String(indexOf(shard)) },
-          };
-        })}
-      />
-      <p className="sdv-control__hint">
-        The thin mark on each bar shows an even share. Outlined squares moved in the last change.
-      </p>
     </WidgetFrame>
   );
 }

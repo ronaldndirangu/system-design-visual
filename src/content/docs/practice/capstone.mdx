@@ -6,6 +6,7 @@ description: Design sho.rt for three continents with multi-region redirects, cli
 import Recall from '../../../components/lesson/Recall.astro';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
 
@@ -40,7 +41,7 @@ export const quiz = [
       { text: 'A link never changes after creation, so a copy that lags by a second is almost always correct', correct: true, why: 'Immutable rows make async replication safe for reads. The one gap, a link seconds old, has a cheap fix: on a miss, ask the region that created the link.' },
       { text: 'Every region writes each link at the same time', why: 'Synchronous writes to three continents would add hundreds of milliseconds to every creation. sho.rt replicates asynchronously because the rows never change.' },
       { text: 'The CDN stores every link forever', why: 'A CDN caches popular responses for a while. sho.rt still needs a full copy of the table behind it for the long tail of links.' },
-      { text: 'Redirects can return stale results without harm', why: 'A wrong redirect sends someone to the wrong site. The design stays correct because rows never change, and a deletion replicates as a status change that caches drop within minutes.' },
+      { text: 'Redirects can return stale results without harm', why: 'A wrong redirect sends someone to the wrong site. The design stays correct because rows never change, and every redirect, cache hits included, first checks the deletions that the takedown gate guarantees it has applied.' },
     ],
   },
   {
@@ -57,7 +58,7 @@ export const quiz = [
     id: 'practice/capstone/q3',
     prompt: 'The click log in Europe stops accepting writes. What should European redirects do?',
     options: [
-      { text: 'Keep redirecting, buffer clicks in a bounded local queue, and count any clicks dropped when it fills', correct: true, why: 'The redirect carries the 99.99% SLO and the analytics allow 0.1% loss. A bounded buffer protects the redirect servers, and the drop counter keeps the loss visible.' },
+      { text: 'Keep redirecting, buffer clicks in a bounded local queue, and count any clicks dropped when it fills', correct: true, why: 'The redirect carries the 99.99% SLO and the analytics allow 0.1% loss, about 30 million clicks a month. A bounded buffer protects the redirect servers, and the drop counter keeps the loss visible.' },
       { text: 'Return errors until the log recovers', why: 'That spends the redirect error budget to protect click counts, which have the looser target.' },
       { text: 'Hold each redirect until its click is written', why: 'Waiting ties redirect latency to the log. When the log hangs, every worker hangs with it.' },
       { text: 'Buffer every click in memory with no limit', why: 'An unbounded buffer grows until the server runs out of memory, which takes the redirects down too.' },
@@ -152,7 +153,8 @@ requirement that most shapes the design.
 - **Creation:** a few hundred milliseconds is fine, and 99.9% availability is enough. People create a link once and
   click it many times.
 - **Click counts:** within 5 minutes, 0.1% loss allowed. Counts are useful and never worth failing a redirect for.
-- **Aliases:** exactly one owner per alias, worldwide. This is the only strongly consistent promise in the brief.
+- **Aliases and takedowns:** exactly one owner per alias worldwide, and a hard 5 minute bound on deletion. These are
+  the only strongly consistent promises in the brief, and both run through one consensus group.
 - **The shaping requirement:** 99.99% redirect availability across regions. Every region must answer redirects on
   its own, and a region failure must clear in minutes.
 
@@ -176,9 +178,11 @@ redirect error budget for a month. Then check whether 6 character codes are enou
   hourly counts per link and country, which are far smaller.
 - **Error budget:** 1 billion redirects a day is about 30 billion a month. At 99.99%, **3 million failed redirects** a
   month is the whole budget.
-- **Code space:** 62 characters in 6 places give 56.8 billion codes. After 10 years, 36.5 billion are taken, so a
-  random pick hits a used code about 64% of the time and needs about 3 tries. Use **7 characters**: 3.5 trillion
-  codes, about 1% full after 10 years.
+- **Code space:** 62 characters in 6 places give 56.8 billion codes. After 10 years, 36.135 billion random links are
+  taken (1% of links are aliases), so a random pick hits a used code about 64% of the time. Use **7 characters**: one
+  region character, then 6 random ones. Each region owns 56,800,235,584 codes, or 170,400,706,752 across the three.
+  With equal growth, each region is about 21.2% full after 10 years, and a new code needs about 1.27 tries. Three
+  prefixes use only 3/62 of the 7 character space, and a region that grows faster fills first.
 
 </details>
 
@@ -196,7 +200,7 @@ Name each endpoint with its inputs, its outputs, and the errors it returns. Pick
   browser ask sho.rt on every click, so every click reaches the analytics. A 301 would let browsers cache the redirect
   and skip sho.rt on repeat clicks, which saves load and undercounts.
 - `GET /links/{code}/stats?from=&to=&by=country` returns counts per hour for the owner, from the analytics store.
-- `DELETE /links/{code}` returns **204** for the owner or the abuse team, and starts the takedown everywhere.
+- `DELETE /links/{code}` returns **204** for the owner or the abuse team once the takedown is committed.
 
 </details>
 
@@ -209,14 +213,15 @@ List each table with its key and its main query. Say which tables every region h
 
 - **links**, keyed by `code`: `long_url`, `owner_id`, `created_at`, `status` (active or deleted). The redirect reads
   one row by code, so a key value store fits. Every region holds a full copy, replicated asynchronously, because rows
-  never change after creation. A deletion is a status change that replicates like any other write.
+  never change after creation. A deletion also sets `status`, but the takedown gate in Step 5 enforces the deadline.
 - **aliases**, keyed by `alias`: `owner_id`, `home_region`, and `claimed_at`, in a small store run by one consensus
-  group across the three regions. After a claim succeeds, the link row is written with the alias as its code. Random
+  group across the three regions. The same group keeps the ordered log of takedown tombstones. After a claim succeeds, the link row is written with the alias as its code. Random
   codes are exactly 7 characters and aliases take 8 to 30, so an alias can never take over a random code.
 - **click events**: `event_id`, `code`, time, country, referrer, region. Appended to a log in each region, then stored
   for 30 days in object storage.
-- **click counts**, keyed by `(code, hour, country)` and by `(code, hour, referrer)`: one count each. Owners read a
-  range of hours for one code, so the code leads the key.
+- **click counts**, keyed by `(code, hour, dimension_kind, dimension_value, source_region)`: a count and its revision.
+  The kind is country or referrer. Owners read a range of hours for one code and sum the regions, so the code leads
+  the key.
 - **rate limit counters**, keyed by IP address or account plus the time window, in an in-memory store in each region,
   each entry expiring with its window.
 
@@ -257,19 +262,39 @@ waiting. With most links served from cache, about 12,000 redirects per second pe
 servers.
 
 **Creation path.** The creation service checks the creation limits in the regional counter store, then checks the URL
-against the malware blocklist. For a random code, it picks 7 characters whose first character names this region, and
-writes the row to the regional links store, which replicates it to the other two. For an alias of 8 or more
+against the malware blocklist. For a random code, it puts this region's character before 6 random ones and inserts
+the row into the regional links store under a unique constraint on `code`. Only this region issues codes with its
+prefix, so the regional constraint is enough. A collision fails the insert and the service draws again; it never
+checks first and inserts later. The store replicates the row to the other two regions. For an alias of 8 or more
 characters, it first claims the alias and records this region as its home through the consensus group, then writes
 the row the same way.
 
 **Click path.** Each redirect server ships buffered events to the regional click log. A stream processor in each
-region counts clicks per link per hour by country and by referrer, and writes the counts to a global analytics store
-every minute. The stats endpoint reads from there, well inside 5 minutes.
+region counts clicks per link per hour by country and by referrer, and drops events whose ID it has already counted.
+Every minute it writes its own regional partial to a global analytics store, replacing a row only with a newer
+revision, and it saves the revision, counts, and log checkpoint together, so a restart resumes without reusing an old
+revision. The stats endpoint sums the partials. Europe, America, and Asia report 10, 20, and 30, which read as 60. A
+retried 10 still reads as 60. A newer 25 replaces the 20 and the total becomes 65, and a late copy of the old 20 cannot
+bring back 60. This is the revision-safe sink from [stream processing](../../async/stream-processing/).
 
-**Takedown path.** A delete writes `status = deleted` to the regional store, which replicates within seconds. The
-in-memory cache holds each entry for at most 1 minute and the regional cache tier for at most 3. The two limits add
-up, so a deleted link stops redirecting everywhere within about 4 minutes plus a few seconds of replication, inside the
-5 minute target.
+Freshness adds up to at most 210 s: 60 s in the buffer, 60 s of catch-up with processors that drain twice the peak
+rate, 60 s to publish, and 30 s for reads to see it. The 0.1% loss budget is about 30 million clicks a month. A
+60 second buffer holds about 700,000 events at regional peak, roughly 140 MB of raw payloads plus overhead. A 20 minute
+log outage fills it, drops about 13.3 million clicks, and breaches the 5 minute freshness target. Crashed servers can
+lose their buffers too, so the team measures dropped events against the budget.
+
+**Takedown path.** A delete commits a tombstone for the code in the consensus group, and only then returns 204. The
+group streams tombstones in order to every region, and every redirect checks the local tombstone set before it
+answers, cache hits included. The group also issues certificates: "all tombstones through position N, certified at
+time T." A region may redirect only while it has applied tombstones through N of a certificate that has not expired,
+and each one expires 240 s after T, which leaves 20 s for clock skew and enforcement. A certificate that arrives late
+still expires at T + 240 s, and a heartbeat proves nothing about tombstones. A region without a valid certificate
+returns 503 with Retry-After until it catches up.
+
+Check it with a partition. Europe is cut off for 6 minutes, and a deletion commits during that time. Europe's newest
+certificate was certified before the cut, so Europe stops redirecting within 240 + 20 = 260 s of the deletion, inside
+5 minutes. Cache lifetimes no longer carry the proof. The price is availability: an isolated region stops serving
+every link after 260 s.
 
 </details>
 
@@ -341,11 +366,12 @@ Name the major choices in your design. For each one, name the alternative you pa
 | Choice                                          | Alternative passed over                     | What the choice costs                                                    |
 | ----------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------ |
 | Full links copy in every region, async          | One home region for all reads               | About 55 TB of storage, and up to a second of links lost in a disaster   |
-| Region prefix on random codes                   | A global code counter                       | Each region draws from a third of the codes, and every code reveals its home region |
+| Region prefix on random codes                   | A global code counter                       | Each region owns 56.8 billion codes, a fast growing region fills first, and every code reveals its home region |
 | One consensus group for aliases                 | Accept aliases locally, fix conflicts later | About 150 ms per alias claim, and claims stop if two regions go dark      |
 | 302 redirects                                   | 301 redirects                               | Every repeat click reaches sho.rt, which raises redirect load             |
 | Creation limits counted per region              | One global counter per IP and account       | A determined attacker gets up to 3 times the limit                        |
-| Fire and forget clicks with a bounded buffer    | Write each click before redirecting         | Up to 0.1% of clicks lost during log outages                              |
+| Tombstone gate with 240 s certificates          | Trust cache lifetimes to expire deletions   | An isolated region stops redirecting after 260 s and spends error budget  |
+| Fire and forget clicks with a bounded buffer    | Write each click before redirecting         | A long log outage drops clicks and breaches freshness, so drops are measured against the 30 million monthly budget |
 | GeoDNS with a 60 s TTL                          | Anycast to every region                     | About a minute of DNS lag during failover                                 |
 
 Anycast is a strong alternative for the last row: one IP address announced from every region moves traffic in
@@ -370,6 +396,15 @@ GeoDNS and keeps anycast as the next step if failover time eats too much of the 
 Revisit the lessons behind your weakest step: [SLOs](../../thinking/slos/) for budgets,
 [unique IDs](../../foundations/unique-ids/) for code space, [rate limiting](../../reliability/rate-limiting/) for
 creation limits, and [queues and backpressure](../../reliability/queues-and-backpressure/) for the click buffer.
+
+<KeyTakeaways>
+
+- Prove capacity with arithmetic: requests per second, storage, and the error budget in minutes.
+- Check the code namespace you actually deploy, including any reserved prefix, before trusting a collision rate.
+- Back every failure guarantee with a mechanism that still holds while a region is cut off.
+- End by naming the requirement your design has not yet proven, and what would prove it.
+
+</KeyTakeaways>
 
 ## Check your understanding
 

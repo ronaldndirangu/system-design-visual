@@ -8,6 +8,7 @@ import { Steps } from '@astrojs/starlight/components';
 import Objectives from '../../../components/lesson/Objectives.astro';
 import Analogy from '../../../components/lesson/Analogy.astro';
 import TradeoffTable from '../../../components/lesson/TradeoffTable.astro';
+import KeyTakeaways from '../../../components/lesson/KeyTakeaways.astro';
 import Challenge from '../../../components/lesson/Challenge.astro';
 import Predict from '../../../components/lesson/Predict';
 import Quiz from '../../../components/lesson/Quiz';
@@ -209,6 +210,14 @@ minutes are illustrative, and every run plays the same fixed script.
 | List findings first, fix later      | A faster review that stays on risks                    | Findings without fixes tend to sit in the backlog              |
 
 </TradeoffTable>
+
+<KeyTakeaways>
+
+- Look for the boundaries where a design fails, overloads, or serves stale data.
+- Flag a choice only when you can explain how it breaks; an unfamiliar choice alone is no finding.
+- Pair each finding with a fix, and say why the fix holds at that boundary.
+
+</KeyTakeaways>
 
 <Quiz client:visible questions={quiz} />
 
