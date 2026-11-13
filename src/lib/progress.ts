@@ -253,17 +253,8 @@ export function recordVisit(id: string): void {
 }
 
 /** The lesson to resume: the last one opened if unfinished, else the next unfinished one. */
-export function continueTarget<T extends { id: string }>(
-  progress: ProgressData,
-  lessons: readonly T[],
-): T | null {
-  if (progress.last === undefined && Object.keys(progress.lessons).length === 0) return null;
-  const at = lessons.findIndex((lesson) => lesson.id === progress.last);
-  for (let offset = 0; offset < lessons.length; offset++) {
-    const lesson = lessons[(Math.max(at, 0) + offset) % lessons.length];
-    if (lesson && !isComplete(progress, lesson.id)) return lesson;
-  }
-  return null;
+export function hasStarted(progress: ProgressData): boolean {
+  return progress.last !== undefined || Object.keys(progress.lessons).length > 0;
 }
 
 export function exportProgress(): string {

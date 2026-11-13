@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { withBase } from '../../lib/paths';
-import { dueCards, nextDue, readReview, recordAnswer, syncSeeds } from '../../lib/review';
+import { dueCards, formatReviewDay, nextDue, readReview, recordAnswer, syncSeeds } from '../../lib/review';
 import type { QuizQuestion } from '../lesson/Quiz';
 import { QuizItem } from '../lesson/Quiz';
 import { useProgress } from '../lesson/useProgress';
@@ -17,10 +17,6 @@ interface BankEntry {
 }
 
 const SESSION_SIZE = 20;
-
-function formatDay(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-}
 
 export default function ReviewQueue() {
   const [bank, setBank] = useState<QuestionBank | null>(null);
@@ -81,7 +77,7 @@ export default function ReviewQueue() {
     body = (
       <p>
         {next
-          ? `You are all caught up. The next question comes due on ${formatDay(next)}.`
+          ? `You are all caught up. The next question comes due on ${formatReviewDay(next)}.`
           : 'Nothing to review yet. Finish a lesson quiz or a checkpoint and its questions show up here.'}
       </p>
     );

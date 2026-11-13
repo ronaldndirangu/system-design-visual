@@ -98,11 +98,41 @@ describe('seedCards', () => {
 });
 
 describe('checkpoints', () => {
+  const ids = ['checkpoint/scaling/q1', 'checkpoint/scaling/q2', 'checkpoint/scaling/q3'];
+
   it('keeps the best score and sends missed questions to box 1', () => {
-    let data = withCheckpoint(emptyReview(), 'scaling', 8, 10, ['checkpoint/scaling/q4'], NOW);
-    data = withCheckpoint(data, 'scaling', 5, 10, [], NOW);
+    let data = withCheckpoint(emptyReview(), 'scaling', 8, 10, [], ['checkpoint/scaling/q4'], NOW);
+    data = withCheckpoint(data, 'scaling', 5, 10, [], [], NOW);
     expect(checkpointResult(data, 'scaling')).toEqual({ score: 8, total: 10, at: NOW.toISOString() });
     expect(data.cards['checkpoint/scaling/q4']).toEqual({ box: 1, due: NOW.toISOString() });
+  });
+
+  it('seeds every question of a perfect attempt for tomorrow', () => {
+    const data = withCheckpoint(emptyReview(), 'scaling', 3, 3, ids, [], NOW);
+    expect(data.cards).toEqual(Object.fromEntries(ids.map((id) => [id, { box: 1, due: inDays(1) }])));
+    expect(dueCards(data, NOW)).toEqual([]);
+    expect(nextDue(data, NOW)).toBe(inDays(1));
+  });
+
+  it('schedules misses now and right answers tomorrow in a mixed attempt', () => {
+    const data = withCheckpoint(emptyReview(), 'scaling', 2, 3, ids, ['checkpoint/scaling/q2'], NOW);
+    expect(data.cards).toEqual({
+      'checkpoint/scaling/q1': { box: 1, due: inDays(1) },
+      'checkpoint/scaling/q2': { box: 1, due: NOW.toISOString() },
+      'checkpoint/scaling/q3': { box: 1, due: inDays(1) },
+    });
+  });
+
+  it('keeps the schedule of cards a repeated attempt answers right and resets new misses', () => {
+    const first = withCheckpoint(emptyReview(), 'scaling', 2, 3, ids, ['checkpoint/scaling/q2'], NOW);
+    const reviewed = withAnswer(first, 'checkpoint/scaling/q1', true, NOW);
+    const later = new Date(NOW.getTime() + 2 * DAY);
+    const again = withCheckpoint(reviewed, 'scaling', 2, 3, ids, ['checkpoint/scaling/q3'], later);
+    expect(again.cards).toEqual({
+      'checkpoint/scaling/q1': reviewed.cards['checkpoint/scaling/q1'],
+      'checkpoint/scaling/q2': { box: 1, due: NOW.toISOString() },
+      'checkpoint/scaling/q3': { box: 1, due: later.toISOString() },
+    });
   });
 
   it('passes at 70 percent', () => {
@@ -113,8 +143,9 @@ describe('checkpoints', () => {
 
   it('ignores impossible scores and unsafe ids', () => {
     const data = emptyReview();
-    expect(withCheckpoint(data, 'scaling', 11, 10, [], NOW)).toBe(data);
-    expect(withCheckpoint(data, '__proto__', 5, 10, [], NOW)).toBe(data);
+    expect(withCheckpoint(data, 'scaling', 11, 10, [], [], NOW)).toBe(data);
+    expect(withCheckpoint(data, '__proto__', 5, 10, [], [], NOW)).toBe(data);
+    expect(withCheckpoint(data, 'scaling', 1, 1, ['__proto__'], [], NOW).cards).toEqual({});
     expect(checkpointResult(data, 'constructor')).toBeUndefined();
   });
 });

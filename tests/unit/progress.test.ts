@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   completedCount,
-  continueTarget,
   emptyProgress,
   exportProgress,
   type FingerprintQuestion,
+  hasStarted,
   importProgress,
   isComplete,
   isProgressPersistent,
@@ -89,23 +89,17 @@ describe('questionSetFingerprint', () => {
   });
 });
 
-describe('continueTarget', () => {
-  const lessons = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+describe('hasStarted and completedCount', () => {
   const data = (patch: Partial<ProgressData>): ProgressData => ({ ...emptyProgress(), ...patch });
+  const done = { completedAt: '2025-01-01T00:00:00.000Z' };
 
-  it('offers nothing before any progress exists', () => {
-    expect(continueTarget(emptyProgress(), lessons)).toBeNull();
+  it('treats a visit or any lesson record as started', () => {
+    expect(hasStarted(emptyProgress())).toBe(false);
+    expect(hasStarted(data({ last: 'b' }))).toBe(true);
+    expect(hasStarted(data({ lessons: { a: { missed: [] } } }))).toBe(true);
   });
 
-  it('resumes the last lesson when it is unfinished', () => {
-    expect(continueTarget(data({ last: 'b' }), lessons)).toEqual({ id: 'b' });
-  });
-
-  it('moves past finished lessons and wraps to the start', () => {
-    const done = { completedAt: '2025-01-01T00:00:00.000Z' };
-    expect(continueTarget(data({ last: 'b', lessons: { b: done } }), lessons)).toEqual({ id: 'c' });
-    expect(continueTarget(data({ last: 'c', lessons: { b: done, c: done } }), lessons)).toEqual({ id: 'a' });
-    expect(continueTarget(data({ lessons: { a: done, b: done, c: done } }), lessons)).toBeNull();
+  it('counts only completed lessons', () => {
     expect(completedCount(data({ lessons: { a: done, b: { missed: [] } } }), ['a', 'b', 'c'])).toBe(1);
   });
 });

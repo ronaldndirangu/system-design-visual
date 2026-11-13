@@ -93,6 +93,14 @@ export function parsePractice(raw: string | null): PracticeData {
   }
 }
 
+/** Validates practice data from an import file, rejecting it when any round is invalid. */
+export function validatePractice(value: unknown): PracticeData | null {
+  if (!isRecord(value) || value.version !== PRACTICE_VERSION || !Array.isArray(value.rounds)) return null;
+  const rounds = value.rounds.map(parseRound);
+  if (rounds.some((entry) => entry === null)) return null;
+  return { version: PRACTICE_VERSION, rounds: (rounds as SavedRound[]).slice(0, MAX_SAVED_ROUNDS) };
+}
+
 function storage(): Storage | undefined {
   try {
     return typeof window === 'undefined' ? undefined : window.localStorage;
@@ -150,6 +158,10 @@ export function saveRound(round: SavedRound): void {
       ? [round, ...existing].slice(0, MAX_SAVED_ROUNDS)
       : existing.map((entry, at) => (at === index ? round : entry));
   writeRaw(JSON.stringify({ version: PRACTICE_VERSION, rounds } satisfies PracticeData));
+}
+
+export function replacePractice(data: PracticeData): void {
+  writeRaw(JSON.stringify(data));
 }
 
 export function clearPractice(): void {

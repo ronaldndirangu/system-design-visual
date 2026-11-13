@@ -3227,3 +3227,23 @@ a.sdv-map__link:hover {
   flex-wrap: wrap;
   gap: 0.35rem;
 }
+
+/* Continue and review links */
+.sdv-continue:not([hidden]) {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+}
+.sdv-continue a[hidden] {
+  display: none;
+}
+.sdv-continue__review {
+  align-items: center;
+  color: var(--sdv-accent-text);
+  display: inline-flex;
+  font-weight: var(--sdv-weight-ui);
+  min-height: var(--sdv-target);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}

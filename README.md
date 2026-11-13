@@ -38,11 +38,11 @@ keyboard controls, and a reduced motion fallback.
 
 ## Local development
 
-You need Node.js 22.23.4 or newer (the repo pins Node 26 in `.nvmrc`) and pnpm. Corepack picks the exact pnpm version
-from `package.json`.
+You need Node.js 22.23.4 or newer (the repo pins Node 26 in `.nvmrc`) and pnpm 12.17.0, the version `package.json`
+pins. Node 25 and newer no longer ship Corepack, so install pnpm with npm:
 
 ```sh
-corepack enable
+npm install --global pnpm@12.17.0
 pnpm install
 pnpm dev
 ```

@@ -40,6 +40,7 @@ export function buildSidebar(): SidebarItem[] {
   const modules = curriculum.map(
     (module): SidebarItem => ({
       label: `${module.number}. ${module.title}`,
+      collapsed: true,
       items: [
         ...module.lessons.map((lesson) => ({ slug: lesson.id, label: lesson.title })),
         { slug: `checkpoints/${module.id}`, label: 'Module checkpoint' },
