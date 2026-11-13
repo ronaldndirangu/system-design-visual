@@ -99,12 +99,12 @@ export const quiz = [
   },
   {
     id: 'checkpoint/case-studies/q10',
-    prompt: 'A bad migration corrupts a 12 TB database. Restores load at 400 GB/h on one machine, and the RTO is 4 h. What meets the RTO?',
+    prompt: 'A bad migration corrupts a 12 TB database, and the RTO is 4 h. Each restore stream loads 400 GB/h, and storage feeds eight at once. What gets loading under 4 h?',
     options: [
-      { text: 'Take backups every hour instead of every day', why: 'Backup cadence sets how much data you lose, the RPO. Loading 12 TB still takes 30 h.' },
-      { text: 'Double the restore speed to 800 GB/h', why: '12,000 GB ÷ 800 GB/h is still 15 h, far past the 4 h RTO.' },
-      { text: 'Restore from a replica that trails the primary by seconds', why: 'The replica applied the bad migration within seconds too. It holds the same corrupt data.' },
-      { text: 'Split it into 8 shards that restore in parallel', correct: true, why: 'One stream takes 12,000 ÷ 400 = 30 h. Eight shards loading at once take about 30 ÷ 8 ≈ 3.75 h, as the Backups and recovery lesson’s sharded restore shows.' },
+      { text: 'Take backups every hour instead of every day', why: 'Backup cadence sets the RPO, how much data you lose. One stream still takes 30 h.' },
+      { text: 'Double the restore speed to 800 GB/h', why: '12,000 GB ÷ 800 GB/h is still 15 h, well past 4 h.' },
+      { text: 'Restore from a replica that trails the primary by seconds', why: 'The replica applied the bad migration seconds later and holds the same corrupt data.' },
+      { text: 'Split it into 8 shards that restore in parallel', correct: true, why: 'One stream takes 12,000 ÷ 400 = 30 h, so eight take about 3.75 h. Detection, provisioning, replay, validation and rerouting share the last 15 minutes.' },
     ],
   },
 ];

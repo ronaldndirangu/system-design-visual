@@ -65,7 +65,7 @@ export const steps = [
   },
   {
     title: 'Reroute the phones',
-    text: 'GeoDNS drops Virginia. Phones reconnect to Frankfurt with their cursor and retry pending sends with the same client ID.',
+    text: 'GeoDNS drops Virginia. Phones reconnect to Frankfurt, reconcile cursors from the old epoch, and retry pending sends with the same client ID.',
     focus: { active: 'phone', involved: ['dns', 'lbFr', 'chatFr'] },
     flows: ['phone>dns', 'phone>lbFr', 'lbFr>chatFr'],
   },
@@ -275,22 +275,18 @@ Illustrative round trips:
 | Virginia | Singapore | about 230 ms |
 | Frankfurt | Singapore | about 160 ms |
 
-Every cross-region step in a request adds one of these. Teams go multi-region for three reasons:
-
-- **Survive a region loss.** Another region takes over within minutes.
-- **Serve far users faster.** A user in Singapore reaches a nearby region in a few ms, against 230 ms to Virginia.
-- **Keep data in place.** Some data must stay in a given country or group of countries.
+Each cross-region step adds one of these. Teams go multi-region to survive a region loss, to serve far users faster,
+and to keep some data inside a given country.
 
 ## Send each user to a nearby region
 
 **GeoDNS** answers a lookup with a region near the resolver that asked. A 60 s TTL should move users within a minute, yet some resolvers and apps keep old answers far longer.
 
 **Anycast** announces one IP address from many sites, and internet routing (BGP) carries each user to a nearby one, as
-[CDNs](../../scaling/cdn/) do for their edges. When routes shift, an open connection can land at a site that never saw
-it, and the socket breaks.
+[CDNs](../../scaling/cdn/) do for their edges. When routes shift, an open socket can land at a new site and break.
 
-Chat sockets break during a failover either way. The phone reconnects, sends its cursor (the last sequence it holds),
-and fetches everything after it.
+Failover breaks chat sockets too. The phone reconnects with its cursor (its epoch and last sequence) and fetches
+everything after it.
 
 <details>
 <summary>Go deeper: where GeoDNS thinks you are</summary>
@@ -343,15 +339,38 @@ Failover for Virginia's conversations runs in five steps:
 
 1. **Detect.** Probes from other regions fail three times, 10 s apart: 30 s.
 2. **Decide.** Confirm the region is down, and the probes' own path is fine.
-3. **Promote.** Virginia’s primary holds a lease that a majority renews, and stops writing when it expires.
-   Then Frankfurt’s replica becomes primary for those conversations.
+3. **Promote.** Virginia’s primary stops writing when its majority-renewed lease expires. Then Frankfurt’s replica
+   takes over those conversations.
 4. **Fence.** Frankfurt takes a higher epoch in the shard map, and chat servers refuse routes with an older one, as in
    [time, leases, and fencing](../time-leases-fencing/).
-5. **Reroute.** GeoDNS drops Virginia, and phones reconnect with their cursors.
+5. **Reroute.** GeoDNS drops Virginia, and phones reconnect.
 
-Cross-region replication runs asynchronously, so lag becomes data loss. At 23,148 messages per second, with half the
-conversations homed in Virginia, 0.5 s of lag strands about 5,800 acknowledged messages. That lag is the failover's
-RPO, as in [backups and recovery](../../reliability/backups-and-recovery/).
+Cross-region replication runs asynchronously, so a region loss can lose acknowledged messages. With half of 23,148
+messages per second homed in Virginia, 0.5 s of lag strands about 5,800: the failover's RPO, as in [backups and
+recovery](../../reliability/backups-and-recovery/). Losing none means acking only after another region stores each
+send.
+
+Promotion can fork history: Frankfurt may reuse numbers Virginia acked. The epoch doubles as a **history generation**,
+kept in the consensus shard map, which never rolls back with a replica. Acks, cursors, and read receipts carry it, and a
+phone holding an older one reconciles by client message ID.
+
+<details>
+<summary>Go deeper: the 42, 40, 41 trace</summary>
+
+Virginia acks a conversation through 42 at epoch 7. Frankfurt holds only through 40, promotes at epoch 8, and the shard
+map records that epoch 8 starts after 40. Bob's next send becomes the new 41.
+
+- **Cursor.** Chen's phone returns with cursor 7:42. Frankfurt rejects it, because `after=42` would hide the new 41. It
+  sends everything after 40, and Chen's phone matches messages by client message ID. Its old 41 and 42 have no match,
+  so they stay on screen marked unresolved.
+- **Retry.** Ana's phone resends its acked 41 and 42 with the same client message IDs. Each lands once, at 42 and 43,
+  and the unresolved marks clear.
+- **Receipts.** Chen's read receipt 7:42 resets to 8:40, the verified surviving prefix. Keeping the higher number would
+  mark Bob's new 41 as read.
+- **Recovery.** When Virginia returns, copy its stranded messages in by client message ID as new numbers, never over the
+  reused 41 and 42. A message a phone already resent matches its ID and is skipped.
+
+</details>
 
 Survivors also need room. With N regions sharing traffic evenly, run each at no more than (N−1)/N of its capacity: half
 with two regions, two thirds with three.
@@ -363,14 +382,14 @@ witness in a third region and promote only with 2 of 3 votes, as in Raft. The le
 side from writing.
 
 **Evacuation.** A region can turn slow or flaky while its health checks pass, a **gray failure**. Drain it: move its
-users elsewhere on purpose, then fix it. Drain regions on a schedule, so failover becomes routine.
+users away, then fix it. Drain regions on a schedule, so failover becomes routine.
 
 <details>
 <summary>Go deeper: failing back</summary>
 
 When Virginia returns, rebuild its database as a replica of Frankfurt. Writes it took that never replicated live only
-on the old primary: find them and copy back the ones you want, as with a side copy after a restore. Then move traffic
-back a few percent at a time.
+on the old primary: find them and copy back the ones you want by client message ID, as new numbers, the way you would
+use a side copy after a restore. Then move traffic back a few percent at a time.
 
 </details>
 
@@ -383,7 +402,7 @@ over. Stories filed in the last minute never reached the bureau, and some vans k
 
 ## Data that must stay put
 
-Some laws and contracts require certain personal data to stay in a country or group of countries. Pin the home region
+Some laws and contracts keep certain personal data inside a country or group of countries. Pin the home region
 of that data to an allowed region, and keep its replicas, backups, logs, caches, and failover targets inside the same
 set. A jurisdiction with one region has nowhere local to fail over, so it needs two.
 
@@ -407,7 +426,7 @@ set. A jurisdiction with one region has nowhere local to fail over, so it needs 
 - Counting three zones as protection from a region loss.
 - Running each region near full, so the survivors fall over during a failover.
 - Promoting automatically on both sides of a partition, with no witness.
-- Letting replicas, backups, or failover targets sit outside the regions the data may live in.
+- Keeping backups or failover targets outside the data's allowed regions.
 - Never draining a region until the day one fails.
 
 <KeyTakeaways>
@@ -415,8 +434,8 @@ set. A jurisdiction with one region has nowhere local to fail over, so it needs 
 - Zones share a region's network and control systems. Surviving a region loss takes a second region.
 - Every cross-region step costs a round trip: about 90 ms between Virginia and Frankfurt.
 - A home region per conversation keeps one order and keeps most writes local.
-- Replication lag is a failover's RPO. Promote only after the old primary's lease expires, and use a witness to avoid
-  split brain.
+- Asynchronous replication can lose its lag in acked messages. Promote only after the old primary's lease expires, use
+  a witness against split brain, and stamp cursors and receipts with the new epoch.
 - With N regions, run each at no more than (N−1)/N, and drain regions on a schedule to prove it.
 
 </KeyTakeaways>
@@ -439,11 +458,10 @@ whose members all live in one jurisdiction must keep their sends inside it.
   conversations live in the US pair. Any conversation with an EU member lives in the EU pair, and its US members pay
   about 90 ms per send.
 - **Failover.** Replicate asynchronously within each pair, and alert when lag passes 2 s, inside the 5 s RPO. A witness
-  in a third region breaks ties. The old primary stops writing when its lease expires, and the standby promotes only
-  after that, under a higher epoch. Detection takes 30 s, leaving most of the 10
-  minutes for promotion and rerouting.
+  in a third region breaks ties, and the standby promotes under a higher epoch only after the old primary's lease
+  expires. Detection takes 30 s, leaving most of the 10 minutes to promote and reroute.
 - **Capacity and drills.** Run each region at no more than half its capacity. Drain one region a month and compare the
-  messages lost with the lag at the moment of the drain.
+  messages lost with the lag at drain time.
 
 </div>
 

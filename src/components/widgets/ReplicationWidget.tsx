@@ -236,13 +236,13 @@ export default function ReplicationWidget({
           ...(settings.replicas > 0
             ? [
                 {
-                  label: 'Writes lost if the primary crashed now',
+                  label: 'Writes at risk if the primary crashed now',
                   value:
                     fewestLost === mostLost
                       ? fewestLost.toLocaleString('en-US')
                       : `${fewestLost.toLocaleString('en-US')} to ${mostLost.toLocaleString('en-US')}`,
                   detail:
-                    'acknowledged writes the promoted replica never received; the least lagging replica loses the fewest',
+                    'acknowledged writes a replica has not received; these toy replicas apply on arrival, so promoting the least lagging one risks the fewest',
                   tone: mostLost > 0 ? ('warn' as const) : undefined,
                 },
               ]

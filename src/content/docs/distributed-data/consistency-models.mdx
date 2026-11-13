@@ -194,7 +194,7 @@ export const quiz = [
       },
       {
         text: 'Linearizable',
-        why: 'Every phone would talk to one leader, and every message would wait for a majority across oceans.',
+        why: 'A leader design routes every phone to one leader, and every message waits for a majority across oceans.',
       },
       {
         text: 'Monotonic reads',
@@ -246,7 +246,7 @@ export const quiz = [
 ## The failure: a reply with no question
 
 Ana, Ben, and Carla share a group chat stored on three replicas, R1, R2, and R3. A router sends each request to one
-replica, and the replicas copy new messages to each other in the background, which takes a few ticks.
+replica, and the replicas copy new messages to each other in the background over a few ticks.
 
 Ana sends “Lunch at noon?” and it lands on R2. Ben reads R2, sees it, and replies “Yes, see you there”. His reply lands
 on R3, which lacks Ana’s question. Then Carla opens the chat.
@@ -279,8 +279,7 @@ them.
 
 </Predict>
 
-No server crashed and no message was lost. The system made its readers a weak promise, and a stronger one rules this
-out.
+No server crashed and no message was lost. The system made readers a weak promise; a stronger one rules this out.
 
 ## The idea: a consistency model is a promise to readers
 
@@ -309,8 +308,8 @@ Where it breaks: a building never splits in two, while a network partition can c
 ## Try it: one chat, five promises
 
 Press **Play** with **Eventual** selected and watch tick 3: Carla sees the reply with no question, and Ana sees an empty
-chat. Then pick another promise and play again. Every promise runs the same messages, routes, and delays, and one tick
-stands for about 100 ms.
+chat. Then pick another promise and play again. Every promise runs the same messages, routes, and delays; one tick is
+about 100 ms.
 
 <ConsistencyWidget client:visible />
 
@@ -409,13 +408,13 @@ cut off from the rest cannot accept new ones. The [CAP and PACELC](../cap-and-pa
   a lagging replica waits or forwards the request, as in the [read replicas](../../scaling/read-replicas/) lesson.
 - **Causal consistency** attaches to each write the versions it depends on, and a replica hides the write until those
   arrive.
-- **Linearizable consistency** needs a leader that replicates each write to a majority, elected as in the
-  [Raft](../raft/) lesson. A read also costs a round trip to a quorum, or a lease, before the leader answers.
+- **Linearizable consistency** orders complete operations as if one copy ran them. This lesson’s [Raft](../raft/)
+  leader provides it: writes wait for a majority, reads for a quorum round or a lease.
 
 Many databases let you pick the promise per request.
 
 <details>
-<summary>Go deeper: how a leader serves a linearizable read</summary>
+<summary>Go deeper: how a leader serves a linearizable read, and selling the last unit</summary>
 
 An old leader may not know it was replaced: a partition can elect a new leader while the old one still answers
 clients from its own copy. A new leader can also lag: it holds every committed entry, but its commit index may not yet
@@ -433,6 +432,19 @@ the leader refuses to vote for anyone else until the lease could have expired, m
 clock speed and process pauses. Bounded clock drift alone does not stop a new leader from winning while an old lease
 still runs. The [Raft](../raft/) lesson walks through a failover in which a read arrives before the next write.
 
+Linearizability orders each operation on its own; it does not join a read and a later write into one step. With one
+unit left, shopper A reads 1, shopper B reads 1, A writes 0, and B writes 0. That history is linearizable, and the store
+sold two units. Make the check and the claim one operation instead:
+
+```sql
+UPDATE inventory SET stock = stock - 1 WHERE sku = ? AND stock > 0 RETURNING stock;
+```
+
+Exactly one buyer changes a row; the other changes none and sees “sold out”. Insert the order in the same transaction on
+the authoritative database, so the stock claim and the order commit together. A cart with several items needs a
+transaction across those rows or a reservation per item. Separate regional counters that each accept writes cannot
+enforce one global stock count.
+
 </details>
 
 ## Trade-offs
@@ -446,7 +458,7 @@ still runs. The [Raft](../raft/) lesson walks through a failover in which a read
 | Read your writes | People see what they just sent.                              | Reads wait after a write or go to the replica that took it.                                                       |
 | Causal           | Replies after questions, plus both session promises.         | Dependency metadata on every write, and stale reads remain.                                                       |
 | Sequential       | One order that keeps each person’s messages in send order.   | A cut-off minority cannot take writes, and reads can trail a confirmed write.                                     |
-| Linearizable     | Every read sees the latest confirmed write.                  | Every request goes to the leader, a write waits for a majority, and a read needs a quorum round trip or a lease. |
+| Linearizable     | Every read sees the latest confirmed write.                  | With this lesson’s leader, requests go to it, writes wait for a majority, and reads need a quorum round or lease. |
 
 </TradeoffTable>
 
@@ -457,7 +469,7 @@ on one value now, such as claiming a unique username.
 
 - **Treating read your writes as fresh for everyone.** It protects only the writer. Other readers can still see stale
   data.
-- **Assuming causal means up to date.** Causal orders what a request depends on, and a reader can still see stale data.
+- **Assuming causal means up to date.** Causal orders what a request depends on; reads can still be stale.
 - **Calling sequential linearizable.** Sequential agrees on one order but sets no deadline, so a follower read can miss
   a confirmed write.
 - **Treating linearizable reads as free.** A leader must confirm with a quorum, or hold a lease, before it answers.
@@ -469,7 +481,7 @@ on one value now, such as claiming a unique username.
 - Monotonic reads and read your writes protect a session in different ways. Causal gives both, keeps replies after
   questions, and still allows stale reads.
 - Sequential consistency agrees on one order. Linearizable adds a deadline: every read sees the latest confirmed write.
-- A linearizable write waits for a majority, and a linearizable read needs a quorum round trip or a lease.
+- With this lesson’s leader, a write waits for a majority and a read needs a quorum round trip or a lease.
 
 </KeyTakeaways>
 
@@ -485,7 +497,8 @@ last unit, and “seen by” receipts under chat messages.
 
 - **Cart badge: read your writes.** The shopper must see their own add at once.
 - **Review feed: causal.** A reply must never appear without its review, and a feed a few seconds behind is fine.
-- **Last unit: linearizable.** Two shoppers must not both see one unit left and both buy it.
+- **Last unit: an atomic conditional purchase.** Linearizable reads still let two shoppers read 1 and both buy. Claim
+  the unit only if stock remains, in the order’s transaction.
 - **Seen-by receipts: eventual plus monotonic reads.** A late receipt harms nobody, and monotonic reads keeps one from
   disappearing after it appears.
 
