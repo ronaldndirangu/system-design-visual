@@ -1,3 +1,4 @@
+import { hasStarted, isComplete, type ProgressData } from '../lib/progress';
 import { allLessons, curriculum, type Lesson } from './curriculum';
 
 export interface CoursePage {
@@ -44,6 +45,20 @@ export function moduleClosedBy(id: string): string | undefined {
   return curriculum.find((module) => module.id !== CASE_MODULE && lastCoreLessonOf(module.id)?.id === id)?.id;
 }
 
+export interface ModuleCheckpoint {
+  /** Site path without the base, so callers apply withBase. */
+  href: string;
+  title: string;
+}
+
+/** The optional checkpoint quiz offered where a core module ends. */
+export function checkpointFor(moduleId: string): ModuleCheckpoint | undefined {
+  if (moduleId === CASE_MODULE) return undefined;
+  const module = curriculum.find((candidate) => candidate.id === moduleId);
+  if (!module) return undefined;
+  return { href: `/checkpoints/${module.id}/`, title: `Checkpoint ${module.number}: ${module.title}` };
+}
+
 export interface PathNeighbours {
   prev?: CoursePage;
   next?: CoursePage;
@@ -73,4 +88,35 @@ export function pathNeighbours(id: string): PathNeighbours | undefined {
     .find((candidate) => coreLessons.includes(candidate));
   const after = allLessons.slice(position + 1).find((candidate) => coreLessons.includes(candidate));
   return { prev: before && toPage(before), next: after && toPage(after) };
+}
+
+/**
+ * Where Continue should go. An unfinished lesson the learner opened last comes first, including an
+ * elective or case study. Otherwise the next unfinished core lesson along the path, wrapping to
+ * earlier skipped ones. Electives and case studies are never assigned.
+ */
+export function pathContinueTarget(progress: ProgressData): CoursePage | null {
+  const { last } = progress;
+  if (!hasStarted(progress)) return null;
+
+  const lastLesson = allLessons.find((lesson) => lesson.id === last);
+  if (lastLesson && !isComplete(progress, lastLesson.id)) return toPage(lastLesson);
+
+  let start = 0;
+  if (lastLesson) {
+    const onPath = coreLessons.indexOf(lastLesson);
+    const resumeId = onPath === -1 ? pathNeighbours(lastLesson.id)?.next?.id : undefined;
+    start =
+      onPath !== -1
+        ? onPath + 1
+        : Math.max(
+            0,
+            coreLessons.findIndex((lesson) => lesson.id === resumeId),
+          );
+  }
+  for (let offset = 0; offset < coreLessons.length; offset++) {
+    const lesson = coreLessons[(start + offset) % coreLessons.length];
+    if (lesson && !isComplete(progress, lesson.id)) return toPage(lesson);
+  }
+  return null;
 }

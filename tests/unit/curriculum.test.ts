@@ -25,6 +25,11 @@ const routeOf = (file: string) => {
   const slug = file.slice(docsRoot.length).replace(/\.mdx$/, '');
   return slug === 'index' ? '/' : `/${slug}/`;
 };
+const brokenPageLinks = (route: string, text: string, routes: Set<string>) =>
+  [...text.matchAll(/(?<!!)\[[^\]]*\]\((\.{1,2}\/[^)\s#]*)/g)]
+    .map((match) => new URL(match[1] as string, `https://site${route}`).pathname)
+    .filter((target) => !routes.has(target))
+    .map((target) => `${route} links to missing ${target}`);
 
 describe('curriculum', () => {
   it('has unique lesson ids and module numbers in order', () => {
@@ -64,13 +69,22 @@ describe('curriculum', () => {
     const pages = filesUnder(docsDir).filter((file) => file.endsWith('.mdx'));
     const routes = new Set(pages.map(routeOf));
     const broken = pages.flatMap((file) =>
-      [...readFileSync(file, 'utf8').matchAll(/\]\((\.{1,2}\/[^)\s#]*)/g)]
-        .map((match) => new URL(match[1] as string, `https://site${routeOf(file)}`).pathname)
-        .filter((target) => !routes.has(target))
-        .map((target) => `${routeOf(file)} links to missing ${target}`),
+      brokenPageLinks(routeOf(file), readFileSync(file, 'utf8'), routes),
     );
     expect(pages.length).toBeGreaterThan(50);
     expect(broken).toEqual([]);
+  });
+
+  it('checks page links and skips images', () => {
+    const routes = new Set(['/scaling/caching/', '/scaling/cdn/']);
+    const text = [
+      '![Cache diagram](../../assets/cache.svg)',
+      '[CDN](../cdn/#edges)',
+      '[Sharding](../sharding/)',
+    ].join('\n');
+    expect(brokenPageLinks('/scaling/caching/', text, routes)).toEqual([
+      '/scaling/caching/ links to missing /scaling/sharding/',
+    ]);
   });
 
   it('builds URL-safe anchors', () => {

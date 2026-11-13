@@ -41,3 +41,49 @@ test('an Export tap before hydration downloads one file', async ({ page }) => {
   expect((await download).suggestedFilename()).toBe('sdv-progress.json');
   expect(downloads).toHaveLength(1);
 });
+
+test('Continue follows the core path and sits beside Review', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (localStorage.getItem('sdv:progress')) return;
+    localStorage.setItem(
+      'sdv:progress',
+      JSON.stringify({
+        version: 3,
+        last: 'foundations/unique-ids',
+        lessons: { 'foundations/unique-ids': { completedAt: '2026-01-05T00:00:00.000Z' } },
+      }),
+    );
+  });
+  await page.goto('start-here/');
+  const root = page.locator('main .sdv-continue');
+  const next = root.getByRole('link', { name: /^Continue:/ });
+  await expect(next).toHaveText('Continue: Real-time transport');
+  await expect(next).toHaveAttribute('href', /\/foundations\/real-time\/$/);
+  await expect(root.getByRole('link', { name: 'Review', exact: true })).toHaveAttribute(
+    'href',
+    /\/review\/$/,
+  );
+});
+
+test.describe('phone menu', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('opens on the current module with the others collapsed', async ({ page }) => {
+    await page.goto('foundations/unique-ids/');
+    await page.getByRole('button', { name: 'Menu' }).click();
+    const sidebar = page.locator('#starlight__sidebar');
+    const group = (label: string) =>
+      sidebar.locator('details').filter({ has: page.locator('summary', { hasText: label }) });
+
+    await expect(group('1. Foundations')).toHaveAttribute('open', '');
+    await expect(sidebar.getByRole('link', { name: 'Unique IDs' })).toHaveAttribute('aria-current', 'page');
+    const reliability = group('3. Reliability');
+    await expect(reliability).not.toHaveAttribute('open');
+
+    await reliability.locator('summary').focus();
+    await page.keyboard.press('Enter');
+    await expect(reliability).toHaveAttribute('open', '');
+    await page.keyboard.press('Enter');
+    await expect(reliability).not.toHaveAttribute('open');
+  });
+});

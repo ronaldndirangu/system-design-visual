@@ -16,8 +16,10 @@ diagram follows, and the checks to run before a pull request.
 
 ## Local setup
 
+Install the pnpm version that `package.json` pins. Node 25 and newer no longer ship Corepack.
+
 ```sh
-corepack enable
+npm install --global pnpm@12.17.0
 pnpm install
 pnpm dev
 ```

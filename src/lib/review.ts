@@ -87,6 +87,23 @@ export function parseReview(raw: string | null): ReviewData {
   }
 }
 
+function parseEntriesStrict<T>(
+  value: unknown,
+  parse: (entry: unknown) => T | null,
+): Record<string, T> | null {
+  if (!isRecord(value)) return null;
+  const entries = parseEntries(value, parse);
+  return Object.keys(entries).length === Object.keys(value).length ? entries : null;
+}
+
+/** Validates review data from an import file, rejecting it when any entry is invalid. */
+export function validateReview(value: unknown): ReviewData | null {
+  if (!isRecord(value) || value.version !== REVIEW_VERSION) return null;
+  const cards = parseEntriesStrict(value.cards, parseCard);
+  const checkpoints = parseEntriesStrict(value.checkpoints, parseCheckpoint);
+  return cards && checkpoints ? { version: REVIEW_VERSION, cards, checkpoints } : null;
+}
+
 function addDays(from: Date, days: number): string {
   return new Date(from.getTime() + days * DAY_MS).toISOString();
 }
@@ -121,6 +138,11 @@ export function nextDue(data: ReviewData, now: Date): string | null {
   return next === null ? null : new Date(next).toISOString();
 }
 
+/** A due date as a learner reads it, such as "Friday, November 13". */
+export function formatReviewDay(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
 /**
  * Adds a box 1 card for every question in each lesson quiz the learner finished.
  * Missed questions come due now and the rest come due a day after completion.
@@ -146,12 +168,16 @@ export function seedCards(
   return cards ? { ...data, cards } : data;
 }
 
-/** Keeps the best score per checkpoint and sends missed questions to box 1, due now. */
+/**
+ * Keeps the best score per checkpoint. Missed questions go to box 1, due now.
+ * Newly answered questions come due tomorrow, and existing cards keep their schedule.
+ */
 export function withCheckpoint(
   data: ReviewData,
   moduleId: string,
   score: number,
   total: number,
+  answered: readonly string[],
   missed: readonly string[],
   now: Date,
 ): ReviewData {
@@ -161,6 +187,12 @@ export function withCheckpoint(
   const best = Object.hasOwn(checkpoints, moduleId) ? checkpoints[moduleId] : undefined;
   if (!best || best.total !== total || score > best.score) checkpoints[moduleId] = result;
   const cards = { ...data.cards };
+  const missedIds = new Set(missed);
+  for (const id of answered) {
+    if (isSafeId(id) && !missedIds.has(id) && !Object.hasOwn(cards, id)) {
+      cards[id] = { box: 1, due: addDays(now, INTERVAL_DAYS[0]) };
+    }
+  }
   for (const id of missed) {
     if (isSafeId(id)) cards[id] = { box: 1, due: now.toISOString() };
   }
@@ -236,10 +268,25 @@ export function recordCheckpoint(
   moduleId: string,
   score: number,
   total: number,
+  answered: readonly string[],
   missed: readonly string[],
   now = new Date(),
 ): void {
-  write(withCheckpoint(readReview(), moduleId, score, total, missed, now));
+  write(withCheckpoint(readReview(), moduleId, score, total, answered, missed, now));
+}
+
+export function replaceReview(data: ReviewData): void {
+  write(data);
+}
+
+export function clearReview(): void {
+  memoryRaw = null;
+  try {
+    storage()?.removeItem(REVIEW_STORAGE_KEY);
+  } catch {
+    // Storage is blocked, so the memory fallback above is all there is to clear.
+  }
+  window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
 /** Seeds cards from lesson progress, writing only when a new card appears. */

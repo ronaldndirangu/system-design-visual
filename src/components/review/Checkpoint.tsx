@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { withBase } from '../../lib/paths';
-import { CHECKPOINT_PASS, checkpointResult, recordCheckpoint } from '../../lib/review';
+import {
+  CHECKPOINT_PASS,
+  checkpointResult,
+  formatReviewDay,
+  nextDue,
+  recordCheckpoint,
+} from '../../lib/review';
 import type { QuizQuestion } from '../lesson/Quiz';
 import { QuizItem } from '../lesson/Quiz';
 import { ToneBadge } from '../sim/StatTable';
@@ -29,8 +35,17 @@ export default function Checkpoint({ moduleId, questions }: { moduleId: string; 
   useEffect(() => {
     if (!finished || recorded.current === attempt) return;
     recorded.current = attempt;
-    recordCheckpoint(moduleId, score, questions.length, missed);
-  }, [finished, attempt, moduleId, score, questions.length, missed]);
+    recordCheckpoint(
+      moduleId,
+      score,
+      questions.length,
+      questions.map((question) => question.id),
+      missed,
+    );
+  }, [finished, attempt, moduleId, score, questions, missed]);
+
+  const next = finished && review ? nextDue(review, new Date()) : null;
+  const reviewLink = <a href={withBase('/review/')}>review queue</a>;
 
   return (
     <section className="sdv-quiz not-content" aria-label={title}>
@@ -70,13 +85,14 @@ export default function Checkpoint({ moduleId, questions }: { moduleId: string; 
             {missed.length > 0 ? (
               <>
                 The{' '}
-                {missed.length === 1
-                  ? 'question you missed joins'
-                  : `${missed.length} questions you missed join`}{' '}
-                your <a href={withBase('/review/')}>review queue</a>.
+                {missed.length === 1 ? 'question you missed is' : `${missed.length} questions you missed are`}{' '}
+                due now in your {reviewLink}, and the questions you got right come back on later days.
               </>
             ) : (
-              'Every question right on the first try.'
+              <>
+                Every question right on the first try. These questions join your {reviewLink}
+                {next ? `, and your next review comes due on ${formatReviewDay(next)}.` : '.'}
+              </>
             )}
           </p>
           <button

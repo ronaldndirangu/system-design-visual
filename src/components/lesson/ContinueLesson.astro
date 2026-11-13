@@ -1,6 +1,6 @@
 ---
 import { allLessons } from '../../data/curriculum';
-import { lessonHref } from '../../lib/paths';
+import { lessonHref, withBase } from '../../lib/paths';
 
 const lessons = allLessons.map((lesson) => ({
   id: lesson.id,
@@ -10,13 +10,15 @@ const lessons = allLessons.map((lesson) => ({
 ---
 
 <p class="sdv-continue not-content" data-lessons={JSON.stringify(lessons)} hidden>
-  <a class="sdv-button sdv-button--primary" href={lessons[0]?.href}>
+  <a class="sdv-button sdv-button--primary" href={lessons[0]?.href} data-continue-link>
     Continue: <span data-continue-title>{lessons[0]?.title}</span>
   </a>
+  <a class="sdv-continue__review" href={withBase('/review/')}>Review</a>
 </p>
 
 <script>
-  import { continueTarget, readProgress, subscribeProgress } from '../../lib/progress';
+  import { pathContinueTarget } from '../../data/coursePath';
+  import { hasStarted, readProgress, subscribeProgress } from '../../lib/progress';
 
   interface Target {
     id: string;
@@ -26,11 +28,15 @@ const lessons = allLessons.map((lesson) => ({
 
   function paint() {
     const progress = readProgress();
+    const started = hasStarted(progress);
+    const next = pathContinueTarget(progress);
     for (const root of document.querySelectorAll<HTMLElement>('.sdv-continue[data-lessons]')) {
-      const target = continueTarget<Target>(progress, JSON.parse(root.dataset.lessons ?? '[]'));
-      const link = root.querySelector('a');
+      const lessons: Target[] = JSON.parse(root.dataset.lessons ?? '[]');
+      const target = next ? lessons.find((lesson) => lesson.id === next.id) : undefined;
+      const link = root.querySelector<HTMLAnchorElement>('[data-continue-link]');
       const title = root.querySelector('[data-continue-title]');
-      root.hidden = !target || !link || !title;
+      root.hidden = !started || !link || !title;
+      if (link) link.hidden = !target;
       if (target && link && title) {
         link.href = target.href;
         title.textContent = target.title;

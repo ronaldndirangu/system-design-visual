@@ -1,34 +1,46 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { allLessons } from '../../data/curriculum';
+import { readPractice, subscribePractice } from '../../lib/practiceProgress';
+import { completedCount, type ImportMode } from '../../lib/progress';
 import {
-  applyImport,
-  completedCount,
-  exportProgress,
-  type ImportMode,
-  type ProgressData,
-  type ProgressSummary,
-  parseImport,
-  readProgress,
-  resetProgress,
-  summarizeProgress,
-} from '../../lib/progress';
+  applyStudyImport,
+  exportStudyData,
+  hasStudyData,
+  parseStudyImport,
+  readStudyData,
+  resetStudyData,
+  type StudyData,
+  type StudySummary,
+  summarizeStudy,
+} from '../../lib/studyData';
+import { useReview } from '../review/useReview';
 import { useProgress, useProgressPersistent } from './useProgress';
 
 const lessonIds = allLessons.map((lesson) => lesson.id);
 
 interface PendingImport {
   fileName: string;
-  data: ProgressData;
+  data: StudyData;
 }
 
-function summaryText({ completed, quizScores }: ProgressSummary): string {
-  return `${completed} ${completed === 1 ? 'lesson' : 'lessons'} complete, ${quizScores} quiz ${
-    quizScores === 1 ? 'score' : 'scores'
-  }`;
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+function summaryText({ completed, quizScores, cards, checkpoints, rounds }: StudySummary): string {
+  return [
+    `${plural(completed, 'lesson', 'lessons')} complete`,
+    plural(quizScores, 'quiz score', 'quiz scores'),
+    plural(cards, 'review card', 'review cards'),
+    plural(checkpoints, 'checkpoint score', 'checkpoint scores'),
+    plural(rounds, 'practice round', 'practice rounds'),
+  ].join(', ');
 }
 
 export default function ProgressReset() {
   const progress = useProgress();
+  const review = useReview();
+  const practice = useSyncExternalStore(subscribePractice, readPractice, () => null);
   const persistent = useProgressPersistent();
   const [message, setMessage] = useState('');
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -42,17 +54,16 @@ export default function ProgressReset() {
   const [pending, setPending] = useState<PendingImport | null>(null);
   const [mode, setMode] = useState<ImportMode>('merge');
   const [confirming, setConfirming] = useState(false);
-  const loading = progress === null;
+  const loading = progress === null || review === null || practice === null;
   const count = progress ? completedCount(progress, lessonIds) : 0;
-  const hasData =
-    progress !== null && (Object.keys(progress.lessons).length > 0 || progress.last !== undefined);
+  const hasData = !loading && hasStudyData({ progress, review, practice });
 
   useEffect(() => {
     if (confirming) backRef.current?.focus();
   }, [confirming]);
 
   function download(fileName = 'sdv-progress.json') {
-    const url = URL.createObjectURL(new Blob([exportProgress()], { type: 'application/json' }));
+    const url = URL.createObjectURL(new Blob([exportStudyData()], { type: 'application/json' }));
     const link = document.createElement('a');
     link.href = url;
     link.download = fileName;
@@ -62,7 +73,7 @@ export default function ProgressReset() {
   }
 
   async function upload(file: File) {
-    const parsed = parseImport(await file.text());
+    const parsed = parseStudyImport(await file.text());
     if (!parsed.ok) {
       setMessage(parsed.error);
       return;
@@ -80,22 +91,22 @@ export default function ProgressReset() {
 
   function apply(chosen: ImportMode) {
     if (!pending) return;
-    const lessons = applyImport(pending.data, chosen);
-    const noun = lessons === 1 ? 'lesson' : 'lessons';
+    applyStudyImport(pending.data, chosen);
+    const saved = summaryText(summarizeStudy(readStudyData()));
     closeImport();
     exportRef.current?.focus();
     setMessage(
       chosen === 'merge'
-        ? `Merged the file into your progress: ${lessons} ${noun} saved.`
-        : `Replaced your progress with the file: ${lessons} ${noun} saved.`,
+        ? `Merged the file into your progress: ${saved}.`
+        : `Replaced your progress with the file: ${saved}.`,
     );
   }
 
   function reset() {
-    resetProgress();
+    resetStudyData();
     dialogRef.current?.close();
     exportRef.current?.focus();
-    setMessage('Progress cleared.');
+    setMessage('All study data cleared.');
   }
 
   return (
@@ -152,11 +163,11 @@ export default function ProgressReset() {
       </div>
       <dialog ref={dialogRef} className="sdv-reset__dialog" aria-labelledby={titleId}>
         <h2 id={titleId} className="sdv-reset__dialog-title">
-          Clear all progress?
+          Clear all study data?
         </h2>
         <p>
-          This removes completed lessons, quiz scores, and your place in the course from this browser. Export
-          first to keep a copy.
+          This removes completed lessons, quiz scores, your place in the course, review schedules, checkpoint
+          scores, and practice rounds from this browser. Export first to keep a copy.
         </p>
         <div className="sdv-reset__actions">
           {/* biome-ignore lint/a11y/noAutofocus: the safe choice takes focus when the confirm dialog opens */}
@@ -164,7 +175,7 @@ export default function ProgressReset() {
             Cancel
           </button>
           <button type="button" className="sdv-button" data-tone="bad" onClick={reset}>
-            Clear progress
+            Clear all study data
           </button>
         </div>
       </dialog>
@@ -180,8 +191,8 @@ export default function ProgressReset() {
               Import {pending.fileName}?
             </h2>
             <ul className="sdv-reset__summary">
-              <li>In the file: {summaryText(summarizeProgress(pending.data))}.</li>
-              <li>In this browser: {summaryText(summarizeProgress(readProgress()))}.</li>
+              <li>In the file: {summaryText(summarizeStudy(pending.data))}.</li>
+              <li>In this browser: {summaryText(summarizeStudy(readStudyData()))}.</li>
             </ul>
             <fieldset className="sdv-reset__modes">
               <legend>How to import</legend>
@@ -192,7 +203,8 @@ export default function ProgressReset() {
                   checked={mode === 'merge'}
                   onChange={() => setMode('merge')}
                 />{' '}
-                Merge: keep every completed lesson and the better quiz score for each lesson.
+                Merge: keep every completed lesson, the better quiz and checkpoint scores, your current review
+                schedule, and the newest practice rounds.
               </label>
               <label>
                 <input
@@ -201,7 +213,8 @@ export default function ProgressReset() {
                   checked={mode === 'replace'}
                   onChange={() => setMode('replace')}
                 />{' '}
-                Replace: discard the progress in this browser and use the file.
+                Replace: use the file for each kind of study data it holds, and discard that data in this
+                browser.
               </label>
             </fieldset>
             <div className="sdv-reset__actions">
@@ -232,8 +245,8 @@ export default function ProgressReset() {
               Replace all progress?
             </h2>
             <p>
-              The file replaces {summaryText(summarizeProgress(readProgress()))} in this browser. Download a
-              backup first to keep a copy.
+              The file replaces the matching study data in this browser, which holds{' '}
+              {summaryText(summarizeStudy(readStudyData()))}. Download a backup first to keep a copy.
             </p>
             <div className="sdv-reset__actions">
               <button ref={backRef} type="button" className="sdv-button" onClick={() => setConfirming(false)}>
