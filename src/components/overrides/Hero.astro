@@ -2,7 +2,7 @@
 import { LinkButton } from '@astrojs/starlight/components';
 import Default from '@astrojs/starlight/components/Hero.astro';
 import { firstLesson } from '../../data/coursePath';
-import { lessonHref, withBase } from '../../lib/paths';
+import { lessonHref } from '../../lib/paths';
 import LandingHero from '../landing/LandingHero';
 
 const route = Astro.locals.starlightRoute;
@@ -21,17 +21,17 @@ const title = hero?.title ?? route.entry.data.title;
         <div class="sdv-hero__actions">
           {firstLesson && (
             <LinkButton href={lessonHref(firstLesson.id)} icon="right-arrow">
-              Start learning
+              Start with one request
             </LinkButton>
           )}
-          <LinkButton href={withBase('/curriculum/')} variant="minimal">
-            See the course map
+          <LinkButton href="#routing-challenge" variant="minimal">
+            Try the routing challenge
           </LinkButton>
         </div>
-        <p class="sdv-hero__note">No sign up. Progress saves in this browser only.</p>
+        <p class="sdv-hero__note">Free. No account needed. Progress stays in this browser.</p>
       </div>
-      <div class="sdv-hero__toy">
-        <LandingHero client:load />
+      <div class="sdv-hero__challenge">
+        <LandingHero client:idle />
       </div>
     </div>
   ) : (

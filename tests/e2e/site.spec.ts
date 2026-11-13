@@ -4,7 +4,7 @@ import { allLessons } from '../../src/data/curriculum';
 import { documentOverflow, hydrateAll, island } from './helpers';
 
 const pages = [
-  { path: './', heading: /watching it break/i },
+  { path: './', heading: /Then it gets popular/i },
   { path: 'start-here/', heading: /How this course works/i },
   { path: 'curriculum/', heading: /Course map/i },
   { path: 'visual-language/', heading: /Visual language/i },
@@ -177,7 +177,7 @@ test('marking a lesson complete updates the course map', async ({ page }) => {
 
 test('the landing page offers a clear start', async ({ page }) => {
   await page.goto('./');
-  const start = page.getByRole('link', { name: /Start learning/i }).first();
+  const start = page.getByRole('link', { name: /Start with one request/i }).first();
   await expect(start).toBeVisible();
   await start.click();
   await expect(page).toHaveURL(/\/system-design-visual\/(start-here|thinking)/);

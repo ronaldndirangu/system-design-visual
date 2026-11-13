@@ -563,7 +563,8 @@ body {
 .sdv-button:hover:not(:disabled) {
   background: var(--sdv-surface-3);
 }
-.sdv-button:disabled {
+.sdv-button:disabled,
+.sdv-button[aria-disabled="true"] {
   background: transparent;
   border-style: dashed;
   color: var(--sdv-text-3);
