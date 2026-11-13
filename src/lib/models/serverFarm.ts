@@ -109,6 +109,15 @@ export interface FarmTotals {
   failed: number;
 }
 
+/** One routing decision: what the balancer saw and where the request went. */
+export interface AssignmentEvent {
+  time: number;
+  /** Unfinished requests at each server in the pool when the decision was made. */
+  candidates: { id: number; queueLength: number }[];
+  chosen: number | null;
+  outcome: 'queued' | 'rejected' | 'failed';
+}
+
 export type FarmCommand =
   | { type: 'rate'; value: number }
   | { type: 'strategy'; value: Strategy }
@@ -152,6 +161,8 @@ export class ServerFarm implements ModelAdapter<FarmCommand, FarmTick, FarmCheck
   private history: FarmTick[] = [];
   private latencies: { time: number; ms: number }[] = [];
   private running: FarmTotals = { arrived: 0, served: 0, rejected: 0, failed: 0 };
+  /** Set to an array to record every routing decision. Not part of checkpoints. */
+  trace: AssignmentEvent[] | null = null;
 
   constructor(config: Partial<FarmConfig> = {}) {
     this.config = { ...defaultFarmConfig, ...config };
@@ -321,23 +332,33 @@ export class ServerFarm implements ModelAdapter<FarmCommand, FarmTick, FarmCheck
     for (const { at, ...request } of arrivals) {
       // Servers work up to this moment first, so the balancer sees live queue lengths.
       advanceAll(at);
+      const candidates = this.trace
+        ? this.servers
+            .filter((server) => server.inPool)
+            .map((server) => ({ id: server.id, queueLength: server.queue.length }))
+        : [];
       const target = this.pickServer();
       if (!target) {
         rejected += 1;
+        this.trace?.push({ time: at, candidates, chosen: null, outcome: 'rejected' });
         continue;
       }
       const tick = ticks.get(target.id);
       if (!tick) continue;
       tick.assigned += 1;
+      let outcome: AssignmentEvent['outcome'] = 'queued';
       if (!target.up) {
         tick.failed += 1;
         failed += 1;
+        outcome = 'failed';
       } else if (target.queue.length >= this.config.queueLimit) {
         tick.rejected += 1;
         rejected += 1;
+        outcome = 'rejected';
       } else {
         target.queue.push({ arrivedAt: at, ...request });
       }
+      this.trace?.push({ time: at, candidates, chosen: target.id, outcome });
     }
     advanceAll(start + dt);
 
