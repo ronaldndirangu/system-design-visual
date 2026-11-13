@@ -3247,3 +3247,19 @@ a.sdv-map__link:hover {
   text-decoration: underline;
   text-underline-offset: 0.2em;
 }
+
+/* Course map checkpoint links */
+.sdv-map__checkpoint {
+  margin: 0.75rem 0 0;
+}
+.sdv-map__checkpoint a {
+  align-items: center;
+  color: var(--sdv-accent-text);
+  display: inline-flex;
+  font-size: var(--sl-text-sm);
+  font-weight: var(--sdv-weight-ui);
+  min-height: var(--sdv-target);
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}

@@ -51,9 +51,8 @@ export interface ModuleCheckpoint {
   title: string;
 }
 
-/** The optional checkpoint quiz offered where a core module ends. */
+/** The optional checkpoint quiz for a module, offered where it ends and on the course map. */
 export function checkpointFor(moduleId: string): ModuleCheckpoint | undefined {
-  if (moduleId === CASE_MODULE) return undefined;
   const module = curriculum.find((candidate) => candidate.id === moduleId);
   if (!module) return undefined;
   return { href: `/checkpoints/${module.id}/`, title: `Checkpoint ${module.number}: ${module.title}` };

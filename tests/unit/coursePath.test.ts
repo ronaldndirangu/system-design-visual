@@ -52,17 +52,17 @@ describe('course path', () => {
 });
 
 describe('module checkpoints', () => {
-  it('names a checkpoint page for every module with core lessons', () => {
-    for (const module of curriculum.filter((candidate) => candidate.id !== 'case-studies')) {
+  it('names an existing checkpoint page for every module, case studies included', () => {
+    expect(curriculum.map((module) => module.id)).toContain('case-studies');
+    for (const module of curriculum) {
       const checkpoint = checkpointFor(module.id);
       expect(checkpoint?.href, module.id).toBe(`/checkpoints/${module.id}/`);
-      expect(checkpoint?.title, module.id).toContain(module.title);
+      expect(checkpoint?.title, module.id).toBe(`Checkpoint ${module.number}: ${module.title}`);
       expect(existsSync(`src/content/docs/checkpoints/${module.id}.mdx`), module.id).toBe(true);
     }
   });
 
-  it('has no checkpoint for case studies or unknown modules', () => {
-    expect(checkpointFor('case-studies')).toBeUndefined();
+  it('has no checkpoint for unknown modules', () => {
     expect(checkpointFor('nope')).toBeUndefined();
   });
 });
