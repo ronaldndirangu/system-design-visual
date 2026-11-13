@@ -116,7 +116,7 @@ export const quiz = [
     prompt: 'The links table grows from 10 million to 10 billion rows. With a B-tree index on code, how does a lookup change?',
     options: [
       { text: 'It reads about 1,000 times more pages', why: 'That is the scan. Tree depth grows with the logarithm of the row count.' },
-      { text: 'It reads about one more page', correct: true, why: 'Each level splits the search up to 500 ways, so 1,000 times the rows adds about one level: 4 reads become 5.' },
+      { text: 'It reads about one more page', correct: true, why: 'Each level splits the search up to 500 ways, so 1,000 times the rows adds one level: 4 reads become 5.' },
       { text: 'It reads exactly the same pages', why: 'A bigger tree eventually needs another level.' },
       { text: 'The database switches to a full scan', why: 'Planners scan when much of the table matches. One code among billions is the best case for an index.' },
     ],
@@ -190,7 +190,8 @@ per click.
 >
 
 **About 1,000 times more with no index, and one more page with it.** A scan reads every page, so 100,000 pages become
-100,000,000. A B-tree reads one page per level, and 1,000 times the rows adds about one level: 4 reads become 5.
+100,000,000. A lookup reads one page per tree level plus the table page; 1,000 times the rows adds a level: 4 reads
+become 5.
 
 </Predict>
 
@@ -215,8 +216,8 @@ inside each write.
 
 ## Try it
 
-The simulation replays the same 43 redirect lookups, about five a second for 10 seconds, against two copies of the
-links table that differ only in the index. Pick a size and press Play.
+The simulation replays the same 43 redirect lookups, about five a second for 10 seconds, against two links tables
+that differ only in the index. Pick a size and press Play.
 
 <details>
 <summary>Go deeper: what the toy model assumes</summary>
@@ -241,7 +242,7 @@ What to notice:
 
 ## Every index costs a write
 
-Each index is its own B-tree, so every `INSERT` walks down each tree and writes a leaf, splitting it when full.
+Each index is its own B-tree, so every `INSERT` walks each tree and writes a leaf, splitting it when full.
 
 <Predict
   client:visible
@@ -265,7 +266,7 @@ indexes fill 80,164 pages, about 80% on top of the 100,000-page table.
 <IndexWriteCostWidget client:visible />
 
 Turn on `(user_id)` and `(user_id, created_at)` together and the widget flags `(user_id)` as redundant, a prefix of the
-composite index.
+composite.
 
 <details>
 <summary>Go deeper: what a real insert pays</summary>
@@ -312,9 +313,9 @@ So `(created_at, user_id)` has the right columns in the wrong order for the dash
 <summary>Go deeper: covering indexes</summary>
 
 The dashboard query above still reads a table page for each of its 20 rows to fetch `code` and `long_url`. Add those
-columns to the index (`INCLUDE (code, long_url)` in PostgreSQL and SQL Server) and the index alone answers the query.
-That saves 20 table reads per page view, and it makes the index larger, since long URLs are long, and every insert
-writes more bytes.
+columns to the index (`INCLUDE (code, long_url)` in PostgreSQL and SQL Server) and the index alone answers the query,
+skipping the table page. That saves 20 table reads per page view, and it makes the index larger, since long URLs are
+long, and every insert writes more bytes.
 
 </details>
 
@@ -397,7 +398,7 @@ reads, such as a raw click log, wants only the indexes its queries need. Skip lo
 <KeyTakeaways>
 
 - A lookup with no index reads every page, so it slows as the table grows.
-- A B-tree reads one page per level: 1,000 times the rows adds about one read.
+- A lookup reads one page per tree level plus the table page; 1,000 times the rows adds one.
 - Every index is another tree that each write to its columns must update.
 - A composite index serves its leftmost prefix: equality first, sort second.
 - `EXPLAIN` shows a scan or an index walk. Denormalize reads no index can fix.

@@ -60,15 +60,16 @@ export const quiz = [
 ## Why IDs get hard
 
 Every table in the [data model](../data-modeling/) needs a primary key. One database can number rows with an
-auto-increment counter, and [transactions](../transactions/) make sure no two inserts get the same value. Scale breaks
-that in three ways. Every insert waits on one machine. Each shard of a [sharded](../../scaling/sharding/) table counts
-from 1 on its own. And sequential public IDs let anyone walk your data by adding 1.
+auto-increment counter. It hands out values atomically, so inserts never share one, and a unique constraint guards
+stored keys. The counter sits outside [transactions](../transactions/): in PostgreSQL, a rolled-back insert leaves a
+gap. Scale breaks it three ways. Every insert waits on one machine. Each shard of a [sharded](../../scaling/sharding/)
+table counts from 1 alone. And sequential public IDs let anyone walk your data by adding 1.
 
 ## Four schemes
 
 **Counter ranges.** A central counter hands each app server a block of 1,000 numbers. The server spends its block
 locally and asks for another when it runs out, so the counter sees one request per 1,000 inserts. A crashed server
-wastes the rest of its block. IDs must be unique, and gaps do no harm.
+wastes the rest of its block, and gaps do no harm.
 
 **Snowflake.** Twitter's scheme packs a 64-bit number with no coordination per ID:
 
@@ -82,9 +83,9 @@ wastes the rest of its block. IDs must be unique, and gaps do no harm.
 IDs sort roughly by time. Each machine needs a unique number, and a clock that steps backward could repeat IDs, so a
 generator waits until its clock passes the last timestamp it used.
 
-**UUIDs.** A UUIDv4 holds 122 random bits. Any machine, even a phone offline, can mint one with no realistic chance of
-collision. Random order hurts a B-tree [index](../indexes/): every insert lands on a random leaf page. A UUIDv7 puts a
-48-bit millisecond timestamp first and random bits after it, so new IDs land at the right edge of the index.
+**UUIDs.** A UUIDv4 holds 122 random bits, so any machine, even an offline phone, can mint one safely. Random order
+hurts a B-tree [index](../indexes/): every insert lands on a random leaf page. A UUIDv7 puts a
+48-bit millisecond timestamp first, then random bits, so new IDs land at the right edge of the index.
 
 **Random short codes.** sho.rt codes such as `bATJ4g` use 6 base62 characters (a to z, A to Z, 0 to 9): 62 to the 6th,
 about 56.8 billion codes. A Snowflake ID needs 11 base62 characters, too long for a short link.
@@ -97,8 +98,8 @@ about 56.8 billion codes. A Snowflake ID needs 11 base62 characters, too long fo
   answer={0}
 >
 
-**About 300,000.** This is the birthday paradox: collisions turn likely near the square root of the space, and the
-square root of 56.8 billion is about 238,000. So random codes always need a UNIQUE constraint on `code` and a retry
+**About 300,000.** Birthday paradox: a collision turns 50% likely near 1.18 times the square root of the space,
+about 281,000 codes. So random codes always need a UNIQUE constraint on `code` and a retry
 on a duplicate key. With 10 million links stored, a new code collides about once in 5,700 tries, so retries stay rare.
 
 </Predict>
