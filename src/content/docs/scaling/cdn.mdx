@@ -250,8 +250,9 @@ and lets them reuse the answer for 60 seconds.
 of a year. A release ships new names, so edges fetch the new files on their first miss and nothing needs deleting.
 
 **Purge.** When a link must disappear now, such as a scam, delete it at the origin and call the CDN's purge API for its
-path. Most CDNs clear every edge within seconds. A purge has a cost: the purged edges go cold, and the origin absorbs the
-refill, as the Purge at 10 s scenario shows. Purge only the paths that changed, and save a full purge for emergencies.
+path. Clearing time varies by provider and purge scope, and no purge reaches browser caches. A purge has a cost: the
+purged edges go cold, and the origin absorbs the refill, as the Purge at 10 s scenario shows. Purge only the paths that
+changed, and save a full purge for emergencies.
 
 ### What the edge treats as the same request
 
@@ -294,14 +295,13 @@ Edges and shields shrink the traffic that reaches the origin, yet every miss sti
 
 The simulation models a **pull CDN**: edges fetch from the origin on their first miss, keep the copy for its TTL, and
 fetch again after it expires. Nothing gets uploaded ahead of time, so new content works the moment it exists. The price
-is a slow first request in each city, plus copies that can trail the origin until their TTL ends or a purge clears them.
+is a slow first request in each city, plus copies that trail the origin until their TTL ends or a purge clears them.
 
 A **push CDN** works the other way around. You upload files to the CDN's storage as part of each release, and the CDN
 serves them from there, so content appears the moment you publish it. That suits large files that change rarely and that
 you know about in advance, such as video, app installers, or a site's build output. The price is an explicit publish
-step, storage fees for every file you push whether anyone downloads it or not, and cleanup you must remember to do.
-Removal still runs through caches: deleting a pushed file leaves copies at edges and in browsers until their TTL ends or
-a purge clears them.
+step, storage fees for every file you push, downloaded or not, and cleanup you must remember to do.
+Deleting a pushed file leaves edge copies until a purge or their TTL, and browser copies until their TTL.
 
 For the shortener, redirects suit pull: nobody knows which of millions of links people will click next. The website's
 assets work either way, and with versioned file names, pull needs no extra deploy step.

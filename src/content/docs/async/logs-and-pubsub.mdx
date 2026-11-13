@@ -295,9 +295,9 @@ What to look for:
 ### Append order is not click order
 
 A partition keeps **append order**: the order in which writes reached the broker. A redirect server whose network blips
-can retry and append a 12:00:01 click after a 12:00:03 click, so a reader that copies each event into "last clicked"
-moves it backward. The fix: stamp each click with its **event time**, and let an update win only when it is newer than
-the stored value. The widget's redirect servers never retry, so keyed partitions show 0 out of order there.
+can retry and append a 12:00:01 click after a 12:00:03 click, so a reader copying each event into "last clicked"
+moves it backward. A dashboard-grade fix: stamp each click with its **event time**, and let an update win only when it
+is newer than the stored value. The widget's redirect servers never retry, so keyed partitions show 0 out of order there.
 
 <details>
 <summary>Go deeper: last writer by version</summary>
@@ -311,9 +311,11 @@ function applyClick(link: LinkState, click: Click) {
 ```
 
 This is **last writer by version**: an update wins only when its version is newer than the stored one, so a late
-append changes nothing. Clocks on different servers drift by a few milliseconds, which a dashboard can live with.
-When the order must be exact, use a version that one writer assigns, such as a counter on the order row that goes up
-with every change.
+append changes nothing. Event time is only as good as each server's clock. Healthy synced clocks usually agree within
+milliseconds, but nothing bounds the gap: a server with broken sync can be seconds off, and its clicks then win or
+lose wrongly. Offsets cannot settle it either, since they order appends within one partition only. A "last clicked"
+dashboard can live with that. When the order must be exact, use a version that one writer assigns, such as a counter
+on the order row that goes up with every change.
 
 </details>
 

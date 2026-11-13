@@ -213,10 +213,11 @@ while the healthy replicas sit idle.
 A **timeout** caps how long a caller waits. When it fires, the caller reports an error (here **504 Gateway Timeout**)
 and moves on. The failure stays the size of the broken part: a third of the clicks fail instead of all of them.
 
-Many HTTP clients, such as Python's requests, wait forever by default, so give every outbound call an explicit timeout.
-Health checks from [load balancing](../../scaling/load-balancing/)
-do not replace timeouts: a balancer removes a server only after several failed checks, and a hung replica that still
-accepts connections can pass a shallow check.
+Many HTTP clients, such as Python's requests, wait forever by default, so set each limit explicitly. A **connect
+timeout** caps opening a connection. A **read timeout** caps silence between bytes, so a slow trickle never trips it.
+An **overall deadline** caps the whole call. A **pool-idle timeout** closes unused pooled connections and never
+ends a request. Health checks from [load balancing](../../scaling/load-balancing/) do not replace timeouts: a hung
+replica that still accepts connections can pass a shallow check.
 
 <StepDiagram client:visible title="A hung replica, step by step" nodes={nodes} edges={edges} steps={steps} height={300} />
 
@@ -227,8 +228,8 @@ minutes. Cancellation is the agent dropping your case when you hang up.
 
 </Analogy>
 
-Where the analogy breaks: hanging up ends the call for both people at once. A software timeout ends only the caller's
-wait, and the query keeps running until the caller sends a cancel.
+Where the analogy breaks: hanging up ends the call for both people. A software timeout ends only the caller's wait,
+and the query runs until cancelled.
 
 ## Try it: same traffic, two timeout settings
 
@@ -335,18 +336,17 @@ Without cancellation, abandoned queries on C pile up until they hold every conne
 routed to healthy replicas A and B time out too. So pass the cancel all the way down: in Go, each request carries a
 `context` that every call checks, and many database drivers cancel a running query when the context ends.
 
-Cancelling a **write** is harder: the write may already have landed, so the caller cannot know whether it happened.
+Cancelling a **write** is harder: it may already have landed, so its outcome is unknown.
 [Idempotency](../idempotency/) makes that uncertainty safe.
 
 ## One deadline for the whole trip
 
-A redirect passes through several hops: the client app, an API gateway, the sho.rt server, and the database. If each
+A redirect crosses four hops: client app, API gateway, sho.rt server, and database. If each
 hop picks its own timeout, inner ones are often longer than outer ones, and nobody downstream learns the client gave
 up.
 
 A **deadline** fixes this. The client sets one moment by which the answer must arrive, and each hop passes the
-remaining time to the next. gRPC sends the remaining time, so clock differences between machines do not
-matter.
+remaining time to the next. gRPC sends remaining time, so clock skew does not matter.
 
 <Predict
   client:visible
@@ -378,8 +378,8 @@ What to look for:
 
 Either way, the client's own timer raises **client deadline exceeded** at 1 s. That error never crosses the network; a
 504 comes only from a gateway that gave up on the server. The shared deadline stops the system spending workers,
-connections, and database time on answers nobody reads. [Retries](../retries/) builds on this,
-because a retry that ignores the deadline doubles the wasted work.
+connections, and database time on answers nobody reads. A [retry](../retries/) that ignores the deadline doubles the
+wasted work.
 
 ## Trade-offs
 
@@ -397,7 +397,7 @@ because a retry that ignores the deadline doubles the wasted work.
 
 ## Common mistakes
 
-- Trusting a client library's default timeout, which is often none at all.
+- Trusting a client library's default timeout, often none.
 - Setting the timeout from the average instead of the percentile matching your accepted false-timeout rate.
 - Giving an inner hop a longer timeout than its caller's deadline.
 - Timing out without cancelling, so abandoned queries keep their connections.

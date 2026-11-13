@@ -195,8 +195,12 @@ for example in an `Idempotency-Key` header. The server keeps a **dedupe store** 
 key means do the work and save the result. A known key means return the saved result and do nothing else. Now retrying
 is always the right move.
 
-This toy model loses only receipts. A lost request never reached the server, so retrying it was always safe; lost
-receipts are the case that charges twice.
+When the work is a write to the same database as the dedupe store, one transaction suffices: insert the key, apply the
+change, and save the result, then commit all three together. A duplicate's insert hits the key's unique constraint, and
+a crash commits nothing. A card charge breaks this. It happens at the payment provider, outside the transaction, and no
+rollback can undo it. The rest of this lesson handles that case.
+
+This toy model loses only receipts; a lost request never reached the server, so retrying it was always safe.
 
 <StepDiagram client:visible title="A purchase with an idempotency key" nodes={nodes} edges={edges} steps={steps} height={300} />
 
@@ -269,21 +273,20 @@ Claiming has costs of its own:
 
 ### When a claim expires
 
-A lease that runs out tells you the owner went quiet, and nothing more: the owner may still be running. Two cases break
-a naive takeover:
+A lease that runs out tells you the owner went quiet, and nothing more: it may have charged and crashed, or only paused.
+Expiry lets recovery start, and two guards make it safe:
 
-- **The owner crashed after the charge.** The provider charged the card, and the server died before it saved the
-  receipt. A recovering server that charges again takes the money twice.
-- **The owner only paused.** A long garbage collection pause or a slow network froze it past the lease. It wakes up,
-  finishes its charge and saves its receipt, while the recovering server does the same.
-
-Expiry only lets recovery start. Two guards make recovery safe:
-
-- **Send the same idempotency key to the provider.** The original request and every recovery pass the client's key on
-  the charge call. The provider then returns the first charge instead of making a second, which is the only guard that
-  covers a charge that already happened.
+- **Send the same idempotency key to the provider.** The provider then returns the first charge instead of making a
+  second, the only guard that covers a charge that already happened.
 - **Fence the commit with a token.** Each takeover bumps a number on the claim, and the receipt save succeeds only
   while the row still holds the saver's number. A paused owner with an old number cannot overwrite the recovery.
+
+<details>
+<summary>Go deeper: recovering an expired claim</summary>
+
+A naive takeover breaks in two ways. If the owner crashed after the charge, a recovering server that charges again takes
+the money twice. If a garbage collection pause or a slow network froze the owner past the lease, it wakes up, finishes
+its charge, and saves its receipt while the recovering server does the same.
 
 ```sql
 -- Take over an expired claim: the new owner gets the next token.
@@ -312,6 +315,8 @@ Walk through a crash after the charge:
 The token number is called a **fencing token**: storage refuses any writer whose token is older than the latest one.
 The [Time, leases, and fencing](../../distributed-data/time-leases-fencing/) lesson shows why a lease alone cannot stop
 a paused owner.
+
+</details>
 
 ## How long to keep keys, and who owns them
 

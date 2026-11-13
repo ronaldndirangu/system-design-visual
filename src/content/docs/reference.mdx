@@ -20,9 +20,23 @@ The [requirements and estimates lesson](../thinking/requirements-and-estimates/)
 A **performance** problem shows up with one user, so profile the slow request. A **scalability** problem shows up only
 under load, so look for the resource that saturates first: a hot key, a full queue, or one overloaded database.
 
-Latency and throughput meet in **Little's law**: requests in flight = throughput × latency. A service handling 1,000
-requests a second at 50 ms each keeps about 50 requests in flight, which sizes its connection pools and thread counts.
-Raising throughput by batching often raises latency, so name which one the requirement protects.
+Latency and throughput meet in **Little's law**: requests in flight = throughput × latency. It holds for long-run
+averages in a stable system, one that finishes requests as fast as they arrive. A service handling 1,000 requests a
+second at 50 ms each keeps about 50 requests in flight on average, which sizes its connection pools and thread counts;
+bursts push the peak higher. Raising throughput by batching often raises latency, so name which one the requirement
+protects.
+
+## Queues and fan-out
+
+**Utilization (simplified).** A single-server queue with random arrivals and random service times (the M/M/1 model)
+gives time in system ≈ S ÷ (1 − ρ), where S is the work one request needs and ρ is the fraction of time the server is
+busy. Check: at ρ = 0.5 a 10 ms request takes 20 ms (2×); at ρ = 0.9 it takes 100 ms (10×). Real systems differ, yet
+waits climb the same way near full. See [load balancing](../scaling/load-balancing/).
+
+**Fan-out.** A page that waits for n parallel calls is fast only when all n are. If each call is fast with probability
+p, independently, all n are fast with probability pⁿ. Check: with p = 0.99 and n = 100, 0.99¹⁰⁰ ≈ 0.37, so about 63%
+of pages wait on at least one call slower than its p99. Calls sharing a slow dependency turn slow together, which
+breaks independence. See [SLOs](../thinking/slos/).
 
 ## Latency numbers
 

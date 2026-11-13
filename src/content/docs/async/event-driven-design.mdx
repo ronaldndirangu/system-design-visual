@@ -289,7 +289,7 @@ at the head. The head never moves, so lag grows by about 40 clicks every second 
 
 ## The idea: park what cannot succeed
 
-Give each event a small retry budget. When the budget runs out, or the error is permanent, move the event to a
+Give each event a small per-message attempt limit. At the limit, or on a permanent error, move the event to a
 **dead-letter queue**, commit its offset, and keep reading. [Retries](../../reliability/retries/) covers backoff
 between tries.
 
@@ -314,7 +314,7 @@ Where it breaks: a letter is handled once, while a replayed click can arrive twi
 ## Try it: retry forever against a dead-letter queue
 
 Both lanes read the same seeded partition. The left lane retries a failed click until it works. The right lane retries
-up to a budget, then parks the click. Two percent of clicks time out once. The numbers are illustrative.
+up to an attempt limit, then parks the click. Two percent of clicks time out once. The numbers are illustrative.
 
 <PoisonDuelWidget client:visible />
 

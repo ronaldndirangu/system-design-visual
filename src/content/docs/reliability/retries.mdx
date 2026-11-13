@@ -244,12 +244,12 @@ Look for three things:
 
 Retries still pay off on a normal day. The goal is to send them when the service can take them.
 
-**Exponential backoff** doubles the wait after each failure: up to 200 ms, then 400 ms, then 800 ms. The sender skips
-any retry that cannot finish before the click's 2 s deadline.
+**Exponential backoff** doubles the wait after each failure: retry n waits up to 200 × 2^(n−1) ms, so 200, 400, then
+800 ms before retry 3, the last of 4 attempts. The sender skips a retry whose wait would reach the click's 2 s deadline.
 
 Backoff alone sends waves. Senders that fail together, as in a restart, compute the same wait and return together.
-**Full jitter** picks each wait at random between zero and the backoff window, so senders spread out and the service
-sees a steady trickle.
+**Full jitter** picks each wait at random from zero to the window, random(0, min(cap, base × 2^(n−1))), so senders
+spread out and the service sees a steady trickle.
 
 The blocks below show backoff during a short restart, and jitter when many senders fail at once.
 
@@ -283,7 +283,7 @@ retries together is called a **thundering herd**.
   client:visible
   id="reliability/retries/predict-2"
   ordered
-  question="Forty redirect servers lose their connection when the ingest service restarts. Each one retries with doubling backoff (100 ms, 200 ms, 400 ms, up to 1.6 s) and no jitter. The service is back after 500 ms and takes 3 attempts every 50 ms. After 6 s, how many senders are still waiting?"
+  question="Forty redirect servers lose their connection when the ingest service restarts. Each one retries with doubling backoff (retry 1 waits 100 ms, then 200, 400, up to 1.6 s) and no jitter. The service is back after 500 ms and takes 3 attempts every 50 ms. After 6 s, how many senders are still waiting?"
   options={['None', 'A handful', 'Most of them', 'All forty']}
   answer={2}
 >
@@ -311,7 +311,7 @@ attempts per click. Four controls each limit something different:
 | Control           | What it limits                                     | In this lesson                                                    |
 | ----------------- | -------------------------------------------------- | ----------------------------------------------------------------- |
 | Attempt limit     | Tries per request or message                       | 4 per click, inside the 2 s deadline                              |
-| Backoff           | The wait between tries, with jitter                | Up to 200 ms, then 400 ms, then 800 ms                            |
+| Backoff           | The wait between tries, with jitter                | Retry n waits up to 200 × 2^(n−1) ms                              |
 | Retry budget      | Retries as a share of all traffic from one client  | About 10% of fresh clicks                                         |
 | Dead letter queue | Where a message goes after its attempt limit       | Unused here; see [event-driven design](../../async/event-driven-design/) |
 
@@ -339,9 +339,10 @@ Two more rules keep retries honest:
 - **Retry at one layer.** If the browser, the redirect server, and the ingest client each make up to 4 attempts, one
   click can become 4 × 4 × 4 = 64 attempts at the bottom. The layer that owns the deadline and the idempotency key
   retries, and the others fail fast.
-- **Retry only what can succeed.** Timeouts, refused connections, and 503s can succeed later; a 400 Bad Request fails
-  the same way every time. When a server answers 503 with **Retry-After**, as in
-  [Queues and backpressure](../queues-and-backpressure/), wait at least that long.
+- **Retry only what can succeed.** Timeouts, refused connections, 429s, and 503s can succeed later; a 400 Bad Request
+  fails the same way every time. When a server sends **Retry-After**, as in
+  [Queues and backpressure](../queues-and-backpressure/), wait at least that long. It never extends the deadline: if
+  the wait outlasts the time left, give up now.
 
 [Rate limiting](../rate-limiting/) enforces a fair share on the server, and
 [Circuit breakers](../circuit-breakers/) stop calls to a failing service until it recovers.

@@ -73,7 +73,7 @@ A **presigned URL** is a bucket URL signed with your credentials and an expiry, 
 user, signs a URL for one key, and returns it. The client sends the bytes straight to the bucket.
 
 A **multipart upload** splits a file into parts, for example 100 MB each, sends them in parallel, and commits them as
-one object. A part that fails retries alone.
+one object. A failed part retries alone.
 
 <Predict
   client:visible
@@ -111,18 +111,29 @@ the range. A presigned **PUT** has no policy, so that condition does not apply; 
 
 ## Tiers and durability
 
-| Tier              | Storage price | Read cost                         | Fits                        |
-| ----------------- | ------------- | --------------------------------- | --------------------------- |
-| Standard          | Highest       | Low, instant                      | Hot files read every day    |
-| Infrequent access | About half    | Per-GB retrieval fee, instant     | Files read a few times      |
-| Archive           | A tenth or less | Fee, plus minutes to hours to wait | Compliance copies         |
+S3 examples (billing varies by provider; all classes add request fees):
 
-A lifecycle rule moves objects between tiers by age, with no code.
+| S3 class             | Billing                        | Reads               | Fits              |
+| -------------------- | ------------------------------ | ------------------- | ----------------- |
+| Standard             | Highest per GB                 | Instant             | Daily reads       |
+| Standard-IA          | 30-day minimum, 128 KB minimum | Per-GB fee, instant | Occasional reads  |
+| Glacier Deep Archive | Lowest, 180-day minimum        | Fee, up to 48 hours | Compliance copies |
 
-Buckets reach eleven nines of durability by storing data on many disks across zones. Three full copies cost 3 times
-the data. An **erasure code** cuts each object into 10 data pieces plus 4 parity pieces and spreads them across disks.
-Any 10 of the 14 pieces rebuild the object, so it survives 4 lost disks for 1.4 times the data size. A read must
-gather 10 pieces, so it costs more CPU and network than reading one copy.
+A lifecycle rule moves objects between tiers by age.
+
+S3 Standard is designed for eleven nines of durability, the odds a stored object survives a year. Three full copies
+cost 3 times the data. An **erasure code** cuts each object into 10 data pieces plus 4 parity pieces and spreads them
+across disks. Any 10 of the 14 pieces rebuild the object, so it survives 4 lost disks for 1.4 times the data size.
+Reads gather 10 pieces, costing more CPU and network than one copy.
+
+<details>
+<summary>Go deeper: availability, consistency, and replicas</summary>
+
+Availability, the share of requests that succeed, sits far below durability: S3 Standard is designed for 99.99% and
+Standard-IA for 99.9%. Within one Region, S3 gives strong read-after-write consistency: once a write or delete returns,
+reads and list calls see it. A replica in another Region copies in the background and can lag minutes behind.
+
+</details>
 
 <KeyTakeaways>
 

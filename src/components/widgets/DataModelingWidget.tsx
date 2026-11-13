@@ -8,7 +8,6 @@ import {
   type DmPane,
   type DmQueryId,
   DmRun,
-  type DmShapeId,
   type DmStore,
   dmQueries,
   fitTable,
@@ -39,11 +38,6 @@ interface Props {
 }
 
 const accessTone: Record<DmAccess, Tone> = { key: 'ok', index: 'ok', scan: 'bad' };
-const shapeKind: Record<DmShapeId, 'database' | 'cache'> = {
-  tables: 'database',
-  documents: 'database',
-  keyvalue: 'cache',
-};
 
 function counted(value: number, [one, many]: readonly [string, string]): string {
   return `${value.toLocaleString('en-US')} ${value === 1 ? one : many}`;
@@ -70,8 +64,8 @@ function ShapePane({ pane, store, started }: { pane: DmPane; store: DmStore; sta
   return (
     <section className="sdv-duel__lane sdv-dm__pane" aria-label={shape.label}>
       <h4 className="sdv-duel__lane-title sdv-dm__pane-title">
-        <svg className={`sdv-node sdv-node--${shapeKind[shape.id]}`} viewBox="0 0 24 24" aria-hidden="true">
-          <KindIcon kind={shapeKind[shape.id]} size={24} />
+        <svg className="sdv-node sdv-node--database" viewBox="0 0 24 24" aria-hidden="true">
+          <KindIcon kind="database" size={24} />
         </svg>
         {shape.label}
       </h4>
