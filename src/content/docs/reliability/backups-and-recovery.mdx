@@ -99,12 +99,12 @@ export const recall = [
   },
   {
     id: 'reliability/backups-and-recovery/recall-2',
-    prompt: 'The primary crashes. With asynchronous replication, replica A trails by 0.2 s and replica B by 2 s. Which do you promote?',
+    prompt: 'The primary crashes. Under asynchronous replication, replica A’s received log trails by 0.2 s, B’s by 2 s. Which do you promote?',
     options: [
       {
         text: 'A, losing the last 0.2 s of writes',
         correct: true,
-        why: 'The replica with the highest applied log position holds the most acknowledged writes.',
+        why: 'A durably received more of the log and replays it before taking writes.',
       },
       {
         text: 'B, because it has had more time to settle',
