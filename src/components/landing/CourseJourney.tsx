@@ -54,7 +54,7 @@ const CHAPTERS: Chapter[] = [
     body: 'A short link reaches a server and a database. Find out what each box does.',
     problem: 'Every click depends on one server and one database.',
     response: 'Learn what each box does and follow one click end to end.',
-    cost: 'Simple and cheap, with no spare capacity.',
+    cost: 'Simple and cheap. If the server or database fails, the app stops.',
     lessons: ['thinking/anatomy-of-a-web-app', 'foundations/what-happens-when-you-click'],
     nodes: [
       { slot: 'users', label: 'Users' },
