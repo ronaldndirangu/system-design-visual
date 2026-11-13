@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
-import { allLessons } from '../../src/data/curriculum';
+import { allLessons, curriculum } from '../../src/data/curriculum';
 import { documentOverflow, hydrateAll, island } from './helpers';
 
 const pages = [
@@ -173,6 +173,34 @@ test('marking a lesson complete updates the course map', async ({ page }) => {
   const lesson = page.locator('[data-lesson-id="thinking/requirements-and-estimates"]');
   await expect(lesson).toHaveAttribute('data-complete', '');
   await expect(lesson.getByText('Completed')).toBeVisible();
+});
+
+test('the course map links every module to its checkpoint', async ({ page, request }) => {
+  const expected = curriculum.map((module) => `/system-design-visual/checkpoints/${module.id}/`);
+  const links = page.locator('.sdv-map__checkpoint a');
+  for (const path of ['curriculum/', './']) {
+    await page.goto(path);
+    await expect(links, path).toHaveCount(curriculum.length);
+    expect(await links.evaluateAll((anchors) => anchors.map((a) => a.getAttribute('href'))), path).toEqual(
+      expected,
+    );
+    for (const link of await links.all()) await expect(link, path).toBeVisible();
+  }
+  for (const href of expected) expect((await request.get(href)).status(), href).toBe(200);
+
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto('curriculum/');
+  expect(await documentOverflow(page)).toBeLessThanOrEqual(0);
+  const boxes = await links.evaluateAll((anchors) =>
+    anchors.map((a) => ({
+      font: Number.parseFloat(getComputedStyle(a).fontSize),
+      height: a.getBoundingClientRect().height,
+    })),
+  );
+  for (const box of boxes) {
+    expect(box.font).toBeGreaterThanOrEqual(12);
+    expect(box.height).toBeGreaterThanOrEqual(24);
+  }
 });
 
 test('the landing page offers a clear start', async ({ page }) => {

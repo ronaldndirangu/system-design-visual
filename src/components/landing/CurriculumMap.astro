@@ -1,6 +1,7 @@
 ---
+import { checkpointFor } from '../../data/coursePath';
 import { anchorFor, curriculum, difficultyLabels, findModule } from '../../data/curriculum';
-import { lessonHref } from '../../lib/paths';
+import { lessonHref, withBase } from '../../lib/paths';
 import ContinueLesson from '../lesson/ContinueLesson.astro';
 
 interface Props {
@@ -50,6 +51,7 @@ const Heading = headingLevel === 2 ? 'h2' : 'h3';
           ))}
         </ol>
       );
+      const checkpoint = checkpointFor(module.id);
       return (
         <section class="sdv-map__module" id={summary ? undefined : anchorFor(module.id)} aria-labelledby={`map-${module.id}`}>
           <header class="sdv-map__header">
@@ -74,6 +76,11 @@ const Heading = headingLevel === 2 ? 'h2' : 'h3';
             </details>
           ) : (
             lessons
+          )}
+          {checkpoint && (
+            <p class="sdv-map__checkpoint">
+              <a href={withBase(checkpoint.href)}>Check your understanding: {module.title} checkpoint</a>
+            </p>
           )}
         </section>
       );
