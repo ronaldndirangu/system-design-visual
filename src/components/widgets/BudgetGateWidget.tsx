@@ -114,13 +114,13 @@ export default function BudgetGateWidget({
     ),
     cheapest
       ? {
-          label: 'Ship',
+          label: 'Candidate for validation',
           value: candidates[cheapest.summary.candidate].label,
           tone: 'ok',
-          detail: 'cheapest candidate that meets every budget',
+          detail: 'provisional: cheapest that meets every budget on these illustrative fixtures',
         }
       : {
-          label: 'Ship',
+          label: 'Candidate for validation',
           value: 'Nothing yet',
           tone: 'bad',
           detail: 'change the design (retrieval, caching, a cascade, streaming) or renegotiate a budget',

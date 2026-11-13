@@ -518,9 +518,9 @@ requests may share an answer only when every field that shapes it matches:
 
 ### Prefix (KV) cache: reuse the prompt work
 
-Before its first token, a model computes keys and values (KV) for every prompt token: the **prefill**. A **prefix
-cache** in the model server stores that work in fixed-size blocks and reuses it when a prompt starts with exactly the
-same tokens. It still writes a fresh answer and cuts only time to first token, so put stable text first.
+Before answering, a model computes keys and values (KV) for every prompt token: the **prefill**. **Decode** then writes
+one output token per step. A **prefix cache** in the model server stores prefill work in fixed-size blocks and reuses it
+when a prompt starts with exactly the same tokens. It cuts only time to first token, so put stable text first.
 
 <details>
 <summary>Go deeper: the cache widget, answers versus prompt work</summary>

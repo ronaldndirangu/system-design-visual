@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { island } from './helpers';
+import { documentOverflow, island } from './helpers';
 
 function collectErrors(page: Page): string[] {
   const errors: string[] = [];
@@ -87,18 +87,18 @@ test.describe('/ai-systems/evaluation-and-budgets', () => {
     expect(errors).toEqual([]);
   });
 
-  test('budget presets move the ship decision', async ({ page }) => {
+  test('budget presets move the validation candidate', async ({ page }) => {
     await page.goto('ai-systems/evaluation-and-budgets/');
     const gate = page.getByRole('region', { name: 'Interactive: Set the budgets, then see who fits' });
     await island(gate);
-    const ship = row(gate, 'Ship');
-    await expect(ship).toContainText('Medium');
+    const candidate = row(gate, 'Candidate for validation');
+    await expect(candidate).toContainText('Medium');
 
     await chooseScenario(gate, /Tighter latency/);
-    await expect(ship).toContainText('Nothing yet');
+    await expect(candidate).toContainText('Nothing yet');
 
     await chooseScenario(gate, /Lowered bar/);
-    await expect(ship).toContainText('Small');
+    await expect(candidate).toContainText('Small');
   });
 
   test('steps by keyboard with reduced motion and stays axe clean in dark mode', async ({ page }) => {
@@ -276,7 +276,38 @@ test.describe('/ai-systems/retrieval', () => {
     await page.keyboard.press('ArrowRight');
     await expect(widget.getByText('No wrong answers at 0.85', { exact: true })).toBeVisible();
     await expect(row(widget, 'Correct answers')).toContainText('6 of 12');
+    await expect(row(widget, 'Wrong answers')).toContainText('0 of 12');
     await expect(row(widget, 'Abstentions')).toContainText('6 of 12');
+    await expect(row(widget, 'Answerable handed off')).toContainText('2 of 8');
+  });
+
+  test('the abstain readout leads and all 12 questions open from a disclosure', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('ai-systems/retrieval/');
+    const widget = page.getByRole('region', { name: 'Interactive: Set the evidence bar' });
+    await widget.scrollIntoViewIfNeeded();
+    const slider = widget.getByRole('slider', { name: 'Evidence threshold' });
+    await expect(slider).toBeEnabled();
+    const summary = widget.locator('summary', { hasText: 'Inspect all 12 questions' });
+    const sliderY = (await slider.boundingBox())?.y ?? Number.NaN;
+    const statsY = (await row(widget, 'Answerable handed off').boundingBox())?.y ?? Number.NaN;
+    const summaryY = (await summary.boundingBox())?.y ?? Number.NaN;
+    expect(sliderY).toBeLessThan(summaryY);
+    expect(statsY).toBeLessThan(summaryY);
+    await expect(row(widget, 'Answerable handed off')).toContainText('1 of 8');
+
+    const details = widget.locator('details', {
+      has: page.locator('summary', { hasText: 'Inspect all 12 questions' }),
+    });
+    await expect(details).not.toHaveAttribute('open');
+    await summary.focus();
+    await page.keyboard.press('Enter');
+    await expect(details).toHaveAttribute('open');
+    await expect(details.locator('tbody tr')).toHaveCount(12);
+    await expect(details.getByText('Abstained, answer existed').first()).toBeVisible();
+
+    await page.setViewportSize({ width: 320, height: 800 });
+    await expect.poll(() => documentOverflow(page)).toBeLessThanOrEqual(0);
   });
 
   test('steps by keyboard with reduced motion and stays axe clean in dark mode', async ({ page }) => {

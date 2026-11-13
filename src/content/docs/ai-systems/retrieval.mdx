@@ -300,6 +300,17 @@ the question and the passage as one input, so nothing can be computed ahead: eve
 question. Run it on the top 20 to 100 fused candidates and keep the 3 it scores highest. Its score is also a stronger
 evidence signal than RRF, which encodes rank only.
 
+**Exact or approximate vector search.** Size the search by the eligible corpus: the chunks one question may read. The
+[support assistant](../support-assistant/) holds 3 million 1,024 dimension float32 vectors, 12.288 GB raw, yet 500
+equal stores hold about 6,000 vectors (24.576 MB) each. Filtering to the store and visibility, then scoring every
+remaining vector, is exact search, the baseline with full recall. An approximate nearest neighbor (ANN) index, such as
+a graph index, scores fewer vectors and misses some true neighbors in exchange for lower latency. It also costs memory
+and build time, and new chunks must reach it before they can be found. Raising the graph's search effort buys back
+recall with latency. Size alone settles nothing: measure latency on your own hardware, and measure recall against exact
+search over the same authorized, eligible chunks. An ANN search filtered afterward can return too few eligible chunks,
+and only that comparison shows it. The
+[recommendations](../recommendations/) lesson measures ANN recall the same way.
+
 **Bi-encoder and cross-encoder.** The vector index uses a bi-encoder: the question and the chunk are embedded
 separately, and similarity is a cheap dot product. The cross-encoder sees both texts at once, so it can notice that
 "except final sale items" flips the answer. That attention across both texts buys the precision, and it is also why
@@ -455,8 +466,8 @@ store policy. Want me to connect you with a person?"
 
 <RetrievalAbstainWidget client:visible />
 
-On 12 fixture questions, 4 of them unanswerable, a 0.50 bar gets 4 wrong, the default 0.80 gets 1 wrong, and 0.85 gets
-none while abstaining on one answerable question. Pick the bar with an eval set, as in
+On 12 fixture questions, a 0.50 bar gets 4 wrong, the default 0.80 gets 1 wrong, and 0.85 gets none, but two of the
+eight answerable questions are handed off. Pick the bar with an eval set, as in
 [evaluation and budgets](../evaluation-and-budgets/), and count both kinds of miss.
 
 <details>
