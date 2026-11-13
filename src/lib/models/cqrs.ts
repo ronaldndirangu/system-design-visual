@@ -10,7 +10,9 @@
  *
  * The whole workload is drawn from a seed up front, so step() uses no random
  * numbers and a checkpoint only needs the mutable state. Every number is
- * illustrative.
+ * illustrative. Commands run one at a time, so two handlers never race for the
+ * same stream version; the lesson shows that race with an expected-version
+ * append.
  */
 import { createRng, createZipf, poisson, randomInt } from '../rng';
 

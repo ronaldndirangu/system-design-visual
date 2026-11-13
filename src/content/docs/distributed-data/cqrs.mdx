@@ -105,7 +105,7 @@ export const quiz = [
     prompt: 'A shopper adds a mug, and the cart page loaded right after lacks it. What is the most likely cause?',
     options: [
       { text: 'The cart page view has not applied the ItemAdded event yet', correct: true, why: 'Views catch up after the write succeeds. In the normal run, 19 of 95 loads landed in that gap.' },
-      { text: 'The event log lost the event', why: 'The log stores the event before the write answers and keeps it for its retention period. The view reads at least once from its saved position and will apply it.' },
+      { text: 'The event log lost the event', why: 'The log stores the event before the write answers, and the view will apply it from its saved position.' },
       { text: 'The write model silently rejected the command', why: 'A rejected command returns an error to the shopper.' },
       { text: 'The top items dashboard is slow', why: 'Each projection keeps its own position, so a slow one lags alone.' },
     ],
@@ -155,7 +155,7 @@ export const quiz = [
     prompt: 'A concert seat map trails by up to 2 s, and two fans buy the last seat at once. Where must the check against a double sale run?',
     options: [
       { text: 'In the seat map projection', why: 'It trails, so both fans can see the seat as free.' },
-      { text: 'In the write model, which appends SeatSold only if no other sale landed first', correct: true, why: 'The second BuySeat gets rejected and never reaches the log.' },
+      { text: 'In the write model, which appends SeatSold only if no other sale landed first', correct: true, why: 'Both appends expect the version they read, so one commits. The loser reloads, sees the seat sold, and rejects the purchase.' },
       { text: 'In the email sender, which cancels the second sale', why: 'Both fans already paid by then.' },
       { text: 'Nowhere, since a replay fixes it', why: 'Replay rebuilds views, and both SeatSold events stay in the log.' },
     ],
@@ -218,7 +218,8 @@ stale. Across 30 seeds, 535 of 2,693 are (19.9%, about 1 in 5), and single runs 
 ## The idea: write events, read projections
 
 - The **write model** checks each **command** (AddItem, RemoveItem, Checkout) against the cart's state, then rejects it
-  or appends past-tense **events** (ItemAdded, ItemRemoved, CheckedOut) to an **append-only event log**.
+  or appends past-tense **events** (ItemAdded, ItemRemoved, CheckedOut) to an **append-only event log**. The append
+  succeeds only if the stream is still at the version the check read.
 - **Projections**, or read models, follow the log. Each keeps its own position, applies events in order, and stores a
   table shaped for one screen. How far it trails the end of the log is its **lag**.
 
@@ -226,6 +227,23 @@ Separating the write model from the read models is **CQRS** (command query respo
 events as the source of truth, with a cart's state a fold of its events, is **event sourcing**. Each works alone: CQRS
 can feed read models through an outbox, as in [Event-driven design](../../async/event-driven-design/), and event
 sourcing can fold a cart's events on every read.
+
+<details>
+<summary>Go deeper: two buyers, one last seat</summary>
+
+Each seat has its own event stream with its own version, separate from a projection's position in the whole log.
+
+- Both handlers read the seat's stream at version 7, see the seat free, and call
+  `append(stream, expectedVersion=7, SeatSold)`.
+- The store compares the version and appends in one atomic step, so exactly one call commits version 8. The other
+  fails.
+- The loser reloads version 8, checks again, finds the seat sold, and rejects the command. Retrying its old append with
+  a new expected version would sell the seat twice.
+
+A check followed by a plain append lets both events land. The simulator below handles commands one at a time, so this
+race never shows up in it.
+
+</details>
 
 <StepDiagram client:visible title="How CQRS with event sourcing works" nodes={nodes} edges={edges} steps={steps} height={300} />
 
@@ -311,7 +329,7 @@ Replay turns a projection bug into a redeploy:
 2. Let v2 catch up while v1 keeps serving reads.
 3. Switch reads to v2 once its lag is near zero, then drop v1's table.
 
-The same move builds new views from old events, such as marketing's report on removed items. Readers that act on the
+Readers that act on the
 world stay out of it: the email sender keeps its own position, so receipts stay at 14. Key each side effect anyway,
 say by event position, so a retry cannot mail twice, as in [Idempotency](../../reliability/idempotency/).
 

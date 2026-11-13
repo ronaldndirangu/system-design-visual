@@ -304,14 +304,15 @@ The seven steps from the [design checklist](../../thinking/design-checklist/), a
    day**. (See [requirements and estimates](../../thinking/requirements-and-estimates/) for the method.)
 
 3. **API.** The phone opens a long-lived socket (`wss://chat.example/ws`). It sends
-   `send {conversation, clientMessageId, text}` and gets back `ack {sequence}`. The server sends
+   `send {conversation, clientMessageId, text}` and gets back `ack {generation, sequence}`. The server sends
    `message {conversation, sequence, sender, text}`, and both sides trade `ping` and `pong`. Catch-up uses plain HTTP:
-   `GET /conversations/{id}/messages?after=29&limit=100`. Read receipts post `POST /conversations/{id}/read {upTo}`.
+   `GET /conversations/{id}/messages?generation=7&after=29&limit=100`. Receipts post `read {generation, upTo}`.
 
 4. **Data model.** A `messages` table keyed by `(conversation_id, sequence)`, with the sender, the client message ID
    (unique per sender, to drop resends), the text, and the time. A `members` table holds each member of a conversation
-   with the highest sequence they have read. A `conversations` table holds each conversation's last sequence and the
-   epoch of the server that owns it. Each device keeps its own cursor per conversation. Shard by conversation ID (see
+   with the highest sequence they have read. A `conversations` table holds each conversation's last sequence, its owner's
+   epoch, and a history generation that only a [cross-region promotion](../../distributed-data/multi-region/) advances.
+   Each device keeps its own cursor per conversation. Shard by conversation ID (see
    [sharding](../../scaling/sharding/)), so one conversation's counter and log live on one shard.
 
 5. **High-level design.** Gateways hold sockets and know nothing about chats. The chat service numbers messages, writes
@@ -421,9 +422,9 @@ What to look for:
 - **Stays online.** No tunnel, no queue, no replay. The lanes match.
 
 A cursor needs a log to read from. Keep each conversation's messages, numbered, for as long as a device might stay
-offline, and a phone or laptop of any age can resync with one question. A device asleep longer than the log keeps
-messages needs a full resync. When a gateway restarts, its 100,000 phones reconnect at once and all ask for catch-up, so
-phones wait a random moment before reconnecting. The [Retries with backoff and jitter](../../reliability/retries/) lesson covers that spread.
+offline, and any device can resync with one question, as long as the log kept its committed history. A device asleep
+longer than the log keeps messages needs a full resync. When a gateway restarts, its 100,000 phones reconnect at once, so
+phones wait a random moment first. The [Retries with backoff and jitter](../../reliability/retries/) lesson covers that spread.
 
 <details>
 <summary>Go deeper: one person, two devices</summary>
@@ -439,7 +440,8 @@ each conversation once, and let each device carry its own cursors.
   sequence order.
 - **Read state as a number:** `members.read_up_to` stores the highest sequence Mia has read. The phone raises it as she
   reads, and the laptop fetches it on wake, so unread counts are the difference between the latest sequence and
-  `read_up_to`. A higher value always wins, so two devices can never move it backwards.
+  `read_up_to`. Within one history generation a higher value wins, so two devices can never move it backwards. After
+  a promotion that forked history, reset it to the surviving prefix instead of keeping the larger number.
 - **Wake the laptop gently:** while the laptop sleeps, a notification at most nudges it. Once awake it opens a socket and
   syncs, with a random delay so a fleet of laptops waking at 9:00 does not reconnect at the same instant.
 
@@ -486,8 +488,8 @@ they guard different things.
 | The guard          | Sequence numbers and a cursor into a replayable log    | Priority lanes, deadlines, and failover between providers |
 | Late is…           | Fine, if the order is right                            | Often worthless: a login code that arrives late is junk   |
 
-Chat systems use notifications too: when the app is closed, the server asks the phone's push service to wake it, and the
-phone then opens its socket and catches up with its cursor.
+Chat systems use notifications too: when the app is closed, its push service wakes the phone, which opens its socket and
+catches up with its cursor.
 
 ## Trade-offs
 
@@ -514,7 +516,7 @@ phone then opens its socket and catches up with its cursor.
 - Allocate the sequence and append the message in one transaction, fence a stale owner with an epoch, and ack only
   after commit, so no number ever exists without its message.
 - Heartbeats find a dead socket only after a window of lost pushes. A cursor per device into the conversation log
-  recovers every message from that window.
+  recovers every committed message from that window.
 
 </KeyTakeaways>
 
@@ -549,8 +551,8 @@ each). Suppose each gateway pushes at most 5,000 messages per second, and raise 
   Over a gap of up to 60 s, each of the 100,000 phones misses at most about 4 messages: about 416,667 in all. Spread
   over 30 s, that is about 3,333 reconnects and catch-up calls per second, reading about 13,889 messages per second,
   a fifth of the 69,444 writes the log already takes. The 199 surviving gateways gain about 503 sockets each. Without
-  jitter, all 100,000 calls land within a second. Nothing is lost, because the log keeps every message and each cursor
-  says where to start.
+  jitter, all 100,000 calls land within a second. The log keeps every committed message, so nothing is lost; for a
+  lagging regional failover, see [multi-region](../../distributed-data/multi-region/).
 
 </div>
 

@@ -205,7 +205,7 @@ What to notice:
   409 Conflict.
 - **Answers arrive in write order.** A claim hears back when its insert lands, whoever checked first. On `jobs`, User
   13 checks first, at 10.2 s, but User 14's insert lands at 10.7 s, so User 13 loses at 10.8 s. The log flags only
-  the first collision, on `launch`; the rest show in the totals and timeline. Each alias's late fourth claim gets
+  the first collision, on `launch`; the totals and timeline show the rest. Each alias's late fourth claim gets
   "Taken" in both lanes.
 
 ## Tools that close the gap
@@ -213,7 +213,7 @@ What to notice:
 ### Three tools for one row
 
 **Atomic statement.** When the new value follows from the old one, let the database compute it. Concurrent increments
-queue on the row and all count.
+queue and all count.
 
 ```sql
 UPDATE links SET clicks = clicks + 1 WHERE alias = 'launch';
@@ -232,7 +232,7 @@ WHERE alias = 'launch' AND version = 4;
 If it changes 0 rows, someone saved first. Show the latest version and let the editor decide.
 
 **Row lock.** When code must read, decide, and write with nobody in between, lock the row with `SELECT ... FOR UPDATE`.
-Other writers wait, so hold it for milliseconds, never across a network call.
+Other writers wait, so hold it for milliseconds.
 
 <details>
 <summary>Go deeper: a row lock in SQL</summary>
@@ -252,8 +252,7 @@ the deadlock and aborts one. Lock rows in a fixed order, such as by id, to avoid
 
 ### Two people claim the same alias
 
-The custom alias handler checks that the alias is free, then inserts it. The **Same custom alias** scenario above sends
-20 people after 5 aliases.
+The custom alias handler checks that the alias is free, then inserts it, as in the **Same custom alias** scenario above.
 
 <Predict
   client:visible
@@ -313,9 +312,10 @@ The isolation level decides which **anomalies** slip through:
 </TradeoffTable>
 
 Read Committed, the PostgreSQL default, blocks only dirty reads. The SQL standard defines only the first three
-anomalies, so engines differ on the last two. Repeatable Read catches two writes to the same row and misses write skew:
-Serializable or `FOR UPDATE` on the user's row stops it. Stronger levels abort one conflicting transaction, so the app
-must catch the error and rerun it. Unique keys and atomic statements work at every level.
+anomalies, so engines differ on the last two. Repeatable Read catches two writes to the same row and misses write skew.
+Two fixes work: Serializable with whole-transaction retries, or Read Committed with `FOR UPDATE` on the user's row,
+then a fresh count and the insert in that transaction. Every link-adding path must lock. Unique keys and atomic
+statements work at every level.
 
 <details>
 <summary>Go deeper: how PostgreSQL and MySQL implement the levels</summary>
@@ -325,6 +325,11 @@ appear in its reads, and the second writer to a row another transaction changed 
 Write skew still passes, because the two transactions write different rows. Serializable adds tracking of which
 transactions read data that others wrote, and aborts one when no serial order fits. The error carries SQLSTATE 40001.
 Retry from the first statement with a short random backoff.
+
+Take a user with 49 links under the 50-link quota. Under Read Committed, request A locks the user row, counts 49,
+inserts, and commits. Request B waited on that lock, so its count runs afterward on a fresh snapshot, sees 50, and
+rejects. Under Repeatable Read, B's snapshot started before A committed. The lock wait ends with B still counting 49,
+and the user reaches 51.
 
 MySQL's InnoDB defaults to Repeatable Read. A plain `SELECT` reads the snapshot, yet a later `UPDATE` changes the
 latest committed row, so a read in your code followed by a write still loses updates. Use an atomic statement or
@@ -350,8 +355,8 @@ When a change spans two databases or services, no single `COMMIT` covers it. The
 
 </TradeoffTable>
 
-When not to use them: skip row locks and Serializable for counters; an atomic statement needs no waits or retries.
-Skip the version column on values your code computes from the old one. Skip Serializable as a default when a unique
+When not to use them: skip row locks and Serializable for counters; an atomic statement can still wait,
+deadlock, time out, or need a whole-transaction retry. Skip the version column on values your code computes from the old one. Skip Serializable as a default when a unique
 key or conditional update already guards the rule.
 
 ## Common mistakes

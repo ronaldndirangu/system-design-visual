@@ -263,8 +263,8 @@ requests in one period. When a requirement reads "at most 1,000 per hour", count
 - A **sliding window** counts the requests in the last full period at every moment, so no stretch of that length ever
   holds more than the limit. It fits a hard quota.
 
-Pick by what the requirement says. "10 per second, short bursts are fine" is a token bucket. "At most 1,000 in any
-rolling hour" is a sliding window.
+"10 per second, short bursts are fine" calls for a token bucket; "at most 1,000 in any rolling hour" calls for a sliding
+window.
 
 <details>
 <summary>Go deeper: fixed and sliding windows</summary>
@@ -422,13 +422,14 @@ live, which limiter does it use, and what happens when Redis is down?
 1. **Match the limiter to the requirement.** Free keys get a token bucket that refills 10 per minute and holds about 5,
    since the plan states an average with bursts. Paid keys get a sliding window over the last 60 minutes, since a
    token bucket would allow its burst plus a full hour of refill.
-2. **Redirects: filter, cache, then budget.** A per-IP limit of 50 per second only caps each source's share: 300 IPs
-   × 50 per second still deliver 15,000 per second. So filter bots first with reputation lists and challenges, serve
-   hot short codes from the CDN cache, and put an aggregate budget of about 6,000 cache misses per second in front of
-   the redirect servers. Beyond it, shed with 503 and Retry-After, or queue briefly.
+2. **Redirects: filter, cache, then budget.** Per-IP limits of 50 per second still let 300 IPs send 15,000 per second.
+   Filter bots with reputation lists and challenges, serve hot short codes from the CDN cache, and put an aggregate
+   budget of about 6,000 cache misses per second before the redirect servers. Beyond it, shed with 503 and Retry-After,
+   or queue briefly.
 3. **Counts.** Gateways keep exact link creation counts in Redis. Edge limits use local counters.
 4. **Answers.** Send 429 with Retry-After. Client libraries add jitter and stop after three tries.
-5. **Redis down.** Fail open with a local fallback of one sixth of each limit per gateway, and fire an alert.
+5. **Redis down.** Paid quotas fail closed with 503 and Retry-After, since a fresh local bucket could approve creation
+   1,001. Free and abuse limits fail open to a sixth of each limit per gateway. Alert either way.
 
 </div>
 

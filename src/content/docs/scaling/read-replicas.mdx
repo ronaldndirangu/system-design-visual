@@ -98,7 +98,7 @@ export const steps = [
 export const failNodes = [
   { id: 'app', kind: 'server', x: 70, y: 150, label: 'App servers' },
   { id: 'old', kind: 'database', x: 300, y: 50, label: 'Old primary' },
-  { id: 'new', kind: 'database', x: 300, y: 250, label: 'Replica 1', sublabel: 'most caught up' },
+  { id: 'new', kind: 'database', x: 300, y: 250, label: 'Replica 1', sublabel: 'newest log' },
   { id: 'watch', kind: 'server', x: 530, y: 150, label: 'Monitors', sublabel: '3 voters' },
 ];
 
@@ -124,7 +124,7 @@ export const failSteps = [
   },
   {
     title: 'A majority promotes Replica 1',
-    text: 'Two of three monitors agree the primary is gone and promote the most caught up replica.',
+    text: 'Two of three monitors agree the primary is gone and promote the replica that received the most log.',
     focus: { active: 'app', involved: ['new', 'watch'] },
     flows: ['watch>new', 'app>new'],
   },
@@ -266,7 +266,7 @@ What to look for:
   the next lands on a slower one that answers Not found.
 - **Read your own writes** sends a person's reads of their own fresh links to the primary. Their stale reads vanish,
   and the primary takes a little extra load.
-- **Writes lost if the primary crashed now** counts acknowledged writes each replica has not received yet.
+- **Writes at risk if the primary crashed now** counts acknowledged writes each replica lacks.
 
 ## Synchronous, semi-synchronous, or asynchronous
 
@@ -280,9 +280,9 @@ loses.
   acknowledged write is lost. Every write waits for the slowest confirmation, and a replica that stops answering stops
   all writes.
 - **Semi-synchronous.** The primary waits for **any one** replica to confirm, so writes wait only for the fastest
-  replica. Failover must promote the replica that holds every acknowledged write: the one with the highest log
-  position. MySQL falls back to asynchronous replication when no replica confirms within a timeout (10 seconds by
-  default), so a replica outage quietly removes the guarantee.
+  replica. Failover must promote a replica holding every acknowledged write. MySQL falls back to asynchronous
+  replication when no replica confirms within a timeout (10 seconds by default), so a replica outage quietly removes
+  the guarantee.
 
 <details>
 <summary>Go deeper: distance, and what "confirmed" means</summary>
@@ -296,6 +296,13 @@ asynchronously.
 its tables. A synchronous replica can still answer a read from before the write. Durability and freshness are separate
 guarantees.
 
+That split decides failover. The **received** position is the newest entry a replica has durably stored with no gaps,
+and it decides who keeps the most writes. The **applied** position says what reads can see and how much replay remains.
+Say the primary acknowledged write 100. Replica A received through 100 and applied through 80. Replica B received and
+applied through 90. Promote A: it holds every acknowledged write, and it replays 81 to 100 before it takes writes.
+Promoting B would lose 91 to 100. A replica whose log forked from the current history is not eligible, whatever its
+position. The widget's replicas apply each write the moment it arrives, so there the two positions match.
+
 </details>
 
 ## Failover and split brain
@@ -305,8 +312,8 @@ When the primary dies, a **failover** moves its job to a replica:
 1. **Detect.** Monitors declare the primary dead after several missed heartbeats, for example three checks one second
    apart. A shorter timeout fails over on a brief pause, such as a long garbage collection; a longer one keeps writes
    down longer.
-2. **Promote.** Pick the replica with the highest applied log position, so the fewest writes are lost, and point the
-   other replicas at it.
+2. **Fence and promote.** Fence the old primary (below), pick the eligible replica with the newest received log, and
+   replay its unapplied tail before it takes writes. Point the other replicas at it.
 3. **Redirect.** Move the app's writes to it through a proxy, service discovery, or DNS.
 
 The dangerous case is a primary that is alive and unreachable:
@@ -381,8 +388,8 @@ still worth running.
 <Callout variant="warning" title="Common mistakes">
 
 - **Reading a fresh write from a replica,** so a person creates a link and then sees Not found.
-- **Promoting whichever replica answers first.** The most caught up replica loses the fewest writes, so compare log
-  positions first.
+- **Promoting whichever replica answers first.** Compare received log positions: the replica that received the most
+  keeps the most writes.
 - **Failing over without fencing,** so a cut-off primary keeps taking writes and two histories drift apart.
 - **Treating replicas as backups.** A bad delete reaches every replica in milliseconds. Keep point-in-time backups too.
 
@@ -393,7 +400,7 @@ still worth running.
 - Replicas multiply read capacity. Every write still goes to the primary, and every replica replays it.
 - Asynchronous replication keeps writes fast and loses the lag window in a failover. Semi-synchronous and synchronous
   replication spend write latency to keep acknowledged writes.
-- Fail over to the most caught up replica, and fence the old primary with a quorum, a lease, or an epoch number.
+- Fence the old primary, promote the replica that received the most log, and replay before taking writes.
 - Log positions turn freshness into a comparison for read your own writes and monotonic reads.
 - Replicas copy mistakes as fast as data, so keep backups.
 

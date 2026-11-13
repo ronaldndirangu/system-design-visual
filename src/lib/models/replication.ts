@@ -130,8 +130,9 @@ export class ReplicationSim {
   }
 
   /**
-   * Acknowledged writes each replica has not applied yet: what the primary's
-   * crash would lose if that replica were promoted.
+   * Acknowledged writes each replica lacks if the primary crashed now. This toy
+   * applies a write the moment it arrives, so received and applied match; a real
+   * failover compares received positions and replays the unapplied tail.
    */
   failoverLoss(): number[] {
     return Array.from({ length: this.config.replicas }, (_, i) => {

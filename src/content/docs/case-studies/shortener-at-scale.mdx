@@ -341,7 +341,7 @@ many reads reach the database at a 90% cache hit rate, and how many replicas ser
 
 ## Step 2: Spread the redirects
 
-Each app server handles about 4,500 redirects a second before it slows. Pick a pool size for the 50,000 peak, then run
+Each app server handles about 4,500 redirects a second before it slows. Size a pool for the 50,000 peak, then run
 the N+1 check: if one server dies, the survivors each carry u × N ÷ (N − 1). Three servers at 70% leave each survivor at
 105%. Ten at 70% leave each at 77.8%.
 
@@ -349,8 +349,17 @@ the N+1 check: if one server dies, the survivors each carry u × N ÷ (N − 1).
 <summary>Show one possible answer</summary>
 
 - 50,000 ÷ 4,500 ≈ 11 servers at 100%, which is too hot. At 70% each server takes about 3,150, so 50,000 ÷ 3,150 ≈ 16.
-- **N+1**: 70% × 16 ÷ 15 ≈ 74.7%. One loss keeps every survivor under the 85% target.
-- Spread the 16 across at least two zones so one zone outage does not take half the pool.
+- **N+1**: 70% × 16 ÷ 15 ≈ 74.7%. One server loss keeps every survivor under the 85% target.
+- A zone outage removes every server in that zone at once, so 16 servers cover one server failure only. At the 85%
+  ceiling each survivor carries 3,825 a second, so 50,000 needs 14 survivors after the largest zone fails:
+
+  | Layout       | Survivors after the largest zone fails | Capacity at 85% | Holds 50,000? |
+  | ------------ | -------------------------------------- | --------------- | ------------- |
+  | 8/8 (16)     | 8                                      | 30,600          | No            |
+  | 6/5/5 (16)   | 10                                     | 38,250          | No            |
+  | 7/7/7 (21)   | 14                                     | 53,550          | Yes           |
+
+  The rest of this lesson keeps the 16-server pool and plans for one server failure.
 
 </details>
 
@@ -466,7 +475,7 @@ caching a 404 long enough to hide a brand new link.
 | Cache the 302 at the edge       | Fast clicks worldwide, a quiet origin        | Clicks you must count from edge logs             |
 | Single flight per server        | A hot miss costs at most 16 reads            | Waiters share one slow read                      |
 | Salted, batched click counters  | Hot writes spread across shards              | Reads gather 8 parts, and counts trail a second  |
-| 16 servers for a 50,000 peak    | One loss keeps survivors under 75%           | Idle capacity most of the day                    |
+| 16 servers for a 50,000 peak    | One server loss keeps survivors under 75%    | Idle capacity, no zone outage cover              |
 | Freshness tokens                | Creators see their own links at once         | Some reads wait or travel to the primary         |
 | Hash placement on the code      | Even load whatever the code scheme           | No cheap range scans by code                     |
 
