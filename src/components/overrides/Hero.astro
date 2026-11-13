@@ -2,6 +2,14 @@
 import { LinkButton } from '@astrojs/starlight/components';
 import Default from '@astrojs/starlight/components/Hero.astro';
 import { firstLesson } from '../../data/coursePath';
+import {
+  HOME_CAPACITIES,
+  HOME_FOURTH_SERVER,
+  HOME_RATE,
+  type HomePolicy,
+  runRouting,
+  summarizeRouting,
+} from '../../lib/models/homeRouting';
 import { lessonHref } from '../../lib/paths';
 import LandingHero from '../landing/LandingHero';
 
@@ -9,6 +17,12 @@ const route = Astro.locals.starlightRoute;
 const isHome = route.id === '';
 const hero = route.entry.data.hero;
 const title = hero?.title ?? route.entry.data.title;
+const policies: HomePolicy[] = ['round-robin', 'least-connections'];
+const summaries = isHome
+  ? [HOME_CAPACITIES, HOME_FOURTH_SERVER].flatMap((capacities) =>
+      policies.map((policy) => summarizeRouting(runRouting({ policy, capacities, rate: HOME_RATE }))),
+    )
+  : [];
 ---
 
 {
@@ -31,7 +45,7 @@ const title = hero?.title ?? route.entry.data.title;
         <p class="sdv-hero__note">Free. No account needed. Progress stays in this browser.</p>
       </div>
       <div class="sdv-hero__challenge">
-        <LandingHero client:idle />
+        <LandingHero client:idle summaries={summaries} />
       </div>
     </div>
   ) : (

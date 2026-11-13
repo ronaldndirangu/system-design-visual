@@ -64,6 +64,39 @@ test('home hero waits for the reader, then replays both rules to the pinned resu
   await expect(hero.locator('tr[data-row="round-robin@8/4"]')).toContainText('A 44, B 43, C 43, D 43');
 });
 
+test.describe('without JavaScript', () => {
+  test.use({ javaScriptEnabled: false });
+
+  test('home hero lists every pinned result from the build', async ({ page }) => {
+    await page.goto('');
+    const hero = page.getByRole('region', { name: 'Three servers. Why are people still waiting?' });
+    await expect(hero.getByTestId('routing-panel')).toContainText(
+      'Both rules see the same 173 arrivals over 20 seconds.',
+    );
+    const results = hero.locator('details', { hasText: 'Results without animation' });
+    await results.locator('summary').click();
+    const rows = results.locator('tbody tr');
+    await expect(rows).toHaveCount(4);
+    await expect(rows.nth(0).getByRole('cell')).toHaveText([
+      '3',
+      '173',
+      '134',
+      '34',
+      '3 s',
+      'A 58, B 58, C 57',
+    ]);
+    await expect(rows.nth(1).getByRole('cell')).toHaveText([
+      '3',
+      '173',
+      '171',
+      '0',
+      'Never',
+      'A 77, B 76, C 20',
+    ]);
+    await expect(rows.nth(2).getByRole('cell').nth(3)).toHaveText('20');
+  });
+});
+
 test('home journey stepper follows the tabs keyboard pattern', async ({ page }) => {
   await page.goto('');
   const tabs = page.getByRole('tablist', { name: 'Users' });

@@ -66,16 +66,15 @@ const policyName = (policy: HomePolicy) =>
   `${homePolicyLabels[policy].plain} (${homePolicyLabels[policy].technical})`;
 const perSecond = (value: number) => String(Number(value.toFixed(2)));
 
+const capacitiesFor = (setup: Setup) => (setup.fourth ? HOME_FOURTH_SERVER : HOME_CAPACITIES);
+
 const prepared = new Map<string, Prepared>();
+/** Replays one rule. Runs on demand after the reader acts, never during hydration. */
 function prepare(policy: HomePolicy, setup: Setup): Prepared {
   const key = runKey(policy, setup);
   const hit = prepared.get(key);
   if (hit) return hit;
-  const run = runRouting({
-    policy,
-    capacities: setup.fourth ? HOME_FOURTH_SERVER : HOME_CAPACITIES,
-    rate: setup.rate,
-  });
+  const run = runRouting({ policy, capacities: capacitiesFor(setup), rate: setup.rate });
   const events = run.frames.flatMap((frame) => frame.events);
   const made: Prepared = {
     run,
@@ -87,10 +86,6 @@ function prepare(policy: HomePolicy, setup: Setup): Prepared {
   return made;
 }
 
-const STATIC_RESULTS = [DEFAULT_SETUP, { rate: HOME_RATE, fourth: true }].flatMap((setup) =>
-  POLICIES.map((policy) => prepare(policy, setup).summary),
-);
-
 interface Snapshot {
   arrived: number;
   served: number;
@@ -99,6 +94,11 @@ interface Snapshot {
   queues: number[];
   sent: number[];
   event: AssignmentEvent | null;
+}
+
+function idleSnapshot(servers: number): Snapshot {
+  const zeros = Array.from({ length: servers }, () => 0);
+  return { arrived: 0, served: 0, rejected: 0, inFlight: 0, queues: zeros, sent: zeros, event: null };
 }
 
 /** Counts right after decision `index`. Every arrival is one decision, so prefix sums give the totals. */
@@ -168,11 +168,16 @@ function sentText(sent: readonly number[]): string {
   return sent.map((count, id) => `${serverName(id)} ${count}`).join(', ');
 }
 
+interface LandingHeroProps {
+  /** Totals for both rules at the default rate with three and four servers, computed at build time. */
+  summaries: readonly RoutingSummary[];
+}
+
 /**
  * The home page routing challenge. The same arrivals replay through two balancer
  * rules, one decision at a time, so the learner sees why taking turns overloads the slow server.
  */
-export default function LandingHero() {
+export default function LandingHero({ summaries }: LandingHeroProps) {
   const hydrated = useHydrated();
   const reduced = usePrefersReducedMotion();
   const { message, announce, push } = useAnnouncer();
@@ -193,8 +198,14 @@ export default function LandingHero() {
     setCursorState(next);
   }, []);
 
-  const current = prepare(policy, setup);
-  const snapshot = snapshotAt(current, cursor);
+  const servers = capacitiesFor(setup).length;
+  const known = summaries.find(
+    (summary) => summary.policy === policy && summary.rate === setup.rate && summary.servers === servers,
+  );
+  // The start screen reads build-time totals, so the trace is only replayed once the reader acts.
+  const current = running || cursor.index >= 0 || cursor.done || !known ? prepare(policy, setup) : null;
+  const snapshot = current ? snapshotAt(current, cursor) : idleSnapshot(servers);
+  const arrivals = (current?.summary ?? known)?.arrived ?? 0;
   const unlocked = POLICIES.every((each) => finished.has(runKey(each, DEFAULT_SETUP)));
   const isDefault = setupKey(setup) === setupKey(DEFAULT_SETUP);
 
@@ -204,30 +215,33 @@ export default function LandingHero() {
   }, [setCursor]);
 
   const finish = useCallback(() => {
-    const done: Cursor = { index: current.events.length - 1, done: true, clock: END_TIME };
+    const trace = prepare(policy, setup);
+    const done: Cursor = { index: trace.events.length - 1, done: true, clock: END_TIME };
     setCursor(done);
     setRunning(false);
     setFinished((seen) => new Set(seen).add(runKey(policy, setup)));
-    announce(doneText(snapshotAt(current, done)));
-  }, [current, policy, setup, setCursor, announce]);
+    announce(doneText(snapshotAt(trace, done)));
+  }, [policy, setup, setCursor, announce]);
 
   const stopAtRejection = useCallback(
     (index: number) => {
-      const event = current.events[index];
+      const trace = prepare(policy, setup);
+      const event = trace.events[index];
       if (!event) return;
       setCursor({ index, done: false, clock: event.time });
       setRunning(false);
-      announce(`${decisionText(policy, event, index)} ${rejectionWhy(policy, current)}`);
+      announce(`${decisionText(policy, event, index)} ${rejectionWhy(policy, trace)}`);
     },
-    [current, policy, setCursor, announce],
+    [policy, setup, setCursor, announce],
   );
 
   const onTick = () => {
+    const trace = prepare(policy, setup);
     const { index, clock } = cursorRef.current;
     const next = clock + SECONDS_PER_TICK;
     let target = index;
-    while ((current.events[target + 1]?.time ?? Number.POSITIVE_INFINITY) <= next) target += 1;
-    const rejection = current.rejectionIndex;
+    while ((trace.events[target + 1]?.time ?? Number.POSITIVE_INFINITY) <= next) target += 1;
+    const rejection = trace.rejectionIndex;
     if (rejection >= 0 && index < rejection && target >= rejection) {
       stopAtRejection(rejection);
       return;
@@ -270,13 +284,14 @@ export default function LandingHero() {
     const { index, done } = cursorRef.current;
     if (done) return;
     setRunning(false);
+    const trace = prepare(policy, setup);
     const nextIndex = index + 1;
-    const event = current.events[nextIndex];
+    const event = trace.events[nextIndex];
     if (!event) {
       finish();
       return;
     }
-    if (nextIndex === current.rejectionIndex) {
+    if (nextIndex === trace.rejectionIndex) {
       stopAtRejection(nextIndex);
       return;
     }
@@ -288,7 +303,8 @@ export default function LandingHero() {
     const { index, done } = cursorRef.current;
     if (done) return;
     setRunning(false);
-    if (current.rejectionIndex > index) stopAtRejection(current.rejectionIndex);
+    const rejection = prepare(policy, setup).rejectionIndex;
+    if (rejection > index) stopAtRejection(rejection);
     else finish();
   };
 
@@ -298,16 +314,19 @@ export default function LandingHero() {
   };
 
   function panelText(): string {
-    if (cursor.done) return doneText(snapshot);
     const event = snapshot.event;
-    if (!event) {
-      return `Press Run or Next decision. Both rules see the same ${current.run.totals.arrived} arrivals over ${END_TIME} seconds.`;
+    if (current && cursor.done) return doneText(snapshot);
+    if (!current || !event) {
+      return `Press Run or Next decision. Both rules see the same ${arrivals} arrivals over ${END_TIME} seconds.`;
     }
     const text = decisionText(policy, event, cursor.index);
     return cursor.index === current.rejectionIndex ? `${text} ${rejectionWhy(policy, current)}` : text;
   }
 
-  const overflowed = current.rejectionIndex >= 0 && (cursor.done || cursor.index >= current.rejectionIndex);
+  const overflowed =
+    current !== null &&
+    current.rejectionIndex >= 0 &&
+    (cursor.done || cursor.index >= current.rejectionIndex);
   const verdict =
     prediction && isDefault && policy === 'round-robin' && overflowed
       ? prediction === 'overflow'
@@ -320,7 +339,7 @@ export default function LandingHero() {
     ...(isDefault ? [] : [setup]),
   ].flatMap((each) => POLICIES.map((rule) => ({ key: runKey(rule, each), setup: each, policy: rule })));
 
-  const log = current.events
+  const log = (current?.events ?? [])
     .slice(Math.max(0, cursor.index + 1 - LOG_LINES), cursor.index + 1)
     .map((event, offset) => {
       const index = Math.max(0, cursor.index + 1 - LOG_LINES) + offset;
@@ -328,7 +347,7 @@ export default function LandingHero() {
     })
     .reverse();
 
-  const diagramLabel = `Users send ${setup.rate} requests per second on average to a balancer and ${current.run.capacities.length} servers. Unfinished requests: ${snapshot.queues
+  const diagramLabel = `Users send ${setup.rate} requests per second on average to a balancer and ${servers} servers. Unfinished requests: ${snapshot.queues
     .map((queue, id) => `${serverName(id)} ${queue} of ${HOME_QUEUE_LIMIT}`)
     .join(', ')}. Sent so far: ${sentText(snapshot.sent)}.`;
 
@@ -406,7 +425,7 @@ export default function LandingHero() {
       <div className="sdv-routing__diagram">
         <DiagramScroll label="Routing diagram" onScale={setScale}>
           <LandingRoutingDiagram
-            capacities={current.run.capacities}
+            capacities={capacitiesFor(setup)}
             rate={setup.rate}
             queues={snapshot.queues}
             sent={snapshot.sent}
@@ -528,7 +547,7 @@ export default function LandingHero() {
               </tr>
             </thead>
             <tbody>
-              {STATIC_RESULTS.map((summary) => (
+              {summaries.map((summary) => (
                 <tr key={`${summary.policy}-${summary.servers}`}>
                   <th scope="row">{policyName(summary.policy)}</th>
                   <td>{summary.servers}</td>
