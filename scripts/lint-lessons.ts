@@ -3,8 +3,8 @@ import { fileURLToPath } from 'node:url';
 import {
   CONCEPT_WORD_BUDGET,
   type Concept,
-  concepts,
   conceptScreenText,
+  concepts,
   DEFINITION_WORD_LIMIT,
   VARIANT_CAPTION_WORD_LIMIT,
 } from '../src/data/concepts.ts';
@@ -214,7 +214,10 @@ export function lintConcept(entry: Concept, mdx: string): LintIssue[] {
   const issues: LintIssue[] = [];
   const words = conceptWords(entry, mdx);
   if (words > CONCEPT_WORD_BUDGET) {
-    issues.push({ rule: 'words', message: `${words} visible words; keep it at ${CONCEPT_WORD_BUDGET} or fewer` });
+    issues.push({
+      rule: 'words',
+      message: `${words} visible words; keep it at ${CONCEPT_WORD_BUDGET} or fewer`,
+    });
   }
   const definition = countWords(entry.definition);
   if (definition > DEFINITION_WORD_LIMIT) {
@@ -260,7 +263,10 @@ function main() {
     }
   }
   for (const entry of concepts) {
-    const mdx = readFileSync(new URL(`../src/content/docs/concepts/${entry.slug}.mdx`, import.meta.url), 'utf8');
+    const mdx = readFileSync(
+      new URL(`../src/content/docs/concepts/${entry.slug}.mdx`, import.meta.url),
+      'utf8',
+    );
     const issues = lintConcept(entry, mdx);
     errors += issues.length;
     for (const issue of issues) {

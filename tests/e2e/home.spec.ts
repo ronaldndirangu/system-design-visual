@@ -5,7 +5,9 @@ test('home shows the load balancer picture and core concept cards in place of th
   page,
 }) => {
   await page.goto('');
-  await expect(page.getByRole('region', { name: 'Three servers. Why are people still waiting?' })).toHaveCount(0);
+  await expect(
+    page.getByRole('region', { name: 'Three servers. Why are people still waiting?' }),
+  ).toHaveCount(0);
   await expect(page.locator('.sdv-routing')).toHaveCount(0);
 
   const hero = page.locator('.sdv-hero');
@@ -14,7 +16,10 @@ test('home shows the load balancer picture and core concept cards in place of th
     'href',
     /\/concepts\/load-balancer\/$/,
   );
-  await expect(hero.getByRole('link', { name: 'Browse core concepts' })).toHaveAttribute('href', /\/concepts\/$/);
+  await expect(hero.getByRole('link', { name: 'Browse core concepts' })).toHaveAttribute(
+    'href',
+    /\/concepts\/$/,
+  );
 
   const cards = page.getByRole('region', { name: 'Core concepts' }).locator('.sdv-concept-card');
   await expect(cards).toHaveCount(3);

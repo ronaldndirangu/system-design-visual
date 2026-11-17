@@ -16,24 +16,66 @@ export function LoadBalancerWithout({ idPrefix, thumb }: SceneProps) {
   const server: Positioned = { x: 160, y: 200, w: 104, h: NODE_H };
   const top = users.y + NODE_H / 2 + 6;
   const bottom = server.y - NODE_H / 2 - 6;
-  const req = (start: number) => <Dot key={start} path={[[154, top], [154, bottom]]} at={[start, start + 0.1]} />;
+  const req = (start: number) => (
+    <Dot
+      key={start}
+      path={[
+        [154, top],
+        [154, bottom],
+      ]}
+      at={[start, start + 0.1]}
+    />
+  );
   const res = (start: number) => (
-    <Dot key={start} path={[[166, bottom], [166, top]]} at={[start, start + 0.1]} response />
+    <Dot
+      key={start}
+      path={[
+        [166, bottom],
+        [166, top],
+      ]}
+      at={[start, start + 0.1]}
+      response
+    />
   );
   const dropAt: Vec = [154, 150];
   const drop = (start: number) => [
     <Dot key={`a${start}`} path={[[154, top], dropAt]} at={[start, start + 0.06]} />,
-    <Dot key={`b${start}`} path={[dropAt, [118, 152], [86, 178]]} at={[start + 0.06, start + 0.12]} tone="bad" />,
+    <Dot
+      key={`b${start}`}
+      path={[dropAt, [118, 152], [86, 178]]}
+      at={[start + 0.06, start + 0.12]}
+      tone="bad"
+    />,
   ];
   const tones = ['ok', 'ok', 'warn', 'bad', 'bad'] as const;
   return (
-    <SceneFrame idPrefix={idPrefix} thumb={thumb} height={LB_HEIGHT} title={state.title} description={state.description}>
+    <SceneFrame
+      idPrefix={idPrefix}
+      thumb={thumb}
+      height={LB_HEIGHT}
+      title={state.title}
+      description={state.description}
+    >
       {(marker) => (
         <>
           <Edge from={[160, top]} to={[160, bottom]} marker={marker} />
-          <SystemNode kind="client" x={users.x} y={users.y} width={users.w} height={NODE_H} label={thumb ? '' : L.users} />
+          <SystemNode
+            kind="client"
+            x={users.x}
+            y={users.y}
+            width={users.w}
+            height={NODE_H}
+            label={thumb ? '' : L.users}
+          />
           <Show at={[0, 0.46]}>
-            <SystemNode kind="server" x={server.x} y={server.y} width={server.w} height={NODE_H} label={thumb ? '' : L.server} />
+            <SystemNode
+              kind="server"
+              x={server.x}
+              y={server.y}
+              width={server.w}
+              height={NODE_H}
+              label={thumb ? '' : L.server}
+            />
           </Show>
           <Show at={[0.46, 1]}>
             <SystemNode
@@ -50,7 +92,14 @@ export function LoadBalancerWithout({ idPrefix, thumb }: SceneProps) {
             <rect className="sdv-concept__gauge-frame" x={224} y={169} width={24} height={62} rx={4} />
             {tones.map((tone, i) => (
               <Show key={tone + String(i)} at={[0.06 + i * 0.1, 1]}>
-                <rect className={`sdv-concept__fill--${tone}`} x={228} y={219 - i * 12} width={16} height={8} rx={2} />
+                <rect
+                  className={`sdv-concept__fill--${tone}`}
+                  x={228}
+                  y={219 - i * 12}
+                  width={16}
+                  height={8}
+                  rx={2}
+                />
               </Show>
             ))}
           </g>
@@ -113,7 +162,13 @@ export function LoadBalancerWith({ idPrefix, thumb }: SceneProps) {
     />
   );
   return (
-    <SceneFrame idPrefix={idPrefix} thumb={thumb} height={LB_HEIGHT} title={state.title} description={state.description}>
+    <SceneFrame
+      idPrefix={idPrefix}
+      thumb={thumb}
+      height={LB_HEIGHT}
+      title={state.title}
+      description={state.description}
+    >
       {(marker) => (
         <>
           <Edge {...inbound} marker={marker} />
@@ -127,7 +182,14 @@ export function LoadBalancerWith({ idPrefix, thumb }: SceneProps) {
               <Edge {...legs.b} dashed />
             </g>
           </Show>
-          <SystemNode kind="client" x={users.x} y={users.y} width={users.w} height={NODE_H} label={thumb ? '' : L.users} />
+          <SystemNode
+            kind="client"
+            x={users.x}
+            y={users.y}
+            width={users.w}
+            height={NODE_H}
+            label={thumb ? '' : L.users}
+          />
           <SystemNode
             kind="loadBalancer"
             x={balancer.x}

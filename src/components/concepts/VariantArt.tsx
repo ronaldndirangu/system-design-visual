@@ -133,7 +133,13 @@ function turnsPanel(ox: number, label: string, leastBusy: boolean, marker: strin
         <Mini key={x} kind="server" x={ox + x} y={84} w={26} h={28} warn={!leastBusy && i === 1} />
       ))}
       {xs.map((x, i) => (
-        <Gauge key={x} x={ox + x} y={104} share={leastBusy ? 0.6 : i === 1 ? 1 : 0.4} bad={!leastBusy && i === 1} />
+        <Gauge
+          key={x}
+          x={ox + x}
+          y={104}
+          share={leastBusy ? 0.6 : i === 1 ? 1 : 0.4}
+          bad={!leastBusy && i === 1}
+        />
       ))}
     </g>
   );
@@ -188,7 +194,9 @@ function pairPanel(ox: number, standby: string | null, marker: string) {
         <Arrow key={`in${b[0]}`} from={[b[0], 8]} to={[b[0], 29]} marker={marker} />
       ))}
       {live.flatMap((b) =>
-        servers.map((s) => <Arrow key={`${b[0]}-${s[0]}`} from={[b[0], 58]} to={[s[0], 77]} marker={marker} />),
+        servers.map((s) => (
+          <Arrow key={`${b[0]}-${s[0]}`} from={[b[0], 58]} to={[s[0], 77]} marker={marker} />
+        )),
       )}
       <Mini kind="loadBalancer" x={balancers[0][0]} y={46} w={40} h={22} />
       <Mini kind="loadBalancer" x={balancers[1][0]} y={46} w={40} h={22} standby={Boolean(standby)} />
@@ -320,4 +328,3 @@ export function VariantArt({
     </svg>
   );
 }
-

@@ -22,21 +22,32 @@ export interface SceneFrameProps extends SceneProps {
 /** The svg shell: accessible name and description, arrow marker, namespaced ids. */
 export function SceneFrame({ idPrefix, thumb, height, title, description, children }: SceneFrameProps) {
   const marker = `${idPrefix}-arrow`;
-  const labelled = !thumb && title;
+  const viewBox = `0 0 ${SCENE_W} ${height}`;
+  const body = (
+    <>
+      <ArrowDefs id={marker} />
+      {children(marker)}
+    </>
+  );
+  if (thumb || !title) {
+    return (
+      <svg className="sdv-concept__svg" viewBox={viewBox} aria-hidden="true" focusable="false">
+        {body}
+      </svg>
+    );
+  }
   return (
     <svg
       className="sdv-concept__svg"
-      viewBox={`0 0 ${SCENE_W} ${height}`}
-      role={labelled ? 'img' : undefined}
-      aria-hidden={labelled ? undefined : true}
-      aria-labelledby={labelled ? `${idPrefix}-title` : undefined}
-      aria-describedby={labelled ? `${idPrefix}-desc` : undefined}
+      viewBox={viewBox}
+      role="img"
+      aria-labelledby={`${idPrefix}-title`}
+      aria-describedby={description ? `${idPrefix}-desc` : undefined}
       focusable="false"
     >
-      {labelled && <title id={`${idPrefix}-title`}>{title}</title>}
-      {labelled && description && <desc id={`${idPrefix}-desc`}>{description}</desc>}
-      <ArrowDefs id={marker} />
-      {children(marker)}
+      <title id={`${idPrefix}-title`}>{title}</title>
+      {description && <desc id={`${idPrefix}-desc`}>{description}</desc>}
+      {body}
     </svg>
   );
 }
@@ -60,7 +71,17 @@ function Packet({ tone, response }: { tone?: Tone; response?: boolean }) {
 }
 
 /** A request (circle) or response (square) that travels along `path` during `at`. Hidden at rest. */
-export function Dot({ path, at, tone, response }: { path: Vec[]; at: Window; tone?: Tone; response?: boolean }) {
+export function Dot({
+  path,
+  at,
+  tone,
+  response,
+}: {
+  path: Vec[];
+  at: Window;
+  tone?: Tone;
+  response?: boolean;
+}) {
   return (
     <g
       className="sdv-concept__dot"
@@ -94,7 +115,19 @@ export function Show({ at, children }: { at: Window; children: ReactNode }) {
 }
 
 /** Numbered step marker that matches a caption below the drawing. */
-export function Marker({ n, x, y, at, thumb }: { n: number; x: number; y: number; at: number; thumb?: boolean }) {
+export function Marker({
+  n,
+  x,
+  y,
+  at,
+  thumb,
+}: {
+  n: number;
+  x: number;
+  y: number;
+  at: number;
+  thumb?: boolean;
+}) {
   if (thumb) return null;
   return (
     <g className="sdv-concept__marker" data-show={`${at} 1`} transform={`translate(${x} ${y})`}>

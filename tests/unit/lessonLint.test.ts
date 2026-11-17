@@ -187,7 +187,10 @@ describe('concept lint', () => {
 
   it('holds every shipped concept page to the budget', () => {
     const failures = concepts.flatMap((page) => {
-      const mdx = readFileSync(new URL(`../../src/content/docs/concepts/${page.slug}.mdx`, import.meta.url), 'utf8');
+      const mdx = readFileSync(
+        new URL(`../../src/content/docs/concepts/${page.slug}.mdx`, import.meta.url),
+        'utf8',
+      );
       return lintConcept(page, mdx).map((issue) => `${page.slug} [${issue.rule}] ${issue.message}`);
     });
     expect(failures).toEqual([]);

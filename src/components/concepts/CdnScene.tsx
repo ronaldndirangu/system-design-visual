@@ -21,7 +21,7 @@ const farBack = [...farPath].reverse();
 /** Two rough landmasses, enough to read as "far apart" without pretending to be a map. */
 function World() {
   return (
-    <g className="sdv-concept__land" aria-hidden="true">
+    <g className="sdv-concept__land">
       <path d="M18 30C40 6 112 4 138 30C152 46 132 84 112 104C96 120 90 150 70 166C58 140 34 120 22 92C10 70 6 48 18 30Z" />
       <path d="M204 70C232 52 290 56 306 84C318 110 312 150 300 182C290 214 270 240 248 248C232 230 222 204 206 182C190 158 186 96 204 70Z" />
     </g>
@@ -32,8 +32,22 @@ function Places({ thumb }: { thumb?: boolean }) {
   return (
     <>
       <World />
-      <SystemNode kind="server" x={origin.x} y={origin.y} width={origin.w} height={NODE_H} label={thumb ? '' : L.origin} />
-      <SystemNode kind="client" x={users.x} y={users.y} width={users.w} height={NODE_H} label={thumb ? '' : L.users} />
+      <SystemNode
+        kind="server"
+        x={origin.x}
+        y={origin.y}
+        width={origin.w}
+        height={NODE_H}
+        label={thumb ? '' : L.origin}
+      />
+      <SystemNode
+        kind="client"
+        x={users.x}
+        y={users.y}
+        width={users.w}
+        height={NODE_H}
+        label={thumb ? '' : L.users}
+      />
       <Note x={origin.x} y={18} text={L.virginia} thumb={thumb} />
       <Note x={users.x} y={244} text={L.nairobi} thumb={thumb} />
     </>
@@ -45,7 +59,13 @@ export function CdnWithout({ idPrefix, thumb }: SceneProps) {
   const state = entry.states.without;
   const starts = [0, 0.24, 0.48, 0.72];
   return (
-    <SceneFrame idPrefix={idPrefix} thumb={thumb} height={CDN_HEIGHT} title={state.title} description={state.description}>
+    <SceneFrame
+      idPrefix={idPrefix}
+      thumb={thumb}
+      height={CDN_HEIGHT}
+      title={state.title}
+      description={state.description}
+    >
       {(marker) => (
         <>
           <Places thumb={thumb} />
@@ -79,13 +99,26 @@ export function CdnWith({ idPrefix, thumb }: SceneProps) {
   const far = link(edge, origin);
   const later = [0.52, 0.66, 0.8];
   return (
-    <SceneFrame idPrefix={idPrefix} thumb={thumb} height={CDN_HEIGHT} title={state.title} description={state.description}>
+    <SceneFrame
+      idPrefix={idPrefix}
+      thumb={thumb}
+      height={CDN_HEIGHT}
+      title={state.title}
+      description={state.description}
+    >
       {(marker) => (
         <>
           <Places thumb={thumb} />
           <Edge {...near} marker={marker} />
           <Edge {...far} marker={marker} />
-          <SystemNode kind="cdn" x={edge.x} y={edge.y} width={edge.w} height={NODE_H} label={thumb ? '' : L.edge} />
+          <SystemNode
+            kind="cdn"
+            x={edge.x}
+            y={edge.y}
+            width={edge.w}
+            height={NODE_H}
+            label={thumb ? '' : L.edge}
+          />
           <Show at={[0.38, 1]}>
             <rect className="sdv-concept__chip" x={266} y={76} width={16} height={10} rx={2} />
           </Show>

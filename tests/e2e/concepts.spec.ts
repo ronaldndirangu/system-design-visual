@@ -54,7 +54,10 @@ for (const entry of concepts) {
 
     await expect(page.locator('.sdv-concept-variants > li')).toHaveCount(entry.variants.length);
     await expect(page.getByRole('heading', { name: 'Quick check' })).toBeVisible();
-    await expect(page.getByRole('link', { name: /^Go deeper:/ })).toHaveAttribute('href', `/system-design-visual/${entry.lesson}/`);
+    await expect(page.getByRole('link', { name: /^Go deeper:/ })).toHaveAttribute(
+      'href',
+      `/system-design-visual/${entry.lesson}/`,
+    );
   });
 }
 
@@ -165,5 +168,7 @@ test('concepts index lists each shipped concept with credit to the primer', asyn
     'href',
     /github\.com\/donnemartin\/system-design-primer/,
   );
-  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'All concepts' })).toBeVisible();
+  await expect(
+    page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'All concepts' }),
+  ).toBeVisible();
 });

@@ -3374,7 +3374,8 @@ a.sdv-map__link:hover {
   color: var(--sdv-text-2);
   font-size: var(--sl-text-sm);
   margin: 1rem 0 0;
-}.sdv-concept-lead {
+}
+.sdv-concept-lead {
   color: var(--sdv-text-1);
   font-size: var(--sl-text-lg);
 }

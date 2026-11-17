@@ -70,7 +70,11 @@ export const concepts: Concept[] = [
         title: 'With a load balancer',
         description:
           'Users send requests to a load balancer, which passes them in turn to servers A, B and C, and responses flow back. Server B fails. Health checks notice, and the balancer sends new requests only to A and C.',
-        captions: ['The balancer spreads requests', 'Server B fails', 'Health checks catch it; traffic skips B'],
+        captions: [
+          'The balancer spreads requests',
+          'Server B fails',
+          'Health checks catch it; traffic skips B',
+        ],
       },
     },
     variants: [
@@ -111,27 +115,37 @@ export const concepts: Concept[] = [
         title: 'Without a cache',
         description:
           'The app sends every read to the database and waits about 10 milliseconds each time, even for the same data.',
-        captions: ['Every read goes to the database', 'Each read waits about 10 ms', 'The database repeats the same work'],
+        captions: [
+          'Every read goes to the database',
+          'Each read waits about 10 ms',
+          'The database repeats the same work',
+        ],
       },
       with: {
         label: 'With',
         title: 'With a cache',
         description:
           'The first read misses the cache, goes to the database, and the app stores a copy in the cache. The next reads hit the cache in about 1 millisecond, and the hit counter rises to 3.',
-        captions: ['First read misses, then fills the cache', 'Repeat reads hit in about 1 ms', 'The database gets fewer reads'],
+        captions: [
+          'First read misses, then fills the cache',
+          'Repeat reads hit in about 1 ms',
+          'The database gets fewer reads',
+        ],
       },
     },
     variants: [
       {
         name: 'Cache-aside',
         caption: 'On a miss, the app reads the database and fills the cache.',
-        description: 'The app asks the cache first. On a miss it reads the database, then writes the value into the cache.',
+        description:
+          'The app asks the cache first. On a miss it reads the database, then writes the value into the cache.',
         labels: {},
       },
       {
         name: 'Write-through',
         caption: 'Each write updates the cache and database before it reports success.',
-        description: 'The app writes to the cache and the database, and the write finishes only when both have it.',
+        description:
+          'The app writes to the cache and the database, and the write finishes only when both have it.',
         labels: {},
       },
       {
@@ -164,27 +178,37 @@ export const concepts: Concept[] = [
         title: 'Without a CDN',
         description:
           'Users in Nairobi fetch a file from the origin server in Virginia, United States. Each round trip takes about 250 milliseconds, and the origin sends every copy.',
-        captions: ['Every user fetches from Virginia', 'Each round trip takes about 250 ms', 'The origin sends every copy'],
+        captions: [
+          'Every user fetches from Virginia',
+          'Each round trip takes about 250 ms',
+          'The origin sends every copy',
+        ],
       },
       with: {
         label: 'With',
         title: 'With a CDN',
         description:
           'The first request from Nairobi reaches a nearby edge server, which fetches the file from the origin in Virginia and keeps a copy. Later users get the file from the edge in about 10 milliseconds.',
-        captions: ['First request: the edge fetches from the origin', 'The edge keeps a copy', 'Later users get it nearby in about 10 ms'],
+        captions: [
+          'First request: the edge fetches from the origin',
+          'The edge keeps a copy',
+          'Later users get it nearby in about 10 ms',
+        ],
       },
     },
     variants: [
       {
         name: 'Pull',
         caption: 'An edge fetches a file on its first request, then keeps a copy.',
-        description: 'A user asks the edge for a file. The edge fetches it from the origin once and keeps it.',
+        description:
+          'A user asks the edge for a file. The edge fetches it from the origin once and keeps it.',
         labels: {},
       },
       {
         name: 'Push',
         caption: 'You upload files to the CDN before anyone asks for them.',
-        description: 'You upload files from the origin to the CDN ahead of time. Users then fetch them from the edge.',
+        description:
+          'You upload files from the origin to the CDN ahead of time. Users then fetch them from the edge.',
         labels: { upload: 'Upload' },
       },
     ],

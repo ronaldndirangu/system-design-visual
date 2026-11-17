@@ -37,7 +37,11 @@ export function dotFrames(path: string, at: string): Keyframe[] {
   const frames: Keyframe[] = [{ offset: 0, opacity: 0, transform: translate(first) }];
   if (a > 0) frames.push({ offset: a, opacity: 0, transform: translate(first) });
   points.forEach((point, i) => {
-    frames.push({ offset: a + ((b - a) * (lengths[i] ?? 0)) / total, opacity: 1, transform: translate(point) });
+    frames.push({
+      offset: a + ((b - a) * (lengths[i] ?? 0)) / total,
+      opacity: 1,
+      transform: translate(point),
+    });
   });
   frames.push({ offset: b, opacity: 0, transform: translate(last) });
   if (b < 1) frames.push({ offset: 1, opacity: 0, transform: translate(last) });
@@ -48,12 +52,20 @@ export function showFrames(at: string, low = 0): Keyframe[] {
   const [a, b] = windowOf(at);
   const frames: Keyframe[] = [];
   if (a > 0) {
-    frames.push({ offset: 0, opacity: low }, { offset: a, opacity: low }, { offset: Math.min(a + FADE, b), opacity: 1 });
+    frames.push(
+      { offset: 0, opacity: low },
+      { offset: a, opacity: low },
+      { offset: Math.min(a + FADE, b), opacity: 1 },
+    );
   } else {
     frames.push({ offset: 0, opacity: 1 });
   }
   if (b < 1) {
-    frames.push({ offset: b, opacity: 1 }, { offset: Math.min(b + FADE, 1), opacity: low }, { offset: 1, opacity: low });
+    frames.push(
+      { offset: b, opacity: 1 },
+      { offset: Math.min(b + FADE, 1), opacity: low },
+      { offset: 1, opacity: low },
+    );
   } else {
     frames.push({ offset: 1, opacity: 1 });
   }

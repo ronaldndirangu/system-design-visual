@@ -31,9 +31,23 @@ function SlowEdge({ marker }: { marker: string }) {
 function Nodes({ thumb, withCache }: { thumb?: boolean; withCache: boolean }) {
   return (
     <>
-      <SystemNode kind="client" x={app.x} y={app.y} width={app.w} height={NODE_H} label={thumb ? '' : L.app} />
+      <SystemNode
+        kind="client"
+        x={app.x}
+        y={app.y}
+        width={app.w}
+        height={NODE_H}
+        label={thumb ? '' : L.app}
+      />
       {withCache && (
-        <SystemNode kind="cache" x={cache.x} y={cache.y} width={cache.w} height={NODE_H} label={thumb ? '' : L.cache} />
+        <SystemNode
+          kind="cache"
+          x={cache.x}
+          y={cache.y}
+          width={cache.w}
+          height={NODE_H}
+          label={thumb ? '' : L.cache}
+        />
       )}
       <SystemNode
         kind="database"
@@ -52,7 +66,13 @@ export function CacheWithout({ idPrefix, thumb }: SceneProps) {
   const state = entry.states.without;
   const starts = [0, 0.22, 0.44, 0.66];
   return (
-    <SceneFrame idPrefix={idPrefix} thumb={thumb} height={CACHE_HEIGHT} title={state.title} description={state.description}>
+    <SceneFrame
+      idPrefix={idPrefix}
+      thumb={thumb}
+      height={CACHE_HEIGHT}
+      title={state.title}
+      description={state.description}
+    >
       {(marker) => (
         <>
           <SlowEdge marker={marker} />
@@ -89,7 +109,13 @@ export function CacheWith({ idPrefix, thumb }: SceneProps) {
     [0.85, 1],
   ];
   return (
-    <SceneFrame idPrefix={idPrefix} thumb={thumb} height={CACHE_HEIGHT} title={state.title} description={state.description}>
+    <SceneFrame
+      idPrefix={idPrefix}
+      thumb={thumb}
+      height={CACHE_HEIGHT}
+      title={state.title}
+      description={state.description}
+    >
       {(marker) => (
         <>
           <Edge {...short} marker={marker} />
@@ -106,7 +132,7 @@ export function CacheWith({ idPrefix, thumb }: SceneProps) {
                 {L.hits}
               </text>
               {counts.map((at, n) => (
-                <Show key={n} at={at}>
+                <Show key={at.join()} at={at}>
                   <text className="sdv-concept__count" x={254} y={118}>
                     {n}
                   </text>
