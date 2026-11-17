@@ -4,12 +4,13 @@ import { documentOverflow } from './helpers';
 
 const lb = concept('load-balancer');
 
-/** Play states of the animations inside concept figures, ignoring page transitions elsewhere. */
+/** Play states of the scripted animations inside concept figures, ignoring CSS transitions. */
 function figureAnimations(page: Page): Promise<string[]> {
   return page.evaluate(() =>
     document
       .getAnimations()
       .filter((animation) => {
+        if (animation instanceof CSSTransition || animation instanceof CSSAnimation) return false;
         const target = (animation.effect as KeyframeEffect | null)?.target;
         return target instanceof Element && target.closest('.sdv-concept') !== null;
       })
@@ -71,7 +72,13 @@ test('concept figure plays three loops, then pauses, resumes, replays and rests 
   await expect(toggle).toHaveAccessibleName('Pause animation');
   await expect(figure).toHaveAttribute('data-playing', '');
   expect(await figureAnimations(page)).toContain('running');
-  const loops = await page.evaluate(() => document.getAnimations()[0]?.effect?.getTiming().iterations);
+  const loops = await page.evaluate(
+    () =>
+      document
+        .getAnimations()
+        .find((animation) => !(animation instanceof CSSTransition))
+        ?.effect?.getTiming().iterations,
+  );
   expect(loops).toBe(3);
 
   await toggle.click();

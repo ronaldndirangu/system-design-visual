@@ -8,7 +8,8 @@ const LOOP_MS = 6500;
 const LOOPS = 3;
 const FADE = 0.02;
 /** Captions stay readable before their step plays. */
-const CAPTION_LOW = 0.4;
+// Dimmed captions still clear 4.5:1 contrast in both themes at this opacity.
+const CAPTION_LOW = 0.62;
 const IN_VIEW = 0.35;
 
 type Point = [number, number];
