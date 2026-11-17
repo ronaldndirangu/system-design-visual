@@ -5,6 +5,7 @@ import { lessonHref } from '../../lib/paths';
 import Quiz from '../lesson/Quiz';
 import ConceptFigure from './ConceptFigure.astro';
 import ConceptVariants from './ConceptVariants.astro';
+import { keepNumbersWithWords as keep, keepQuizNumbersWithWords } from './text';
 
 interface Props {
   slug: string;
@@ -19,37 +20,38 @@ const bullets = [
   [CONCEPT_COPY.realExample, entry.tradeoffs.realExample],
   [CONCEPT_COPY.watchOut, entry.tradeoffs.watchOut],
 ] as const;
+const quiz = keepQuizNumbersWithWords(entry.quiz);
 ---
 
-<p class="sdv-concept-lead">{entry.definition}</p>
-<p class="sdv-concept-analogy"><strong>{CONCEPT_COPY.analogy}</strong> {entry.analogy}</p>
+<p class="sdv-concept-lead">{keep(entry.definition)}</p>
+<p class="sdv-concept-analogy"><strong>{CONCEPT_COPY.analogy}</strong> {keep(entry.analogy)}</p>
 
 <ConceptFigure slug={slug} />
 
 <h2 class="sdv-concept-heading">{CONCEPT_COPY.steps}</h2>
-<ol class="sdv-concept-steps">{entry.steps.map((step) => <li>{step}</li>)}</ol>
+<ol class="sdv-concept-steps">{entry.steps.map((step) => <li>{keep(step)}</li>)}</ol>
 
 <ConceptVariants slug={slug} />
 
 <section class="sdv-concept-example not-content" aria-labelledby={`sdv-example-${slug}`}>
   <p class="sdv-concept-example__title" id={`sdv-example-${slug}`}>
     <strong>{CONCEPT_COPY.example}</strong>{' '}
-    {entry.example.title}
+    {keep(entry.example.title)}
   </p>
-  {entry.example.lines.map((line) => <p>{line}</p>)}
+  {entry.example.lines.map((line) => <p>{keep(line)}</p>)}
 </section>
 
 <ul class="sdv-concept-bullets">
   {
     bullets.map(([lead, text]) => (
       <li>
-        <strong>{lead}</strong> {text}
+        <strong>{lead}</strong> {keep(text)}
       </li>
     ))
   }
 </ul>
 
-<Quiz client:visible questions={entry.quiz} title={CONCEPT_COPY.quiz} />
+<Quiz client:visible questions={quiz} title={CONCEPT_COPY.quiz} />
 
 {
   entry.lesson && deeper && (

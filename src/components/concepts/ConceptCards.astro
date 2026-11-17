@@ -2,6 +2,7 @@
 import { conceptGroups } from '../../data/concepts';
 import { withBase } from '../../lib/paths';
 import { loadScene } from './scenes';
+import { keepNumbersWithWords } from './text';
 
 interface Props {
   /** A grouped list of titles for the home page; the default is picture cards. */
@@ -64,7 +65,7 @@ const groups = await Promise.all(
                     </span>
                   )}
                   <span class="sdv-concept-card__title">{entry.title}</span>
-                  <span class="sdv-concept-card__text">{entry.definition}</span>
+                  <span class="sdv-concept-card__text">{keepNumbersWithWords(entry.definition)}</span>
                 </a>
               </li>
             ))}
