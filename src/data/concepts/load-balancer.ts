@@ -39,9 +39,9 @@ const loadBalancer: Concept = {
   example: {
     title: 'A ticket sale',
     lines: [
-      'Each server handles 1,000 requests per second.',
-      'Peak traffic: 2,500 requests per second.',
-      '2,500 ÷ 1,000 = 2.5, so you need 3 servers.',
+      'Each server handles 1,000\u00a0requests per second.',
+      'Peak traffic: 2,500\u00a0requests per second.',
+      '2,500 ÷ 1,000 = 2.5, so you need 3\u00a0servers.',
       'Add 1 spare to survive a failure: run 4.',
     ],
   },
@@ -97,7 +97,7 @@ const loadBalancer: Concept = {
     {
       id: 'concepts/load-balancer/q2',
       prompt:
-        'Each server handles 500 requests per second. Peak is 1,800, and one may fail. How many servers?',
+        'Each server handles 500\u00a0requests per second. Peak is 1,800, and one may fail. How many servers?',
       ordered: true,
       options: [
         { text: '3', why: 'Three servers handle only 1,500 requests per second, short of the 1,800 peak.' },

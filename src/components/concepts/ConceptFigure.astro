@@ -2,6 +2,7 @@
 import { concept, ILLUSTRATIVE_NOTE } from '../../data/concepts';
 import { UiIcon } from '../viz/icons';
 import { loadScene } from './scenes';
+import { keepNumbersWithWords } from './text';
 
 interface Props {
   slug: string;
@@ -50,11 +51,11 @@ const With = scene.with;
   <div class="sdv-concept__stage">
     <div class="sdv-concept__state" data-state="without">
       <Without idPrefix={`${prefix}-without`} />
-      <ol class="sdv-concept__captions">{entry.states.without.captions.map((caption) => <li>{caption}</li>)}</ol>
+      <ol class="sdv-concept__captions">{entry.states.without.captions.map((caption) => <li>{keepNumbersWithWords(caption)}</li>)}</ol>
     </div>
     <div class="sdv-concept__state" data-state="with">
       <With idPrefix={`${prefix}-with`} />
-      <ol class="sdv-concept__captions">{entry.states.with.captions.map((caption) => <li>{caption}</li>)}</ol>
+      <ol class="sdv-concept__captions">{entry.states.with.captions.map((caption) => <li>{keepNumbersWithWords(caption)}</li>)}</ol>
     </div>
   </div>
   {entry.illustrative && <p class="sdv-concept__fine">{ILLUSTRATIVE_NOTE}</p>}

@@ -43,9 +43,9 @@ const cache: Concept = {
   example: {
     title: 'A busy product page',
     lines: [
-      'A cache hit takes 1 ms. A miss checks the cache, then the database: 11 ms.',
-      'With 90% hits: 0.9 × 1 + 0.1 × 11 = 2 ms on average.',
-      'Without the cache every read takes 10 ms, so reads get 5 times faster.',
+      'A cache hit takes 1\u00a0ms. A miss checks the cache, then the database: 11\u00a0ms.',
+      'With 90% hits: 0.9 × 1 + 0.1 × 11 = 2\u00a0ms on average.',
+      'Without the cache every read takes 10\u00a0ms, so reads get 5\u00a0times faster.',
     ],
   },
   variants: [

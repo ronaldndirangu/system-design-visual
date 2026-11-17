@@ -1,6 +1,7 @@
 ---
 import { concept } from '../../data/concepts';
 import { loadScene } from './scenes';
+import { keepNumbersWithWords } from './text';
 import { VariantArt } from './VariantArt';
 
 interface Props {
@@ -29,7 +30,7 @@ const items = entry.variants.map((variant, index) => {
         <VariantArt draw={draw} variant={variant} idPrefix={`sdv-variant-${slug}-${index}`} />
         <p>
           <strong>{variant.name}</strong>
-          <span>{variant.caption}</span>
+          <span>{keepNumbersWithWords(variant.caption)}</span>
         </p>
       </li>
     ))
