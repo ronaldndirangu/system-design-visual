@@ -14,6 +14,12 @@ const sceneLoaders: Record<string, () => Promise<{ default: ConceptScene }>> = {
   cache: () => import('./cache'),
   cdn: () => import('./cdn'),
   'rate-limiting': () => import('./rate-limiting'),
+  'cap-theorem': () => import('./cap-theorem'),
+  consistency: () => import('./consistency'),
+  apis: () => import('./apis'),
+  'real-time': () => import('./real-time'),
+  'message-queue': () => import('./message-queue'),
+  'pub-sub': () => import('./pub-sub'),
 };
 
 export function hasScene(slug: string): boolean {

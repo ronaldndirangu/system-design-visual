@@ -7,13 +7,19 @@
 
 import { course } from '../courses.ts';
 import { findLesson } from '../curriculum.ts';
+import apis from './apis.ts';
 import availability from './availability.ts';
 import cache from './cache.ts';
+import capTheorem from './cap-theorem.ts';
 import cdn from './cdn.ts';
+import consistency from './consistency.ts';
 import dns from './dns.ts';
 import latencyThroughput from './latency-throughput.ts';
 import loadBalancer from './load-balancer.ts';
+import messageQueue from './message-queue.ts';
+import pubSub from './pub-sub.ts';
 import rateLimiting from './rate-limiting.ts';
+import realTime from './real-time.ts';
 import reverseProxy from './reverse-proxy.ts';
 import scaling from './scaling.ts';
 import { CONCEPT_GROUPS, type Concept, type ConceptGroup, type LabelReader } from './types.ts';
@@ -31,6 +37,12 @@ export const concepts: Concept[] = [
   cdn,
   rateLimiting,
   cache,
+  capTheorem,
+  consistency,
+  apis,
+  realTime,
+  messageQueue,
+  pubSub,
 ];
 
 export const CONCEPT_WORD_BUDGET = 350;
