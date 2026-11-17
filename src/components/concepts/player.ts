@@ -9,6 +9,7 @@ const LOOPS = 3;
 const FADE = 0.02;
 /** Captions stay readable before their step plays. */
 const CAPTION_LOW = 0.4;
+const IN_VIEW = 0.35;
 
 type Point = [number, number];
 
@@ -157,13 +158,13 @@ function bind(figure: HTMLElement, reduce: MediaQueryList) {
   new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
-        inView = entry.isIntersecting;
+        inView = entry.intersectionRatio >= IN_VIEW;
         if (!inView) hold();
         else if (!started) start();
         else resume();
       }
     },
-    { threshold: 0.35 },
+    { threshold: [0, IN_VIEW] },
   ).observe(figure);
 
   document.addEventListener('visibilitychange', () => (document.hidden ? hold() : resume()));

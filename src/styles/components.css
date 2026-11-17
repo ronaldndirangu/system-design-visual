@@ -3159,6 +3159,11 @@ a.sdv-map__link:hover {
 .sdv-concept[data-ready] .sdv-concept__controls {
   visibility: visible;
 }
+@media (prefers-reduced-motion: reduce) {
+  .sdv-concept[data-ready] .sdv-concept__controls {
+    visibility: hidden;
+  }
+}
 .sdv-concept__icon--play,
 .sdv-concept[data-paused] .sdv-concept__icon--pause {
   display: none;
