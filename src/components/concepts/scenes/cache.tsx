@@ -1,11 +1,23 @@
-import { concept, labelReader } from '../../data/concepts';
-import { lerp, link, type Positioned, type Vec } from '../viz/geometry';
-import { Edge, SystemNode } from '../viz/SystemNode';
-import { curve, Dot, Marker, Note, pointAt, SceneFrame, type SceneProps, Show, Still } from './parts';
+import { labelReader } from '../../../data/concepts';
+import entry from '../../../data/concepts/cache';
+import { lerp, link, type Positioned, type Vec } from '../../viz/geometry';
+import { Edge, SystemNode } from '../../viz/SystemNode';
+import {
+  type ConceptScene,
+  curve,
+  Dot,
+  Marker,
+  Note,
+  pointAt,
+  SceneFrame,
+  type SceneProps,
+  Show,
+  Still,
+} from '../parts';
+import variants from '../variants/cache';
 
-const entry = concept('cache');
 const L = labelReader(entry.labels);
-export const CACHE_HEIGHT = 250;
+const CACHE_HEIGHT = 250;
 
 const NODE_H = 58;
 const CACHE_W = 92;
@@ -63,7 +75,7 @@ function Nodes({ thumb, withCache }: { thumb?: boolean; withCache: boolean }) {
 }
 
 /** Every read takes the long path to the database. */
-export function CacheWithout({ idPrefix, thumb }: SceneProps) {
+function CacheWithout({ idPrefix, thumb }: SceneProps) {
   const state = entry.states.without;
   const starts = [0, 0.22, 0.44, 0.66];
   return (
@@ -97,7 +109,7 @@ export function CacheWithout({ idPrefix, thumb }: SceneProps) {
 }
 
 /** The first read misses and fills the cache; repeat reads hit on the short path. */
-export function CacheWith({ idPrefix, thumb }: SceneProps) {
+function CacheWith({ idPrefix, thumb }: SceneProps) {
   const state = entry.states.with;
   const short = link(app, cache);
   const go: Vec[] = [short.from, short.to];
@@ -169,3 +181,5 @@ export function CacheWith({ idPrefix, thumb }: SceneProps) {
     </SceneFrame>
   );
 }
+
+export default { without: CacheWithout, with: CacheWith, variants } satisfies ConceptScene;

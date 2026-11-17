@@ -1,11 +1,23 @@
-import { concept, labelReader } from '../../data/concepts';
-import { lerp, link, type Positioned, type Vec } from '../viz/geometry';
-import { Edge, SystemNode } from '../viz/SystemNode';
-import { curve, Dot, Marker, Note, pointAt, SceneFrame, type SceneProps, Show, Still } from './parts';
+import { labelReader } from '../../../data/concepts';
+import entry from '../../../data/concepts/cdn';
+import { lerp, link, type Positioned, type Vec } from '../../viz/geometry';
+import { Edge, SystemNode } from '../../viz/SystemNode';
+import {
+  type ConceptScene,
+  curve,
+  Dot,
+  Marker,
+  Note,
+  pointAt,
+  SceneFrame,
+  type SceneProps,
+  Show,
+  Still,
+} from '../parts';
+import variants from '../variants/cdn';
 
-const entry = concept('cdn');
 const L = labelReader(entry.labels);
-export const CDN_HEIGHT = 250;
+const CDN_HEIGHT = 250;
 
 const NODE_H = 58;
 const origin: Positioned = { x: 70, y: 56, w: 92, h: NODE_H };
@@ -55,7 +67,7 @@ function Places({ thumb }: { thumb?: boolean }) {
 }
 
 /** Every user in Nairobi fetches the file from Virginia. */
-export function CdnWithout({ idPrefix, thumb }: SceneProps) {
+function CdnWithout({ idPrefix, thumb }: SceneProps) {
   const state = entry.states.without;
   const starts = [0, 0.24, 0.48, 0.72];
   return (
@@ -93,7 +105,7 @@ export function CdnWithout({ idPrefix, thumb }: SceneProps) {
 }
 
 /** The first request fills a nearby edge; later users get the file from it. */
-export function CdnWith({ idPrefix, thumb }: SceneProps) {
+function CdnWith({ idPrefix, thumb }: SceneProps) {
   const state = entry.states.with;
   const near = link(users, edge);
   const far = link(edge, origin);
@@ -144,3 +156,5 @@ export function CdnWith({ idPrefix, thumb }: SceneProps) {
     </SceneFrame>
   );
 }
+
+export default { without: CdnWithout, with: CdnWith, variants } satisfies ConceptScene;

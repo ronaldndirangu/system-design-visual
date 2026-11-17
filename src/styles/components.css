@@ -3339,7 +3339,7 @@ a.sdv-map__link:hover {
 .sdv-concept-cards__grid {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
   list-style: none;
   margin: 0;
   padding: 0;
@@ -3370,10 +3370,108 @@ a.sdv-map__link:hover {
   color: var(--sdv-text-2);
   font-size: var(--sl-text-sm);
 }
-.sdv-concept-cards__credit {
-  color: var(--sdv-text-2);
-  font-size: var(--sl-text-sm);
+@media (max-width: 35rem) {
+  .sdv-concept-card {
+    align-content: start;
+    column-gap: 0.75rem;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+  }
+  .sdv-concept-card__thumb {
+    grid-row: span 2;
+    margin: 0;
+  }
+}
+.sdv-concept-cards {
+  margin-top: 1.5rem;
+}
+.sdv-concept-cards__group + .sdv-concept-cards__group {
+  margin-top: 2rem;
+}
+.sdv-concept-cards__title {
+  color: var(--sdv-text-1);
+  font-size: var(--sl-text-xl);
+  margin: 0 0 0.75rem;
+}
+.sdv-concept-index {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  list-style: none;
+  margin: 1.5rem 0 0;
+  padding: 0;
+}
+.sdv-concept-index__group {
+  margin: 0;
+  padding: 0.75rem 1rem;
+}
+.sdv-concept-index__title {
+  color: var(--sdv-text-1);
+  font-size: var(--sl-text-base);
+  margin: 0 0 0.25rem;
+}
+.sdv-concept-index__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-concept-index__links li {
+  margin: 0;
+}
+.sdv-concept-index__link {
+  align-items: center;
+  color: var(--sdv-accent-text);
+  display: inline-flex;
+  font-weight: var(--sdv-weight-ui);
+  justify-content: center;
+  min-height: var(--sdv-target);
+  min-width: var(--sdv-target);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.sdv-course-list {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+  list-style: none;
   margin: 1rem 0 0;
+  padding: 0;
+}
+.sdv-course {
+  margin: 0;
+}
+.sdv-course__name {
+  font-size: var(--sl-text-base);
+  margin: 0;
+}
+.sdv-course__name a {
+  color: var(--sdv-accent-text);
+  text-underline-offset: 0.2em;
+}
+.sdv-course p {
+  font-size: var(--sl-text-sm);
+  margin: 0.25rem 0 0;
+}
+.sdv-course__meta {
+  color: var(--sdv-text-2);
+}
+.sdv-course__more {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+}
+.sdv-course__more li {
+  margin: 0;
+}
+.sdv-course__more a {
+  align-items: center;
+  color: var(--sdv-accent-text);
+  display: inline-flex;
+  font-size: var(--sl-text-sm);
+  min-height: var(--sdv-target);
+  text-underline-offset: 0.2em;
 }
 .sdv-concept-lead {
   color: var(--sdv-text-1);
@@ -3384,4 +3482,21 @@ a.sdv-map__link:hover {
   display: inline-flex;
   font-weight: var(--sdv-weight-ui);
   min-height: var(--sdv-target);
+}
+.sdv-concept-analogy strong {
+  color: var(--sdv-text-1);
+}
+.sdv-concept-example {
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-left: 4px solid var(--sdv-accent);
+  border-radius: var(--sdv-radius);
+  margin: 1.5rem 0;
+  padding: 0.75rem 1rem;
+}
+.sdv-concept-example p {
+  margin: 0.25rem 0 0;
+}
+.sdv-concept-example .sdv-concept-example__title {
+  margin: 0 0 0.5rem;
 }

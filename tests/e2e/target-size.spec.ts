@@ -9,6 +9,8 @@ const pages = [
   { name: 'lesson', path: 'scaling/caching/' },
   { name: 'case study', path: 'case-studies/shortener-at-scale/' },
   { name: 'glossary', path: 'glossary/' },
+  { name: 'concepts', path: 'concepts/' },
+  { name: 'concept', path: 'concepts/load-balancer/' },
   { name: '404', path: 'does-not-exist/' },
 ];
 

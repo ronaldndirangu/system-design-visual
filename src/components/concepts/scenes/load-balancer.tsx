@@ -1,17 +1,18 @@
-import { concept, labelReader } from '../../data/concepts';
-import { lerp, link, type Positioned, type Vec } from '../viz/geometry';
-import { Edge, SystemNode } from '../viz/SystemNode';
-import { Dot, Marker, SceneFrame, type SceneProps, Show, Still } from './parts';
+import { labelReader } from '../../../data/concepts';
+import entry from '../../../data/concepts/load-balancer';
+import { lerp, link, type Positioned, type Vec } from '../../viz/geometry';
+import { Edge, SystemNode } from '../../viz/SystemNode';
+import { type ConceptScene, Dot, Marker, SceneFrame, type SceneProps, Show, Still } from '../parts';
+import variants from '../variants/load-balancer';
 
-const entry = concept('load-balancer');
 const L = labelReader(entry.labels);
-export const LB_HEIGHT = 280;
+const LB_HEIGHT = 280;
 
 const NODE_H = 58;
 const users: Positioned = { x: 160, y: 32, w: 96, h: NODE_H };
 
 /** One server takes every request; its gauge fills and the extras get dropped. */
-export function LoadBalancerWithout({ idPrefix, thumb }: SceneProps) {
+function LoadBalancerWithout({ idPrefix, thumb }: SceneProps) {
   const state = entry.states.without;
   const server: Positioned = { x: 160, y: 200, w: 104, h: NODE_H };
   const top = users.y + NODE_H / 2 + 6;
@@ -119,7 +120,7 @@ export function LoadBalancerWithout({ idPrefix, thumb }: SceneProps) {
 }
 
 /** The balancer spreads requests over A, B and C, then routes around B once it fails. */
-export function LoadBalancerWith({ idPrefix, thumb }: SceneProps) {
+function LoadBalancerWith({ idPrefix, thumb }: SceneProps) {
   const state = entry.states.with;
   const balancer: Positioned = { x: 160, y: 134, w: 112, h: NODE_H };
   const row = 242;
@@ -234,3 +235,5 @@ export function LoadBalancerWith({ idPrefix, thumb }: SceneProps) {
     </SceneFrame>
   );
 }
+
+export default { without: LoadBalancerWithout, with: LoadBalancerWith, variants } satisfies ConceptScene;

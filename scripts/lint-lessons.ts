@@ -1,13 +1,22 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
+  ANALOGY_WORD_LIMIT,
+  CAPTION_COUNT,
   CONCEPT_WORD_BUDGET,
   type Concept,
   conceptScreenText,
   concepts,
   DEFINITION_WORD_LIMIT,
+  EXAMPLE_WORD_LIMIT,
+  LEARN_MORE_COUNT,
+  QUIZ_COUNT,
+  STEP_COUNT,
+  STEP_WORD_LIMIT,
   VARIANT_CAPTION_WORD_LIMIT,
-} from '../src/data/concepts.ts';
+  VARIANT_COUNT,
+} from '../src/data/concepts/index.ts';
+import { course } from '../src/data/courses.ts';
 import { allLessons, type Lesson } from '../src/data/curriculum.ts';
 import {
   arrayQuestionIds,
@@ -28,7 +37,7 @@ import {
 export type LessonKind = 'lesson' | 'card' | 'case-study' | 'practice';
 
 export interface LintIssue {
-  rule: 'order' | 'required' | 'h2' | 'sims' | 'words' | 'minutes' | 'links' | 'ids';
+  rule: 'order' | 'required' | 'h2' | 'sims' | 'words' | 'minutes' | 'links' | 'ids' | 'shape' | 'page';
   message: string;
 }
 
@@ -210,6 +219,12 @@ export function conceptWords(entry: Concept, mdx: string): number {
   return countWords(entry.title) + lessonStats(visible).words + drawn;
 }
 
+function frontmatterField(mdx: string, field: string): string | undefined {
+  const head = /^---\r?\n([\s\S]*?)\r?\n---/.exec(mdx)?.[1] ?? '';
+  return new RegExp(`^${field}:\\s*(.+)$`, 'm').exec(head)?.[1]?.trim();
+}
+
+/** Checks a concept's data against the page template, and its MDX page against the thin wrapper. */
 export function lintConcept(entry: Concept, mdx: string): LintIssue[] {
   const issues: LintIssue[] = [];
   const words = conceptWords(entry, mdx);
@@ -219,21 +234,60 @@ export function lintConcept(entry: Concept, mdx: string): LintIssue[] {
       message: `${words} visible words; keep it at ${CONCEPT_WORD_BUDGET} or fewer`,
     });
   }
-  const definition = countWords(entry.definition);
-  if (definition > DEFINITION_WORD_LIMIT) {
-    issues.push({
-      rule: 'words',
-      message: `definition has ${definition} words; keep it at ${DEFINITION_WORD_LIMIT} or fewer`,
-    });
+  const limit = (label: string, text: string, max: number) => {
+    const count = countWords(text);
+    if (count > max)
+      issues.push({ rule: 'words', message: `${label} has ${count} words; keep it at ${max} or fewer` });
+  };
+  const range = (label: string, count: number, [min, max]: [number, number]) => {
+    if (count < min || count > max) {
+      const want = min === max ? String(min) : `${min} to ${max}`;
+      issues.push({ rule: 'shape', message: `${count} ${label}; use ${want}` });
+    }
+  };
+  limit('definition', entry.definition, DEFINITION_WORD_LIMIT);
+  limit('analogy', entry.analogy, ANALOGY_WORD_LIMIT);
+  entry.steps.forEach((step, i) => {
+    limit(`step ${i + 1}`, step, STEP_WORD_LIMIT);
+  });
+  limit('example', [entry.example.title, ...entry.example.lines].join(' '), EXAMPLE_WORD_LIMIT);
+  for (const variant of entry.variants)
+    limit(`"${variant.name}" caption`, variant.caption, VARIANT_CAPTION_WORD_LIMIT);
+
+  range('steps', entry.steps.length, STEP_COUNT);
+  range('variants', entry.variants.length, VARIANT_COUNT);
+  range('quiz questions', entry.quiz.length, [QUIZ_COUNT, QUIZ_COUNT]);
+  range('learn more links', entry.learnMore.length, LEARN_MORE_COUNT);
+  for (const [id, state] of Object.entries(entry.states)) {
+    range(`captions in "${id}"`, state.captions.length, [CAPTION_COUNT, CAPTION_COUNT]);
   }
-  for (const variant of entry.variants) {
-    const caption = countWords(variant.caption);
-    if (caption > VARIANT_CAPTION_WORD_LIMIT) {
+
+  entry.quiz.forEach((question, i) => {
+    const want = `concepts/${entry.slug}/q${i + 1}`;
+    if (question.id !== want)
+      issues.push({ rule: 'ids', message: `question id "${question.id}" should be "${want}"` });
+  });
+  for (const link of entry.learnMore) {
+    const source = course(link.course);
+    const hosts = [source.url, ...(source.links ?? []).map((extra) => extra.url)].map(
+      (url) => new URL(url).host,
+    );
+    if (!hosts.includes(new URL(link.href).host)) {
       issues.push({
-        rule: 'words',
-        message: `"${variant.name}" caption has ${caption} words; keep it at ${VARIANT_CAPTION_WORD_LIMIT} or fewer`,
+        rule: 'links',
+        message: `${link.href} is not on a ${source.name} site (${hosts.join(', ')})`,
       });
     }
+  }
+
+  if (!mdx.includes(`<ConceptPage slug="${entry.slug}" />`)) {
+    issues.push({ rule: 'page', message: `render the page with <ConceptPage slug="${entry.slug}" />` });
+  }
+  if (frontmatterField(mdx, 'title') !== entry.title) {
+    issues.push({ rule: 'page', message: `frontmatter title should be "${entry.title}"` });
+  }
+  if (frontmatterField(mdx, 'description') !== entry.definition) {
+    issues.push({ rule: 'page', message: 'frontmatter description should match the definition' });
   }
   return issues;
 }

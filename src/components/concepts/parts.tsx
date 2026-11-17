@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
+import type { ConceptStateId, LabelReader } from '../../data/concepts/types';
 import type { Vec } from '../viz/geometry';
 import { ArrowDefs } from '../viz/SystemNode';
 
@@ -11,6 +12,14 @@ export interface SceneProps {
   /** A small card picture: no text, no numbered markers, hidden from assistive tech. */
   thumb?: boolean;
 }
+
+/** Draws one variant inside a 200 by 120 viewBox; `marker` is the arrowhead id for `markerEnd`. */
+export type VariantDrawing = (marker: string, labels: LabelReader) => ReactNode;
+
+/** What every `scenes/<slug>.tsx` default-exports: one drawing per state, plus one per variant in data order. */
+export type ConceptScene = Record<ConceptStateId, ComponentType<SceneProps>> & {
+  variants: VariantDrawing[];
+};
 
 export interface SceneFrameProps extends SceneProps {
   height: number;

@@ -1,30 +1,76 @@
 ---
-import { concepts } from '../../data/concepts';
+import { conceptGroups } from '../../data/concepts';
 import { withBase } from '../../lib/paths';
-import { scenes } from './scenes';
+import { loadScene } from './scenes';
+
+interface Props {
+  /** A grouped list of titles for the home page; the default is picture cards. */
+  compact?: boolean;
+  /** Level of each group heading, one below the section heading around the cards. */
+  headingLevel?: 2 | 3;
+}
+
+const { compact = false, headingLevel = 2 } = Astro.props;
+const Heading = `h${headingLevel}` as 'h2' | 'h3';
+const prefix = compact ? 'sdv-home-group' : 'sdv-concept-group';
+const groups = await Promise.all(
+  conceptGroups().map(async (group) => ({
+    ...group,
+    cards: await Promise.all(
+      group.concepts.map(async (entry) => ({
+        entry,
+        href: withBase(`/concepts/${entry.slug}/`),
+        Scene: compact ? undefined : (await loadScene(entry.slug)).with,
+      })),
+    ),
+  })),
+);
 ---
 
-<div class="sdv-concept-cards not-content">
-  <ul class="sdv-concept-cards__grid">
-    {
-      concepts.map((entry) => {
-        const Scene = scenes[entry.slug].with;
-        return (
-          <li>
-            <a class="sdv-card sdv-concept-card" href={withBase(`/concepts/${entry.slug}/`)}>
-              <span class="sdv-concept-card__thumb">
-                <Scene idPrefix={`sdv-card-${entry.slug}`} thumb />
-              </span>
-              <span class="sdv-concept-card__title">{entry.title}</span>
-              <span class="sdv-concept-card__text">{entry.definition}</span>
-            </a>
-          </li>
-        );
-      })
-    }
-  </ul>
-  <p class="sdv-concept-cards__credit">
-    Topic list inspired by the <a href="https://github.com/donnemartin/system-design-primer">System Design Primer</a> (CC
-    BY 4.0)
-  </p>
-</div>
+{
+  compact ? (
+    <ul class="sdv-concept-index not-content">
+      {groups.map((group) => (
+        <li class="sdv-card sdv-concept-index__group">
+          <Heading id={`${prefix}-${group.id}`} class="sdv-concept-index__title">
+            {group.title}
+          </Heading>
+          <ul class="sdv-concept-index__links" aria-labelledby={`${prefix}-${group.id}`}>
+            {group.cards.map(({ entry, href }) => (
+              <li>
+                <a class="sdv-concept-index__link" href={href}>
+                  {entry.title}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <div class="sdv-concept-cards not-content">
+      {groups.map((group) => (
+        <section class="sdv-concept-cards__group" aria-labelledby={`${prefix}-${group.id}`}>
+          <Heading id={`${prefix}-${group.id}`} class="sdv-concept-cards__title">
+            {group.title}
+          </Heading>
+          <ul class="sdv-concept-cards__grid">
+            {group.cards.map(({ entry, href, Scene }) => (
+              <li>
+                <a class="sdv-card sdv-concept-card" href={href}>
+                  {Scene && (
+                    <span class="sdv-concept-card__thumb">
+                      <Scene idPrefix={`sdv-card-${entry.slug}`} thumb />
+                    </span>
+                  )}
+                  <span class="sdv-concept-card__title">{entry.title}</span>
+                  <span class="sdv-concept-card__text">{entry.definition}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  )
+}
