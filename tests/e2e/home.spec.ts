@@ -3,6 +3,8 @@ import { island } from './helpers';
 
 const roundRobin = 'Take turns (round robin)';
 const leastConnections = 'Fewest unfinished (least connections)';
+const paused = 'Paused at the first rejection. Continue to see the full 20-second result.';
+const phaseName = /^(Show result|Finish this run|Compare the same traffic)$/;
 
 test('home hero waits for the reader, then replays both rules to the pinned results', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -20,16 +22,20 @@ test('home hero waits for the reader, then replays both rules to the pinned resu
   await expect(panel).toContainText('Request 1 at');
   await expect(next).toBeFocused();
 
-  const show = hero.getByRole('button', { name: 'Show result' });
+  const show = hero.getByRole('button', { name: phaseName });
+  await expect(show).toHaveText('Show result');
   await show.click();
   await expect(panel).toContainText('turned away');
   await expect(panel).toContainText("C's turn came while it already held 4 unfinished requests");
+  await expect(panel).toContainText(paused);
+  await expect(show).toHaveText('Finish this run');
   await show.click();
   await expect(panel).toContainText(
     'After 20 s: 173 arrived, 134 finished, 34 turned away, 5 still processing.',
   );
   await expect(hero.getByText('You called it: one queue overflowed.')).toBeVisible();
-  await expect(show).toHaveAttribute('aria-disabled', 'true');
+  await expect(show).toHaveText('Compare the same traffic');
+  await expect(show).not.toHaveAttribute('aria-disabled');
 
   const compact = hero.getByRole('list', { name: '173 arrivals over 20 seconds', exact: true });
   const rrCompact = compact.locator('li[data-compact="round-robin@8/3"]');
@@ -72,15 +78,84 @@ test('home hero waits for the reader, then replays both rules to the pinned resu
   await expect(lcCompact).toHaveText(
     'Fewest unfinished: 171 finished, 0 turned away, 2 still processing. C chosen 20 times.',
   );
+  await expect(show).toHaveText('Show result');
+  await expect(show).toHaveAttribute('aria-disabled', 'true');
+  const explore = hero.getByTestId('routing-explore');
+  await expect(explore).toContainText('Change the setup. Predict what happens next.');
+  await expect(explore).toContainText('Current setup: 3 servers, 8 requests/s, Fewest unfinished.');
+  await expect(hero.getByText('Each change resets the run to a paused start')).toBeVisible();
 
   await expect(fourth).toBeEnabled();
   await fourth.check();
+  await expect(explore).toContainText('Current setup: 4 servers, 8 requests/s, Fewest unfinished.');
   await expect(hero.locator('tr[data-row="round-robin@8/4"]')).toBeVisible();
   await expect(hero.locator('tr[data-row="least-connections@8/4"]')).toBeVisible();
   await rule.selectOption({ label: roundRobin });
   await show.click();
+  await expect(show).toHaveText('Finish this run');
   await show.click();
   await expect(hero.locator('tr[data-row="round-robin@8/4"]')).toContainText('A 44, B 43, C 43, D 43');
+});
+
+test('home hero compares the same traffic in either rule order', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const totals: Record<typeof roundRobin | typeof leastConnections, string> = {
+    [roundRobin]: 'After 20 s: 173 arrived, 134 finished, 34 turned away, 5 still processing.',
+    [leastConnections]: 'After 20 s: 173 arrived, 171 finished, 0 turned away, 2 still processing.',
+  };
+  const plain = (label: string) => label.split(' (')[0];
+  for (const [first, second] of [
+    [roundRobin, leastConnections],
+    [leastConnections, roundRobin],
+  ] as const) {
+    await page.goto('');
+    const hero = page.getByRole('region', { name: 'Three servers. Why are people still waiting?' });
+    const panel = hero.getByTestId('routing-panel');
+    const rule = hero.getByRole('combobox', { name: 'Balancer rule' });
+    const phase = await island(hero.getByRole('button', { name: phaseName }));
+    const runButton = hero.getByRole('button', { name: 'Run', exact: true });
+    const next = hero.getByRole('button', { name: 'Next decision' });
+
+    const play = async (label: keyof typeof totals) => {
+      await runButton.click();
+      if (label === roundRobin) {
+        await expect(phase).toHaveText('Finish this run');
+        await expect(panel).toContainText(paused);
+      }
+      await next.click();
+      await expect(panel).toContainText('Request ');
+      await expect(phase).toHaveText('Show result');
+      await phase.click();
+      await expect(panel).toContainText(totals[label]);
+    };
+
+    await rule.selectOption({ label: first });
+    await hero.getByRole('radio', { name: /No, one queue overflows/ }).check();
+    await play(first);
+
+    await expect(phase).toHaveText('Compare the same traffic');
+    await phase.focus();
+    await page.keyboard.press('Enter');
+    await expect(rule.locator('option:checked')).toHaveText(second);
+    await expect(phase).toHaveText('Show result');
+    await expect(phase).toBeFocused();
+    const unobscured = await phase.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return rect.top >= 0 && rect.bottom <= window.innerHeight && !!hit && el.contains(hit);
+    });
+    expect(unobscured).toBe(true);
+    await expect(panel).toContainText('Press Run or Next decision');
+    await expect(runButton).toBeVisible();
+
+    await play(second);
+    await expect(phase).toHaveAttribute('aria-disabled', 'true');
+    const explore = hero.getByTestId('routing-explore');
+    await expect(explore).toContainText(`Starting prediction: three servers, 8 requests/s, ${plain(first)}.`);
+    await expect(explore).toContainText('Change the setup. Predict what happens next.');
+    await expect(explore).toContainText(`Current setup: 3 servers, 8 requests/s, ${plain(second)}.`);
+    await expect(hero.getByRole('radio')).toHaveCount(0);
+  }
 });
 
 for (const width of [390, 320]) {

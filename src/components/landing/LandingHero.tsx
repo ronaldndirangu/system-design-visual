@@ -36,6 +36,13 @@ const END_TIME = HOME_TICKS * HOME_TICK_SECONDS;
 const SECONDS_PER_TICK = 0.2;
 const TICKS_PER_SECOND = 10;
 const LOG_LINES = 40;
+const PAUSED_AT_REJECTION = `Paused at the first rejection. Continue to see the full ${END_TIME}-second result.`;
+
+type Answer = 'short' | 'overflow';
+const ANSWERS: readonly (readonly [Answer, string])[] = [
+  ['short', 'Yes, every queue stays short'],
+  ['overflow', 'No, one queue overflows'],
+];
 
 interface Setup {
   rate: number;
@@ -192,10 +199,14 @@ export default function LandingHero({ summaries }: LandingHeroProps) {
   const moreHint = useId();
   const compareId = useId();
   const stageRef = useRef<HTMLDivElement>(null);
+  const predictRef = useRef<HTMLFieldSetElement>(null);
+  const exploreRef = useRef<HTMLDivElement>(null);
+  const refocusExplore = useRef(false);
   const [scale, setScale] = useState(1);
   const [policy, setPolicy] = useState<HomePolicy>('round-robin');
   const [setup, setSetup] = useState<Setup>(DEFAULT_SETUP);
-  const [prediction, setPrediction] = useState<'short' | 'overflow' | null>(null);
+  const [prediction, setPrediction] = useState<Answer | null>(null);
+  const [predictedWith, setPredictedWith] = useState<HomePolicy>('round-robin');
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState<ReadonlySet<string>>(() => new Set());
   const cursorRef = useRef<Cursor>(START);
@@ -233,6 +244,8 @@ export default function LandingHero({ summaries }: LandingHeroProps) {
     const done: Cursor = { index: trace.events.length - 1, done: true, clock: END_TIME };
     setCursor(done);
     setRunning(false);
+    // Finishing the second baseline swaps the prediction radios for the exploration prompt.
+    refocusExplore.current = !!predictRef.current?.contains(document.activeElement);
     setFinished((seen) => new Set(seen).add(runKey(policy, setup)));
     announce(doneText(snapshotAt(trace, done)));
   }, [policy, setup, setCursor, announce]);
@@ -244,7 +257,7 @@ export default function LandingHero({ summaries }: LandingHeroProps) {
       if (!event) return;
       setCursor({ index, done: false, clock: event.time });
       setRunning(false);
-      announce(`${decisionText(policy, event, index)} ${rejectionWhy(policy, trace)}`);
+      announce(`${PAUSED_AT_REJECTION} ${decisionText(policy, event, index)} ${rejectionWhy(policy, trace)}`);
     },
     [policy, setup, setCursor, announce],
   );
@@ -271,6 +284,12 @@ export default function LandingHero({ summaries }: LandingHeroProps) {
   useEffect(() => {
     if (reduced) setRunning(false);
   }, [reduced]);
+
+  useEffect(() => {
+    if (!unlocked || !refocusExplore.current) return;
+    refocusExplore.current = false;
+    exploreRef.current?.focus();
+  }, [unlocked]);
 
   const choosePolicy = (next: HomePolicy) => {
     setPolicy(next);
@@ -337,6 +356,18 @@ export default function LandingHero({ summaries }: LandingHeroProps) {
     return cursor.index === current.rejectionIndex ? `${text} ${rejectionWhy(policy, current)}` : text;
   }
 
+  const pausedAtRejection =
+    !running &&
+    current !== null &&
+    !cursor.done &&
+    cursor.index >= 0 &&
+    cursor.index === current.rejectionIndex;
+  // After one baseline finishes, the result button offers the other rule on the same arrivals.
+  const compareRule =
+    isDefault && cursor.done
+      ? POLICIES.find((rule) => !finished.has(runKey(rule, DEFAULT_SETUP)))
+      : undefined;
+
   const overflowed =
     current !== null &&
     current.rejectionIndex >= 0 &&
@@ -371,34 +402,48 @@ export default function LandingHero({ summaries }: LandingHeroProps) {
         Three servers. Why are people still waiting?
       </h2>
 
-      <fieldset className="sdv-routing__predict">
-        <legend className="sdv-predict__question">
-          Two servers finish 5 requests/s. C finishes 1. Traffic averages 8 requests/s. Will taking turns keep
-          every queue short?
-        </legend>
-        <div className="sdv-choices">
-          {(
-            [
-              ['short', 'Yes, every queue stays short'],
-              ['overflow', 'No, one queue overflows'],
-            ] as const
-          ).map(([value, text], position) => (
-            <label key={value} className="sdv-choice">
-              <input
-                type="radio"
-                name={predictName}
-                checked={prediction === value}
-                disabled={!hydrated}
-                onChange={() => setPrediction(value)}
-              />
-              <span className="sdv-choice__key" aria-hidden="true">
-                {String.fromCharCode(65 + position)}
-              </span>
-              <span className="sdv-choice__text">{text}</span>
-            </label>
-          ))}
+      {unlocked ? (
+        <div ref={exploreRef} className="sdv-routing__predict" tabIndex={-1} data-testid="routing-explore">
+          {prediction && (
+            <p>
+              Starting prediction: three servers, {HOME_RATE} requests/s,{' '}
+              {homePolicyLabels[predictedWith].plain}. You answered:{' '}
+              {ANSWERS.find(([value]) => value === prediction)?.[1]}.
+            </p>
+          )}
+          <p className="sdv-predict__question">Change the setup. Predict what happens next.</p>
+          <p>
+            Current setup: {servers} servers, {setup.rate} requests/s, {homePolicyLabels[policy].plain}.
+          </p>
         </div>
-      </fieldset>
+      ) : (
+        <fieldset ref={predictRef} className="sdv-routing__predict">
+          <legend className="sdv-predict__question">
+            Two servers finish 5 requests/s. C finishes 1. Traffic averages 8 requests/s. Will taking turns
+            keep every queue short?
+          </legend>
+          <div className="sdv-choices">
+            {ANSWERS.map(([value, text], position) => (
+              <label key={value} className="sdv-choice">
+                <input
+                  type="radio"
+                  name={predictName}
+                  checked={prediction === value}
+                  disabled={!hydrated}
+                  onChange={() => {
+                    setPrediction(value);
+                    setPredictedWith(policy);
+                  }}
+                />
+                <span className="sdv-choice__key" aria-hidden="true">
+                  {String.fromCharCode(65 + position)}
+                </span>
+                <span className="sdv-choice__text">{text}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       <div className="sdv-routing__controls">
         <Segmented
@@ -414,7 +459,12 @@ export default function LandingHero({ summaries }: LandingHeroProps) {
           {/* biome-ignore lint/a11y/useSemanticElements: a labelled group of buttons, not a form section */}
           <div className="sdv-sim__toolbar sdv-routing__toolbar" role="group" aria-label="Replay controls">
             {!reduced && (
-              <Button variant="primary" icon={running ? 'pause' : 'play'} onClick={run} disabled={!hydrated}>
+              <Button
+                variant={compareRule ? undefined : 'primary'}
+                icon={running ? 'pause' : 'play'}
+                onClick={run}
+                disabled={!hydrated}
+              >
                 {running ? 'Pause' : cursor.done ? 'Run again' : 'Run'}
               </Button>
             )}
@@ -426,8 +476,17 @@ export default function LandingHero({ summaries }: LandingHeroProps) {
             >
               Next decision
             </Button>
-            <Button onClick={showResult} disabled={!hydrated} aria-disabled={cursor.done || undefined}>
-              Show result
+            <Button
+              variant={compareRule ? 'primary' : undefined}
+              onClick={compareRule ? () => choosePolicy(compareRule) : showResult}
+              disabled={!hydrated}
+              aria-disabled={(cursor.done && !compareRule) || undefined}
+            >
+              {compareRule
+                ? 'Compare the same traffic'
+                : pausedAtRejection
+                  ? 'Finish this run'
+                  : 'Show result'}
             </Button>
             <Button icon="reset" onClick={replay} disabled={!hydrated}>
               Replay
@@ -443,6 +502,7 @@ export default function LandingHero({ summaries }: LandingHeroProps) {
             role="group"
             aria-label="Decision explanation"
           >
+            {pausedAtRejection && <p className="sdv-routing__verdict">{PAUSED_AT_REJECTION}</p>}
             <p>{panelText()}</p>
             {verdict && <p className="sdv-routing__verdict">{verdict}</p>}
           </div>
@@ -542,7 +602,7 @@ export default function LandingHero({ summaries }: LandingHeroProps) {
         <legend>Try more traffic or a fourth server</legend>
         <p id={moreHint} className="sdv-control__hint">
           {unlocked
-            ? 'Each change replays both rules with the same kind of traffic.'
+            ? 'Each change resets the run to a paused start with the same kind of traffic. Nothing plays until you choose.'
             : 'Finish a run with both rules at 8/s to unlock these.'}
         </p>
         <Slider
