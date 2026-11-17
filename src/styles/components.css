@@ -71,6 +71,7 @@
 /* ---------- Landing routing challenge ---------- */
 
 .sdv-routing {
+  --sdv-target: 2.75rem;
   background: var(--sdv-surface);
   border: 1px solid var(--sdv-border);
   border-radius: var(--sdv-radius);
@@ -103,6 +104,14 @@
 }
 .sdv-routing .sdv-routing__toolbar {
   position: static;
+}
+.sdv-routing__stage,
+.sdv-routing__dock {
+  display: grid;
+  gap: 0.75rem;
+}
+.sdv-routing__stage {
+  gap: 1rem;
 }
 .sdv-routing__panel {
   background: var(--sdv-surface-2, var(--sl-color-gray-6));
@@ -171,6 +180,40 @@
 .sdv-routing__results th {
   font-variant-numeric: tabular-nums;
 }
+.sdv-routing__compare {
+  display: grid;
+  gap: 0.75rem;
+}
+.sdv-routing__compare-caption {
+  font-weight: 600;
+  margin: 0;
+}
+.sdv-routing__compare ul {
+  display: grid;
+  font-variant-numeric: tabular-nums;
+  gap: 0.35rem;
+  margin: 0.4rem 0 0;
+  padding-left: 1.25rem;
+}
+.sdv-routing__compare li {
+  margin: 0;
+}
+/* On a phone the dock stays under the site header while the diagram scrolls beneath it, so the explanation, the controls and the queues share the screen. */
+@media (max-width: 40rem) {
+  .sdv-routing__dock {
+    background: var(--sdv-surface);
+    box-shadow: 0 1px 0 var(--sdv-border);
+    padding-block: 0.5rem;
+    position: sticky;
+    top: var(--sl-nav-height, 4rem);
+    z-index: 2;
+  }
+  .sdv-routing__panel {
+    max-height: min(12rem, 30dvh);
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+}
 .sdv-routing__pending {
   color: var(--sl-color-gray-3);
 }
@@ -206,14 +249,21 @@
   .sdv-routing > * {
     grid-column: 1 / -1;
   }
+  .sdv-routing__stage,
+  .sdv-routing__dock {
+    display: contents;
+  }
   .sdv-routing > .sdv-routing__predict,
   .sdv-routing > .sdv-routing__controls,
-  .sdv-routing > .sdv-routing__panel {
+  .sdv-routing__dock > .sdv-routing__toolbar,
+  .sdv-routing__dock > .sdv-routing__panel {
     grid-column: 1;
+    min-width: 0;
   }
-  .sdv-routing > .sdv-routing__diagram {
+  .sdv-routing__stage > .sdv-routing__diagram {
     grid-column: 2;
-    grid-row: 2 / span 3;
+    grid-row: 2 / span 4;
+    min-width: 0;
   }
 }
 .sdv-landing {

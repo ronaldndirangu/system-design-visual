@@ -66,16 +66,15 @@ const policyName = (policy: HomePolicy) =>
   `${homePolicyLabels[policy].plain} (${homePolicyLabels[policy].technical})`;
 const perSecond = (value: number) => String(Number(value.toFixed(2)));
 
+const capacitiesFor = (setup: Setup) => (setup.fourth ? HOME_FOURTH_SERVER : HOME_CAPACITIES);
+
 const prepared = new Map<string, Prepared>();
+/** Replays one rule. Runs on demand after the reader acts, never during hydration. */
 function prepare(policy: HomePolicy, setup: Setup): Prepared {
   const key = runKey(policy, setup);
   const hit = prepared.get(key);
   if (hit) return hit;
-  const run = runRouting({
-    policy,
-    capacities: setup.fourth ? HOME_FOURTH_SERVER : HOME_CAPACITIES,
-    rate: setup.rate,
-  });
+  const run = runRouting({ policy, capacities: capacitiesFor(setup), rate: setup.rate });
   const events = run.frames.flatMap((frame) => frame.events);
   const made: Prepared = {
     run,
@@ -87,10 +86,6 @@ function prepare(policy: HomePolicy, setup: Setup): Prepared {
   return made;
 }
 
-const STATIC_RESULTS = [DEFAULT_SETUP, { rate: HOME_RATE, fourth: true }].flatMap((setup) =>
-  POLICIES.map((policy) => prepare(policy, setup).summary),
-);
-
 interface Snapshot {
   arrived: number;
   served: number;
@@ -99,6 +94,11 @@ interface Snapshot {
   queues: number[];
   sent: number[];
   event: AssignmentEvent | null;
+}
+
+function idleSnapshot(servers: number): Snapshot {
+  const zeros = Array.from({ length: servers }, () => 0);
+  return { arrived: 0, served: 0, rejected: 0, inFlight: 0, queues: zeros, sent: zeros, event: null };
 }
 
 /** Counts right after decision `index`. Every arrival is one decision, so prefix sums give the totals. */
@@ -168,17 +168,29 @@ function sentText(sent: readonly number[]): string {
   return sent.map((count, id) => `${serverName(id)} ${count}`).join(', ');
 }
 
+/** One finished run in a sentence. "Chosen" because the slow server's count includes requests it turned away. */
+function compactText(policy: HomePolicy, summary: RoutingSummary, capacities: readonly number[]): string {
+  const slow = capacities.indexOf(Math.min(...capacities));
+  return `${homePolicyLabels[policy].plain}: ${summary.served} finished, ${summary.rejected} turned away, ${summary.inFlight} still processing. ${serverName(slow)} chosen ${summary.assigned[slow] ?? 0} times.`;
+}
+
+interface LandingHeroProps {
+  /** Totals for both rules at the default rate with three and four servers, computed at build time. */
+  summaries: readonly RoutingSummary[];
+}
+
 /**
  * The home page routing challenge. The same arrivals replay through two balancer
  * rules, one decision at a time, so the learner sees why taking turns overloads the slow server.
  */
-export default function LandingHero() {
+export default function LandingHero({ summaries }: LandingHeroProps) {
   const hydrated = useHydrated();
   const reduced = usePrefersReducedMotion();
   const { message, announce, push } = useAnnouncer();
   const arrowId = safeId(useId(), 'routing-arrow');
   const predictName = useId();
   const moreHint = useId();
+  const compareId = useId();
   const stageRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   const [policy, setPolicy] = useState<HomePolicy>('round-robin');
@@ -193,8 +205,21 @@ export default function LandingHero() {
     setCursorState(next);
   }, []);
 
-  const current = prepare(policy, setup);
-  const snapshot = snapshotAt(current, cursor);
+  const servers = capacitiesFor(setup).length;
+  const findSummary = (rule: HomePolicy, each: Setup) =>
+    summaries.find(
+      (summary) =>
+        summary.policy === rule &&
+        summary.rate === each.rate &&
+        summary.servers === capacitiesFor(each).length,
+    );
+  const summaryFor = (rule: HomePolicy, each: Setup) =>
+    findSummary(rule, each) ?? prepare(rule, each).summary;
+  const known = findSummary(policy, setup);
+  // The start screen reads build-time totals, so the trace is only replayed once the reader acts.
+  const current = running || cursor.index >= 0 || cursor.done || !known ? prepare(policy, setup) : null;
+  const snapshot = current ? snapshotAt(current, cursor) : idleSnapshot(servers);
+  const arrivals = (current?.summary ?? known)?.arrived ?? 0;
   const unlocked = POLICIES.every((each) => finished.has(runKey(each, DEFAULT_SETUP)));
   const isDefault = setupKey(setup) === setupKey(DEFAULT_SETUP);
 
@@ -204,30 +229,33 @@ export default function LandingHero() {
   }, [setCursor]);
 
   const finish = useCallback(() => {
-    const done: Cursor = { index: current.events.length - 1, done: true, clock: END_TIME };
+    const trace = prepare(policy, setup);
+    const done: Cursor = { index: trace.events.length - 1, done: true, clock: END_TIME };
     setCursor(done);
     setRunning(false);
     setFinished((seen) => new Set(seen).add(runKey(policy, setup)));
-    announce(doneText(snapshotAt(current, done)));
-  }, [current, policy, setup, setCursor, announce]);
+    announce(doneText(snapshotAt(trace, done)));
+  }, [policy, setup, setCursor, announce]);
 
   const stopAtRejection = useCallback(
     (index: number) => {
-      const event = current.events[index];
+      const trace = prepare(policy, setup);
+      const event = trace.events[index];
       if (!event) return;
       setCursor({ index, done: false, clock: event.time });
       setRunning(false);
-      announce(`${decisionText(policy, event, index)} ${rejectionWhy(policy, current)}`);
+      announce(`${decisionText(policy, event, index)} ${rejectionWhy(policy, trace)}`);
     },
-    [current, policy, setCursor, announce],
+    [policy, setup, setCursor, announce],
   );
 
   const onTick = () => {
+    const trace = prepare(policy, setup);
     const { index, clock } = cursorRef.current;
     const next = clock + SECONDS_PER_TICK;
     let target = index;
-    while ((current.events[target + 1]?.time ?? Number.POSITIVE_INFINITY) <= next) target += 1;
-    const rejection = current.rejectionIndex;
+    while ((trace.events[target + 1]?.time ?? Number.POSITIVE_INFINITY) <= next) target += 1;
+    const rejection = trace.rejectionIndex;
     if (rejection >= 0 && index < rejection && target >= rejection) {
       stopAtRejection(rejection);
       return;
@@ -270,13 +298,14 @@ export default function LandingHero() {
     const { index, done } = cursorRef.current;
     if (done) return;
     setRunning(false);
+    const trace = prepare(policy, setup);
     const nextIndex = index + 1;
-    const event = current.events[nextIndex];
+    const event = trace.events[nextIndex];
     if (!event) {
       finish();
       return;
     }
-    if (nextIndex === current.rejectionIndex) {
+    if (nextIndex === trace.rejectionIndex) {
       stopAtRejection(nextIndex);
       return;
     }
@@ -288,7 +317,8 @@ export default function LandingHero() {
     const { index, done } = cursorRef.current;
     if (done) return;
     setRunning(false);
-    if (current.rejectionIndex > index) stopAtRejection(current.rejectionIndex);
+    const rejection = prepare(policy, setup).rejectionIndex;
+    if (rejection > index) stopAtRejection(rejection);
     else finish();
   };
 
@@ -298,16 +328,19 @@ export default function LandingHero() {
   };
 
   function panelText(): string {
-    if (cursor.done) return doneText(snapshot);
     const event = snapshot.event;
-    if (!event) {
-      return `Press Run or Next decision. Both rules see the same ${current.run.totals.arrived} arrivals over ${END_TIME} seconds.`;
+    if (current && cursor.done) return doneText(snapshot);
+    if (!current || !event) {
+      return `Press Run or Next decision. Both rules see the same ${arrivals} arrivals over ${END_TIME} seconds.`;
     }
     const text = decisionText(policy, event, cursor.index);
     return cursor.index === current.rejectionIndex ? `${text} ${rejectionWhy(policy, current)}` : text;
   }
 
-  const overflowed = current.rejectionIndex >= 0 && (cursor.done || cursor.index >= current.rejectionIndex);
+  const overflowed =
+    current !== null &&
+    current.rejectionIndex >= 0 &&
+    (cursor.done || cursor.index >= current.rejectionIndex);
   const verdict =
     prediction && isDefault && policy === 'round-robin' && overflowed
       ? prediction === 'overflow'
@@ -315,12 +348,12 @@ export default function LandingHero() {
         : 'You predicted every queue stays short. One queue overflowed.'
       : '';
 
-  const rows: { key: string; setup: Setup; policy: HomePolicy }[] = [
-    DEFAULT_SETUP,
-    ...(isDefault ? [] : [setup]),
-  ].flatMap((each) => POLICIES.map((rule) => ({ key: runKey(rule, each), setup: each, policy: rule })));
+  const setups = isDefault ? [DEFAULT_SETUP] : [DEFAULT_SETUP, setup];
+  const rows: { key: string; setup: Setup; policy: HomePolicy }[] = setups.flatMap((each) =>
+    POLICIES.map((rule) => ({ key: runKey(rule, each), setup: each, policy: rule })),
+  );
 
-  const log = current.events
+  const log = (current?.events ?? [])
     .slice(Math.max(0, cursor.index + 1 - LOG_LINES), cursor.index + 1)
     .map((event, offset) => {
       const index = Math.max(0, cursor.index + 1 - LOG_LINES) + offset;
@@ -328,7 +361,7 @@ export default function LandingHero() {
     })
     .reverse();
 
-  const diagramLabel = `Users send ${setup.rate} requests per second on average to a balancer and ${current.run.capacities.length} servers. Unfinished requests: ${snapshot.queues
+  const diagramLabel = `Users send ${setup.rate} requests per second on average to a balancer and ${servers} servers. Unfinished requests: ${snapshot.queues
     .map((queue, id) => `${serverName(id)} ${queue} of ${HOME_QUEUE_LIMIT}`)
     .join(', ')}. Sent so far: ${sentText(snapshot.sent)}.`;
 
@@ -374,58 +407,100 @@ export default function LandingHero() {
           options={POLICIES.map((value) => ({ value, label: policyName(value) }))}
           onChange={choosePolicy}
         />
-        {/* biome-ignore lint/a11y/useSemanticElements: a labelled group of buttons, not a form section */}
-        <div className="sdv-sim__toolbar sdv-routing__toolbar" role="group" aria-label="Replay controls">
-          {!reduced && (
-            <Button variant="primary" icon={running ? 'pause' : 'play'} onClick={run} disabled={!hydrated}>
-              {running ? 'Pause' : cursor.done ? 'Run again' : 'Run'}
+      </div>
+
+      <div className="sdv-routing__stage">
+        <div className="sdv-routing__dock">
+          {/* biome-ignore lint/a11y/useSemanticElements: a labelled group of buttons, not a form section */}
+          <div className="sdv-sim__toolbar sdv-routing__toolbar" role="group" aria-label="Replay controls">
+            {!reduced && (
+              <Button variant="primary" icon={running ? 'pause' : 'play'} onClick={run} disabled={!hydrated}>
+                {running ? 'Pause' : cursor.done ? 'Run again' : 'Run'}
+              </Button>
+            )}
+            <Button
+              icon="step"
+              onClick={nextDecision}
+              disabled={!hydrated}
+              aria-disabled={cursor.done || undefined}
+            >
+              Next decision
             </Button>
-          )}
-          <Button
-            icon="step"
-            onClick={nextDecision}
-            disabled={!hydrated}
-            aria-disabled={cursor.done || undefined}
+            <Button onClick={showResult} disabled={!hydrated} aria-disabled={cursor.done || undefined}>
+              Show result
+            </Button>
+            <Button icon="reset" onClick={replay} disabled={!hydrated}>
+              Replay
+            </Button>
+          </div>
+
+          {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would add form semantics to an explanation */}
+          <div
+            className="sdv-routing__panel"
+            data-testid="routing-panel"
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: on a phone the explanation scrolls inside a capped box, so it must be reachable by keyboard
+            tabIndex={0}
+            role="group"
+            aria-label="Decision explanation"
           >
-            Next decision
-          </Button>
-          <Button onClick={showResult} disabled={!hydrated} aria-disabled={cursor.done || undefined}>
-            Show result
-          </Button>
-          <Button icon="reset" onClick={replay} disabled={!hydrated}>
-            Replay
-          </Button>
+            <p>{panelText()}</p>
+            {verdict && <p className="sdv-routing__verdict">{verdict}</p>}
+          </div>
         </div>
-      </div>
 
-      <div className="sdv-routing__panel" data-testid="routing-panel">
-        <p>{panelText()}</p>
-        {verdict && <p className="sdv-routing__verdict">{verdict}</p>}
-      </div>
-
-      <div className="sdv-routing__diagram">
-        <DiagramScroll label="Routing diagram" onScale={setScale}>
-          <LandingRoutingDiagram
-            capacities={current.run.capacities}
-            rate={setup.rate}
-            queues={snapshot.queues}
-            sent={snapshot.sent}
-            candidates={new Set(snapshot.event?.candidates.map((candidate) => candidate.id) ?? [])}
-            chosen={snapshot.event?.chosen ?? null}
-            outcome={snapshot.event?.outcome ?? null}
-            decisionKey={cursor.index}
-            minFont={readableFont(scale)}
-            arrowId={arrowId}
-            label={diagramLabel}
-          />
-        </DiagramScroll>
+        <div className="sdv-routing__diagram">
+          <DiagramScroll label="Routing diagram" onScale={setScale}>
+            <LandingRoutingDiagram
+              capacities={capacitiesFor(setup)}
+              rate={setup.rate}
+              queues={snapshot.queues}
+              sent={snapshot.sent}
+              candidates={new Set(snapshot.event?.candidates.map((candidate) => candidate.id) ?? [])}
+              chosen={snapshot.event?.chosen ?? null}
+              outcome={snapshot.event?.outcome ?? null}
+              decisionKey={cursor.index}
+              minFont={readableFont(scale)}
+              arrowId={arrowId}
+              label={diagramLabel}
+            />
+          </DiagramScroll>
+        </div>
       </div>
 
       <p className="sdv-visually-hidden" aria-live="polite">
         {message}
       </p>
 
-      <div className="sdv-routing__results">
+      <div className="sdv-routing__compare">
+        {setups.map((each, position) => {
+          const captionId = `${compareId}-${position}`;
+          const arrived = summaryFor(POLICIES[0] ?? policy, each).arrived;
+          const where =
+            position === 0 ? '' : `, ${each.rate} requests/s, ${capacitiesFor(each).length} servers`;
+          return (
+            <div key={setupKey(each)} className="sdv-routing__compare-group">
+              <p id={captionId} className="sdv-routing__compare-caption">
+                {arrived} arrivals over {END_TIME} seconds{where}
+              </p>
+              <ul aria-labelledby={captionId}>
+                {POLICIES.map((rule) => {
+                  const key = runKey(rule, each);
+                  return (
+                    <li key={key} data-compact={key}>
+                      {finished.has(key)
+                        ? compactText(rule, summaryFor(rule, each), capacitiesFor(each))
+                        : `${homePolicyLabels[rule].plain}: not finished yet.`}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+
+      <details className="sdv-sim__more sdv-routing__results">
+        <summary>Inspect all counts</summary>
         <DiagramScroll label="Results, scrolls sideways">
           <table>
             <caption>Same arrivals, {END_TIME} seconds per run</caption>
@@ -442,7 +517,7 @@ export default function LandingHero() {
             </thead>
             <tbody>
               {rows.map((row) => {
-                const summary = finished.has(row.key) ? prepare(row.policy, row.setup).summary : null;
+                const summary = finished.has(row.key) ? summaryFor(row.policy, row.setup) : null;
                 const blank = <span className="sdv-routing__pending">Run to see</span>;
                 return (
                   <tr key={row.key} data-row={row.key}>
@@ -461,7 +536,7 @@ export default function LandingHero() {
             </tbody>
           </table>
         </DiagramScroll>
-      </div>
+      </details>
 
       <fieldset className="sdv-routing__more" disabled={!unlocked || !hydrated} aria-describedby={moreHint}>
         <legend>Try more traffic or a fourth server</legend>
@@ -528,7 +603,7 @@ export default function LandingHero() {
               </tr>
             </thead>
             <tbody>
-              {STATIC_RESULTS.map((summary) => (
+              {summaries.map((summary) => (
                 <tr key={`${summary.policy}-${summary.servers}`}>
                   <th scope="row">{policyName(summary.policy)}</th>
                   <td>{summary.servers}</td>
