@@ -8,8 +8,9 @@ const L = labelReader(entry.labels);
 export const CACHE_HEIGHT = 250;
 
 const NODE_H = 58;
+const CACHE_W = 92;
 const app: Positioned = { x: 64, y: 48, w: 88, h: NODE_H };
-const cache: Positioned = { x: 250, y: 48, w: 92, h: NODE_H };
+const cache: Positioned = { x: 250, y: 48, w: CACHE_W, h: NODE_H };
 const database: Positioned = { x: 250, y: 196, w: 104, h: 62 };
 
 const slowFrom: Vec = [64, app.y + NODE_H / 2 + 6];
@@ -124,7 +125,7 @@ export function CacheWith({ idPrefix, thumb }: SceneProps) {
           <Show at={[0.48, 1]}>
             <rect
               className="sdv-concept__chip"
-              x={cache.x + cache.w / 2 - 12}
+              x={cache.x + CACHE_W / 2 - 12}
               y={cache.y - NODE_H / 2 - 5}
               width={16}
               height={10}
