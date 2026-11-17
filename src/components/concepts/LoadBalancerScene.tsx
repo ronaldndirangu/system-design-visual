@@ -157,7 +157,7 @@ export function LoadBalancerWith({ idPrefix, thumb }: SceneProps) {
       y={row}
       width={76}
       height={NODE_H}
-      label={thumb ? '' : L[key]}
+      label={thumb ? '' : L(key)}
       status={status}
     />
   );
