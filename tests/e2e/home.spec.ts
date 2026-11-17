@@ -31,6 +31,22 @@ test('home hero waits for the reader, then replays both rules to the pinned resu
   await expect(hero.getByText('You called it: one queue overflowed.')).toBeVisible();
   await expect(show).toHaveAttribute('aria-disabled', 'true');
 
+  const compact = hero.getByRole('list', { name: '173 arrivals over 20 seconds', exact: true });
+  const rrCompact = compact.locator('li[data-compact="round-robin@8/3"]');
+  const lcCompact = compact.locator('li[data-compact="least-connections@8/3"]');
+  await expect(rrCompact).toHaveText(
+    'Take turns: 134 finished, 34 turned away, 5 still processing. C chosen 57 times.',
+  );
+  await expect(lcCompact).toHaveText('Fewest unfinished: not finished yet.');
+  const counts =
+    ((await rrCompact.textContent()) ?? '').match(/\d+(?= (finished|turned away|still processing))/g) ?? [];
+  expect(counts.map(Number).reduce((sum, value) => sum + value, 0)).toBe(173);
+
+  const allCounts = hero.locator('details', { hasText: 'Inspect all counts' });
+  await expect(allCounts).not.toHaveAttribute('open');
+  await expect(allCounts.locator('table')).toBeHidden();
+  await allCounts.locator('summary').click();
+
   const fourth = hero.getByRole('switch', { name: 'Add a fourth server (D, 5/s)' });
   await expect(fourth).toBeDisabled();
   const rr = hero.locator('tr[data-row="round-robin@8/3"]');
@@ -53,6 +69,9 @@ test('home hero waits for the reader, then replays both rules to the pinned resu
     '2',
     'A 77, B 76, C 20',
   ]);
+  await expect(lcCompact).toHaveText(
+    'Fewest unfinished: 171 finished, 0 turned away, 2 still processing. C chosen 20 times.',
+  );
 
   await expect(fourth).toBeEnabled();
   await fourth.check();
@@ -63,6 +82,41 @@ test('home hero waits for the reader, then replays both rules to the pinned resu
   await show.click();
   await expect(hero.locator('tr[data-row="round-robin@8/4"]')).toContainText('A 44, B 43, C 43, D 43');
 });
+
+for (const width of [390, 320]) {
+  test(`home hero keeps the explanation beside every queue at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 640 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('');
+    const hero = page.getByRole('region', { name: 'Three servers. Why are people still waiting?' });
+    await (await island(hero.getByRole('button', { name: 'Show result' }))).click();
+    await expect(hero.getByTestId('routing-panel')).toContainText('turned away');
+
+    const fit = await page.evaluate(async () => {
+      const slots = () =>
+        [...document.querySelectorAll('.sdv-routing__slots')].map((el) => el.getBoundingClientRect());
+      window.scrollBy(0, Math.max(...slots().map((rect) => rect.bottom)) - window.innerHeight + 16);
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      const dock = document.querySelector('.sdv-routing__dock')?.getBoundingClientRect();
+      const panel = document.querySelector('[data-testid="routing-panel"]')?.getBoundingClientRect();
+      const labels = [...document.querySelectorAll('.sdv-routing__svg text')].map(
+        (el) => el.getBoundingClientRect().height,
+      );
+      return {
+        queues: slots().filter(
+          (rect) => rect.top >= (dock?.bottom ?? 0) - 1 && rect.bottom <= window.innerHeight + 1,
+        ).length,
+        panel: !!panel && panel.top >= 0 && panel.bottom <= window.innerHeight,
+        smallestLabel: Math.min(...labels),
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      };
+    });
+    expect(fit.queues).toBe(3);
+    expect(fit.panel).toBe(true);
+    expect(fit.smallestLabel).toBeGreaterThanOrEqual(12);
+    expect(fit.overflow).toBe(0);
+  });
+}
 
 test.describe('without JavaScript', () => {
   test.use({ javaScriptEnabled: false });
