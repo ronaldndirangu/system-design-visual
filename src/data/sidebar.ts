@@ -1,4 +1,4 @@
-import { concepts } from './concepts';
+import { conceptGroups } from './concepts';
 import { curriculum } from './curriculum';
 
 /** Matches Starlight's sidebar item shapes without importing its internal types. */
@@ -15,7 +15,10 @@ export function buildSidebar(): SidebarItem[] {
     label: 'Core concepts',
     items: [
       { slug: 'concepts', label: 'All concepts' },
-      ...concepts.map((entry) => ({ slug: `concepts/${entry.slug}`, label: entry.title })),
+      ...conceptGroups().map((group) => ({
+        label: group.title,
+        items: group.concepts.map((entry) => ({ slug: `concepts/${entry.slug}`, label: entry.title })),
+      })),
     ],
   };
 

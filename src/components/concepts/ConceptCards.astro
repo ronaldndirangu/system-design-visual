@@ -1,26 +1,27 @@
 ---
 import { concepts } from '../../data/concepts';
 import { withBase } from '../../lib/paths';
-import { scenes } from './scenes';
+import { loadScene } from './scenes';
+
+const cards = await Promise.all(
+  concepts.map(async (entry) => ({ entry, Scene: (await loadScene(entry.slug)).with })),
+);
 ---
 
 <div class="sdv-concept-cards not-content">
   <ul class="sdv-concept-cards__grid">
     {
-      concepts.map((entry) => {
-        const Scene = scenes[entry.slug].with;
-        return (
-          <li>
-            <a class="sdv-card sdv-concept-card" href={withBase(`/concepts/${entry.slug}/`)}>
-              <span class="sdv-concept-card__thumb">
-                <Scene idPrefix={`sdv-card-${entry.slug}`} thumb />
-              </span>
-              <span class="sdv-concept-card__title">{entry.title}</span>
-              <span class="sdv-concept-card__text">{entry.definition}</span>
-            </a>
-          </li>
-        );
-      })
+      cards.map(({ entry, Scene }) => (
+        <li>
+          <a class="sdv-card sdv-concept-card" href={withBase(`/concepts/${entry.slug}/`)}>
+            <span class="sdv-concept-card__thumb">
+              <Scene idPrefix={`sdv-card-${entry.slug}`} thumb />
+            </span>
+            <span class="sdv-concept-card__title">{entry.title}</span>
+            <span class="sdv-concept-card__text">{entry.definition}</span>
+          </a>
+        </li>
+      ))
     }
   </ul>
   <p class="sdv-concept-cards__credit">

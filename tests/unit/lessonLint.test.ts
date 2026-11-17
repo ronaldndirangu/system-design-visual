@@ -163,35 +163,63 @@ describe('lesson lint gate', () => {
 
 describe('concept lint', () => {
   const entry = concept('cache');
-  const quiz = (why: string) =>
-    `export const quiz = [{ id: 'c/q1', prompt: 'Which read is fastest?', options: [{ text: 'A cache hit', correct: true, why: '${why}' }] }];\n\n<Quiz questions={quiz} />`;
+  const page = (slug = entry.slug, title = entry.title) =>
+    `---\ntitle: ${title}\ndescription: ${entry.definition}\ntableOfContents: false\n---\n\nimport ConceptPage from '../../../components/concepts/ConceptPage.astro';\n\n<ConceptPage slug="${slug}" />\n`;
+  const [q1, q2] = entry.quiz;
+  if (!q1 || !q2) throw new Error('cache needs two quiz questions');
 
-  it('counts quiz prompts but skips explanations the reader sees only after answering', () => {
-    const short = conceptWords(entry, quiz('Short.'));
-    expect(conceptWords(entry, quiz(prose(80)))).toBe(short);
-    expect(conceptWords(entry, `${quiz('Short.')}\n\n${prose(10)}`)).toBe(short + 10);
+  it('counts quiz prompts and options but skips explanations the reader sees only after answering', () => {
+    const words = conceptWords(entry, page());
+    const longWhy = entry.quiz.map((q) => ({
+      ...q,
+      options: q.options.map((o) => ({ ...o, why: prose(80) })),
+    }));
+    expect(conceptWords({ ...entry, quiz: longWhy }, page())).toBe(words);
+    expect(
+      conceptWords({ ...entry, quiz: [{ ...q1, prompt: `${q1.prompt} ${prose(5)}` }, q2] }, page()),
+    ).toBe(words + 5);
+    expect(conceptWords(entry, `${page()}\n${prose(10)}\n`)).toBe(words + 10);
   });
 
-  it('flags a page over the word budget, a long definition and a long variant caption', () => {
-    const long = {
+  it('flags long text, wrong counts, bad quiz ids, off-site links and a page that skips the wrapper', () => {
+    const broken = {
       ...entry,
       definition: prose(26),
-      variants: entry.variants.map((variant, i) => (i === 0 ? { ...variant, caption: prose(13) } : variant)),
+      analogy: prose(26),
+      steps: [prose(21), ...entry.steps.slice(1)],
+      example: { title: prose(30), lines: [prose(31)] },
+      variants: entry.variants.slice(0, 1).map((variant) => ({ ...variant, caption: prose(13) })),
+      quiz: [{ ...q1, id: 'concepts/cache/one' }],
+      learnMore: [{ course: 'karan' as const, href: 'https://example.com/caching', label: 'Caching' }],
     };
-    const messages = lintConcept(long, prose(CONCEPT_WORD_BUDGET)).map((issue) => issue.message);
-    expect(messages).toHaveLength(3);
-    expect(messages[0]).toMatch(/visible words/);
-    expect(messages[1]).toMatch(/definition has 26 words/);
-    expect(messages[2]).toMatch(/caption has 13 words/);
+    const messages = lintConcept(broken, `${page('cdn', 'Caches')}${prose(CONCEPT_WORD_BUDGET)}`).map(
+      (issue) => `[${issue.rule}] ${issue.message}`,
+    );
+    expect(messages).toEqual([
+      expect.stringMatching(/^\[words\] \d+ visible words/),
+      '[words] definition has 26 words; keep it at 25 or fewer',
+      '[words] analogy has 26 words; keep it at 25 or fewer',
+      '[words] step 1 has 21 words; keep it at 20 or fewer',
+      '[words] example has 61 words; keep it at 60 or fewer',
+      expect.stringMatching(/^\[words\] "Cache-aside" caption has 13 words/),
+      '[shape] 1 variants; use 2 to 3',
+      '[shape] 1 quiz questions; use 2',
+      '[shape] 1 learn more links; use 2 to 3',
+      '[ids] question id "concepts/cache/one" should be "concepts/cache/q1"',
+      expect.stringMatching(/^\[links\] https:\/\/example\.com\/caching is not on a System Design site/),
+      '[page] render the page with <ConceptPage slug="cache" />',
+      '[page] frontmatter title should be "Cache"',
+      '[page] frontmatter description should match the definition',
+    ]);
   });
 
-  it('holds every shipped concept page to the budget', () => {
-    const failures = concepts.flatMap((page) => {
+  it('holds every shipped concept page to the template', () => {
+    const failures = concepts.flatMap((entry) => {
       const mdx = readFileSync(
-        new URL(`../../src/content/docs/concepts/${page.slug}.mdx`, import.meta.url),
+        new URL(`../../src/content/docs/concepts/${entry.slug}.mdx`, import.meta.url),
         'utf8',
       );
-      return lintConcept(page, mdx).map((issue) => `${page.slug} [${issue.rule}] ${issue.message}`);
+      return lintConcept(entry, mdx).map((issue) => `${entry.slug} [${issue.rule}] ${issue.message}`);
     });
     expect(failures).toEqual([]);
   });

@@ -1,20 +1,32 @@
 ---
-import { type ConceptSlug, concept } from '../../data/concepts';
+import { concept } from '../../data/concepts';
+import { loadScene } from './scenes';
 import { VariantArt } from './VariantArt';
 
 interface Props {
-  slug: ConceptSlug;
+  slug: string;
 }
 
 const { slug } = Astro.props;
 const entry = concept(slug);
+const scene = await loadScene(slug);
+if (scene.variants.length !== entry.variants.length) {
+  throw new Error(
+    `concept "${slug}" has ${entry.variants.length} variants in its data but ${scene.variants.length} drawings`,
+  );
+}
+const items = entry.variants.map((variant, index) => {
+  const draw = scene.variants[index];
+  if (!draw) throw new Error(`concept "${slug}" has no drawing for variant ${index}`);
+  return { variant, draw };
+});
 ---
 
 <ul class="sdv-concept-variants not-content" aria-label={`${entry.title} variants`}>
   {
-    entry.variants.map((variant, index) => (
+    items.map(({ variant, draw }, index) => (
       <li class="sdv-concept-variants__item">
-        <VariantArt slug={slug} index={index} variant={variant} idPrefix={`sdv-variant-${slug}-${index}`} />
+        <VariantArt draw={draw} variant={variant} idPrefix={`sdv-variant-${slug}-${index}`} />
         <p>
           <strong>{variant.name}</strong>
           <span>{variant.caption}</span>

@@ -1,10 +1,10 @@
 ---
-import { type ConceptSlug, concept, ILLUSTRATIVE_NOTE } from '../../data/concepts';
+import { concept, ILLUSTRATIVE_NOTE } from '../../data/concepts';
 import { UiIcon } from '../viz/icons';
-import { scenes } from './scenes';
+import { loadScene } from './scenes';
 
 interface Props {
-  slug: ConceptSlug;
+  slug: string;
   /** Unique on the page; defaults to the slug. */
   id?: string;
   /** Smaller frame for the home hero. */
@@ -15,8 +15,9 @@ const { slug, id = slug, compact = false } = Astro.props;
 const entry = concept(slug);
 const prefix = `sdv-concept-${id}`;
 const order = ['without', 'with'] as const;
-const Without = scenes[slug].without;
-const With = scenes[slug].with;
+const scene = await loadScene(slug);
+const Without = scene.without;
+const With = scene.with;
 ---
 
 <figure class="sdv-concept not-content" data-concept={slug} data-compact={compact ? '' : undefined}>

@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { concepts, type QuizQuestion } from '../../src/data/concepts';
 import { choiceOrder } from '../../src/lib/choiceOrder';
 
 const docsDir = fileURLToPath(new URL('../../src/content/docs/', import.meta.url));
@@ -22,6 +23,16 @@ interface Question {
 const evaluate = (source: string | undefined) => new Function(`return ${source}`)();
 
 const quizzes: Question[] = [];
+const addQuiz = (file: string, q: Pick<QuizQuestion, 'id' | 'ordered' | 'options'>) =>
+  quizzes.push({
+    file,
+    id: q.id,
+    ordered: q.ordered === true,
+    count: q.options.length,
+    answer: q.options.findIndex((option) => option.correct),
+    corrects: q.options.filter((option) => option.correct).length,
+    texts: q.options.map((option) => option.text),
+  });
 const predicts: Question[] = [];
 const arrays: [tag: string, name: string][] = [
   ['<Quiz', 'quiz'],
@@ -34,21 +45,7 @@ for (const file of lessons) {
   for (const name of names) {
     const block = text.match(new RegExp(`export const ${name} = (\\[[\\s\\S]*?\\n\\]);`));
     if (!block) throw new Error(`${file} renders questions without an "export const ${name}" array`);
-    for (const q of evaluate(block[1]) as {
-      id?: string;
-      ordered?: boolean;
-      options: { text: string; correct?: boolean }[];
-    }[]) {
-      quizzes.push({
-        file,
-        id: q.id,
-        ordered: q.ordered === true,
-        count: q.options.length,
-        answer: q.options.findIndex((option) => option.correct),
-        corrects: q.options.filter((option) => option.correct).length,
-        texts: q.options.map((option) => option.text),
-      });
-    }
+    for (const q of evaluate(block[1]) as QuizQuestion[]) addQuiz(file, q);
   }
   for (const tag of text.matchAll(/<Predict\b([\s\S]*?)\n>/g)) {
     const attrs = tag[1] ?? '';
@@ -66,6 +63,10 @@ for (const file of lessons) {
       texts,
     });
   }
+}
+
+for (const entry of concepts) {
+  for (const q of entry.quiz) addQuiz(`src/data/concepts/${entry.slug}.ts`, q);
 }
 
 const leadingNumber = (text: string) => {
