@@ -1,10 +1,19 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import {
+  CONCEPT_WORD_BUDGET,
+  type Concept,
+  conceptScreenText,
+  concepts,
+  DEFINITION_WORD_LIMIT,
+  VARIANT_CAPTION_WORD_LIMIT,
+} from '../src/data/concepts.ts';
 import { allLessons, type Lesson } from '../src/data/curriculum.ts';
 import {
   arrayQuestionIds,
   computeMinutes,
   corePath,
+  countWords,
   lessonStats,
   minutesAgree,
   questionArrays,
@@ -194,6 +203,41 @@ export function lintLesson(
   return issues;
 }
 
+/** Words a reader sees on a concept page. Quiz explanations stay hidden until the reader answers. */
+export function conceptWords(entry: Concept, mdx: string): number {
+  const visible = mdx.replace(/\bwhy:\s*(['"])(?:\\.|(?!\1)[^\\])*\1/g, "why: ''");
+  const drawn = conceptScreenText(entry).reduce((sum, text) => sum + countWords(text), 0);
+  return countWords(entry.title) + lessonStats(visible).words + drawn;
+}
+
+export function lintConcept(entry: Concept, mdx: string): LintIssue[] {
+  const issues: LintIssue[] = [];
+  const words = conceptWords(entry, mdx);
+  if (words > CONCEPT_WORD_BUDGET) {
+    issues.push({
+      rule: 'words',
+      message: `${words} visible words; keep it at ${CONCEPT_WORD_BUDGET} or fewer`,
+    });
+  }
+  const definition = countWords(entry.definition);
+  if (definition > DEFINITION_WORD_LIMIT) {
+    issues.push({
+      rule: 'words',
+      message: `definition has ${definition} words; keep it at ${DEFINITION_WORD_LIMIT} or fewer`,
+    });
+  }
+  for (const variant of entry.variants) {
+    const caption = countWords(variant.caption);
+    if (caption > VARIANT_CAPTION_WORD_LIMIT) {
+      issues.push({
+        rule: 'words',
+        message: `"${variant.name}" caption has ${caption} words; keep it at ${VARIANT_CAPTION_WORD_LIMIT} or fewer`,
+      });
+    }
+  }
+  return issues;
+}
+
 function main() {
   const quiet = process.argv.includes('--quiet');
   const legacy = new Set<string>(
@@ -218,9 +262,20 @@ function main() {
       process.stdout.write(`${level.padEnd(8)} ${lesson.id} [${issue.rule}] ${issue.message}\n`);
     }
   }
+  for (const entry of concepts) {
+    const mdx = readFileSync(
+      new URL(`../src/content/docs/concepts/${entry.slug}.mdx`, import.meta.url),
+      'utf8',
+    );
+    const issues = lintConcept(entry, mdx);
+    errors += issues.length;
+    for (const issue of issues) {
+      process.stdout.write(`${'error'.padEnd(8)} concepts/${entry.slug} [${issue.rule}] ${issue.message}\n`);
+    }
+  }
   if (errors > 0 || !quiet) {
     process.stdout.write(
-      `Lesson lint: ${errors} errors, ${warnings} warnings in ${allLessons.length} lessons\n`,
+      `Lesson lint: ${errors} errors, ${warnings} warnings in ${allLessons.length} lessons and ${concepts.length} concepts\n`,
     );
   }
   if (errors > 0) process.exitCode = 1;

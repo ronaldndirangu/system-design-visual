@@ -64,209 +64,24 @@
   font-size: var(--sl-text-sm);
   margin: 0;
 }
-.sdv-hero__challenge {
+.sdv-hero__concept {
+  display: grid;
+  gap: 0.5rem;
   min-width: 0;
 }
-
-/* ---------- Landing routing challenge ---------- */
-
-.sdv-routing {
-  --sdv-target: 2.75rem;
-  background: var(--sdv-surface);
-  border: 1px solid var(--sdv-border);
-  border-radius: var(--sdv-radius);
-  box-shadow: var(--sdv-shadow);
-  display: grid;
-  gap: 1rem;
-  padding: 1rem;
-}
-.sdv-routing > * {
-  margin: 0;
-  min-width: 0;
-}
-.sdv-routing .sdv-routing__title {
-  font-size: var(--sl-text-xl);
+.sdv-hero__concept .sdv-concept {
   margin: 0;
 }
-.sdv-routing__predict {
-  border: 0;
-  display: grid;
-  gap: 0.6rem;
-  padding: 0;
-}
-.sdv-routing__predict legend {
-  margin-bottom: 0.6rem;
-  padding: 0;
-}
-.sdv-routing__controls {
-  display: grid;
-  gap: 0.75rem;
-}
-.sdv-routing .sdv-routing__toolbar {
-  position: static;
-}
-.sdv-routing__stage,
-.sdv-routing__dock {
-  display: grid;
-  gap: 0.75rem;
-}
-.sdv-routing__stage {
-  gap: 1rem;
-}
-.sdv-routing__panel {
-  background: var(--sdv-surface-2, var(--sl-color-gray-6));
-  border-left: 3px solid var(--sl-color-accent);
-  border-radius: var(--sdv-radius-sm, 4px);
-  display: grid;
-  gap: 0.4rem;
-  min-height: 7.5rem;
-  padding: 0.75rem 1rem;
-}
-.sdv-routing__panel p {
-  margin: 0;
-}
-.sdv-routing__predict p {
-  margin: 0;
-}
-.sdv-routing__verdict {
-  font-weight: 600;
-}
-.sdv-routing__svg {
-  display: block;
-  height: auto;
-  overflow: visible;
-  width: 100%;
-}
-.sdv-routing__rate,
-.sdv-routing__count {
-  fill: var(--sl-color-gray-2);
-  font-variant-numeric: tabular-nums;
-}
-.sdv-routing__spare {
-  fill: none;
-  stroke: var(--sl-color-gray-4);
-  stroke-dasharray: 5 4;
-  stroke-width: 1.5;
-}
-.sdv-routing__slot {
-  fill: none;
-  stroke: var(--sl-color-gray-4);
-  stroke-width: 1.25;
-}
-.sdv-routing__slot[data-filled] {
-  fill: var(--sdv-queue);
-  stroke: var(--sdv-queue);
-}
-.sdv-routing__slots[data-full] .sdv-routing__slot[data-filled] {
-  fill: var(--sdv-warn);
-  stroke: var(--sdv-warn);
-}
-.sdv-routing__slots[data-rejected] .sdv-routing__slot {
-  stroke: var(--sdv-bad);
-  stroke-width: 2;
-}
-.sdv-routing__slots[data-rejected] .sdv-routing__slot[data-filled] {
-  fill: var(--sdv-bad);
-}
-.sdv-routing__dot {
-  animation: sdv-routing-drop 220ms ease-out both;
-}
-@keyframes sdv-routing-drop {
-  from {
-    transform: translate(var(--sdv-drop-x), var(--sdv-drop-y));
-  }
-  to {
-    transform: none;
-  }
-}
-.sdv-routing__results td,
-.sdv-routing__results th {
-  font-variant-numeric: tabular-nums;
-}
-.sdv-routing__compare {
-  display: grid;
-  gap: 0.75rem;
-}
-.sdv-routing__compare-caption {
-  font-weight: 600;
-  margin: 0;
-}
-.sdv-routing__compare ul {
-  display: grid;
-  font-variant-numeric: tabular-nums;
-  gap: 0.35rem;
-  margin: 0.4rem 0 0;
-  padding-left: 1.25rem;
-}
-.sdv-routing__compare li {
-  margin: 0;
-}
-/* On a phone the dock stays under the site header while the diagram scrolls beneath it, so the explanation, the controls and the queues share the screen. */
-@media (max-width: 40rem) {
-  .sdv-routing__dock {
-    background: var(--sdv-surface);
-    box-shadow: 0 1px 0 var(--sdv-border);
-    padding-block: 0.5rem;
-    position: sticky;
-    top: var(--sl-nav-height, 4rem);
-    z-index: 2;
-  }
-  .sdv-routing__panel {
-    max-height: min(12rem, 30dvh);
-    overflow-y: auto;
-    overscroll-behavior-y: contain;
-  }
-}
-.sdv-routing__pending {
-  color: var(--sl-color-gray-3);
-}
-.sdv-routing__more {
-  border: 1px solid var(--sdv-border);
-  border-radius: var(--sdv-radius);
-  display: grid;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem 1rem;
-}
-.sdv-routing__more legend {
-  font-weight: 600;
-  padding-inline: 0.25rem;
-}
-.sdv-routing__more[disabled] > :not(legend):not(.sdv-control__hint) {
-  opacity: 0.55;
-}
-.sdv-routing__assumptions {
-  color: var(--sl-color-gray-2);
-  font-size: var(--sl-text-sm);
-}
-.sdv-routing__log {
-  font-size: var(--sl-text-sm);
-  margin: 0;
-  padding-left: 1.25rem;
+.sdv-hero__concept-link {
+  align-items: center;
+  display: inline-flex;
+  font-weight: var(--sdv-weight-ui);
+  justify-self: start;
+  min-height: var(--sdv-target);
 }
 @media (min-width: 64rem) {
-  .sdv-routing {
-    align-items: start;
-    column-gap: 1.5rem;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
-  }
-  .sdv-routing > * {
-    grid-column: 1 / -1;
-  }
-  .sdv-routing__stage,
-  .sdv-routing__dock {
-    display: contents;
-  }
-  .sdv-routing > .sdv-routing__predict,
-  .sdv-routing > .sdv-routing__controls,
-  .sdv-routing__dock > .sdv-routing__toolbar,
-  .sdv-routing__dock > .sdv-routing__panel {
-    grid-column: 1;
-    min-width: 0;
-  }
-  .sdv-routing__stage > .sdv-routing__diagram {
-    grid-column: 2;
-    grid-row: 2 / span 4;
-    min-width: 0;
+  .sdv-hero {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 .sdv-landing {
@@ -3315,4 +3130,258 @@ a.sdv-map__link:hover {
   overflow-wrap: anywhere;
   text-decoration: underline;
   text-underline-offset: 0.2em;
+}
+
+/* Core concept pages: Without / With figure, variant minis and concept cards */
+.sdv-concept {
+  --sdv-target: 2.75rem;
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: var(--sdv-radius);
+  margin: 1.5rem 0;
+  padding: 0.75rem;
+}
+.sdv-concept__bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+.sdv-concept__toggle .sdv-segmented__group {
+  margin: 0;
+}
+.sdv-concept__controls {
+  display: flex;
+  gap: 0.5rem;
+  visibility: hidden;
+}
+.sdv-concept[data-ready] .sdv-concept__controls {
+  visibility: visible;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sdv-concept[data-ready] .sdv-concept__controls {
+    visibility: hidden;
+  }
+}
+.sdv-concept__icon--play,
+.sdv-concept[data-paused] .sdv-concept__icon--pause {
+  display: none;
+}
+.sdv-concept[data-paused] .sdv-concept__icon--play {
+  display: inline-flex;
+}
+.sdv-concept__stage {
+  container: sdv-concept / inline-size;
+  margin: 0.75rem auto 0;
+  max-inline-size: 28rem;
+}
+.sdv-concept:has(input[value="with"]:checked) [data-state="without"],
+.sdv-concept:has(input[value="without"]:checked) [data-state="with"] {
+  display: none;
+}
+.sdv-concept__svg,
+.sdv-concept__mini {
+  display: block;
+  height: auto;
+  overflow: visible;
+  width: 100%;
+}
+@container sdv-concept (width < 320px) {
+  .sdv-concept__svg {
+    --sdv-dscale: 1.143;
+  }
+}
+@container sdv-concept (width < 280px) {
+  .sdv-concept__svg {
+    --sdv-dscale: 1.334;
+  }
+}
+@container sdv-concept (width < 240px) {
+  .sdv-concept__svg {
+    --sdv-dscale: 1.6;
+  }
+}
+.sdv-concept__captions {
+  color: var(--sdv-text-1);
+  display: grid;
+  font-size: var(--sl-text-sm);
+  gap: 0.375rem;
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  counter-reset: sdv-step;
+}
+.sdv-concept__captions li {
+  align-items: baseline;
+  counter-increment: sdv-step;
+  display: flex;
+  gap: 0.5rem;
+  margin: 0;
+}
+.sdv-concept__captions li::before {
+  background: var(--sdv-accent);
+  border-radius: 999px;
+  color: var(--sdv-on-accent);
+  content: counter(sdv-step);
+  flex: none;
+  font-size: var(--sdv-text-xs, 0.75rem);
+  font-weight: 700;
+  inline-size: 1.25rem;
+  line-height: 1.25rem;
+  text-align: center;
+}
+.sdv-concept__fine {
+  color: var(--sdv-text-2);
+  font-size: var(--sl-text-xs);
+  margin: 0.5rem 0 0;
+  text-align: end;
+}
+.sdv-concept__dot {
+  opacity: 0;
+}
+.sdv-concept[data-playing] .sdv-concept__still {
+  display: none;
+}
+.sdv-concept__show[data-off] {
+  opacity: 0;
+}
+.sdv-concept__marker circle {
+  fill: var(--sdv-accent);
+}
+.sdv-concept__marker text {
+  fill: var(--sdv-on-accent);
+  font-size: max(13px, var(--sdv-text-floor));
+  font-weight: 700;
+}
+.sdv-concept__note,
+.sdv-concept__count,
+.sdv-concept__counter text {
+  fill: var(--sdv-text-2);
+  font-size: max(13px, var(--sdv-text-floor));
+  font-weight: 600;
+}
+.sdv-concept__count {
+  fill: var(--sdv-ok);
+}
+.sdv-concept__gauge-frame {
+  fill: none;
+  stroke: var(--sdv-border);
+}
+.sdv-concept__fill--ok {
+  fill: var(--sdv-ok);
+}
+.sdv-concept__fill--warn {
+  fill: var(--sdv-warn);
+}
+.sdv-concept__fill--bad {
+  fill: var(--sdv-bad);
+}
+.sdv-concept__chip {
+  fill: var(--sdv-ok);
+}
+.sdv-concept__land path {
+  fill: var(--sl-color-gray-5);
+  opacity: 0.5;
+}
+.sdv-concept__cut {
+  opacity: 0.45;
+}
+.sdv-concept__divider {
+  stroke: var(--sdv-border);
+  stroke-dasharray: 3 4;
+}
+.sdv-concept__edge--hit {
+  stroke: var(--sdv-ok);
+}
+.sdv-concept__edge--miss {
+  stroke: var(--sdv-warn);
+}
+.sdv-concept__edge--heavy {
+  stroke-width: 3;
+}
+.sdv-concept__edge--light {
+  stroke-dasharray: 2 4;
+}
+.sdv-concept__marker--small circle {
+  r: 9;
+}
+
+.sdv-concept-variants {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  list-style: none;
+  margin: 1.5rem 0;
+  padding: 0;
+}
+.sdv-concept-variants__item {
+  background: var(--sdv-surface);
+  border: 1px solid var(--sdv-border);
+  border-radius: var(--sdv-radius);
+  container: sdv-mini / inline-size;
+  margin: 0;
+  padding: 0.75rem;
+}
+.sdv-concept-variants__item p {
+  font-size: var(--sl-text-sm);
+  margin: 0.5rem 0 0;
+}
+.sdv-concept-variants__item strong {
+  display: block;
+}
+@container sdv-mini (width < 200px) {
+  .sdv-concept__mini {
+    --sdv-dscale: 1.25;
+  }
+}
+
+.sdv-concept-cards__grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sdv-concept-cards__grid li {
+  margin: 0;
+}
+.sdv-concept-card {
+  color: var(--sdv-text-1);
+  display: grid;
+  gap: 0.375rem;
+  height: 100%;
+  text-decoration: none;
+}
+.sdv-concept-card:hover,
+.sdv-concept-card:focus-visible {
+  border-color: var(--sdv-accent);
+}
+.sdv-concept-card__thumb {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+.sdv-concept-card__title {
+  font-size: var(--sl-text-lg);
+  font-weight: 700;
+}
+.sdv-concept-card__text {
+  color: var(--sdv-text-2);
+  font-size: var(--sl-text-sm);
+}
+.sdv-concept-cards__credit {
+  color: var(--sdv-text-2);
+  font-size: var(--sl-text-sm);
+  margin: 1rem 0 0;
+}
+.sdv-concept-lead {
+  color: var(--sdv-text-1);
+  font-size: var(--sl-text-lg);
+}
+.sdv-concept-deeper a {
+  align-items: center;
+  display: inline-flex;
+  font-weight: var(--sdv-weight-ui);
+  min-height: var(--sdv-target);
 }

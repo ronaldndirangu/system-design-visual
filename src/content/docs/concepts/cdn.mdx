@@ -1,0 +1,39 @@
+---
+title: CDN
+description: A content delivery network (CDN) keeps copies of files on servers around the world, so users download from a nearby one.
+tableOfContents: false
+---
+
+import ConceptFigure from '../../../components/concepts/ConceptFigure.astro';
+import ConceptVariants from '../../../components/concepts/ConceptVariants.astro';
+import Quiz from '../../../components/lesson/Quiz';
+import { concept } from '../../../data/concepts';
+import { lessonHref } from '../../../lib/paths';
+
+export const entry = concept('cdn');
+
+export const quiz = [
+  {
+    id: 'concepts/cdn/q1',
+    prompt: 'You fix a bug in app.js, but users keep getting the old file from the CDN. What is the usual fix?',
+    options: [
+      { text: 'Restart the origin server', why: 'The edges keep their copies until the TTL expires. A restart never reaches them.' },
+      { text: 'Publish the file under a new name, such as app.v2.js', correct: true, why: 'A new URL is a new cache entry, so every edge fetches the fixed file. Purging the old URL also works.' },
+      { text: 'Move the origin closer to users', why: 'Distance does not change which copy the edges hold.' },
+    ],
+  },
+];
+
+<p class="sdv-concept-lead">{entry.definition}</p>
+
+<ConceptFigure slug="cdn" />
+
+<ConceptVariants slug="cdn" />
+
+- **Use it when:** you serve static files, such as images, video and scripts, to users far apart.
+- **It costs:** money, plus stale files until a purge or TTL expiry; updates need versioned URLs.
+- **Real example:** images on a news site, or video streaming.
+
+<Quiz client:visible questions={quiz} title="Quick check" />
+
+<p class="sdv-concept-deeper"><a href={lessonHref(entry.lesson)}>Go deeper: CDNs</a></p>

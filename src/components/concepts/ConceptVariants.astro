@@ -1,0 +1,25 @@
+---
+import { type ConceptSlug, concept } from '../../data/concepts';
+import { VariantArt } from './VariantArt';
+
+interface Props {
+  slug: ConceptSlug;
+}
+
+const { slug } = Astro.props;
+const entry = concept(slug);
+---
+
+<ul class="sdv-concept-variants not-content" aria-label={`${entry.title} variants`}>
+  {
+    entry.variants.map((variant, index) => (
+      <li class="sdv-concept-variants__item">
+        <VariantArt slug={slug} index={index} variant={variant} idPrefix={`sdv-variant-${slug}-${index}`} />
+        <p>
+          <strong>{variant.name}</strong>
+          <span>{variant.caption}</span>
+        </p>
+      </li>
+    ))
+  }
+</ul>

@@ -117,7 +117,7 @@ export function SystemNode({
   );
 }
 
-function Shape({ kind, w, h }: { kind: ComponentKind; w: number; h: number }) {
+export function Shape({ kind, w, h }: { kind: ComponentKind; w: number; h: number }) {
   const left = -w / 2;
   const top = -h / 2;
   switch (kind) {

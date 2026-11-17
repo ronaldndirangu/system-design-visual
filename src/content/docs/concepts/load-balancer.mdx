@@ -1,0 +1,39 @@
+---
+title: Load balancer
+description: A load balancer spreads incoming requests across several servers and stops sending them to a server that fails.
+tableOfContents: false
+---
+
+import ConceptFigure from '../../../components/concepts/ConceptFigure.astro';
+import ConceptVariants from '../../../components/concepts/ConceptVariants.astro';
+import Quiz from '../../../components/lesson/Quiz';
+import { concept } from '../../../data/concepts';
+import { lessonHref } from '../../../lib/paths';
+
+export const entry = concept('load-balancer');
+
+export const quiz = [
+  {
+    id: 'concepts/load-balancer/q1',
+    prompt: 'Each server keeps shopping carts in its own memory. What breaks behind a load balancer?',
+    options: [
+      { text: 'The balancer runs out of memory', why: 'The balancer only forwards requests. The carts live on the servers.' },
+      { text: 'The next request can land on a server without the cart', correct: true, why: 'The balancer can pick a different server each time. Keep carts in a shared store, such as a database.' },
+      { text: 'Every server gets slower', why: 'Spreading requests makes each server less busy. The trouble is where the cart lives.' },
+    ],
+  },
+];
+
+<p class="sdv-concept-lead">{entry.definition}</p>
+
+<ConceptFigure slug="load-balancer" />
+
+<ConceptVariants slug="load-balancer" />
+
+- **Use it when:** one server can't keep up, or one failure must not take the site down.
+- **It costs:** an extra hop, a backup balancer, and session data kept off the servers.
+- **Real example:** a ticket site during a big sale.
+
+<Quiz client:visible questions={quiz} title="Quick check" />
+
+<p class="sdv-concept-deeper"><a href={lessonHref(entry.lesson)}>Go deeper: Load balancing</a></p>
