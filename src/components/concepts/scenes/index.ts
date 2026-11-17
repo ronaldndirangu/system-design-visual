@@ -5,9 +5,15 @@ import type { ConceptScene } from '../parts';
  * concept never grows another page's bundle. Register a scene with one line here.
  */
 const sceneLoaders: Record<string, () => Promise<{ default: ConceptScene }>> = {
+  'latency-throughput': () => import('./latency-throughput'),
+  availability: () => import('./availability'),
+  scaling: () => import('./scaling'),
+  dns: () => import('./dns'),
   'load-balancer': () => import('./load-balancer'),
+  'reverse-proxy': () => import('./reverse-proxy'),
   cache: () => import('./cache'),
   cdn: () => import('./cdn'),
+  'rate-limiting': () => import('./rate-limiting'),
 };
 
 export function hasScene(slug: string): boolean {

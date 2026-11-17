@@ -7,15 +7,31 @@
 
 import { course } from '../courses.ts';
 import { findLesson } from '../curriculum.ts';
+import availability from './availability.ts';
 import cache from './cache.ts';
 import cdn from './cdn.ts';
+import dns from './dns.ts';
+import latencyThroughput from './latency-throughput.ts';
 import loadBalancer from './load-balancer.ts';
+import rateLimiting from './rate-limiting.ts';
+import reverseProxy from './reverse-proxy.ts';
+import scaling from './scaling.ts';
 import { CONCEPT_GROUPS, type Concept, type ConceptGroup, type LabelReader } from './types.ts';
 
 export * from './types.ts';
 
 /** Display order: groups follow CONCEPT_GROUPS, and concepts keep this order inside their group. */
-export const concepts: Concept[] = [loadBalancer, cdn, cache];
+export const concepts: Concept[] = [
+  latencyThroughput,
+  availability,
+  scaling,
+  dns,
+  loadBalancer,
+  reverseProxy,
+  cdn,
+  rateLimiting,
+  cache,
+];
 
 export const CONCEPT_WORD_BUDGET = 350;
 export const DEFINITION_WORD_LIMIT = 25;
