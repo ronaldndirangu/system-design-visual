@@ -118,6 +118,29 @@ for (const width of [390, 320]) {
   });
 }
 
+test('home hero controls reach 44px with a fine pointer', async ({ page }) => {
+  await page.goto('');
+  const hero = page.getByRole('region', { name: 'Three servers. Why are people still waiting?' });
+  await island(hero.getByRole('button', { name: 'Run' }));
+  expect(await page.evaluate(() => matchMedia('(pointer: fine)').matches)).toBe(true);
+  const small = await hero.evaluate((root) => {
+    for (const details of root.querySelectorAll('details')) details.open = true;
+    return [
+      ...root.querySelectorAll<HTMLElement>(
+        'button, select, summary, .sdv-choice, .sdv-toggle, input[type="range"]',
+      ),
+    ]
+      .filter((el) => el.getClientRects().length > 0)
+      .map((el) => ({ el, rect: el.getBoundingClientRect() }))
+      .filter(({ rect }) => rect.width < 43.5 || rect.height < 43.5)
+      .map(
+        ({ el, rect }) =>
+          `${el.textContent?.trim().slice(0, 30)} ${Math.round(rect.width)}x${Math.round(rect.height)}`,
+      );
+  });
+  expect(small).toEqual([]);
+});
+
 test.describe('without JavaScript', () => {
   test.use({ javaScriptEnabled: false });
 

@@ -71,6 +71,7 @@
 /* ---------- Landing routing challenge ---------- */
 
 .sdv-routing {
+  --sdv-target: 2.75rem;
   background: var(--sdv-surface);
   border: 1px solid var(--sdv-border);
   border-radius: var(--sdv-radius);
