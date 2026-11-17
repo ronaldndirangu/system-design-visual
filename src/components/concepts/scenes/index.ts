@@ -25,6 +25,10 @@ const sceneLoaders: Record<string, () => Promise<{ default: ConceptScene }>> = {
   'real-time': () => import('./real-time'),
   'message-queue': () => import('./message-queue'),
   'pub-sub': () => import('./pub-sub'),
+  failover: () => import('./failover'),
+  retries: () => import('./retries'),
+  idempotency: () => import('./idempotency'),
+  'circuit-breaker': () => import('./circuit-breaker'),
 };
 
 export function hasScene(slug: string): boolean {

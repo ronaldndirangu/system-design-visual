@@ -12,9 +12,12 @@ import availability from './availability.ts';
 import cache from './cache.ts';
 import capTheorem from './cap-theorem.ts';
 import cdn from './cdn.ts';
+import circuitBreaker from './circuit-breaker.ts';
 import consistency from './consistency.ts';
 import consistentHashing from './consistent-hashing.ts';
 import dns from './dns.ts';
+import failover from './failover.ts';
+import idempotency from './idempotency.ts';
 import indexes from './indexes.ts';
 import latencyThroughput from './latency-throughput.ts';
 import loadBalancer from './load-balancer.ts';
@@ -23,6 +26,7 @@ import pubSub from './pub-sub.ts';
 import rateLimiting from './rate-limiting.ts';
 import realTime from './real-time.ts';
 import replication from './replication.ts';
+import retries from './retries.ts';
 import reverseProxy from './reverse-proxy.ts';
 import scaling from './scaling.ts';
 import sharding from './sharding.ts';
@@ -53,6 +57,10 @@ export const concepts: Concept[] = [
   realTime,
   messageQueue,
   pubSub,
+  failover,
+  retries,
+  idempotency,
+  circuitBreaker,
 ];
 
 export const CONCEPT_WORD_BUDGET = 350;
