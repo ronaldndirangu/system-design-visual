@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { dotFrames } from '../../src/components/concepts/player';
 import { hasScene, loadScene } from '../../src/components/concepts/scenes';
+import { keepNumbersWithWords } from '../../src/components/concepts/text';
 import { CONCEPT_GROUPS, conceptGroups, concepts } from '../../src/data/concepts';
 
 describe('concept registry', () => {
@@ -37,5 +38,15 @@ describe('concept player keyframes', () => {
     const offsets = dotFrames('0,0 3,0', at).map((frame) => frame.offset ?? 0);
     expect(offsets.every((offset) => offset >= 0 && offset <= 1)).toBe(true);
     expect(offsets).toEqual([...offsets].sort((a, b) => a - b));
+  });
+});
+
+describe('concept caption text', () => {
+  it('keeps each number on the same line as the word after it', () => {
+    expect(keepNumbersWithWords('Each round trip takes about 250 ms')).toBe(
+      'Each round trip takes about 250\u00a0ms',
+    );
+    expect(keepNumbersWithWords('4 × 250 ms = 1,000 ms.')).toBe('4\u00a0× 250\u00a0ms = 1,000\u00a0ms.');
+    expect(keepNumbersWithWords('Server B fails')).toBe('Server B fails');
   });
 });

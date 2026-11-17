@@ -52,8 +52,8 @@ const cdn: Concept = {
   example: {
     title: 'A page with 4 round trips',
     lines: [
-      'From the origin in Virginia: 4 × 250 ms = 1,000 ms.',
-      'From an edge in Nairobi: 4 × 10 ms = 40 ms.',
+      'From the origin in Virginia: 4 × 250\u00a0ms = 1,000\u00a0ms.',
+      'From an edge in Nairobi: 4 × 10\u00a0ms = 40\u00a0ms.',
       'The origin sends one copy per edge.',
     ],
   },
@@ -101,7 +101,7 @@ const cdn: Concept = {
     {
       id: 'concepts/cdn/q2',
       prompt:
-        'An edge caches logo.png for 1 hour. You replace it at the origin. How long can users see the old logo?',
+        'An edge caches logo.png for 1\u00a0hour. You replace it at the origin. How long can users see the old logo?',
       options: [
         {
           text: 'Up to 1 hour',
