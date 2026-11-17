@@ -1,0 +1,28 @@
+---
+import { courses } from '../../data/courses';
+---
+
+<ul class="sdv-course-list not-content">
+  {
+    courses.map((entry) => (
+      <li class="sdv-card sdv-course">
+        <h3 class="sdv-course__name">
+          <a href={entry.url}>{entry.name}</a>
+        </h3>
+        <p class="sdv-course__meta">
+          {entry.author} · {entry.license}
+        </p>
+        <p class="sdv-course__blurb">{entry.blurb}</p>
+        {entry.links && (
+          <ul class="sdv-course__more">
+            {entry.links.map((link) => (
+              <li>
+                <a href={link.url}>{link.label}</a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </li>
+    ))
+  }
+</ul>

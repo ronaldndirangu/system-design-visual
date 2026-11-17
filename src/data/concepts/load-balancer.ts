@@ -70,14 +70,14 @@ const loadBalancer: Concept = {
   ],
   tradeoffs: {
     useWhen: "one server can't keep up, or one failure must not take the site down.",
-    costs: 'an extra hop, a backup balancer, and session data kept off the servers.',
-    realExample: 'a ticket site during a big sale.',
+    costs: 'an extra hop, a spare balancer, and sessions stored off the servers.',
+    realExample: 'a concert ticket sale.',
     watchOut: 'a health check that only opens a port can pass while the app returns errors.',
   },
   quiz: [
     {
       id: 'concepts/load-balancer/q1',
-      prompt: 'Each server keeps shopping carts in its own memory. What breaks behind a load balancer?',
+      prompt: 'Each server keeps carts in its own memory. What breaks behind a load balancer?',
       options: [
         {
           text: 'The balancer runs out of memory',
@@ -97,17 +97,17 @@ const loadBalancer: Concept = {
     {
       id: 'concepts/load-balancer/q2',
       prompt:
-        'Each server handles 1,000 requests per second. Peak is 2,500, and you must survive one failure. How many servers?',
+        'Each server handles 500 requests per second. Peak is 1,800, and one may fail. How many servers?',
       ordered: true,
       options: [
-        { text: '2', why: 'Two servers handle only 2,000 requests per second, short of the peak.' },
-        { text: '3', why: 'Three cover the peak, but if one fails the other two handle only 2,000.' },
+        { text: '3', why: 'Three servers handle only 1,500 requests per second, short of the 1,800 peak.' },
+        { text: '4', why: 'Four cover the peak, but if one fails the other three handle only 1,500.' },
         {
-          text: '4',
+          text: '5',
           correct: true,
-          why: 'Three cover 2,500 requests per second, and the fourth keeps it covered when one fails.',
+          why: '1,800 ÷ 500 = 3.6, so the peak needs 4. The fifth keeps it covered when one fails.',
         },
-        { text: '5', why: 'Five works, but one spare already covers a single failure.' },
+        { text: '6', why: 'Six works, but one spare already covers a single failure.' },
       ],
     },
   ],
@@ -121,6 +121,11 @@ const loadBalancer: Concept = {
       course: 'karan',
       href: 'https://github.com/karanpratapsingh/system-design#load-balancing',
       label: 'Load balancing',
+    },
+    {
+      course: 'bytebytego',
+      href: 'https://bytebytego.com/guides/what-is-a-load-balancer/',
+      label: 'What is a load balancer?',
     },
   ],
 };

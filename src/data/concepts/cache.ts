@@ -112,6 +112,11 @@ const cache: Concept = {
   learnMore: [
     { course: 'primer', href: 'https://github.com/donnemartin/system-design-primer#cache', label: 'Cache' },
     { course: 'karan', href: 'https://github.com/karanpratapsingh/system-design#caching', label: 'Caching' },
+    {
+      course: 'bytebytego',
+      href: 'https://bytebytego.com/guides/top-5-caching-strategies/',
+      label: 'Top 5 caching strategies',
+    },
   ],
 };
 

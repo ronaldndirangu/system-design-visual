@@ -43,7 +43,7 @@ export const courses: Course[] = [
     url: 'https://github.com/ByteByteGoHq/system-design-101',
     license: 'CC BY-NC-ND 4.0',
     blurb: 'Short visual guides to how common systems and protocols work.',
-    links: [{ label: 'Guides', url: 'https://bytebytego.com/guides/' }],
+    links: [{ label: 'Visual guides', url: 'https://bytebytego.com/guides/' }],
   },
   {
     id: 'scalability',
@@ -67,7 +67,7 @@ export const courses: Course[] = [
     author: 'Martin Kleppmann, University of Cambridge',
     url: 'https://www.cl.cam.ac.uk/teaching/2122/ConcDisSys/dist-sys-notes.pdf',
     license: 'CC BY-SA 4.0',
-    blurb: 'Eight lectures with notes on time, replication, consensus and consistency.',
+    blurb: 'Notes (PDF) and videos for eight lectures on time, replication, consensus and consistency.',
     links: [
       {
         label: 'Lecture videos',

@@ -130,6 +130,11 @@ const cdn: Concept = {
       href: 'https://github.com/karanpratapsingh/system-design#content-delivery-network-cdn',
       label: 'Content Delivery Network (CDN)',
     },
+    {
+      course: 'bytebytego',
+      href: 'https://bytebytego.com/guides/what-is-cdn-content-delivery-network/',
+      label: 'What is a CDN?',
+    },
   ],
 };
 
