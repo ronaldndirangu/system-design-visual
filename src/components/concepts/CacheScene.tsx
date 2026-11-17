@@ -122,7 +122,14 @@ export function CacheWith({ idPrefix, thumb }: SceneProps) {
           <SlowEdge marker={marker} />
           <Nodes thumb={thumb} withCache />
           <Show at={[0.48, 1]}>
-            <rect className="sdv-concept__chip" x={268} y={60} width={16} height={10} rx={2} />
+            <rect
+              className="sdv-concept__chip"
+              x={cache.x + cache.w / 2 - 12}
+              y={cache.y - NODE_H / 2 - 5}
+              width={16}
+              height={10}
+              rx={2}
+            />
           </Show>
           <Note x={156} y={38} text={L('fast')} thumb={thumb} />
           <Note x={124} y={148} text={L('slow')} thumb={thumb} />
