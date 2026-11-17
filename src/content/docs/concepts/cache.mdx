@@ -1,0 +1,39 @@
+---
+title: Cache
+description: A cache keeps a copy of often-read data in fast memory, so repeat reads skip the slower database.
+tableOfContents: false
+---
+
+import ConceptFigure from '../../../components/concepts/ConceptFigure.astro';
+import ConceptVariants from '../../../components/concepts/ConceptVariants.astro';
+import Quiz from '../../../components/lesson/Quiz';
+import { concept } from '../../../data/concepts';
+import { lessonHref } from '../../../lib/paths';
+
+export const entry = concept('cache');
+
+export const quiz = [
+  {
+    id: 'concepts/cache/q1',
+    prompt: 'A price changes in the database, but the product page shows the old price for another minute. Why?',
+    options: [
+      { text: 'The database write failed', why: 'The database holds the new price. Reads skip it while the cached copy stays fresh.' },
+      { text: 'The cache is too small', why: 'A full cache evicts entries, which causes misses. Misses read the new price.' },
+      { text: 'The cache serves its old copy until the TTL expires', correct: true, why: 'Reads hit the cached copy. Delete it when the price changes, or use a shorter TTL.' },
+    ],
+  },
+];
+
+<p class="sdv-concept-lead">{entry.definition}</p>
+
+<ConceptFigure slug="cache" />
+
+<ConceptVariants slug="cache" />
+
+- **Use it when:** the same data is read far more often than it changes.
+- **It costs:** stale data, work to clear old copies, and extra memory.
+- **Real example:** a popular product page.
+
+<Quiz client:visible questions={quiz} title="Quick check" />
+
+<p class="sdv-concept-deeper"><a href={lessonHref(entry.lesson)}>Go deeper: Caching</a></p>

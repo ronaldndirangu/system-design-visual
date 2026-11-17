@@ -1,3 +1,4 @@
+import { concepts } from './concepts';
 import { curriculum } from './curriculum';
 
 /** Matches Starlight's sidebar item shapes without importing its internal types. */
@@ -10,6 +11,14 @@ type SidebarItem =
  * lesson, then its checkpoint. `slug` items make the build fail if a page is missing.
  */
 export function buildSidebar(): SidebarItem[] {
+  const core: SidebarItem = {
+    label: 'Core concepts',
+    items: [
+      { slug: 'concepts', label: 'All concepts' },
+      ...concepts.map((entry) => ({ slug: `concepts/${entry.slug}`, label: entry.title })),
+    ],
+  };
+
   const start: SidebarItem = {
     label: 'Start here',
     items: [
@@ -48,5 +57,5 @@ export function buildSidebar(): SidebarItem[] {
     }),
   );
 
-  return [start, review, ...modules];
+  return [core, start, review, ...modules];
 }

@@ -1,0 +1,30 @@
+---
+import { concepts } from '../../data/concepts';
+import { withBase } from '../../lib/paths';
+import { scenes } from './scenes';
+---
+
+<div class="sdv-concept-cards not-content">
+  <ul class="sdv-concept-cards__grid">
+    {
+      concepts.map((entry) => {
+        const Scene = scenes[entry.slug].with;
+        return (
+          <li>
+            <a class="sdv-card sdv-concept-card" href={withBase(`/concepts/${entry.slug}/`)}>
+              <span class="sdv-concept-card__thumb">
+                <Scene idPrefix={`sdv-card-${entry.slug}`} thumb />
+              </span>
+              <span class="sdv-concept-card__title">{entry.title}</span>
+              <span class="sdv-concept-card__text">{entry.definition}</span>
+            </a>
+          </li>
+        );
+      })
+    }
+  </ul>
+  <p class="sdv-concept-cards__credit">
+    Topic list inspired by the <a href="https://github.com/donnemartin/system-design-primer">System Design Primer</a> (CC
+    BY 4.0)
+  </p>
+</div>
