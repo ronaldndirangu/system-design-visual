@@ -16,7 +16,11 @@ type Point = [number, number];
 
 function windowOf(raw: string | undefined): [number, number] {
   const [a = 0, b = 1] = (raw ?? '').split(' ').map(Number);
-  return [a, b];
+  return [clamp(a), clamp(b)];
+}
+
+function clamp(offset: number): number {
+  return Math.min(Math.max(offset, 0), 1);
 }
 
 function translate([x, y]: Point): string {
@@ -39,7 +43,8 @@ export function dotFrames(path: string, at: string): Keyframe[] {
   if (a > 0) frames.push({ offset: a, opacity: 0, transform: translate(first) });
   points.forEach((point, i) => {
     frames.push({
-      offset: a + ((b - a) * (lengths[i] ?? 0)) / total,
+      // Rounding can push the last point a hair past b, which makes the browser reject every frame.
+      offset: Math.min(b, a + ((b - a) * (lengths[i] ?? 0)) / total),
       opacity: 1,
       transform: translate(point),
     });
