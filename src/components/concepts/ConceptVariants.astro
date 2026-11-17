@@ -29,7 +29,7 @@ const items = entry.variants.map((variant, index) => {
       <li class="sdv-concept-variants__item">
         <VariantArt draw={draw} variant={variant} idPrefix={`sdv-variant-${slug}-${index}`} />
         <p>
-          <strong>{variant.name}</strong>
+          <strong>{keepNumbersWithWords(variant.name)}</strong>
           <span>{keepNumbersWithWords(variant.caption)}</span>
         </p>
       </li>

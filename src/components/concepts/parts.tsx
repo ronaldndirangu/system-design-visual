@@ -2,6 +2,7 @@ import type { ComponentType, ReactNode } from 'react';
 import type { ConceptStateId, LabelReader } from '../../data/concepts/types';
 import type { Vec } from '../viz/geometry';
 import { ArrowDefs } from '../viz/SystemNode';
+import { keepNumbersWithWords } from './text';
 
 /** Width of every concept drawing's viewBox; CSS keys its text scale to this. */
 export const SCENE_W = 320;
@@ -55,7 +56,7 @@ export function SceneFrame({ idPrefix, thumb, height, title, description, childr
       focusable="false"
     >
       <title id={`${idPrefix}-title`}>{title}</title>
-      {description && <desc id={`${idPrefix}-desc`}>{description}</desc>}
+      {description && <desc id={`${idPrefix}-desc`}>{keepNumbersWithWords(description)}</desc>}
       {body}
     </svg>
   );

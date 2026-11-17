@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { dotFrames } from '../../src/components/concepts/player';
 import { hasScene, loadScene } from '../../src/components/concepts/scenes';
-import { keepNumbersWithWords } from '../../src/components/concepts/text';
+import { keepNumbersWithWords, keepQuizNumbersWithWords } from '../../src/components/concepts/text';
 import { CONCEPT_GROUPS, conceptGroups, concepts } from '../../src/data/concepts';
 
 describe('concept registry', () => {
@@ -41,12 +41,30 @@ describe('concept player keyframes', () => {
   });
 });
 
-describe('concept caption text', () => {
+describe('concept text', () => {
   it('keeps each number on the same line as the word after it', () => {
     expect(keepNumbersWithWords('Each round trip takes about 250 ms')).toBe(
       'Each round trip takes about 250\u00a0ms',
     );
     expect(keepNumbersWithWords('4 × 250 ms = 1,000 ms.')).toBe('4\u00a0× 250\u00a0ms = 1,000\u00a0ms.');
     expect(keepNumbersWithWords('Server B fails')).toBe('Server B fails');
+  });
+
+  it('keeps numbers with their words across a concept quiz without touching the source', () => {
+    const source = [
+      {
+        id: 'concepts/demo/q1',
+        prompt: 'A server handles 500 requests a second.',
+        options: [{ text: '2 servers', correct: true, why: 'Each takes 250 requests.' }],
+      },
+    ];
+    const [question] = keepQuizNumbersWithWords(source);
+    expect(question?.prompt).toBe('A server handles 500\u00a0requests a second.');
+    expect(question?.options[0]).toEqual({
+      text: '2\u00a0servers',
+      correct: true,
+      why: 'Each takes 250\u00a0requests.',
+    });
+    expect(source[0]?.prompt).toBe('A server handles 500 requests a second.');
   });
 });
