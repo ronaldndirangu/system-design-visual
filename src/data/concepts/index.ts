@@ -13,15 +13,20 @@ import cache from './cache.ts';
 import capTheorem from './cap-theorem.ts';
 import cdn from './cdn.ts';
 import consistency from './consistency.ts';
+import consistentHashing from './consistent-hashing.ts';
 import dns from './dns.ts';
+import indexes from './indexes.ts';
 import latencyThroughput from './latency-throughput.ts';
 import loadBalancer from './load-balancer.ts';
 import messageQueue from './message-queue.ts';
 import pubSub from './pub-sub.ts';
 import rateLimiting from './rate-limiting.ts';
 import realTime from './real-time.ts';
+import replication from './replication.ts';
 import reverseProxy from './reverse-proxy.ts';
 import scaling from './scaling.ts';
+import sharding from './sharding.ts';
+import sqlVsNosql from './sql-vs-nosql.ts';
 import { CONCEPT_GROUPS, type Concept, type ConceptGroup, type LabelReader } from './types.ts';
 
 export * from './types.ts';
@@ -36,7 +41,12 @@ export const concepts: Concept[] = [
   reverseProxy,
   cdn,
   rateLimiting,
+  sqlVsNosql,
+  indexes,
+  replication,
+  sharding,
   cache,
+  consistentHashing,
   capTheorem,
   consistency,
   apis,
