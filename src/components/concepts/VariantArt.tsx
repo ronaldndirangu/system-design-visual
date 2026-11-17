@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { ConceptSlug, ConceptVariant } from '../../data/concepts';
+import { type ConceptSlug, type ConceptVariant, type LabelReader, labelReader } from '../../data/concepts';
 import type { Vec } from '../viz/geometry';
 import { KindIcon, StatusBadge } from '../viz/icons';
 import type { ComponentKind } from '../viz/kinds';
@@ -112,7 +112,7 @@ function Gauge({ x, y, share, bad }: { x: number; y: number; share: number; bad?
   );
 }
 
-type Art = (marker: string, labels: Record<string, string>) => ReactNode;
+type Art = (marker: string, labels: LabelReader) => ReactNode;
 
 function turnsPanel(ox: number, label: string, leastBusy: boolean, marker: string) {
   const xs = [18, 50, 82];
@@ -145,7 +145,7 @@ function turnsPanel(ox: number, label: string, leastBusy: boolean, marker: strin
   );
 }
 
-function layerPanel(ox: number, label: string, labels: Record<string, string> | null, marker: string) {
+function layerPanel(ox: number, label: string, labels: LabelReader | null, marker: string) {
   const left: Vec = [ox + (labels ? 32 : 26), 84];
   const right: Vec = [ox + (labels ? 80 : 74), 84];
   const lb: Vec = [ox + 50, 40];
@@ -162,8 +162,8 @@ function layerPanel(ox: number, label: string, labels: Record<string, string> | 
         <>
           <Packet at={on(left, 0.5)} tone="hit" />
           <Packet at={on(right, 0.5)} />
-          <Label x={left[0]} y={114} text={labels.images} />
-          <Label x={right[0]} y={114} text={labels.api} />
+          <Label x={left[0]} y={114} text={labels('images')} />
+          <Label x={right[0]} y={114} text={labels('api')} />
         </>
       ) : (
         <>
@@ -178,11 +178,11 @@ function layerPanel(ox: number, label: string, labels: Record<string, string> | 
 }
 
 function pairPanel(ox: number, standby: string | null, marker: string) {
-  const balancers: Vec[] = [
+  const balancers: [Vec, Vec] = [
     [ox + 30, 46],
     [ox + 72, 46],
   ];
-  const servers: Vec[] = [
+  const servers: [Vec, Vec] = [
     [ox + 30, 96],
     [ox + 72, 96],
   ];
@@ -211,21 +211,21 @@ const art: Record<ConceptSlug, Art[]> = {
   'load-balancer': [
     (marker, labels) => (
       <>
-        {turnsPanel(0, labels.turns, false, marker)}
+        {turnsPanel(0, labels('turns'), false, marker)}
         <Divider />
-        {turnsPanel(100, labels.busy, true, marker)}
+        {turnsPanel(100, labels('busy'), true, marker)}
       </>
     ),
     (marker, labels) => (
       <>
-        {layerPanel(0, labels.l4, null, marker)}
+        {layerPanel(0, labels('l4'), null, marker)}
         <Divider />
-        {layerPanel(100, labels.l7, labels, marker)}
+        {layerPanel(100, labels('l7'), labels, marker)}
       </>
     ),
     (marker, labels) => (
       <>
-        {pairPanel(0, labels.standby, marker)}
+        {pairPanel(0, labels('standby'), marker)}
         <Divider />
         {pairPanel(100, null, marker)}
       </>
@@ -264,7 +264,7 @@ const art: Record<ConceptSlug, Art[]> = {
         <Mini kind="client" x={30} y={50} w={44} h={30} />
         <Mini kind="cache" x={100} y={50} w={44} h={30} />
         <Mini kind="database" x={170} y={50} w={44} h={34} />
-        <Label x={136} y={24} text={labels.later} />
+        <Label x={136} y={24} text={labels('later')} />
         <Packet at={[134, 64]} response />
         <Packet at={[146, 64]} response />
         <Packet at={[66, 94]} tone="hit" response />
@@ -291,7 +291,7 @@ const art: Record<ConceptSlug, Art[]> = {
         <Mini kind="cdn" x={100} y={60} w={48} h={34} />
         <Mini kind="client" x={170} y={60} w={44} h={30} />
         <rect className="sdv-concept__chip" x={110} y={38} width={14} height={9} rx={2} />
-        <Label x={64} y={30} text={labels.upload} />
+        <Label x={64} y={30} text={labels('upload')} />
       </>
     ),
   ],
@@ -324,7 +324,7 @@ export function VariantArt({
       <title id={`${idPrefix}-title`}>{variant.name}</title>
       <desc id={`${idPrefix}-desc`}>{variant.description}</desc>
       <ArrowDefs id={marker} />
-      {draw(marker, variant.labels)}
+      {draw(marker, labelReader(variant.labels))}
     </svg>
   );
 }

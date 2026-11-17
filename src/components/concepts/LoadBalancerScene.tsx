@@ -1,10 +1,10 @@
-import { concept } from '../../data/concepts';
+import { concept, labelReader } from '../../data/concepts';
 import { lerp, link, type Positioned, type Vec } from '../viz/geometry';
 import { Edge, SystemNode } from '../viz/SystemNode';
 import { Dot, Marker, SceneFrame, type SceneProps, Show, Still } from './parts';
 
 const entry = concept('load-balancer');
-const L = entry.labels;
+const L = labelReader(entry.labels);
 export const LB_HEIGHT = 280;
 
 const NODE_H = 58;
@@ -65,7 +65,7 @@ export function LoadBalancerWithout({ idPrefix, thumb }: SceneProps) {
             y={users.y}
             width={users.w}
             height={NODE_H}
-            label={thumb ? '' : L.users}
+            label={thumb ? '' : L('users')}
           />
           <Show at={[0, 0.46]}>
             <SystemNode
@@ -74,7 +74,7 @@ export function LoadBalancerWithout({ idPrefix, thumb }: SceneProps) {
               y={server.y}
               width={server.w}
               height={NODE_H}
-              label={thumb ? '' : L.server}
+              label={thumb ? '' : L('server')}
             />
           </Show>
           <Show at={[0.46, 1]}>
@@ -84,7 +84,7 @@ export function LoadBalancerWithout({ idPrefix, thumb }: SceneProps) {
               y={server.y}
               width={server.w}
               height={NODE_H}
-              label={thumb ? '' : L.server}
+              label={thumb ? '' : L('server')}
               status="warn"
             />
           </Show>
@@ -188,7 +188,7 @@ export function LoadBalancerWith({ idPrefix, thumb }: SceneProps) {
             y={users.y}
             width={users.w}
             height={NODE_H}
-            label={thumb ? '' : L.users}
+            label={thumb ? '' : L('users')}
           />
           <SystemNode
             kind="loadBalancer"
@@ -196,7 +196,7 @@ export function LoadBalancerWith({ idPrefix, thumb }: SceneProps) {
             y={balancer.y}
             width={balancer.w}
             height={NODE_H}
-            label={thumb ? '' : L.balancer}
+            label={thumb ? '' : L('balancer')}
           />
           {server('a')}
           {server('c')}

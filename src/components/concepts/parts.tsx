@@ -161,6 +161,12 @@ export function Note({
   );
 }
 
+export function pointAt(path: Vec[], index: number): Vec {
+  const point = path[index];
+  if (!point) throw new Error(`no point ${index} on a path of ${path.length}`);
+  return point;
+}
+
 /** Points along a quadratic curve, for dots that follow a bent edge. */
 export function curve(from: Vec, via: Vec, to: Vec, steps = 8): Vec[] {
   const points: Vec[] = [];

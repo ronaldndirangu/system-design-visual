@@ -1,10 +1,10 @@
-import { concept } from '../../data/concepts';
+import { concept, labelReader } from '../../data/concepts';
 import { lerp, link, type Positioned, type Vec } from '../viz/geometry';
 import { Edge, SystemNode } from '../viz/SystemNode';
-import { curve, Dot, Marker, Note, SceneFrame, type SceneProps, Show, Still } from './parts';
+import { curve, Dot, Marker, Note, pointAt, SceneFrame, type SceneProps, Show, Still } from './parts';
 
 const entry = concept('cdn');
-const L = entry.labels;
+const L = labelReader(entry.labels);
 export const CDN_HEIGHT = 250;
 
 const NODE_H = 58;
@@ -38,7 +38,7 @@ function Places({ thumb }: { thumb?: boolean }) {
         y={origin.y}
         width={origin.w}
         height={NODE_H}
-        label={thumb ? '' : L.origin}
+        label={thumb ? '' : L('origin')}
       />
       <SystemNode
         kind="client"
@@ -46,10 +46,10 @@ function Places({ thumb }: { thumb?: boolean }) {
         y={users.y}
         width={users.w}
         height={NODE_H}
-        label={thumb ? '' : L.users}
+        label={thumb ? '' : L('users')}
       />
-      <Note x={origin.x} y={18} text={L.virginia} thumb={thumb} />
-      <Note x={users.x} y={244} text={L.nairobi} thumb={thumb} />
+      <Note x={origin.x} y={18} text={L('virginia')} thumb={thumb} />
+      <Note x={users.x} y={244} text={L('nairobi')} thumb={thumb} />
     </>
   );
 }
@@ -74,15 +74,15 @@ export function CdnWithout({ idPrefix, thumb }: SceneProps) {
             d={`M${farFrom[0]} ${farFrom[1]}Q${farVia[0]} ${farVia[1]} ${farTo[0]} ${farTo[1]}`}
             markerEnd={`url(#${marker})`}
           />
-          <Note x={128} y={150} text={L.far} thumb={thumb} />
+          <Note x={128} y={150} text={L('far')} thumb={thumb} />
           {starts.map((s) => (
             <Dot key={s} path={farPath} at={[s, s + 0.14]} />
           ))}
           {starts.map((s) => (
             <Dot key={`r${s}`} path={farBack} at={[s + 0.14, s + 0.28]} response />
           ))}
-          <Still at={farPath[2]} />
-          <Still at={farPath[6]} response />
+          <Still at={pointAt(farPath, 2)} />
+          <Still at={pointAt(farPath, 6)} response />
           <Marker n={1} x={250} y={140} at={0} thumb={thumb} />
           <Marker n={2} x={176} y={140} at={0.14} thumb={thumb} />
           <Marker n={3} x={150} y={56} at={0.5} thumb={thumb} />
@@ -117,13 +117,13 @@ export function CdnWith({ idPrefix, thumb }: SceneProps) {
             y={edge.y}
             width={edge.w}
             height={NODE_H}
-            label={thumb ? '' : L.edge}
+            label={thumb ? '' : L('edge')}
           />
           <Show at={[0.38, 1]}>
             <rect className="sdv-concept__chip" x={266} y={76} width={16} height={10} rx={2} />
           </Show>
-          <Note x={162} y={56} text={L.far} thumb={thumb} />
-          <Note x={264} y={150} text={L.near} thumb={thumb} anchor="start" />
+          <Note x={162} y={56} text={L('far')} thumb={thumb} />
+          <Note x={264} y={150} text={L('near')} thumb={thumb} anchor="start" />
           <Dot path={[near.from, near.to]} at={[0, 0.06]} />
           <Dot path={[far.from, far.to]} at={[0.06, 0.22]} tone="miss" />
           <Dot path={[far.to, far.from]} at={[0.22, 0.38]} response />

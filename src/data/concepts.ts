@@ -199,7 +199,7 @@ export const concepts: Concept[] = [
     variants: [
       {
         name: 'Pull',
-        caption: 'An edge fetches a file on its first request, then keeps a copy.',
+        caption: 'An edge fetches a file on first request, then keeps it.',
         description:
           'A user asks the edge for a file. The edge fetches it from the origin once and keeps it.',
         labels: {},
@@ -214,6 +214,17 @@ export const concepts: Concept[] = [
     ],
   },
 ];
+
+export type LabelReader = (key: string) => string;
+
+/** Reads a drawn label by key, so a renamed key fails the build instead of drawing nothing. */
+export function labelReader(labels: Record<string, string> = {}): LabelReader {
+  return (key) => {
+    const text = labels[key];
+    if (text === undefined) throw new Error(`missing label "${key}"`);
+    return text;
+  };
+}
 
 export function concept(slug: ConceptSlug): Concept {
   const found = concepts.find((entry) => entry.slug === slug);

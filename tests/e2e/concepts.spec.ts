@@ -1,8 +1,8 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { concepts } from '../../src/data/concepts';
+import { concept, concepts } from '../../src/data/concepts';
 import { documentOverflow } from './helpers';
 
-const lb = concepts[0];
+const lb = concept('load-balancer');
 
 /** Play states of the animations inside concept figures, ignoring page transitions elsewhere. */
 function figureAnimations(page: Page): Promise<string[]> {

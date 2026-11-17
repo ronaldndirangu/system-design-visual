@@ -176,7 +176,7 @@ describe('concept lint', () => {
     const long = {
       ...entry,
       definition: prose(26),
-      variants: [{ ...entry.variants[0], caption: prose(13) }, ...entry.variants.slice(1)],
+      variants: entry.variants.map((variant, i) => (i === 0 ? { ...variant, caption: prose(13) } : variant)),
     };
     const messages = lintConcept(long, prose(CONCEPT_WORD_BUDGET)).map((issue) => issue.message);
     expect(messages).toHaveLength(3);
