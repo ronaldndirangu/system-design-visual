@@ -2,13 +2,16 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import legacy from '../../scripts/lesson-lint-legacy.json';
 import {
+  conceptWords,
   countH2,
   type LintIssue,
   lessonKind,
   linkedLessons,
+  lintConcept,
   lintLesson,
   questionIds,
 } from '../../scripts/lint-lessons';
+import { CONCEPT_WORD_BUDGET, concept, concepts } from '../../src/data/concepts';
 import { allLessons, type Lesson } from '../../src/data/curriculum';
 import { computeMinutes, corePath } from '../../src/lib/minutes';
 
@@ -154,6 +157,39 @@ describe('lesson lint gate', () => {
         const mdx = readFileSync(new URL(`../../src/content/docs/${lesson.id}.mdx`, import.meta.url), 'utf8');
         return lintLesson(lesson, mdx).map((issue) => `${lesson.id} [${issue.rule}] ${issue.message}`);
       });
+    expect(failures).toEqual([]);
+  });
+});
+
+describe('concept lint', () => {
+  const entry = concept('cache');
+  const quiz = (why: string) =>
+    `export const quiz = [{ id: 'c/q1', prompt: 'Which read is fastest?', options: [{ text: 'A cache hit', correct: true, why: '${why}' }] }];\n\n<Quiz questions={quiz} />`;
+
+  it('counts quiz prompts but skips explanations the reader sees only after answering', () => {
+    const short = conceptWords(entry, quiz('Short.'));
+    expect(conceptWords(entry, quiz(prose(80)))).toBe(short);
+    expect(conceptWords(entry, `${quiz('Short.')}\n\n${prose(10)}`)).toBe(short + 10);
+  });
+
+  it('flags a page over the word budget, a long definition and a long variant caption', () => {
+    const long = {
+      ...entry,
+      definition: prose(26),
+      variants: [{ ...entry.variants[0], caption: prose(13) }, ...entry.variants.slice(1)],
+    };
+    const messages = lintConcept(long, prose(CONCEPT_WORD_BUDGET)).map((issue) => issue.message);
+    expect(messages).toHaveLength(3);
+    expect(messages[0]).toMatch(/visible words/);
+    expect(messages[1]).toMatch(/definition has 26 words/);
+    expect(messages[2]).toMatch(/caption has 13 words/);
+  });
+
+  it('holds every shipped concept page to the budget', () => {
+    const failures = concepts.flatMap((page) => {
+      const mdx = readFileSync(new URL(`../../src/content/docs/concepts/${page.slug}.mdx`, import.meta.url), 'utf8');
+      return lintConcept(page, mdx).map((issue) => `${page.slug} [${issue.rule}] ${issue.message}`);
+    });
     expect(failures).toEqual([]);
   });
 });
