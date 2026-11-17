@@ -7,12 +7,19 @@ hero:
   tagline: New to system design? Grow a link shortener from 100 users toward 100 million. Learn the basics, handle scale and failure, then design real products. Predict, test and defend each decision.
 ---
 
+import ConceptCards from '../../components/concepts/ConceptCards.astro';
 import CourseJourney from '../../components/landing/CourseJourney';
 import CurriculumMap from '../../components/landing/CurriculumMap.astro';
 import { journeyLessons } from '../../components/landing/journeyLessons';
 import ContinueLesson from '../../components/lesson/ContinueLesson.astro';
 import { firstLesson } from '../../data/coursePath';
 import { lessonHref, withBase } from '../../lib/paths';
+
+<section class="sdv-landing not-content" aria-labelledby="core-concepts">
+  <h2 id="core-concepts">Core concepts</h2>
+  <p class="sdv-section-lead">One idea per page. Play the picture, then compare life without it and with it.</p>
+  <ConceptCards />
+</section>
 
 <section class="sdv-landing not-content" aria-labelledby="journey">
   <h2 id="journey">Every fix raises the next question.</h2>

@@ -2,27 +2,13 @@
 import { LinkButton } from '@astrojs/starlight/components';
 import Default from '@astrojs/starlight/components/Hero.astro';
 import { firstLesson } from '../../data/coursePath';
-import {
-  HOME_CAPACITIES,
-  HOME_FOURTH_SERVER,
-  HOME_RATE,
-  type HomePolicy,
-  runRouting,
-  summarizeRouting,
-} from '../../lib/models/homeRouting';
-import { lessonHref } from '../../lib/paths';
-import LandingHero from '../landing/LandingHero';
+import { lessonHref, withBase } from '../../lib/paths';
+import ConceptFigure from '../concepts/ConceptFigure.astro';
 
 const route = Astro.locals.starlightRoute;
 const isHome = route.id === '';
 const hero = route.entry.data.hero;
 const title = hero?.title ?? route.entry.data.title;
-const policies: HomePolicy[] = ['round-robin', 'least-connections'];
-const summaries = isHome
-  ? [HOME_CAPACITIES, HOME_FOURTH_SERVER].flatMap((capacities) =>
-      policies.map((policy) => summarizeRouting(runRouting({ policy, capacities, rate: HOME_RATE }))),
-    )
-  : [];
 ---
 
 {
@@ -38,14 +24,17 @@ const summaries = isHome
               Start with one request
             </LinkButton>
           )}
-          <LinkButton href="#routing-challenge" variant="minimal">
-            Try the routing challenge
+          <LinkButton href={withBase('/concepts/')} variant="minimal">
+            Browse core concepts
           </LinkButton>
         </div>
         <p class="sdv-hero__note">Free. No account needed. Progress stays in this browser.</p>
       </div>
-      <div class="sdv-hero__challenge">
-        <LandingHero client:idle summaries={summaries} />
+      <div class="sdv-hero__concept">
+        <ConceptFigure slug="load-balancer" id="hero" compact />
+        <a class="sdv-hero__concept-link" href={withBase('/concepts/load-balancer/')}>
+          How a load balancer works
+        </a>
       </div>
     </div>
   ) : (

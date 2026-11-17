@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
+import { concepts } from '../../src/data/concepts';
 import { allLessons, curriculum } from '../../src/data/curriculum';
 import { documentOverflow, hydrateAll, island } from './helpers';
 
@@ -9,6 +10,11 @@ const pages = [
   { path: 'curriculum/', heading: /Course map/i },
   { path: 'visual-language/', heading: /Visual language/i },
   { path: 'reference/', heading: /Reference sheet/i },
+  { path: 'concepts/', heading: /Core concepts/i },
+  ...concepts.map((entry) => ({
+    path: `concepts/${entry.slug}/`,
+    heading: new RegExp(`^${escapeRegExp(entry.title)}$`, 'i'),
+  })),
   ...allLessons.map((lesson) => ({
     path: `${lesson.id}/`,
     heading: new RegExp(escapeRegExp(lesson.title), 'i'),
