@@ -1,5 +1,5 @@
 ---
-title: The server melts
+title: Load balancing
 description: Watch one server drown under a viral link, then rescue it with a bigger machine or a load balancer and more servers.
 furtherReading:
   - title: HTTP load balancing (NGINX documentation)
@@ -106,6 +106,8 @@ export const quiz = [
 
 <Recall questions={recall} />
 
+Distribute requests across servers for search, feeds or other services.
+
 <Objectives>
 
 - Explain why a server's response time explodes as it nears 100% busy.
@@ -117,8 +119,7 @@ export const quiz = [
 
 ## The failure: a link goes viral
 
-The URL shortener runs on one server that can redirect 100 requests per second. A celebrity posts a short link, and
-traffic jumps from 60 to 150 requests per second.
+**Worked example: a URL shortener.** Viral traffic rises from 60 to 150 requests per second; one server handles 100.
 
 <Predict
   client:visible

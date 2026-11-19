@@ -37,23 +37,42 @@ function block(css, selector) {
 }
 
 /** @param {string} body */
-function literals(body) {
+function declarations(body) {
   /** @type {Tokens} */
   const tokens = {};
-  for (const [, name, value] of body.matchAll(/--sdv-([\w-]+):\s*([^;]+);/g)) {
-    if (name && value && LITERAL.test(value.trim())) tokens[name] = value.trim().toLowerCase();
+  for (const [, name, value] of body.matchAll(/--((?:sdv|cp)-[\w-]+):\s*([^;]+);/g)) {
+    if (name && value) tokens[name] = value.trim().toLowerCase();
   }
   return tokens;
 }
 
 /**
- * Literal --sdv- colors per theme. The light theme inherits any dark token it does not override.
+ * Resolve palette aliases before checking the semantic --sdv- color pairs.
  * @param {string} css
  * @returns {{ dark: Tokens, light: Tokens }}
  */
 export function parseTokens(css) {
-  const dark = literals(block(css, ':root'));
-  const light = { ...dark, ...literals(block(css, ':root[data-theme="light"]')) };
+  const base = declarations(block(css, ':root'));
+  /** @param {Tokens} values */
+  const colors = (values) => {
+    /** @param {string} name @param {Set<string>} seen @returns {string | undefined} */
+    const resolveAlias = (name, seen = new Set()) => {
+      if (seen.has(name)) throw new Error(`Circular color token: ${name}`);
+      seen.add(name);
+      const value = values[name];
+      const alias = value?.match(/^var\(--([\w-]+)\)$/)?.[1];
+      return alias ? resolveAlias(alias, seen) : value && LITERAL.test(value) ? value : undefined;
+    };
+    /** @type {Tokens} */
+    const result = {};
+    for (const name of Object.keys(values).filter((key) => key.startsWith('sdv-'))) {
+      const value = resolveAlias(name);
+      if (value) result[name.slice(4)] = value;
+    }
+    return result;
+  };
+  const dark = colors({ ...base, ...declarations(block(css, 'html[data-theme="dark"]')) });
+  const light = colors({ ...base, ...declarations(block(css, ':root[data-theme="light"]')) });
   return { dark, light };
 }
 

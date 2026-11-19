@@ -1,0 +1,45 @@
+---
+import { conceptMetadata } from '../../data/conceptMetadata';
+import { findLesson } from '../../data/curriculum';
+import { journeys } from '../../data/journeys';
+import { lessonHref } from '../../lib/paths';
+---
+
+<ul class="sdv-system-grid not-content" data-concept-metadata={JSON.stringify(conceptMetadata)}>
+  {journeys.map((journey) => (
+    <li class="sdv-path-option" data-journey={journey.id}>
+      <h3>{journey.title}</h3>
+      <p>{journey.outcome}</p>
+      <p class="sdv-system-meta" data-journey-progress>4 stages, from fundamentals to a case study</p>
+      <div class="sdv-path-option__actions">
+        <a class="sdv-button sdv-button--primary" data-journey-action href={lessonHref(`journeys/${journey.id}`)}>Start learning path</a>
+        {journey.stages.map((stage) => stage.scenario && (
+          <a class="sdv-case-link" href={lessonHref(stage.scenario)} aria-label={`Open case study directly: ${findLesson(stage.scenario)?.title}`}>Open case study directly</a>
+        ))}
+      </div>
+    </li>
+  ))}
+</ul>
+
+<script>
+  import { type ConceptMetadata, journeyById, journeyProgress } from '../../data/journeys';
+  import { readProgress, subscribeProgress } from '../../lib/progress';
+
+  for (const root of document.querySelectorAll<HTMLElement>('.sdv-system-grid')) {
+    const metadata: ConceptMetadata = JSON.parse(root.dataset.conceptMetadata ?? '{}');
+    const paint = () => {
+      const progress = readProgress();
+      for (const card of root.querySelectorAll<HTMLElement>('[data-journey]')) {
+        const journey = journeyById(card.dataset.journey);
+        if (!journey) continue;
+        const status = journeyProgress(journey, progress, metadata);
+        const label = card.querySelector('[data-journey-progress]');
+        const action = card.querySelector('[data-journey-action]');
+        if (label) label.textContent = `${status.completed} of ${status.total} milestones complete`;
+        if (action) action.textContent = status.completed || progress.journey === journey.id ? 'Continue learning path' : 'Start learning path';
+      }
+    };
+    paint();
+    subscribeProgress(paint);
+  }
+</script>

@@ -6,6 +6,6 @@ export function withBase(path: string): string {
 }
 
 /** Link to a lesson page by its curriculum id. */
-export function lessonHref(id: string): string {
-  return withBase(`/${id}/`);
+export function lessonHref(id: string, journey?: string): string {
+  return withBase(`/${id}/`) + (journey ? `?journey=${encodeURIComponent(journey)}` : '');
 }

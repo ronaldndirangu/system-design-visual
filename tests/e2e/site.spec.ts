@@ -2,14 +2,30 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { concepts } from '../../src/data/concepts';
 import { allLessons, curriculum } from '../../src/data/curriculum';
+import { journeys } from '../../src/data/journeys';
 import { documentOverflow, hydrateAll, island } from './helpers';
 
 const pages = [
-  { path: './', heading: /Then it gets popular/i },
+  { path: './', heading: /Small ideas. Real systems./i },
+  { path: 'journeys/', heading: /Learning paths/i },
+  ...journeys.map((journey) => ({ path: `journeys/${journey.id}/`, heading: /learning path/i })),
   { path: 'start-here/', heading: /How this course works/i },
   { path: 'curriculum/', heading: /Course map/i },
-  { path: 'visual-language/', heading: /Visual language/i },
-  { path: 'reference/', heading: /Reference sheet/i },
+  { path: 'visual-language/', heading: /Diagram key/i },
+  { path: 'reference/', heading: /Estimation reference/i },
+  { path: 'glossary/', heading: /Glossary/i },
+  { path: 'review/', heading: /Review queue/i },
+  { path: 'topics/', heading: /Interview preparation/i },
+  ...curriculum.flatMap((module) => [
+    {
+      path: `cheat-sheets/${module.id}/`,
+      heading: new RegExp(`^Module summary: ${escapeRegExp(module.title)}$`),
+    },
+    {
+      path: `checkpoints/${module.id}/`,
+      heading: new RegExp(`^Checkpoint ${module.number}: ${escapeRegExp(module.title)}$`),
+    },
+  ]),
   { path: 'concepts/', heading: /Core concepts/i },
   ...concepts.map((entry) => ({
     path: `concepts/${entry.slug}/`,
@@ -184,7 +200,7 @@ test('marking a lesson complete updates the course map', async ({ page }) => {
 test('the course map links every module to its checkpoint', async ({ page, request }) => {
   const expected = curriculum.map((module) => `/system-design-visual/checkpoints/${module.id}/`);
   const links = page.locator('.sdv-map__checkpoint a');
-  for (const path of ['curriculum/', './']) {
+  for (const path of ['curriculum/']) {
     await page.goto(path);
     await expect(links, path).toHaveCount(curriculum.length);
     expect(await links.evaluateAll((anchors) => anchors.map((a) => a.getAttribute('href'))), path).toEqual(
@@ -211,10 +227,11 @@ test('the course map links every module to its checkpoint', async ({ page, reque
 
 test('the landing page offers a clear start', async ({ page }) => {
   await page.goto('./');
-  const start = page.getByRole('link', { name: /Start with one request/i }).first();
+  const start = page.getByRole('link', { name: /Start with fundamentals/i }).first();
   await expect(start).toBeVisible();
   await start.click();
-  await expect(page).toHaveURL(/\/system-design-visual\/(start-here|thinking)/);
+  await expect(page).toHaveURL(/\/system-design-visual\/#learn-fundamentals$/);
+  await expect(page.getByRole('heading', { name: 'Learn the fundamentals' })).toBeInViewport();
 });
 
 for (const { path, selector } of [

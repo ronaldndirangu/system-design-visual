@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import type { QuestionBank } from '../components/review/ReviewQueue';
+import { concepts } from '../data/concepts';
 import { findLesson, findModule } from '../data/curriculum';
 import { lessonHref, withBase } from '../lib/paths';
 
@@ -26,6 +27,13 @@ function pageFor(id: string): { title: string; href: string } | null {
 /** Every lesson quiz and module checkpoint, so the review page can show any due question. */
 export const GET: APIRoute = () => {
   const bank: QuestionBank = {};
+  for (const entry of concepts) {
+    bank[`concepts/${entry.slug}`] = {
+      title: `Visual concept: ${entry.title}`,
+      href: withBase(`/concepts/${entry.slug}/`),
+      questions: entry.quiz,
+    };
+  }
   for (const [path, source] of Object.entries(sources)) {
     const array = QUIZ_ARRAY.exec(source.replaceAll('\r\n', '\n'))?.[1];
     if (!array) continue;

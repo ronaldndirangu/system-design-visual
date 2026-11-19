@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { allLessons } from '../../data/curriculum';
+import { type ConceptMetadata, learningDone } from '../../data/journeys';
 import { readPractice, subscribePractice } from '../../lib/practiceProgress';
 import { completedCount, type ImportMode } from '../../lib/progress';
 import {
@@ -29,7 +30,7 @@ function plural(count: number, one: string, many: string): string {
 
 function summaryText({ completed, quizScores, cards, checkpoints, rounds }: StudySummary): string {
   return [
-    `${plural(completed, 'lesson', 'lessons')} complete`,
+    `${plural(completed, 'learning page', 'learning pages')} complete`,
     plural(quizScores, 'quiz score', 'quiz scores'),
     plural(cards, 'review card', 'review cards'),
     plural(checkpoints, 'checkpoint score', 'checkpoint scores'),
@@ -37,7 +38,7 @@ function summaryText({ completed, quizScores, cards, checkpoints, rounds }: Stud
   ].join(', ');
 }
 
-export default function ProgressReset() {
+export default function ProgressReset({ metadata }: { metadata: ConceptMetadata }) {
   const progress = useProgress();
   const review = useReview();
   const practice = useSyncExternalStore(subscribePractice, readPractice, () => null);
@@ -56,6 +57,8 @@ export default function ProgressReset() {
   const [confirming, setConfirming] = useState(false);
   const loading = progress === null || review === null || practice === null;
   const count = progress ? completedCount(progress, lessonIds) : 0;
+  const conceptIds = Object.keys(metadata);
+  const mastered = progress ? conceptIds.filter((id) => learningDone(progress, id, metadata)).length : 0;
   const hasData = !loading && hasStudyData({ progress, review, practice });
 
   useEffect(() => {
@@ -114,7 +117,7 @@ export default function ProgressReset() {
       <p aria-live="polite">
         {loading
           ? 'Loading your progress.'
-          : `${count} of ${lessonIds.length} lessons complete. ${
+          : `${count} of ${lessonIds.length} lessons complete. ${mastered} of ${conceptIds.length} concepts mastered. ${
               persistent
                 ? 'Saved on this device only.'
                 : 'Saved for this tab only, because your browser blocked storage.'
@@ -166,8 +169,9 @@ export default function ProgressReset() {
           Clear all study data?
         </h2>
         <p>
-          This removes completed lessons, quiz scores, your place in the course, review schedules, checkpoint
-          scores, and practice rounds from this browser. Export first to keep a copy.
+          This removes completed lessons, concept checks, quiz scores, your place in the course and learning
+          paths, review schedules, checkpoint scores, and practice rounds from this browser. Export first to
+          keep a copy.
         </p>
         <div className="sdv-reset__actions">
           {/* biome-ignore lint/a11y/noAutofocus: the safe choice takes focus when the confirm dialog opens */}

@@ -1,3 +1,5 @@
+import { type ConceptMetadata, journeyById, journeyIncludes, journeyProgress } from '../../data/journeys';
+import { lessonHref } from '../../lib/paths';
 import { isComplete, lessonProgress, readProgress, setComplete } from '../../lib/progress';
 import { UiIcon } from '../viz/icons';
 import { useProgress, useProgressPersistent } from './useProgress';
@@ -7,14 +9,21 @@ interface Props {
   title: string;
   nextHref?: string;
   nextTitle?: string;
+  metadata: ConceptMetadata;
 }
 
-export default function LessonComplete({ lessonId, title, nextHref, nextTitle }: Props) {
+export default function LessonComplete({ lessonId, title, nextHref, nextTitle, metadata }: Props) {
   const progress = useProgress();
   const persistent = useProgressPersistent();
   const done = progress ? isComplete(progress, lessonId) : false;
   const quizBest = progress ? lessonProgress(progress, lessonId).quizBest : undefined;
   const loading = progress === null;
+  const journey = journeyById(progress?.journey);
+  if (journey && progress && journeyIncludes(journey, lessonId)) {
+    const next = journeyProgress(journey, progress, metadata).next;
+    nextHref = lessonHref(next && next.id !== lessonId ? next.id : `journeys/${journey.id}`, journey.id);
+    nextTitle = next && next.id !== lessonId ? next.title : `${journey.title} learning path`;
+  }
 
   return (
     <section

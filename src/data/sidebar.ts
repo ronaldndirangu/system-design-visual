@@ -6,46 +6,28 @@ type SidebarItem =
   | { slug: string; label?: string }
   | { label: string; collapsed?: boolean; items: SidebarItem[] };
 
-/**
- * The sidebar mirrors the curriculum: one group per module listing every
- * lesson, then its checkpoint. `slug` items make the build fail if a page is missing.
- */
+/** Slug entries keep navigation checked against published pages at build time. */
 export function buildSidebar(): SidebarItem[] {
   const core: SidebarItem = {
     label: 'Core concepts',
+    collapsed: true,
     items: [
       { slug: 'concepts', label: 'All concepts' },
       ...conceptGroups().map((group) => ({
         label: group.title,
+        collapsed: true,
         items: group.concepts.map((entry) => ({ slug: `concepts/${entry.slug}`, label: entry.title })),
       })),
     ],
   };
 
-  const start: SidebarItem = {
-    label: 'Start here',
+  const reference: SidebarItem = {
+    label: 'Quick reference',
+    collapsed: true,
     items: [
-      { slug: 'start-here', label: 'How this course works' },
-      { slug: 'curriculum', label: 'Course map' },
-      { slug: 'visual-language', label: 'Visual language' },
-      { slug: 'reference', label: 'Reference sheet' },
-    ],
-  };
-
-  const review: SidebarItem = {
-    label: 'Review and reference',
-    items: [
-      { slug: 'review', label: 'Review queue' },
       { slug: 'glossary', label: 'Glossary' },
-      { slug: 'topics', label: 'Interview topics' },
-      {
-        label: 'Cheat sheets',
-        collapsed: true,
-        items: curriculum.map((module) => ({
-          slug: `cheat-sheets/${module.id}`,
-          label: `${module.number}. ${module.title}`,
-        })),
-      },
+      { slug: 'reference', label: 'Estimation reference' },
+      { slug: 'visual-language', label: 'Diagram key' },
     ],
   };
 
@@ -54,11 +36,21 @@ export function buildSidebar(): SidebarItem[] {
       label: `${module.number}. ${module.title}`,
       collapsed: true,
       items: [
+        ...(module.id === 'practice' ? [{ slug: 'topics', label: 'Interview preparation' }] : []),
         ...module.lessons.map((lesson) => ({ slug: lesson.id, label: lesson.title })),
+        { slug: `cheat-sheets/${module.id}`, label: 'Module summary' },
         { slug: `checkpoints/${module.id}`, label: 'Module checkpoint' },
       ],
     }),
   );
 
-  return [core, start, review, ...modules];
+  return [
+    { slug: 'start-here', label: 'Start here' },
+    { slug: 'journeys', label: 'Learning paths' },
+    { slug: 'curriculum', label: 'Course map' },
+    { slug: 'review', label: 'Review queue' },
+    core,
+    { label: 'Course lessons', collapsed: true, items: modules },
+    reference,
+  ];
 }

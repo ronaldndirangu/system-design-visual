@@ -1,5 +1,5 @@
 ---
-import { checkpointFor } from '../../data/coursePath';
+import { checkpointFor, moduleSummaryFor } from '../../data/coursePath';
 import { anchorFor, curriculum, difficultyLabels, findModule, mapSummary } from '../../data/curriculum';
 import { lessonHref, withBase } from '../../lib/paths';
 import ContinueLesson from '../lesson/ContinueLesson.astro';
@@ -52,6 +52,7 @@ const Heading = headingLevel === 2 ? 'h2' : 'h3';
         </ol>
       );
       const checkpoint = checkpointFor(module.id);
+      const recap = moduleSummaryFor(module.id);
       return (
         <section class="sdv-map__module" id={summary ? undefined : anchorFor(module.id)} aria-labelledby={`map-${module.id}`}>
           <header class="sdv-map__header">
@@ -64,7 +65,7 @@ const Heading = headingLevel === 2 ? 'h2' : 'h3';
             </Heading>
             {!summary && <span class="sdv-badge sdv-badge--ok">{module.lessons.length} lessons</span>}
             <p class="sdv-map__summary">{summary ? mapSummary(module) : module.summary}</p>
-            {!summary && <p class="sdv-map__example">Running example: {module.example}</p>}
+            {!summary && <p class="sdv-map__example">{module.sharedExample === false ? 'Systems and examples' : 'Running example'}: {module.example}</p>}
           </header>
           {summary ? (
             <details class="sdv-map__more">
@@ -77,11 +78,14 @@ const Heading = headingLevel === 2 ? 'h2' : 'h3';
           ) : (
             lessons
           )}
-          {checkpoint && (
-            <p class="sdv-map__checkpoint">
-              <a href={withBase(checkpoint.href)}>Check your understanding: {module.title} checkpoint</a>
-            </p>
-          )}
+          <div class="sdv-map__resources">
+            {checkpoint && (
+              <p class="sdv-map__checkpoint">
+                <a href={withBase(checkpoint.href)}>Check your understanding: {module.title} checkpoint</a>
+              </p>
+            )}
+            {recap && <p class="sdv-map__summary-link"><a href={withBase(recap.href)}>Review key points: {module.title} summary</a></p>}
+          </div>
         </section>
       );
     })

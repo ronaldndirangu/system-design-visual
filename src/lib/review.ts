@@ -158,7 +158,8 @@ export function seedCards(
   for (const [lessonId, lesson] of Object.entries(progress.lessons)) {
     if (!lesson.quizBest || !Object.hasOwn(bank, lessonId)) continue;
     const missed = new Set(lesson.missed);
-    const start = isDate(lesson.completedAt) ? new Date(lesson.completedAt) : now;
+    const date = lesson.attemptedAt ?? lesson.completedAt;
+    const start = isDate(date) ? new Date(date) : now;
     for (const { id } of bank[lessonId]?.questions ?? []) {
       if (!isSafeId(id) || Object.hasOwn(cards ?? data.cards, id)) continue;
       cards ??= { ...data.cards };
@@ -186,6 +187,16 @@ export function withCheckpoint(
   const checkpoints = { ...data.checkpoints };
   const best = Object.hasOwn(checkpoints, moduleId) ? checkpoints[moduleId] : undefined;
   if (!best || best.total !== total || score > best.score) checkpoints[moduleId] = result;
+  return { ...withQuizCards(data, answered, missed, now), checkpoints };
+}
+
+/** Practice misses return now; correct answers retain any existing review schedule. */
+export function withQuizCards(
+  data: ReviewData,
+  answered: readonly string[],
+  missed: readonly string[],
+  now: Date,
+): ReviewData {
   const cards = { ...data.cards };
   const missedIds = new Set(missed);
   for (const id of answered) {
@@ -196,7 +207,7 @@ export function withCheckpoint(
   for (const id of missed) {
     if (isSafeId(id)) cards[id] = { box: 1, due: now.toISOString() };
   }
-  return { ...data, cards, checkpoints };
+  return { ...data, cards };
 }
 
 export function withAnswer(data: ReviewData, id: string, correct: boolean, now: Date): ReviewData {
@@ -262,6 +273,14 @@ function write(data: ReviewData): void {
 
 export function recordAnswer(id: string, correct: boolean, now = new Date()): void {
   write(withAnswer(readReview(), id, correct, now));
+}
+
+export function recordQuizCards(
+  answered: readonly string[],
+  missed: readonly string[],
+  now = new Date(),
+): void {
+  write(withQuizCards(readReview(), answered, missed, now));
 }
 
 export function recordCheckpoint(

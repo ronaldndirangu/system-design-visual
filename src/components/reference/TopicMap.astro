@@ -3,8 +3,9 @@ import { findLesson } from '../../data/curriculum';
 import { topicGroups } from '../../data/topics';
 import { lessonHref } from '../../lib/paths';
 
-const groups = topicGroups.map((group) => ({
+const groups = topicGroups.map((group, index) => ({
   ...group,
+  anchor: `sdv-topic-group-${index + 1}`,
   topics: group.topics.map((topic) => ({
     ...topic,
     lessons: topic.lessons.map((id) => {
@@ -16,24 +17,29 @@ const groups = topicGroups.map((group) => ({
 }));
 ---
 
+<nav class="sdv-group-nav not-content" aria-label="Interview preparation areas">
+  {groups.map((group) => <a href={`#${group.anchor}`}>{group.title}</a>)}
+</nav>
 <div class="sdv-topics not-content">
   {
     groups.map((group) => (
       <section class="sdv-topics__group">
-        <h2 class="sdv-topics__heading">{group.title}</h2>
+        <h2 id={group.anchor} class="sdv-topics__heading">{group.title}</h2>
         <ul class="sdv-topics__list">
           {group.topics.map((topic) => (
-            <li class="sdv-topics__topic">
-              <p class="sdv-topics__name">{topic.name}</p>
-              <p class="sdv-topics__focus">{topic.focus}</p>
-              <ul class="sdv-topics__lessons">
-                {topic.lessons.map((lesson) => (
-                  <li>
-                    <a href={lesson.href}>{lesson.title}</a>
-                    <span class="sdv-badge sdv-badge--neutral">{lesson.minutes} min</span>
-                  </li>
-                ))}
-              </ul>
+            <li>
+              <details class="sdv-topics__topic">
+                <summary class="sdv-topics__name">{topic.name}</summary>
+                <p class="sdv-topics__focus">{topic.focus}</p>
+                <ul class="sdv-topics__lessons">
+                  {topic.lessons.map((lesson) => (
+                    <li>
+                      <a href={lesson.href}>{lesson.title}</a>
+                      <span class="sdv-badge sdv-badge--neutral">{lesson.minutes} min</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             </li>
           ))}
         </ul>
@@ -60,15 +66,16 @@ const groups = topicGroups.map((group) => ({
     padding: 0;
   }
   .sdv-topics__topic {
-    background: var(--sdv-surface);
-    border: 1px solid var(--sdv-border);
-    border-radius: var(--sdv-radius);
-    padding: 0.75rem 1.1rem;
+    border-bottom: 1px solid var(--sdv-border);
+    padding-block: 0.25rem 0.75rem;
   }
   .sdv-topics__name {
     color: var(--sl-color-white);
     font-weight: 600;
     margin: 0;
+    min-height: var(--sdv-target);
+    align-content: center;
+    cursor: pointer;
   }
   .sdv-topics__focus {
     color: var(--sl-color-gray-2);

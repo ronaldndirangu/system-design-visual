@@ -1,7 +1,10 @@
 ---
+import { conceptMetadata } from '../../data/conceptMetadata';
 import { CONCEPT_COPY, concept, lessonTitle } from '../../data/concepts';
 import { course } from '../../data/courses';
 import { lessonHref } from '../../lib/paths';
+import { questionSetFingerprint } from '../../lib/progress';
+import JourneyContext from '../landing/JourneyContext';
 import Quiz from '../lesson/Quiz';
 import ConceptFigure from './ConceptFigure.astro';
 import ConceptVariants from './ConceptVariants.astro';
@@ -23,6 +26,7 @@ const bullets = [
 const quiz = keepQuizNumbersWithWords(entry.quiz);
 ---
 
+<JourneyContext pageId={`concepts/${slug}`} metadata={conceptMetadata} compact client:load />
 <p class="sdv-concept-lead">{keep(entry.definition)}</p>
 <p class="sdv-concept-analogy"><strong>{CONCEPT_COPY.analogy}</strong> {keep(entry.analogy)}</p>
 
@@ -30,8 +34,6 @@ const quiz = keepQuizNumbersWithWords(entry.quiz);
 
 <h2 class="sdv-concept-heading">{CONCEPT_COPY.steps}</h2>
 <ol class="sdv-concept-steps">{entry.steps.map((step) => <li>{keep(step)}</li>)}</ol>
-
-<ConceptVariants slug={slug} />
 
 <section class="sdv-concept-example not-content" aria-labelledby={`sdv-example-${slug}`}>
   <p class="sdv-concept-example__title" id={`sdv-example-${slug}`}>
@@ -51,7 +53,14 @@ const quiz = keepQuizNumbersWithWords(entry.quiz);
   }
 </ul>
 
-<Quiz client:visible questions={quiz} title={CONCEPT_COPY.quiz} />
+<Quiz client:visible questions={quiz} title={CONCEPT_COPY.quiz} conceptId={`concepts/${slug}`} fingerprint={questionSetFingerprint(entry.quiz)} />
+<JourneyContext pageId={`concepts/${slug}`} metadata={conceptMetadata} client:visible />
+
+<details class="sdv-concept-depth">
+  <summary>Explore deeper: variants and design choices</summary>
+  <ConceptVariants slug={slug} />
+</details>
+<noscript><p>Read the example and tradeoffs above, then continue with a learning path. Saving quiz results needs JavaScript.</p></noscript>
 
 {
   entry.lesson && deeper && (

@@ -15,6 +15,7 @@ import {
   seedCards,
   withAnswer,
   withCheckpoint,
+  withQuizCards,
 } from '../../src/lib/review';
 
 const NOW = new Date('2026-03-01T12:00:00.000Z');
@@ -95,9 +96,44 @@ describe('seedCards', () => {
     expect(seeded.cards['scaling/caching/q2']).toEqual(existing.cards['scaling/caching/q2']);
     expect(seedCards(seeded, progress, bank, NOW)).toBe(seeded);
   });
+
+  it('seeds concept checks from attempt time without altering lesson or existing review schedules', () => {
+    const data = emptyProgress();
+    data.lessons['concepts/cache'] = {
+      attemptedAt: inDays(-5),
+      quizBest: { score: 1, total: 2 },
+      missed: ['concepts/cache/q2'],
+    };
+    const existing = withAnswer(emptyReview(), 'scaling/caching/q1', true, NOW);
+    const seeded = seedCards(
+      existing,
+      data,
+      {
+        'concepts/cache': { questions: [{ id: 'concepts/cache/q1' }, { id: 'concepts/cache/q2' }] },
+      },
+      NOW,
+    );
+    expect(seeded.cards['scaling/caching/q1']).toEqual(existing.cards['scaling/caching/q1']);
+    expect(seeded.cards['concepts/cache/q1']?.due).toBe(inDays(-4));
+    expect(seeded.cards['concepts/cache/q2']?.due).toBe(NOW.toISOString());
+    expect(seedCards(seeded, data, {}, NOW)).toBe(seeded);
+  });
 });
 
 describe('checkpoints', () => {
+  it('brings newly missed practice cards back now without rescheduling other cards', () => {
+    const data = withAnswer(
+      withAnswer(emptyReview(), 'concepts/cache/q1', true, NOW),
+      'lesson/q1',
+      true,
+      NOW,
+    );
+    const next = withQuizCards(data, ['concepts/cache/q1', 'concepts/cache/q2'], ['concepts/cache/q1'], NOW);
+    expect(next.cards['concepts/cache/q1']?.due).toBe(NOW.toISOString());
+    expect(next.cards['concepts/cache/q2']?.due).toBe(inDays(1));
+    expect(next.cards['lesson/q1']).toEqual(data.cards['lesson/q1']);
+    expect(next.checkpoints).toEqual({});
+  });
   const ids = ['checkpoint/scaling/q1', 'checkpoint/scaling/q2', 'checkpoint/scaling/q3'];
 
   it('keeps the best score and sends missed questions to box 1', () => {

@@ -101,6 +101,9 @@ for (const entry of concepts) {
       const figure = page.locator('figure.sdv-concept');
       const toggle = figure.locator('[data-action="toggle"]');
       const replay = figure.getByRole('button', { name: 'Replay animation' });
+      await expect(toggle).toHaveAccessibleName('Play animation');
+      expect(await figureAnimations(page)).toEqual([]);
+      await toggle.click();
       await expect(toggle).toHaveAccessibleName('Pause animation');
       await expect(figure).toHaveAttribute('data-playing', '');
       expect(await figureAnimations(page)).toContain('running');
@@ -195,6 +198,7 @@ test('concept figure holds its animation while scrolled away', async ({ page }) 
   await page.setViewportSize({ width: 390, height: 640 });
   await page.goto(`concepts/${first?.slug}/`);
   const figure = page.locator('figure.sdv-concept');
+  await figure.getByRole('button', { name: 'Play animation', exact: true }).click();
   await expect(figure).toHaveAttribute('data-playing', '');
   await page.getByRole('heading', { name: CONCEPT_COPY.learnMore }).scrollIntoViewIfNeeded();
   await expect.poll(async () => new Set(await figureAnimations(page))).toEqual(new Set(['paused']));
@@ -243,6 +247,10 @@ test('sidebar nests each concept under its group in order', async ({ page }) => 
   await page.goto('concepts/');
   const nav = page.getByRole('navigation', { name: 'Main' });
   for (const group of conceptGroups()) {
+    await nav
+      .locator('summary')
+      .filter({ hasText: new RegExp(`^${group.title}$`) })
+      .click();
     for (const entry of group.concepts) {
       await expect(nav.getByRole('link', { name: entry.title, exact: true })).toHaveAttribute(
         'href',

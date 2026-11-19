@@ -23,7 +23,10 @@ const filesUnder = (dir: string) =>
     .map((entry) => join(entry.parentPath, entry.name).replaceAll('\\', '/'));
 const docsRoot = join(docsDir, '/').replaceAll('\\', '/');
 const routeOf = (file: string) => {
-  const slug = file.slice(docsRoot.length).replace(/\.mdx$/, '');
+  const slug = file
+    .slice(docsRoot.length)
+    .replace(/\.mdx$/, '')
+    .replace(/\/index$/, '');
   return slug === 'index' ? '/' : `/${slug}/`;
 };
 const brokenPageLinks = (route: string, text: string, routes: Set<string>) =>
@@ -33,6 +36,11 @@ const brokenPageLinks = (route: string, text: string, routes: Set<string>) =>
     .map((target) => `${route} links to missing ${target}`);
 
 describe('curriculum', () => {
+  it('resolves nested index pages to their public directory URL', () => {
+    expect(routeOf(`${docsRoot}journeys/index.mdx`)).toBe('/journeys/');
+    expect(routeOf(`${docsRoot}concepts/index.mdx`)).toBe('/concepts/');
+    expect(routeOf(`${docsRoot}index.mdx`)).toBe('/');
+  });
   it('has unique lesson ids and module numbers in order', () => {
     const ids = allLessons.map((lesson) => lesson.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -137,7 +145,7 @@ describe('curriculum', () => {
   });
 
   it('names a running example only where a module shares one', () => {
-    expect(runningExampleFor('scaling/caching')).toBe('URL shortener');
+    expect(runningExampleFor('scaling/caching')).toBeUndefined();
     expect(runningExampleFor('distributed-data/raft')).toBe('Chat');
     expect(runningExampleFor('case-studies/chat')).toBeUndefined();
     expect(runningExampleFor('practice/timed-round')).toBeUndefined();

@@ -5,6 +5,7 @@ import {
   checkpointFor,
   coreLessons,
   coursePath,
+  moduleSummaryFor,
   pathContinueTarget,
   pathNeighbours,
 } from '../../src/data/coursePath';
@@ -16,6 +17,13 @@ const optional = allLessons.filter((lesson) => lesson.optional);
 const cases = curriculum.find((module) => module.id === 'case-studies')?.lessons ?? [];
 
 describe('course path', () => {
+  it('starts with teaching and keeps orientation and lookup pages outside the lesson sequence', () => {
+    expect(pathIds[0]).toBe('thinking/anatomy-of-a-web-app');
+    for (const id of ['start-here', 'curriculum', 'visual-language', 'reference', 'topics', 'glossary']) {
+      expect(pathIds).not.toContain(id);
+      expect(pathNeighbours(id)).toBeUndefined();
+    }
+  });
   it('leaves optional deep dives and case studies off the path', () => {
     expect(optional.length).toBeGreaterThan(0);
     for (const lesson of [...optional, ...cases]) expect(pathIds, lesson.id).not.toContain(lesson.id);
@@ -52,6 +60,13 @@ describe('course path', () => {
 });
 
 describe('module checkpoints', () => {
+  it('keeps every module summary on its existing URL', () => {
+    for (const module of curriculum) {
+      expect(moduleSummaryFor(module.id)?.href).toBe(`/cheat-sheets/${module.id}/`);
+      expect(existsSync(`src/content/docs/cheat-sheets/${module.id}.mdx`)).toBe(true);
+    }
+    expect(moduleSummaryFor('missing')).toBeUndefined();
+  });
   it('names an existing checkpoint page for every module, case studies included', () => {
     expect(curriculum.map((module) => module.id)).toContain('case-studies');
     for (const module of curriculum) {

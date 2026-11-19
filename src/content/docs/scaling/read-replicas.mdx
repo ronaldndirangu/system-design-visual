@@ -197,6 +197,8 @@ export const quiz = [
 
 <Recall questions={recall} />
 
+Scale read-heavy services with replicas, then choose which consistency guarantees each read needs.
+
 <Objectives>
 
 - Explain how a primary streams writes to replicas, and why replicas add read capacity and leave write capacity alone.
@@ -209,7 +211,7 @@ export const quiz = [
 
 ## The failure: one database, too many reads
 
-The cache answers most clicks, and the [CDN](../cdn/) answers many before they reach a server, but at 10 million users
+**Worked example: a read-heavy URL shortener.** The cache answers most clicks, and the [CDN](../cdn/) answers many before they reach a server, but at 10 million users
 the misses alone keep one database pinned at 100% busy. Reads now queue behind each other, and the occasional write
 waits behind them.
 

@@ -1,8 +1,24 @@
+import { gzipSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
-import { conceptGroups } from '../../src/data/concepts';
-import { documentOverflow, island } from './helpers';
+import { concept, concepts } from '../../src/data/concepts';
+import { foundations } from '../../src/data/journeys';
+import { documentOverflow } from './helpers';
 
-test('home shows the load balancer picture and the grouped core concept list', async ({ page }) => {
+test('cold mobile home keeps initial JavaScript below 50 KB gzipped', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const scripts: Promise<Buffer>[] = [];
+  page.on('response', (response) => {
+    if (new URL(response.url()).pathname.endsWith('.js')) scripts.push(response.body());
+  });
+  await page.goto('', { waitUntil: 'networkidle' });
+  const bodies = await Promise.all(scripts);
+  expect(bodies.length).toBeGreaterThan(0);
+  expect(bodies.reduce((total, body) => total + gzipSync(body).length, 0)).toBeLessThan(50_000);
+});
+
+test('home introduces the shared visual fundamentals before learning paths and deeper lessons', async ({
+  page,
+}) => {
   await page.goto('');
   await expect(
     page.getByRole('region', { name: 'Three servers. Why are people still waiting?' }),
@@ -10,70 +26,71 @@ test('home shows the load balancer picture and the grouped core concept list', a
   await expect(page.locator('.sdv-routing')).toHaveCount(0);
 
   const hero = page.locator('.sdv-hero');
-  await expect(hero.getByRole('img', { name: 'Without a load balancer' })).toBeVisible();
-  await expect(hero.getByRole('link', { name: 'How a load balancer works' })).toHaveAttribute(
+  await expect(hero.getByRole('link', { name: 'Start with fundamentals' })).toHaveAttribute(
     'href',
-    /\/concepts\/load-balancer\/$/,
+    /#learn-fundamentals$/,
   );
-  await expect(hero.getByRole('link', { name: 'Browse core concepts' })).toHaveAttribute(
+  await expect(hero.getByRole('link', { name: 'Explore learning paths' })).toHaveAttribute(
     'href',
-    /\/concepts\/$/,
+    /\/journeys\/$/,
   );
 
-  const section = page.getByRole('region', { name: 'Core concepts' });
-  await expect(section.locator('.sdv-concept-index__title')).toHaveText(
-    conceptGroups().map((group) => group.title),
+  await expect(page.locator('.sdv-landing > h2')).toHaveText([
+    'Learn the fundamentals',
+    'Choose a system. Apply what you learned.',
+    'Go deeper at your pace.',
+  ]);
+  const section = page.getByRole('region', { name: 'Learn the fundamentals' });
+  await expect(section.locator('.sdv-concept-card__title')).toHaveText(
+    foundations.concepts.map((slug) => concept(slug).title),
   );
-  for (const group of conceptGroups()) {
-    const links = section.getByRole('list', { name: group.title }).getByRole('link');
-    await expect(links).toHaveText(group.concepts.map((entry) => entry.title));
-    for (const [i, entry] of group.concepts.entries()) {
-      await expect(links.nth(i)).toHaveAttribute('href', `/system-design-visual/concepts/${entry.slug}/`);
-    }
+  await expect(section.locator('.sdv-concept-card svg')).toHaveCount(3);
+  for (const [index, slug] of foundations.concepts.entries()) {
+    await expect(section.locator('.sdv-concept-card').nth(index)).toHaveAttribute(
+      'href',
+      `/system-design-visual/concepts/${slug}/`,
+    );
   }
+  await expect(
+    section.getByRole('link', { name: `Explore all ${concepts.length} concepts` }),
+  ).toHaveAttribute('href', /\/concepts\/$/);
+  await expect(page.locator('.sdv-concept-index')).toHaveCount(0);
 });
 
-for (const width of [320, 390]) {
-  test(`home concept list stays compact at ${width}px`, async ({ page }) => {
+for (const width of [320, 390, 1440]) {
+  test(`home fundamentals stay compact and ordered at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
     await page.goto('');
-    const section = page.getByRole('region', { name: 'Core concepts' });
+    const section = page.getByRole('region', { name: 'Learn the fundamentals' });
     expect(await documentOverflow(page)).toBe(0);
-    await expect(section.locator('svg')).toHaveCount(0);
-    for (const link of await section.locator('.sdv-concept-index__link').all()) {
+    await expect(section.locator('svg')).toHaveCount(3);
+    for (const link of await section.locator('.sdv-concept-card').all()) {
       const box = await link.boundingBox();
-      expect(box?.height ?? 0).toBeGreaterThanOrEqual(23.5);
-      expect(box?.height ?? 0).toBeLessThanOrEqual(48);
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
     }
+    const basics = await section.boundingBox();
+    const paths = await page
+      .getByRole('region', { name: 'Choose a system. Apply what you learned.' })
+      .boundingBox();
+    expect(basics?.height).toBeLessThan(800);
+    expect((basics?.y ?? 0) + (basics?.height ?? 0)).toBeLessThan(paths?.y ?? 0);
   });
 }
 
-test('home journey stepper follows the tabs keyboard pattern', async ({ page }) => {
+test('home offers distinct system journeys with keyboard-accessible entry points', async ({ page }) => {
   await page.goto('');
-  const tabs = page.getByRole('tablist', { name: 'Users' });
-  const first = await island(tabs.getByRole('tab', { name: '100 users' }));
-  await expect(first).toBeEnabled();
-  await expect(first).toHaveAttribute('aria-selected', 'true');
-  const panel = page.getByRole('tabpanel');
-  await expect(panel.getByRole('heading', { level: 3 })).toHaveText('100 users: follow one click.');
-
-  await first.focus();
-  await page.keyboard.press('ArrowRight');
-  const second = tabs.getByRole('tab', { name: '10K users' });
-  await expect(second).toBeFocused();
-  await expect(second).toHaveAttribute('aria-selected', 'true');
-  await expect(panel.getByRole('heading', { level: 3 })).toHaveText('10,000 users: the link goes viral.');
-
-  await page.keyboard.press('End');
-  const last = tabs.getByRole('tab', { name: '100M users' });
-  await expect(last).toBeFocused();
-  await expect(panel.getByRole('heading', { level: 3 })).toHaveText(
-    '100 million users: distance and failure matter.',
-  );
-  await expect(panel.getByRole('img')).toHaveAttribute('aria-label', /Region 2/);
-
-  await page.keyboard.press('Home');
-  await expect(first).toBeFocused();
-  await expect(first).toHaveAttribute('tabindex', '0');
-  await expect(last).toHaveAttribute('tabindex', '-1');
+  const cards = page.locator('.sdv-system-grid');
+  await expect(cards.getByRole('heading')).toHaveText([
+    'Search engines',
+    'Distributed systems: key-value storage',
+    'Messaging and chat',
+    'Social feeds',
+  ]);
+  const search = cards
+    .locator('[data-journey="search"]')
+    .getByRole('link', { name: 'Start learning path', exact: true });
+  await search.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/journeys\/search\/$/);
+  await expect(page.getByRole('region', { name: 'Your next step' })).toContainText('Stage 1 of 4');
 });

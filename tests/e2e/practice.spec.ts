@@ -156,7 +156,7 @@ test('a design review flags by keyboard, replays, and reveals each fix', async (
     .getByRole('listitem')
     .filter({ hasText: 'Single point of failure' });
   await expect(balancerCard.getByText('Found', { exact: true })).toBeVisible();
-  await expect(balancerCard.getByRole('link', { name: 'The server melts' })).toBeVisible();
+  await expect(balancerCard.getByRole('link', { name: 'Load balancing' })).toBeVisible();
   await expect(review.getByText(/Your fix: Move it to a bigger machine\./)).toBeVisible();
   await expect(review.getByRole('button', { name: 'Next event' })).toHaveAttribute('aria-disabled', 'true');
 

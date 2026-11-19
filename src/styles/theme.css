@@ -6,44 +6,72 @@
  */
 
 :root {
-  /* Neutrals: bg, then the surface ladder, then borders and text. */
-  --sdv-bg: #0b0c10;
-  --sdv-bg-subtle: #0f1115;
-  --sdv-surface-1: #14161b;
-  --sdv-surface-2: #1b1e25;
-  --sdv-surface-3: #242832;
-  --sdv-sunken: #0e1013;
-  --sdv-border-subtle: #262a33;
-  --sdv-border-strong: #343945;
-  --sdv-border-control: #6b7180;
-  --sdv-text-1: #eceef2;
-  --sdv-text-2: #b3b8c4;
-  --sdv-text-3: #8d93a1;
-  /* Disabled text only: exempt from contrast minimums. */
-  --sdv-text-4: #5f6573;
-  --sdv-grid: #1f232b;
+  color-scheme: light;
+  /* Primer semantic roles: https://primer.style/product/primitives/color/ */
+  --cp-bg: #ffffff;
+  --cp-bg-elevated: #f6f8fa;
+  --cp-bg-inset: #f6f8fa;
+  --cp-surface: #ffffff;
+  --cp-surface-soft: #f6f8fa;
+  --cp-border: #d1d9e0;
+  --cp-border-strong: #818b98;
+  --cp-text: #1f2328;
+  --cp-text-muted: #59636e;
+  --cp-text-soft: #59636e;
+  --cp-accent: #0969da;
+  --cp-accent-hover: #0860ca;
+  --cp-accent-soft: #ddf4ff;
+  --cp-accent-fg: #ffffff;
+  --cp-success: #1a7f37;
+  --cp-danger: #d1242f;
+  /* Small warning labels also sit on selected blue rows. */
+  --cp-warning: #8a5d00;
+  --cp-link: #0969da;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  --cp-overlay: rgba(255, 255, 255, 0.8);
+  --cp-panel: rgba(255, 255, 255, 0.86);
+  --cp-panel-strong: rgba(255, 255, 255, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.55);
+  --cp-highlight: #ddf4ff;
 
-  --sdv-accent: #5e5ce6;
-  --sdv-accent-hover: #4f46e5;
-  --sdv-accent-text: #a5b4fc;
-  --sdv-accent-subtle: #1c1d3f;
-  --sdv-accent-border: #3b3a85;
-  --sdv-on-accent: #ffffff;
+  /* Neutrals: bg, then the surface ladder, then borders and text. */
+  --sdv-bg: var(--cp-bg);
+  --sdv-bg-subtle: var(--cp-bg-elevated);
+  --sdv-surface-1: var(--cp-surface);
+  --sdv-surface-2: var(--cp-surface-soft);
+  --sdv-surface-3: var(--cp-surface-soft);
+  --sdv-sunken: var(--cp-bg-inset);
+  --sdv-border-subtle: var(--cp-border);
+  --sdv-border-strong: var(--cp-border);
+  --sdv-border-control: var(--cp-text-soft);
+  --sdv-text-1: var(--cp-text);
+  --sdv-text-2: var(--cp-text-muted);
+  --sdv-text-3: var(--cp-text-soft);
+  /* Disabled text only: exempt from contrast minimums. */
+  --sdv-text-4: var(--cp-border-strong);
+  --sdv-grid: var(--cp-border);
+
+  --sdv-accent: var(--cp-accent);
+  --sdv-accent-hover: var(--cp-accent-hover);
+  --sdv-accent-text: var(--cp-link);
+  --sdv-accent-subtle: var(--cp-accent-soft);
+  --sdv-accent-border: var(--cp-border-strong);
+  --sdv-on-accent: var(--cp-accent-fg);
 
   /* Component kinds tint strokes, icons and labels. No kind uses a green, orange or red hue,
      so a kind color never reads as a status. */
-  --sdv-client: #60a5fa;
-  --sdv-server: #a78bfa;
+  --sdv-client: #75b2ff;
+  --sdv-server: #b59aff;
   --sdv-lb: #facc15;
   --sdv-cache: #e879f9;
   --sdv-db: #2dd4bf;
-  --sdv-queue: #94a3b8;
+  --sdv-queue: #a3b1c4;
   --sdv-edge-kind: #7dd3fc;
   --sdv-model: #f9a8d4;
 
-  --sdv-ok: #4ade80;
-  --sdv-warn: #fb923c;
-  --sdv-bad: #f87171;
+  --sdv-ok: var(--cp-success);
+  --sdv-warn: var(--cp-warning);
+  --sdv-bad: var(--cp-danger);
   --sdv-ok-soft: #0f2a1b;
   --sdv-warn-soft: #2d1d0e;
   --sdv-bad-soft: #2d1416;
@@ -53,6 +81,7 @@
   --sdv-dns: var(--sdv-edge-kind);
   --sdv-cdn: var(--sdv-edge-kind);
   --sdv-vector: var(--sdv-db);
+  --sdv-db-soft: color-mix(in oklab, var(--sdv-db) 8%, var(--sdv-surface-1));
 
   /* SVG dots and canvas balls both draw requests in the packet color. */
   --sdv-packet: var(--sdv-client);
@@ -77,8 +106,8 @@
   --sdv-shadow-card: none;
 
   /* Type */
-  --sdv-font-sans: "Inter Variable", "Inter Fallback", system-ui, sans-serif;
-  --sdv-font-mono: "JetBrains Mono Variable", "JetBrains Mono Fallback", ui-monospace, monospace;
+  --sdv-font-sans: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+  --sdv-font-mono: Consolas, "Courier New", Courier, monospace;
   --sdv-text-2xs: 0.75rem;
   --sdv-text-xs: 0.8125rem;
   --sdv-text-sm: 0.875rem;
@@ -86,13 +115,13 @@
   --sdv-text-base: 1rem;
   --sdv-text-lg: 1.125rem;
   --sdv-text-xl: 1.375rem;
-  --sdv-text-2xl: 1.75rem;
+  --sdv-text-2xl: 1.5rem;
   --sdv-text-3xl: clamp(2rem, 1.55rem + 1.6vw, 2.5rem);
-  --sdv-text-display: clamp(2.25rem, 1.6rem + 3.4vw, 3.5rem);
+  --sdv-text-display: clamp(2rem, 1.6rem + 2.4vw, 3rem);
   --sdv-text-stat: 1.5rem;
   --sdv-weight-body: 400;
   --sdv-weight-ui: 500;
-  --sdv-weight-heading: 650;
+  --sdv-weight-heading: 600;
   --sdv-weight-hero: 700;
   --sdv-leading-display: 1.08;
   --sdv-leading-heading: 1.25;
@@ -121,8 +150,8 @@
   --sdv-radius-xs: 4px;
   --sdv-radius-sm: 6px;
   --sdv-radius-md: 10px;
-  --sdv-radius-lg: 14px;
-  --sdv-radius-xl: 20px;
+  --sdv-radius-lg: 10px;
+  --sdv-radius-xl: 16px;
   --sdv-radius-pill: 999px;
 
   --sdv-z-sticky: 10;
@@ -147,14 +176,14 @@
   --sl-color-accent-low: var(--sdv-accent-subtle);
   --sl-color-accent: var(--sdv-accent);
   --sl-color-accent-high: var(--sdv-accent-text);
-  --sl-color-white: #eceef2;
-  --sl-color-gray-1: #eceef2;
-  --sl-color-gray-2: #b3b8c4;
-  --sl-color-gray-3: #8d93a1;
-  --sl-color-gray-4: #6b7180;
-  --sl-color-gray-5: #343945;
-  --sl-color-gray-6: #1b1e25;
-  --sl-color-black: #0b0c10;
+  --sl-color-white: var(--sdv-text-1);
+  --sl-color-gray-1: var(--sdv-text-1);
+  --sl-color-gray-2: var(--sdv-text-2);
+  --sl-color-gray-3: var(--sdv-text-3);
+  --sl-color-gray-4: var(--sdv-border-control);
+  --sl-color-gray-5: var(--sdv-border-strong);
+  --sl-color-gray-6: var(--sdv-surface-2);
+  --sl-color-black: var(--sdv-bg);
   --sl-color-text-accent: var(--sdv-accent-text);
   --sl-color-bg: var(--sdv-bg);
   --sl-color-bg-nav: var(--sdv-bg-subtle);
@@ -186,43 +215,48 @@
   }
 }
 
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --cp-bg: #0d1117;
+  --cp-bg-elevated: #151b23;
+  --cp-bg-inset: #010409;
+  --cp-surface: #151b23;
+  --cp-surface-soft: #151b23;
+  --cp-border: #3d444d;
+  --cp-border-strong: #656c76;
+  --cp-text: #f0f6fc;
+  --cp-text-muted: #9198a1;
+  --cp-text-soft: #9198a1;
+  --cp-accent: #1f6feb;
+  --cp-accent-hover: #1158c7;
+  /* Flatten Primer's accent overlay onto the default background for a stable contrast pair. */
+  --cp-accent-soft: #111d2e;
+  --cp-accent-fg: #ffffff;
+  --cp-success: #3fb950;
+  --cp-danger: #f85149;
+  --cp-warning: #d29922;
+  --cp-link: #4493f8;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  --cp-overlay: rgba(13, 17, 23, 0.88);
+  --cp-panel: rgba(21, 27, 35, 0.72);
+  --cp-panel-strong: rgba(21, 27, 35, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.04);
+  --cp-highlight: #388bfd1a;
+}
+
 :root[data-theme="light"] {
-  --sdv-bg: #ffffff;
-  --sdv-bg-subtle: #f7f7f9;
-  --sdv-surface-1: #ffffff;
-  --sdv-surface-2: #f4f5f7;
-  --sdv-surface-3: #eceef2;
-  --sdv-sunken: #f7f8fa;
-  --sdv-border-subtle: #e3e5ea;
-  --sdv-border-strong: #cfd3db;
-  --sdv-border-control: #767c8c;
-  --sdv-text-1: #0e1014;
-  --sdv-text-2: #3d4250;
-  --sdv-text-3: #5d6373;
-  --sdv-text-4: #9096a5;
-  --sdv-grid: #eceef2;
-
-  --sdv-accent: #4f46e5;
-  --sdv-accent-hover: #4338ca;
-  --sdv-accent-text: #4338ca;
-  --sdv-accent-subtle: #eef0ff;
-  --sdv-accent-border: #c7cbfd;
-
   --sdv-client: #2563eb;
   --sdv-server: #7c3aed;
-  --sdv-lb: #a16207;
+  --sdv-lb: #965c07;
   --sdv-cache: #a21caf;
   --sdv-db: #0f766e;
   --sdv-queue: #475569;
   --sdv-edge-kind: #0369a1;
   --sdv-model: #9d174d;
 
-  --sdv-ok: #15803d;
-  --sdv-warn: #c2410c;
-  --sdv-bad: #b91c1c;
-  --sdv-ok-soft: #ecfdf3;
-  --sdv-warn-soft: #fff7ed;
-  --sdv-bad-soft: #fef2f2;
+  --sdv-ok-soft: #dafbe1;
+  --sdv-warn-soft: #fff8c5;
+  --sdv-bad-soft: #ffebe9;
   --sdv-ink-on-status: #ffffff;
 
   --sdv-shadow-overlay: 0 12px 32px rgb(16 24 40 / 0.12);
@@ -230,15 +264,7 @@
   /* Light widgets have always raised onto white, so the legacy alias keeps that. */
   --sdv-surface-raised: var(--sdv-surface-1);
 
-  --sl-color-white: #0e1014;
-  --sl-color-gray-1: #0e1014;
-  --sl-color-gray-2: #3d4250;
-  --sl-color-gray-3: #5d6373;
-  --sl-color-gray-4: #767c8c;
-  --sl-color-gray-5: #cfd3db;
-  --sl-color-gray-6: #eceef2;
-  --sl-color-gray-7: #f7f7f9;
-  --sl-color-black: #ffffff;
+  --sl-color-gray-7: var(--sdv-bg-subtle);
   --sl-color-bg-nav: var(--sdv-bg-subtle);
   --sl-color-bg-sidebar: var(--sdv-bg);
   --sl-color-hairline-light: var(--sdv-border-subtle);
@@ -248,22 +274,46 @@
 body {
   font-feature-settings: "cv11", "ss03";
 }
+a {
+  color: var(--sdv-accent-text);
+  text-underline-offset: 0.2em;
+}
+a:focus-visible {
+  outline: 2px solid var(--sdv-accent-text);
+  outline-offset: 4px;
+}
+.site-title {
+  color: var(--sdv-text-1);
+  font-weight: var(--sdv-weight-heading);
+}
+#starlight__sidebar a[aria-current="page"] {
+  background: var(--sdv-accent-subtle);
+  border-inline-start: 2px solid var(--sdv-accent-text);
+  border-radius: 0;
+  color: var(--sdv-accent-text);
+}
+#starlight__sidebar summary {
+  font-weight: var(--sdv-weight-heading);
+}
+.sdv-button {
+  text-decoration: none;
+}
 
 :where(.sl-markdown-content) :is(h1, h2, h3, h4, h5, h6):not(:where(.not-content *)) {
   font-weight: var(--sdv-weight-heading);
   letter-spacing: var(--sdv-tracking-heading);
 }
 
-/* Starlight's primary link button pairs accent-high with black text; this keeps white on the accent fill. */
+/* Use the palette's contrasting foreground on filled actions in both themes. */
 .sl-link-button.primary {
   background: var(--sdv-accent);
   border-color: var(--sdv-accent);
-  color: #ffffff;
+  color: var(--sdv-on-accent);
 }
 .sl-link-button.primary:hover {
   background: var(--sdv-accent-hover);
   border-color: var(--sdv-accent-hover);
-  color: #ffffff;
+  color: var(--sdv-on-accent);
 }
 
 /* ---------- Diagram nodes ---------- */

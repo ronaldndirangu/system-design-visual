@@ -78,7 +78,7 @@ export default function ReviewQueue() {
       <p>
         {next
           ? `You are all caught up. The next question comes due on ${formatReviewDay(next)}.`
-          : 'Nothing to review yet. Finish a lesson quiz or a checkpoint and its questions show up here.'}
+          : 'Nothing to review yet. Finish a concept check, lesson quiz or checkpoint. Missed ideas are due immediately; correct answers return tomorrow.'}
       </p>
     );
   } else {

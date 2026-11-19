@@ -14,10 +14,10 @@ const { sources } = Astro.props;
 
 {
   sources.length > 0 && (
-    <section class="sdv-reading not-content" aria-labelledby="sdv-reading-title">
-      <h2 id="sdv-reading-title" class="sdv-reading__title">
-        Further reading
-      </h2>
+    <details class="sdv-reading not-content">
+      <summary id="sdv-reading-title" class="sdv-reading__title">
+        Sources and further reading
+      </summary>
       <ul class="sdv-reading__list">
         {sources.map((source) => (
           <li>
@@ -28,6 +28,6 @@ const { sources } = Astro.props;
           </li>
         ))}
       </ul>
-    </section>
+    </details>
   )
 }

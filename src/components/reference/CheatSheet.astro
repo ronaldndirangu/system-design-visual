@@ -1,6 +1,7 @@
 ---
+import { checkpointFor } from '../../data/coursePath';
 import { findModule } from '../../data/curriculum';
-import { lessonHref } from '../../lib/paths';
+import { lessonHref, withBase } from '../../lib/paths';
 import { extractTakeaways, inlineMarkdown } from '../../lib/takeaways';
 
 interface Props {
@@ -16,6 +17,7 @@ const sources = import.meta.glob<string>('../../content/docs/**/*.mdx', {
 
 const module = findModule(Astro.props.moduleId);
 if (!module) throw new Error(`Cheat sheet names an unknown module: ${Astro.props.moduleId}`);
+const checkpoint = checkpointFor(module.id);
 
 const lessons = module.lessons.map((lesson) => {
   const source = sources[`../../content/docs/${lesson.id}.mdx`];
@@ -31,8 +33,8 @@ const lessons = module.lessons.map((lesson) => {
 
 <div class="sdv-cheat not-content">
   <p class="sdv-cheat__intro">
-    Module {module.number}: {module.title}. {lessons.length} lessons with their key points. Print the page to keep a
-    paper copy.
+    Key points from {lessons.length} lessons. Use this to refresh your memory, or print a copy.{' '}
+    {checkpoint && <a href={withBase(checkpoint.href)}>Check your understanding with the module checkpoint.</a>}
   </p>
   {
     lessons.map((lesson) => (
@@ -64,10 +66,8 @@ const lessons = module.lessons.map((lesson) => {
     margin: 0;
   }
   .sdv-cheat__lesson {
-    background: var(--sdv-surface);
-    border: 1px solid var(--sdv-border);
-    border-radius: var(--sdv-radius);
-    padding: 0.75rem 1.1rem;
+    border-top: 1px solid var(--sdv-border);
+    padding-block: 0.75rem;
     break-inside: avoid;
   }
   .sdv-cheat__title {

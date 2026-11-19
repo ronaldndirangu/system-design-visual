@@ -7,9 +7,6 @@
 const LOOP_MS = 6500;
 const LOOPS = 3;
 const FADE = 0.02;
-/** Captions stay readable before their step plays. */
-// Dimmed captions still clear 4.5:1 contrast in both themes at this opacity.
-const CAPTION_LOW = 0.62;
 const IN_VIEW = 0.35;
 
 type Point = [number, number];
@@ -82,10 +79,29 @@ function bind(figure: HTMLElement, reduce: MediaQueryList) {
   figure.dataset.ready = '';
   const toggle = figure.querySelector<HTMLButtonElement>('[data-action="toggle"]');
   const replay = figure.querySelector<HTMLButtonElement>('[data-action="replay"]');
+  const previous = figure.querySelector<HTMLButtonElement>('[data-action="previous"]');
+  const next = figure.querySelector<HTMLButtonElement>('[data-action="next"]');
+  const status = figure.querySelector<HTMLElement>('[data-step-status]');
   let animations: Animation[] = [];
   let userPaused = false;
   let inView = false;
-  let started = false;
+  let step = -1;
+
+  const activeRoot = () => {
+    const state = figure.querySelector<HTMLInputElement>('input[type="radio"]:checked')?.value ?? 'without';
+    return figure.querySelector<HTMLElement>(`[data-state="${state}"]`);
+  };
+  const paintStep = () => {
+    const captions = activeRoot()?.querySelectorAll<HTMLElement>('.sdv-concept__captions li');
+    figure.querySelectorAll('[data-current-step]').forEach((item) => {
+      item.removeAttribute('data-current-step');
+    });
+    captions?.[step]?.setAttribute('data-current-step', '');
+    if (previous) previous.disabled = step <= 0;
+    if (next) next.disabled = step >= (captions?.length ?? 3) - 1;
+    if (status)
+      status.textContent = step < 0 ? 'Read at your pace' : `Step ${step + 1} of ${captions?.length ?? 3}`;
+  };
 
   const running = () => animations.length > 0;
   const canRun = () => inView && !document.hidden;
@@ -111,12 +127,10 @@ function bind(figure: HTMLElement, reduce: MediaQueryList) {
     for (const animation of animations) animation.play();
   };
 
-  const start = () => {
+  const start = (at?: number) => {
     stop();
-    started = true;
     if (reduce.matches) return sync();
-    const state = figure.querySelector<HTMLInputElement>('input[type="radio"]:checked')?.value ?? 'without';
-    const root = figure.querySelector(`[data-state="${state}"]`);
+    const root = activeRoot();
     if (!root) return sync();
     const timing: KeyframeAnimationOptions = { duration: LOOP_MS, iterations: LOOPS, easing: 'linear' };
     const batch: Animation[] = [];
@@ -129,7 +143,13 @@ function bind(figure: HTMLElement, reduce: MediaQueryList) {
     const markers = root.querySelectorAll<SVGElement>('.sdv-concept__marker');
     root.querySelectorAll<HTMLElement>('.sdv-concept__captions li').forEach((item, i) => {
       const at = markers[i]?.dataset.show;
-      if (at) batch.push(item.animate(showFrames(at, CAPTION_LOW), timing));
+      if (at) {
+        const frames = showFrames(at).map(({ offset, opacity }) => ({
+          offset,
+          color: opacity === 1 ? 'var(--sdv-text-1)' : 'var(--sdv-text-3)',
+        }));
+        batch.push(item.animate(frames, timing));
+      }
     });
     animations = batch;
     figure.setAttribute('data-playing', '');
@@ -138,34 +158,61 @@ function bind(figure: HTMLElement, reduce: MediaQueryList) {
         if (animations !== batch) return;
         animations = [];
         figure.removeAttribute('data-playing');
+        step = -1;
+        paintStep();
         sync();
       },
       () => {},
     );
+    if (at !== undefined) {
+      for (const animation of animations) animation.currentTime = at * LOOP_MS;
+    }
     if (userPaused || !canRun()) hold();
     sync();
   };
 
+  const play = () => {
+    step = -1;
+    paintStep();
+    userPaused = false;
+    start();
+  };
+
+  const seek = (value: number) => {
+    const root = activeRoot();
+    const markers = root?.querySelectorAll<SVGElement>('.sdv-concept__marker');
+    if (!markers?.length) return;
+    step = Math.max(0, Math.min(markers.length - 1, value));
+    const [a, end] = windowOf(markers[step]?.dataset.show);
+    // Markers stay visible to the end; the next marker bounds this teaching step.
+    const b = markers[step + 1] ? windowOf(markers[step + 1]?.dataset.show)[0] : end;
+    userPaused = true;
+    start((a + b) / 2);
+    paintStep();
+  };
+  previous?.addEventListener('click', () => seek(step - 1));
+  next?.addEventListener('click', () => seek(step + 1));
+
   toggle?.addEventListener('click', () => {
     if (!running()) {
-      userPaused = false;
-      start();
+      play();
       return;
     }
+    step = -1;
+    paintStep();
     userPaused = !userPaused;
     if (userPaused) hold();
     else resume();
     sync();
   });
 
-  replay?.addEventListener('click', () => {
-    userPaused = false;
-    start();
-  });
+  replay?.addEventListener('click', play);
 
   figure.addEventListener('change', (event) => {
     if (!(event.target instanceof HTMLInputElement) || event.target.type !== 'radio') return;
-    if (userPaused || !started) {
+    step = -1;
+    paintStep();
+    if (userPaused || !running()) {
       stop();
       sync();
     } else {
@@ -178,7 +225,6 @@ function bind(figure: HTMLElement, reduce: MediaQueryList) {
       for (const entry of entries) {
         inView = entry.intersectionRatio >= IN_VIEW;
         if (!inView) hold();
-        else if (!started) start();
         else resume();
       }
     },
@@ -191,6 +237,7 @@ function bind(figure: HTMLElement, reduce: MediaQueryList) {
     stop();
     sync();
   });
+  paintStep();
   sync();
 }
 

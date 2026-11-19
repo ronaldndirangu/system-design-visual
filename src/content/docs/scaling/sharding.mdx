@@ -104,6 +104,8 @@ export const quiz = [
 
 <Recall questions={recall} />
 
+Partition search indexes, message histories and key-value data by their access patterns.
+
 <Objectives>
 
 - Split a database by feature before splitting it by key.
@@ -116,7 +118,7 @@ export const quiz = [
 
 ## The failure: one primary runs out of room
 
-At 100 million users, the shortener stores hundreds of terabytes and accepts thousands of new links per second.
+**Worked example: a large URL shortener.** At 100 million users, it stores hundreds of terabytes and accepts thousands of new links per second.
 [Read replicas](../read-replicas/) copied the reads away, but one primary still has to take every write and hold every
 link. No single machine is that big.
 

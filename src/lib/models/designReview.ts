@@ -67,7 +67,7 @@ export interface ReviewItem {
 }
 
 const lessons = {
-  loadBalancing: { id: 'scaling/load-balancing', title: 'The server melts' },
+  loadBalancing: { id: 'scaling/load-balancing', title: 'Load balancing' },
   caching: { id: 'scaling/caching', title: 'Caching' },
   sharding: { id: 'scaling/sharding', title: 'Sharding and partitioning' },
   readReplicas: { id: 'scaling/read-replicas', title: 'Replication' },

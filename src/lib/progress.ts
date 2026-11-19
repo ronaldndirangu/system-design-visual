@@ -24,6 +24,9 @@ export interface LessonProgress {
   quizBest?: QuizResult;
   /** Question ids missed on the latest full quiz attempt. */
   missed?: string[];
+  /** Latest concept check, kept separately from the best score. */
+  quizLast?: QuizResult;
+  attemptedAt?: string;
 }
 
 export interface ProgressData {
@@ -31,6 +34,9 @@ export interface ProgressData {
   lessons: Record<string, LessonProgress>;
   /** Id of the lesson page opened most recently. */
   last?: string;
+  /** Guided resume target, without replacing the learner's last deeper lesson. */
+  resume?: string;
+  journey?: string;
 }
 
 export function emptyProgress(): ProgressData {
@@ -69,6 +75,13 @@ function parseLesson(value: unknown): LessonProgress | null {
     lesson.quizBest = typeof set === 'string' ? { score, total, set } : { score, total };
   }
   if (Array.isArray(value.missed)) lesson.missed = value.missed.filter((id) => typeof id === 'string');
+  if (isResult(value.quizLast)) {
+    const { score, total, set } = value.quizLast;
+    lesson.quizLast = typeof set === 'string' ? { score, total, set } : { score, total };
+  }
+  if (typeof value.attemptedAt === 'string' && !Number.isNaN(Date.parse(value.attemptedAt))) {
+    lesson.attemptedAt = value.attemptedAt;
+  }
   return Object.keys(lesson).length > 0 ? lesson : null;
 }
 
@@ -96,6 +109,8 @@ export function parseProgress(raw: string | null): ProgressData {
       if (lesson) data.lessons[id] = lesson;
     }
     if (typeof value.last === 'string') data.last = value.last;
+    if (typeof value.resume === 'string' && isSafeId(value.resume)) data.resume = value.resume;
+    if (typeof value.journey === 'string' && isSafeId(value.journey)) data.journey = value.journey;
     return data;
   } catch {
     return emptyProgress();
@@ -237,24 +252,64 @@ export function recordQuiz(
   const result: QuizResult = { score, total, set };
   if (!isSafeId(id) || !isResult(result)) return;
   const data = readProgress();
+  write(withLesson(data, id, quizProgress(data, id, result, missed)));
+}
+
+function quizProgress(
+  data: ProgressData,
+  id: string,
+  result: QuizResult,
+  missed: readonly string[],
+): LessonProgress {
   const lesson = { ...lessonProgress(data, id) };
   const best = lesson.quizBest;
-  if (!best || best.set !== set || best.total !== total || score > best.score) lesson.quizBest = result;
+  if (!best || best.set !== result.set || best.total !== result.total || result.score > best.score) {
+    lesson.quizBest = result;
+  }
   lesson.missed = [...missed];
-  write(withLesson(data, id, lesson));
+  return lesson;
 }
 
 /** Remembers the lesson for the "Continue" links. Skips the write when nothing changes. */
 export function recordVisit(id: string): void {
   if (!isSafeId(id)) return;
   const data = readProgress();
-  if (data.last === id) return;
-  write({ ...data, last: id });
+  if (data.last === id && !data.resume) return;
+  const { resume: _, ...rest } = data;
+  write({ ...rest, last: id });
+}
+
+export function recordGuidedVisit(id: string, journey?: string): void {
+  if (!isSafeId(id) || (journey !== undefined && !isSafeId(journey))) return;
+  const data = readProgress();
+  if (data.resume === id && (!journey || data.journey === journey)) return;
+  write({ ...data, resume: id, ...(journey ? { journey } : {}) });
+}
+
+export function recordConceptQuiz(
+  id: string,
+  score: number,
+  total: number,
+  missed: readonly string[],
+  set: string,
+  now = new Date(),
+): void {
+  const result = { score, total, set };
+  if (!isSafeId(id) || !isResult(result)) return;
+  const data = readProgress();
+  const lesson = quizProgress(data, id, result, missed);
+  lesson.quizLast = result;
+  lesson.attemptedAt = now.toISOString();
+  if (score === total) lesson.completedAt ??= now.toISOString();
+  else delete lesson.completedAt;
+  write(withLesson(data, id, lesson));
 }
 
 /** The lesson to resume: the last one opened if unfinished, else the next unfinished one. */
 export function hasStarted(progress: ProgressData): boolean {
-  return progress.last !== undefined || Object.keys(progress.lessons).length > 0;
+  return (
+    progress.last !== undefined || progress.resume !== undefined || Object.keys(progress.lessons).length > 0
+  );
 }
 
 export function exportProgress(): string {
@@ -310,10 +365,24 @@ export function mergeProgress(current: ProgressData, incoming: ProgressData): Pr
     if (quizBest) merged.quizBest = quizBest;
     const missed = quizBest && quizBest === theirs.quizBest ? theirs.missed : (ours.missed ?? theirs.missed);
     if (missed) merged.missed = [...missed];
+    const latest =
+      (theirs.attemptedAt ?? '') > (ours.attemptedAt ?? '') ? theirs : ours.quizLast ? ours : theirs;
+    if (latest.quizLast) {
+      merged.quizLast = latest.quizLast;
+      merged.attemptedAt = latest.attemptedAt;
+      merged.missed = latest.missed;
+      if (latest.quizLast.score < latest.quizLast.total) delete merged.completedAt;
+    }
     lessons[id] = merged;
   }
   const last = current.last ?? incoming.last;
-  return last === undefined ? { ...current, lessons } : { ...current, lessons, last };
+  return {
+    ...current,
+    lessons,
+    ...(last === undefined ? {} : { last }),
+    ...((current.resume ?? incoming.resume) ? { resume: current.resume ?? incoming.resume } : {}),
+    ...((current.journey ?? incoming.journey) ? { journey: current.journey ?? incoming.journey } : {}),
+  };
 }
 
 export type ImportMode = 'merge' | 'replace';

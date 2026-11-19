@@ -1,6 +1,36 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
+import { contrast } from '../../scripts/contrast.mjs';
 import { island } from './helpers';
+
+test('active system-arc counts retain contrast over the dark blended highlight', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('scaling/load-balancing/');
+  await expect(page.locator('.sdv-arc__stages [aria-current="step"] .sdv-arc__users').first()).toBeVisible();
+  const result = await new AxeBuilder({ page }).include('.sdv-arc').withTags(['wcag2aa']).analyze();
+  expect(result.violations).toEqual([]);
+});
+
+test('paused concept captions retain contrast across light and dark themes', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('concepts/load-balancer/');
+  const figure = page.locator('figure.sdv-concept');
+  await figure.getByRole('radio', { name: 'With', exact: true }).check();
+  await figure.getByRole('button', { name: 'Next step' }).click();
+  for (const colorScheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', colorScheme);
+    const result = await new AxeBuilder({ page })
+      .include('figure.sdv-concept')
+      .withTags(['wcag2aa'])
+      .analyze();
+    expect(result.violations).toEqual([]);
+    await expect(figure.locator('[data-state="with"] .sdv-concept__captions li').nth(1)).toHaveCSS(
+      'opacity',
+      '1',
+    );
+  }
+});
 
 async function openEstimator(page: Page) {
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -215,7 +245,7 @@ async function cumulativeLayoutShift(page: Page) {
 }
 
 test.describe('type and tokens', () => {
-  test('body text uses Inter and code uses JetBrains Mono within the font budget', async ({ page }) => {
+  test('body and code use native font stacks without downloading fonts', async ({ page }) => {
     const fontBytes: Promise<number>[] = [];
     page.on('response', (response) => {
       if (response.request().resourceType() === 'font') fontBytes.push(response.body().then((b) => b.length));
@@ -227,35 +257,53 @@ test.describe('type and tokens', () => {
       return {
         body: getComputedStyle(document.body).fontFamily,
         code: code ? getComputedStyle(code).fontFamily : '',
-        loaded: [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family),
       };
     });
-    expect(fonts.body).toContain('Inter Variable');
-    expect(fonts.code).toContain('JetBrains Mono Variable');
-    expect(fonts.loaded.map((f) => f.replaceAll('"', ''))).toContain('Inter Variable');
+    expect(fonts.body).toContain('Segoe UI');
+    expect(fonts.code).toContain('Consolas');
     const total = (await Promise.all(fontBytes)).reduce((sum, n) => sum + n, 0);
-    expect(total).toBeGreaterThan(0);
-    expect(total).toBeLessThanOrEqual(120 * 1024);
+    expect(total).toBe(0);
   });
 
-  test('the head preloads Inter and sets a theme color per scheme', async ({ page }) => {
+  test('the head avoids unused font preloads and sets a theme color per scheme', async ({ page }) => {
     await page.goto('');
-    await expect(page.locator('link[rel="preload"][as="font"][href*="inter-latin-wght-normal"]')).toHaveCount(
-      1,
-    );
+    await expect(page.locator('link[rel="preload"][as="font"]')).toHaveCount(0);
     await expect(page.locator('meta[name="theme-color"]')).toHaveCount(2);
   });
 
-  for (const [theme, background] of [
-    ['dark', 'rgb(94, 92, 230)'],
-    ['light', 'rgb(79, 70, 229)'],
-  ] as const) {
-    test(`the primary call to action is white on the accent in the ${theme} theme`, async ({ page }) => {
+  for (const theme of ['dark', 'light'] as const) {
+    test(`the primary call to action has readable contrast in the ${theme} theme`, async ({ page }) => {
       await useTheme(page, theme);
       await page.goto('');
-      const cta = page.locator('.sl-link-button.primary').first();
-      await expect(cta).toHaveCSS('color', 'rgb(255, 255, 255)');
-      await expect(cta).toHaveCSS('background-color', background);
+      const cta = page.getByRole('link', { name: 'Start with fundamentals', exact: true });
+      const hex = (rgb: string) => {
+        const channels = rgb.match(/\d+/g)?.slice(0, 3);
+        if (channels?.length !== 3) throw new Error(`Unsupported computed color: ${rgb}`);
+        return `#${channels.map((value) => Number(value).toString(16).padStart(2, '0')).join('')}`;
+      };
+      for (const state of ['rest', 'hover', 'focus']) {
+        if (state === 'hover') await cta.hover();
+        if (state === 'focus') {
+          await cta.press('Tab');
+          await page.keyboard.press('Shift+Tab');
+          await expect(cta).toBeFocused();
+        }
+        const colors = await cta.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return {
+            foreground: style.color,
+            background: style.backgroundColor,
+            outline: style.outlineColor,
+            outlineStyle: style.outlineStyle,
+            page: getComputedStyle(document.body).backgroundColor,
+          };
+        });
+        expect(contrast(hex(colors.foreground), hex(colors.background)), state).toBeGreaterThanOrEqual(4.5);
+        if (state === 'focus') {
+          expect(colors.outlineStyle).toBe('solid');
+          expect(contrast(hex(colors.outline), hex(colors.page))).toBeGreaterThanOrEqual(3);
+        }
+      }
     });
   }
 
