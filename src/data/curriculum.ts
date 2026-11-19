@@ -219,13 +219,14 @@ const modules: ModuleInput[] = [
   {
     id: 'scaling',
     number: 2,
-    title: 'Scaling the URL shortener',
-    summary: 'Grow from one user to 100 million by adding one component at a time.',
-    example: 'URL shortener',
+    title: 'Scaling systems',
+    summary: 'Distribute traffic, cache work, and scale storage across systems with different workloads.',
+    example: 'Web services, content delivery and distributed storage',
+    sharedExample: false,
     lessons: [
       {
         id: 'scaling/load-balancing',
-        title: 'The server melts',
+        title: 'Load balancing',
         summary: 'Scale up, scale out, and spread traffic with a load balancer.',
         minutes: 27,
         difficulty: 1,
@@ -243,7 +244,7 @@ const modules: ModuleInput[] = [
         id: 'scaling/cdn',
         title: 'CDNs',
         summary: 'Move bytes closer to people so distance stops dominating latency.',
-        minutes: 21,
+        minutes: 22,
         difficulty: 1,
         buildsOn: ['scaling/caching', 'foundations/what-happens-when-you-click'],
       },
@@ -492,7 +493,7 @@ const modules: ModuleInput[] = [
     number: 6,
     title: 'Case studies',
     summary:
-      'Fourteen products. The two sho.rt cases put a finished module under load, and the other twelve each turn on one constraint that dominates the design. Start each one as soon as you finish the module it builds on. Beginner route: Shortener at scale and Shortener bad day, then News feed and Notifications, then Ticketing, Payments and Chat, then Video streaming, Search, Ride sharing, Metrics and Collaborative editor. The beginner route is an order. Open the next case only after the Best after module on its card. File sync and Key-value store are extra cases off the route.',
+      'Apply reusable patterns to fourteen real systems. Choose a case that matches your interests and check its prerequisites; each case stands on its own.',
     brief:
       "Apply each module to real products, from short links and chat to streaming and search. Check each case's prerequisites.",
     example: 'A different system per lesson',

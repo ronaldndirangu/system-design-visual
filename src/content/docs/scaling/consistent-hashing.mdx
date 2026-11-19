@@ -157,6 +157,8 @@ export const ringSteps = [
 
 <Recall questions={recall} />
 
+Limit data movement in cache clusters and key-value stores when nodes join or leave.
+
 <Objectives>
 
 - Explain why hash mod N moves most keys when N changes, and how a hash ring moves only the arc a new shard covers.
@@ -168,7 +170,7 @@ export const ringSteps = [
 
 ## The failure: mod N moves almost everything
 
-The [sharding lesson](../sharding/) placed each link with `shard = hash(code) mod N`. The spread was even, and the
+**Worked example: sharded URL shortener data.** The [sharding lesson](../sharding/) placed each link with `shard = hash(code) mod N`. The spread was even, and the
 trouble came when N changed. Going from 4 shards to 5 moved 188 of 240 links (78%), while the new shard needed only its
 fair share: 1 link in 5.
 
@@ -339,8 +341,8 @@ range.
 
 </KeyTakeaways>
 
-The URL shortener now spreads its links across shards and adds a shard without a long migration. The next module keeps
-it working when those parts slow down or fail, starting with [timeouts](../../reliability/timeouts/).
+Apply placement in the [distributed storage learning path](../../journeys/distributed-storage/) or
+[search engines learning path](../../journeys/search/). Continue to failure handling with [timeouts](../../reliability/timeouts/).
 
 <Quiz client:visible questions={quiz} />
 

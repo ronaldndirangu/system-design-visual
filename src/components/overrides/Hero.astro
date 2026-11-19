@@ -1,9 +1,8 @@
 ---
 import { LinkButton } from '@astrojs/starlight/components';
 import Default from '@astrojs/starlight/components/Hero.astro';
-import { firstLesson } from '../../data/coursePath';
-import { lessonHref, withBase } from '../../lib/paths';
-import ConceptFigure from '../concepts/ConceptFigure.astro';
+import { withBase } from '../../lib/paths';
+import ContinueLesson from '../lesson/ContinueLesson.astro';
 
 const route = Astro.locals.starlightRoute;
 const isHome = route.id === '';
@@ -15,26 +14,16 @@ const title = hero?.title ?? route.entry.data.title;
   isHome ? (
     <div class="sdv-hero">
       <div class="sdv-hero__copy">
-        <p class="sdv-hero__kicker">A free, visual, hands-on course</p>
+        <p class="sdv-hero__kicker">System design, step by step</p>
         <h1 id="_top" data-page-title set:html={title} />
         {hero?.tagline && <p class="sdv-hero__tagline" set:html={hero.tagline} />}
         <div class="sdv-hero__actions">
-          {firstLesson && (
-            <LinkButton href={lessonHref(firstLesson.id)} icon="right-arrow">
-              Start with one request
-            </LinkButton>
-          )}
-          <LinkButton href={withBase('/concepts/')} variant="minimal">
-            Browse core concepts
+          <ContinueLesson prominent />
+          <LinkButton href={withBase('/journeys/')} variant="minimal">
+            Explore learning paths
           </LinkButton>
         </div>
-        <p class="sdv-hero__note">Free. No account needed. Progress stays in this browser.</p>
-      </div>
-      <div class="sdv-hero__concept">
-        <ConceptFigure slug="load-balancer" id="hero" compact />
-        <a class="sdv-hero__concept-link" href={withBase('/concepts/load-balancer/')}>
-          How a load balancer works
-        </a>
+        <p class="sdv-hero__note">Free to learn. No account. Progress stays in your browser.</p>
       </div>
     </div>
   ) : (

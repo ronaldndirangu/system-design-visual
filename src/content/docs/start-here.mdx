@@ -5,26 +5,23 @@ description: What you will learn, how each lesson is built, and how to get the m
 
 import ContinueLesson from '../../components/lesson/ContinueLesson.astro';
 import ProgressReset from '../../components/lesson/ProgressReset';
+import { conceptMetadata } from '../../data/conceptMetadata';
 import StudyPlans from '../../components/lesson/StudyPlans.astro';
-import { LinkButton } from '@astrojs/starlight/components';
-import { firstLesson } from '../../data/coursePath';
-import { lessonHref } from '../../lib/paths';
 
 System design is the craft of choosing components (servers, caches, databases, queues) and wiring them together so a product
 stays fast and correct as more people use it. This course teaches it by letting you **watch systems fail** and then fix them
 with your own hands.
 
-## Who it is for
-
-- Developers who build features and want to understand what happens after their code ships.
-- Students and career switchers preparing for system design interviews.
-- Anyone who has heard "just add a cache" and wants to know when that advice is wrong.
-
 You need basic programming knowledge. You do not need any cloud account, and nothing here asks you to sign up.
+
+<ContinueLesson prominent />
 
 ## How each lesson is built
 
-Every lesson follows the same beats, so you always know where you are.
+Predict what will happen, test one change, then explain the tradeoff. Use the quiz and design challenge to check your understanding.
+
+<details>
+<summary>Inside a longer lesson</summary>
 
 1. **Recall.** When a lesson builds on earlier ones, it opens with a few questions on what you already learned, with links
    back if an answer feels shaky.
@@ -42,14 +39,19 @@ takes 20 to 30 minutes. Split it into two sittings if you like: read up to the s
 challenge. **Quick cards** take 7 to 11 minutes: short reference pages, such as the design checklist, that end with a
 short quiz. Case studies take 20 to 50 minutes.
 
-## One running example
+</details>
 
-The first three modules grow a single product, a **URL shortener** like `sho.rt/abc123`, from a weekend project to a
-service with 100 million users. Each lesson adds one component to the same diagram, so you can always see why it exists.
+## Choose a learning path
 
-Later modules switch to examples that fit their problems better: a click analytics pipeline for queues and streams, a
-shopping cart for consistency, and fourteen case studies, each chosen for one constraint that dominates its design. The
-AI systems module builds a customer support assistant.
+[Learning paths](../journeys/) connect short visual concepts to **search engines, distributed storage, chat and feeds**.
+Start with latency, availability and scaling, then follow the decisions your chosen system needs. Each stage explains
+the problem, a design decision and its cost. Each path ends with a case study that applies those concepts to a system.
+Shared concepts count across paths.
+
+The longer course moves from foundations to reusable patterns, then system case studies. **Scaling systems** teaches
+load balancing, caching, CDNs, object storage, replication, sharding and rebalancing across different workloads.
+Clearly labeled URL shortener examples illustrate some decisions; its full designs live in the shortener case studies.
+Later modules use analytics pipelines, shopping carts and a customer support assistant. You can freely explore both paths.
 
 ## The simulations are honest models
 
@@ -58,34 +60,23 @@ produce the same result. They leave out jitter, garbage collection pauses, noisy
 details. They keep the direction and shape of real behavior honest: what rises, what falls, and where a curve bends.
 When a model simplifies something important, the lesson says so.
 
-## Study plans
+## Optional study schedules
 
-The course map runs in order, and that order works for most people. If you have a fixed amount of time, pick a plan
-instead. Each one keeps the core path and fits every sitting inside the time it names.
+If you prefer fixed-length sessions, these schedules organize the same course lessons by available time.
 
 <StudyPlans />
 
 ## Your progress
 
-Mark a lesson complete at the bottom of its page. Quiz scores and the last lesson you opened save too, so the course
-map and this page can send you to the next core lesson you have not finished. Progress lives in this browser's local
+Mark a deeper lesson or scenario complete at the bottom of its page. A perfect quick check marks a visual concept
+mastered; an incomplete score remains attempted. Practice again explicitly, or revisit questions in the review queue.
+Missed questions enter review immediately and correct answers return tomorrow. Your latest concept check, best score,
+chosen learning path and last lesson save too, so the home page can suggest your next step. Progress lives in this browser's local
 storage, so it stays on this device and nobody else can see it. Export it to a file to keep a copy or move it to
 another browser. The file also holds your review schedule, checkpoint scores and practice rounds.
 
-<ContinueLesson />
+<ProgressReset metadata={conceptMetadata} client:visible />
 
-<ProgressReset client:visible />
-
-## Where to go next
-
-- Open the [course map](../curriculum/) to see every module.
-- Learn the [visual language](../visual-language/) used in every diagram.
-- Keep the [reference sheet](../reference/) open for latency numbers, sizes, and availability math.
-
-{firstLesson && (
-  <p class="not-content">
-    <LinkButton href={lessonHref(firstLesson.id)} icon="right-arrow">
-      Start learning: {firstLesson.title}
-    </LinkButton>
-  </p>
-)}
+For quick lookup, use the [glossary](../glossary/), [estimation reference](../reference/) or
+[diagram key](../visual-language/). Each module has a printable summary and an optional checkpoint on the
+[course map](../curriculum/). For interview practice, choose a prompt in [Interview preparation](../topics/).

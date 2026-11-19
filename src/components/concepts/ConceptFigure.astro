@@ -58,9 +58,14 @@ const With = scene.with;
       <ol class="sdv-concept__captions">{entry.states.with.captions.map((caption) => <li>{keepNumbersWithWords(caption)}</li>)}</ol>
     </div>
   </div>
+  <div class="sdv-concept__steps" aria-label="Animation steps">
+    <button type="button" class="sdv-button" data-action="previous" disabled>Previous step</button>
+    <span data-step-status aria-live="polite">Read at your pace</span>
+    <button type="button" class="sdv-button" data-action="next">Next step</button>
+  </div>
   {entry.illustrative && <p class="sdv-concept__fine">{ILLUSTRATIVE_NOTE}</p>}
 </figure>
-<noscript><style is:inline>.sdv-concept__controls{display:none}</style></noscript>
+<noscript><style is:inline>.sdv-concept__controls,.sdv-concept__steps{display:none}</style></noscript>
 
 <script>
   import { setupConceptFigures } from './player';

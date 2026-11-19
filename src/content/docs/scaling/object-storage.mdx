@@ -59,7 +59,8 @@ export const quiz = [
 
 ## Buckets and keys
 
-Each sho.rt link has a 200 KB preview and a QR image, 400 TB in all. As database blobs, they would slow backups.
+**Worked example: shortener previews.** Each sho.rt link has a 200 KB preview and a QR image, totaling 400 TB.
+Database blobs would slow backups.
 
 Object storage, such as Amazon S3, Azure Blob Storage, or Google Cloud Storage, keeps files called objects in buckets.
 You address each object by a key such as `previews/bATJ4g.png` and read, write, or delete it whole. That limit lets the

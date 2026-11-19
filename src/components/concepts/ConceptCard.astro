@@ -1,0 +1,20 @@
+---
+import type { Concept } from '../../data/concepts';
+import { withBase } from '../../lib/paths';
+import { loadScene } from './scenes';
+import { keepNumbersWithWords } from './text';
+
+interface Props {
+  entry: Concept;
+}
+const { entry } = Astro.props;
+const Scene = (await loadScene(entry.slug)).with;
+---
+
+<a class="sdv-card sdv-concept-card" href={withBase(`/concepts/${entry.slug}/`)}>
+  <span class="sdv-concept-card__thumb">
+    <Scene idPrefix={`sdv-card-${entry.slug}`} thumb />
+  </span>
+  <span class="sdv-concept-card__title">{entry.title}</span>
+  <span class="sdv-concept-card__text">{keepNumbersWithWords(entry.definition)}</span>
+</a>

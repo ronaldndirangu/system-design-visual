@@ -6,13 +6,6 @@ export interface CoursePage {
   title: string;
 }
 
-/** Orientation pages come before every lesson. */
-export const introPages: CoursePage[] = [
-  { id: 'start-here', title: 'How this course works' },
-  { id: 'curriculum', title: 'Course map' },
-  { id: 'visual-language', title: 'Visual language' },
-];
-
 /** Case studies sit off the concept path; each one surfaces after the module named by its bestAfter. */
 const CASE_MODULE = 'case-studies';
 
@@ -23,8 +16,8 @@ export const coreLessons: Lesson[] = curriculum
   .filter((module) => module.id !== CASE_MODULE)
   .flatMap((module) => module.lessons.filter((lesson) => !lesson.optional));
 
-/** The one learning path that Next, Previous, and the course start follow. */
-export const coursePath: CoursePage[] = [...introPages, ...coreLessons.map(toPage)];
+/** The deeper-course lesson sequence used by Continue and lesson navigation. */
+export const coursePath: CoursePage[] = coreLessons.map(toPage);
 
 export const firstLesson = coreLessons[0];
 
@@ -45,17 +38,24 @@ export function moduleClosedBy(id: string): string | undefined {
   return curriculum.find((module) => module.id !== CASE_MODULE && lastCoreLessonOf(module.id)?.id === id)?.id;
 }
 
-export interface ModuleCheckpoint {
+export interface ModuleResource {
   /** Site path without the base, so callers apply withBase. */
   href: string;
   title: string;
 }
 
 /** The optional checkpoint quiz for a module, offered where it ends and on the course map. */
-export function checkpointFor(moduleId: string): ModuleCheckpoint | undefined {
+export function checkpointFor(moduleId: string): ModuleResource | undefined {
   const module = curriculum.find((candidate) => candidate.id === moduleId);
   if (!module) return undefined;
   return { href: `/checkpoints/${module.id}/`, title: `Checkpoint ${module.number}: ${module.title}` };
+}
+
+export function moduleSummaryFor(moduleId: string): ModuleResource | undefined {
+  const module = curriculum.find((candidate) => candidate.id === moduleId);
+  return module
+    ? { href: `/cheat-sheets/${module.id}/`, title: `Module summary: ${module.title}` }
+    : undefined;
 }
 
 export interface PathNeighbours {

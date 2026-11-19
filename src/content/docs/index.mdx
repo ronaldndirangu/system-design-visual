@@ -1,74 +1,39 @@
 ---
 title: System Design, Visually
-description: A free, visual, hands-on course. Start with a link shortener and 100 users, then follow it toward 100 million as traffic, data and failures force new decisions.
+description: Learn system design visually, from shared basics to search engines, distributed storage, chat and social feeds.
 template: splash
 hero:
-  title: Your app works. Then it gets popular.
-  tagline: New to system design? Grow a link shortener from 100 users toward 100 million. Learn the basics, handle scale and failure, then design real products. Predict, test and defend each decision.
+  title: Small ideas. Real systems.
+  tagline: Start with one visual concept. Learn to scale it, handle failure and apply it to search engines, distributed storage, chat or feeds.
 ---
 
-import ConceptCards from '../../components/concepts/ConceptCards.astro';
-import CourseJourney from '../../components/landing/CourseJourney';
-import CurriculumMap from '../../components/landing/CurriculumMap.astro';
-import { journeyLessons } from '../../components/landing/journeyLessons';
-import ContinueLesson from '../../components/lesson/ContinueLesson.astro';
-import { firstLesson } from '../../data/coursePath';
-import { lessonHref, withBase } from '../../lib/paths';
+import ConceptCard from '../../components/concepts/ConceptCard.astro';
+import SystemJourneys from '../../components/landing/SystemJourneys.astro';
+import { concept, concepts } from '../../data/concepts';
+import { foundations } from '../../data/journeys';
+import { withBase } from '../../lib/paths';
 
-<section class="sdv-landing not-content" aria-labelledby="core-concepts">
-  <h2 id="core-concepts">Core concepts</h2>
-  <p class="sdv-section-lead">One idea per page. Play the picture, then compare life without it and with it.</p>
-  <ConceptCards compact headingLevel={3} />
+<section class="sdv-landing not-content" aria-labelledby="learn-fundamentals">
+  <h2 id="learn-fundamentals">Learn the fundamentals</h2>
+  <p class="sdv-section-lead">Start with these three visual ideas. Understand speed, availability and capacity before choosing a system.</p>
+  <ul class="sdv-concept-cards__grid sdv-fundamentals-grid">
+    {foundations.concepts.map((slug) => <li><ConceptCard entry={concept(slug)} /></li>)}
+  </ul>
+  <p><a href={withBase('/concepts/')}>Explore all {concepts.length} concepts</a></p>
 </section>
 
-<section class="sdv-landing not-content" aria-labelledby="journey">
-  <h2 id="journey">Every fix raises the next question.</h2>
-  <p class="sdv-section-lead">
-    Pick a stage to see the problem it brings, the design that answers it and what that design costs.
-  </p>
-  <CourseJourney client:visible lessons={journeyLessons} />
-  <p class="sdv-journey__note">
-    User counts are story milestones. Real designs depend on request patterns and reliability goals more than on a
-    headcount.
-  </p>
+<section class="sdv-landing not-content" aria-labelledby="system-journeys">
+  <h2 id="system-journeys">Choose a system. Apply what you learned.</h2>
+  <p class="sdv-section-lead">A learning path builds the concepts in sequence and ends with a case study that applies them.
+    Already know the basics? Open the case study directly.</p>
+  <SystemJourneys />
 </section>
 
-<section class="sdv-landing not-content" aria-labelledby="make-the-call">
-  <h2 id="make-the-call">Make the call. See the consequence.</h2>
+<section class="sdv-landing sdv-course-entry not-content" aria-labelledby="start-small">
+  <h2 id="start-small">Go deeper at your pace.</h2>
   <p class="sdv-section-lead">
-    Predict before the reveal. Replay the same traffic with one change. Compare speed, cost and failure risk. Then
-    explain your design.
+    Explore the full course for deeper lessons, simulations and practice, from Scaling systems to reliability and distributed data.
   </p>
-  <ol class="sdv-beats">
-    <li>
-      <strong>Predict</strong>
-      <span>Commit to what happens next before the simulation shows you.</span>
-    </li>
-    <li>
-      <strong>Test</strong>
-      <span>Change one thing, replay the same traffic and read the numbers.</span>
-    </li>
-    <li>
-      <strong>Defend</strong>
-      <span>Weigh what the fix costs and explain the design in your own words.</span>
-    </li>
-  </ol>
-  <p>Quizzes explain every answer. Challenges ask you to use the idea yourself.</p>
-</section>
-
-<section class="sdv-landing not-content" aria-labelledby="start-small">
-  <h2 id="start-small">Start small. Keep going.</h2>
-  <p class="sdv-section-lead">
-    Learn the foundations, grow the shortener, then apply the same reasoning to chat, real products and AI systems.
-  </p>
-  {firstLesson && (
-    <p class="sdv-start__first">
-      <a href={lessonHref(firstLesson.id)}>First lesson: {firstLesson.title}</a>
-      <span class="sdv-badge sdv-badge--neutral">{firstLesson.minutes} min</span>
-    </p>
-  )}
-  <ContinueLesson />
-  <CurriculumMap variant="summary" headingLevel={3} />
   <p class="sdv-start__more">
     <a href={withBase('/curriculum/')}>Explore the full course map.</a>
   </p>

@@ -7,12 +7,13 @@ what happens, then lets you play with an honest simulation until the fix makes s
 
 ## What is inside
 
-- **A full course of 65 lessons in nine modules**: thinking in systems, foundations, scaling, reliability, async and
+- **A full course in nine modules**: thinking in systems, foundations, scaling, reliability, async and
   event driven systems, distributed data, fourteen case studies, AI systems, and interview practice. Each case study
   names the module it builds on.
-- **One running example for the scaling arc**: a URL shortener grows from a single server to 100 million users, gaining
-  one component per lesson (load balancers, caches, read replicas, shards). Later modules switch to examples that fit
-  the workload: chat for ordering, news feed for fan out, payments for idempotency and sagas.
+- **Fundamentals before systems**: start with latency and throughput, availability and scaling, then follow a learning
+  path through search engines, distributed storage, chat or social feeds. Each path ends with an applied case study.
+- **Reusable scaling patterns**: load balancing, caching, content delivery, object storage, replication, sharding and
+  rebalancing apply across workloads. Labeled shortener examples remain alongside dedicated shortener case studies.
 - **Quick cards**, such as the design checklist: short reference pages of ten minutes or less.
 - **Interactive simulations** on every lesson. Physics-driven requests pile into server queues and spill over when a
   server melts. A cache warms up under Zipf traffic. Replicas serve stale reads. A hash ring reshuffles keys as shards
@@ -20,6 +21,8 @@ what happens, then lets you play with an honest simulation until the fix makes s
 - **The same lesson rhythm every time:** objectives, a failure hook, a prediction, a step-by-step diagram with an
   analogy, a simulation, a trade-off table, a quiz that explains every answer, and a design challenge.
 - **Progress saved on this device** in `localStorage`, with a reset control.
+- **Focused study tools**: spaced review for answered questions, summaries beside each module, interview preparation
+  under Practice, and quick lookup for terms, estimation numbers and diagram symbols.
 
 Every simulation runs on a small deterministic model (seeded random numbers), and every visual has a live text readout,
 keyboard controls, and a reduced motion fallback.

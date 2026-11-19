@@ -1,16 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { withBase } from '../../lib/paths';
 import {
-  isComplete,
   lessonProgress,
   questionSetFingerprint,
   readProgress,
+  recordConceptQuiz,
   recordQuiz,
-  setComplete,
 } from '../../lib/progress';
+import { recordQuizCards } from '../../lib/review';
 import { ToneBadge } from '../sim/StatTable';
-import { UiIcon } from '../viz/icons';
 import { ChoiceError, ChoiceList, useChoiceCard } from './ChoiceCard';
-import { useProgress } from './useProgress';
+import { useProgress, useProgressPersistent } from './useProgress';
 
 export interface QuizOption {
   text: string;
@@ -45,81 +45,132 @@ export default function Quiz({
   questions,
   title = 'Check your understanding',
   record = true,
+  conceptId,
+  fingerprint,
 }: {
   questions: QuizQuestion[];
   title?: string;
   /** Save the score and missed questions to lesson progress. Recall quizzes set this to false. */
   record?: boolean;
+  conceptId?: string;
+  fingerprint?: string;
 }) {
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [lesson, setLesson] = useState<LessonContext | null>(null);
   const progress = useProgress();
-  const questionSet = useMemo(() => questionSetFingerprint(questions), [questions]);
+  const persistent = useProgressPersistent();
+  const [practicing, setPracticing] = useState(false);
+  const listRef = useRef<HTMLOListElement>(null);
+  const focusPractice = useRef(false);
+  const questionSet = useMemo(
+    () => fingerprint ?? questionSetFingerprint(questions),
+    [questions, fingerprint],
+  );
+  const saved = conceptId && progress ? lessonProgress(progress, conceptId) : undefined;
+  const last = saved?.quizLast;
+  const currentResult = last?.set === questionSet;
+  const showSaved = Boolean(last && !practicing);
   const answered = questions.filter((question) => question.id in answers).length;
   const score = questions.filter((question) => {
     const answer = answers[question.id];
     return answer !== undefined && question.options[answer]?.correct;
   }).length;
   const finished = answered === questions.length;
-  const done = lesson !== null && progress !== null && isComplete(progress, lesson.id);
 
   useEffect(() => {
-    if (record) setLesson(readLessonContext());
-  }, [record]);
+    if (practicing && focusPractice.current) {
+      focusPractice.current = false;
+      listRef.current?.querySelector('input')?.focus();
+    }
+  }, [practicing]);
+
+  useEffect(() => {
+    if (record) {
+      setLesson(
+        conceptId
+          ? { id: conceptId, missedBefore: new Set(lessonProgress(readProgress(), conceptId).missed) }
+          : readLessonContext(),
+      );
+    }
+  }, [record, conceptId]);
 
   useEffect(() => {
     if (!lesson || answered !== questions.length) return;
     const missed = questions
       .filter((question) => !question.options[answers[question.id] ?? -1]?.correct)
       .map((question) => question.id);
-    recordQuiz(lesson.id, questions.length - missed.length, questions.length, missed, questionSet);
-  }, [lesson, answers, answered, questions, questionSet]);
+    if (conceptId) {
+      recordConceptQuiz(lesson.id, questions.length - missed.length, questions.length, missed, questionSet);
+      recordQuizCards(
+        questions.map((question) => question.id),
+        missed,
+      );
+    } else {
+      recordQuiz(lesson.id, questions.length - missed.length, questions.length, missed, questionSet);
+    }
+  }, [lesson, answers, answered, questions, questionSet, conceptId]);
 
   return (
     <section className="sdv-quiz not-content" aria-label={title}>
       <header className="sdv-quiz__header">
         <h3 className="sdv-quiz__title">{title}</h3>
         <p aria-live="polite">
-          {finished
-            ? `Score: ${score} of ${questions.length}`
-            : `${answered} of ${questions.length} answered`}
+          {showSaved && last
+            ? `${currentResult ? 'Last check' : 'Earlier check'}: ${last.score} of ${last.total}`
+            : finished
+              ? `Score: ${score} of ${questions.length}`
+              : `${answered} of ${questions.length} answered`}
         </p>
       </header>
-      <ol className="sdv-quiz__list">
-        {questions.map((question, index) => (
-          <li key={question.id}>
-            <QuizItem
-              question={question}
-              number={index + 1}
-              missedBefore={lesson?.missedBefore.has(question.id) ?? false}
-              onAnswer={(option) => setAnswers((current) => ({ ...current, [question.id]: option }))}
-              onReset={() =>
-                setAnswers((current) => {
-                  const next = { ...current };
-                  delete next[question.id];
-                  return next;
-                })
-              }
-            />
-          </li>
-        ))}
-      </ol>
-      {finished && lesson && (
-        <div className="sdv-quiz__done">
-          <p>
-            {score} of {questions.length}.{' '}
-            {done ? 'This lesson is marked complete.' : 'Mark the lesson complete?'}
-          </p>
-          <button
-            type="button"
-            className={`sdv-button${done ? '' : ' sdv-button--primary'}`}
-            aria-pressed={done}
-            onClick={() => setComplete(lesson.id, !done)}
-          >
-            <UiIcon name="check" />
-            {done ? 'Completed' : 'Mark complete'}
-          </button>
-        </div>
+      {conceptId && (
+        <p>
+          {last
+            ? currentResult && last.score === last.total
+              ? 'Mastered on the latest check. Keep it fresh with spaced review.'
+              : currentResult
+                ? 'Attempted. Practice the missed ideas before moving on.'
+                : 'The questions have changed. Practice again to check your understanding.'
+            : 'Answer both questions correctly to master this concept.'}{' '}
+          {persistent
+            ? 'Progress stays in this browser.'
+            : 'Progress lasts for this tab only because storage is blocked.'}{' '}
+          <a href={withBase('/review/')}>Review queue</a>
+        </p>
+      )}
+      {showSaved ? (
+        <button
+          type="button"
+          className="sdv-button"
+          onClick={() => {
+            focusPractice.current = true;
+            setPracticing(true);
+          }}
+        >
+          Practice again
+        </button>
+      ) : (
+        <ol className="sdv-quiz__list" ref={listRef}>
+          {questions.map((question, index) => (
+            <li key={question.id}>
+              <QuizItem
+                question={question}
+                number={index + 1}
+                missedBefore={lesson?.missedBefore.has(question.id) ?? false}
+                onAnswer={(option) => {
+                  setPracticing(true);
+                  setAnswers((current) => ({ ...current, [question.id]: option }));
+                }}
+                onReset={() =>
+                  setAnswers((current) => {
+                    const next = { ...current };
+                    delete next[question.id];
+                    return next;
+                  })
+                }
+              />
+            </li>
+          ))}
+        </ol>
       )}
     </section>
   );

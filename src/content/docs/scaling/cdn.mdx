@@ -134,6 +134,8 @@ export const quiz = [
 
 <Recall questions={recall} />
 
+CDNs serve cacheable content near users, reducing distance and origin load.
+
 <Objectives>
 
 - Estimate how distance sets latency: light in fiber covers about 200 km per millisecond one way, and a fresh click pays
@@ -147,7 +149,7 @@ export const quiz = [
 
 ## The failure: distance sets the floor
 
-The shortener now serves 3 million users on five continents. The servers in Virginia answer a redirect in 2 ms, and the
+**Worked example: a global URL shortener.** It serves 3 million users on five continents. Servers in Virginia answer a redirect in 2 ms, and the
 cache keeps the database calm. Yet people in Sydney say every new link they open feels sluggish.
 
 The server is fast. The light is slow. Light in fiber covers about **200 km per millisecond**, one way (about two

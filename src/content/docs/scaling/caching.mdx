@@ -176,6 +176,8 @@ export const quiz = [
 
 <Recall questions={recall} />
 
+Reuse popular results in search, feeds and other read-heavy systems.
+
 <Objectives>
 
 - Explain cache hits, misses, and hit ratio, and why skewed popularity makes small caches powerful.
@@ -187,10 +189,10 @@ export const quiz = [
 
 ## The failure: the database does all the work
 
-The shortener now runs on three servers behind a [load balancer](../load-balancing/). Every click still asks the
-database for the same few viral links, thousands of times a second. The database's disk and CPU max out, and redirects
-slow to a crawl. The [access pattern](../../thinking/access-patterns/) already told us where to look: reads outnumber
-writes 100 to 1, and a few links get most of the reads.
+**Worked example: a URL shortener.** Three [load-balanced servers](../load-balancing/) repeatedly read the same viral
+links, thousands of times per second. The database's disk and CPU max out, slowing redirects.
+The [access pattern](../../thinking/access-patterns/) explains why: reads outnumber writes 100 to 1, and a few links
+get most reads.
 
 <Predict
   client:visible

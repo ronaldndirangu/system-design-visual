@@ -1,6 +1,6 @@
 ---
-import { casesAfter, checkpointFor, moduleClosedBy, pathNeighbours } from '../../data/coursePath';
-import { difficultyLabels, findModule } from '../../data/curriculum';
+import { casesAfter, checkpointFor, moduleClosedBy, moduleSummaryFor } from '../../data/coursePath';
+import { difficultyLabels } from '../../data/curriculum';
 import { lessonHref, withBase } from '../../lib/paths';
 
 interface Props {
@@ -12,8 +12,7 @@ const { lessonId } = Astro.props;
 const moduleId = moduleClosedBy(lessonId);
 const cases = moduleId ? casesAfter(moduleId) : [];
 const checkpoint = moduleId ? checkpointFor(moduleId) : undefined;
-const moduleTitle = moduleId ? findModule(moduleId)?.title : undefined;
-const next = pathNeighbours(lessonId)?.next;
+const summary = moduleId ? moduleSummaryFor(moduleId) : undefined;
 const show = cases.length > 0 || checkpoint !== undefined;
 ---
 
@@ -21,12 +20,12 @@ const show = cases.length > 0 || checkpoint !== undefined;
   show && (
     <section class="sdv-apply not-content" aria-labelledby="sdv-apply-title">
       <h2 id="sdv-apply-title" class="sdv-apply__title">
-        Apply it now
+        Finish this module
       </h2>
       <p class="sdv-apply__intro">
         {cases.length > 0
-          ? `You finished ${moduleTitle}. These case studies use what it taught. Take one now, or continue with the next concept.`
-          : `You finished ${moduleTitle}. Check what stuck, or continue with the next concept.`}
+          ? 'Review the key points, check your understanding, or apply the ideas in a case study.'
+          : 'Review the key points or check your understanding before continuing.'}
       </p>
       {cases.length > 0 && (
         <ul class="sdv-apply__list">
@@ -45,9 +44,9 @@ const show = cases.length > 0 || checkpoint !== undefined;
           Optional: <a href={withBase(checkpoint.href)}>{checkpoint.title}</a>
         </p>
       )}
-      {next && (
+      {summary && (
         <p class="sdv-apply__next">
-          Next concept: <a href={lessonHref(next.id)}>{next.title}</a>
+          <a href={withBase(summary.href)}>Review the module summary</a>
         </p>
       )}
     </section>

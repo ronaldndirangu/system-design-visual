@@ -11,7 +11,7 @@
 
 .sdv-tx__row {
   align-items: start;
-  background: color-mix(in oklab, var(--sdv-db) 8%, var(--sl-color-bg));
+  background: var(--sdv-db-soft);
   border: 1px solid color-mix(in oklab, var(--sdv-db) 45%, var(--sdv-border));
   border-radius: 0.5rem;
   display: flex;

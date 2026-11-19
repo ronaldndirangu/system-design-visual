@@ -1,20 +1,30 @@
 ---
 import Default from '@astrojs/starlight/components/MarkdownContent.astro';
+import { conceptMetadata } from '../../data/conceptMetadata';
 import { pathNeighbours } from '../../data/coursePath';
 import { findLesson } from '../../data/curriculum';
+import { journeys } from '../../data/journeys';
 import { lessonHref } from '../../lib/paths';
+import JourneyContext from '../landing/JourneyContext';
 import ApplyItNow from '../lesson/ApplyItNow.astro';
 import FurtherReading from '../lesson/FurtherReading.astro';
 import LessonComplete from '../lesson/LessonComplete';
 
 const { id, entry } = Astro.locals.starlightRoute;
 const lesson = findLesson(id);
-const next = lesson ? pathNeighbours(lesson.id)?.next : undefined;
+const scenarioJourney = journeys.find((journey) => journey.stages.some((stage) => stage.scenario === id));
+const next = scenarioJourney
+  ? { id: `journeys/${scenarioJourney.id}`, title: `${scenarioJourney.title} learning path` }
+  : lesson
+    ? pathNeighbours(lesson.id)?.next
+    : undefined;
 const sources = entry.data.furtherReading ?? [];
 ---
 
+{lesson && <JourneyContext pageId={id} metadata={conceptMetadata} compact client:load />}
 <Default><slot /></Default>
 {lesson && <span hidden data-lesson-id={lesson.id} />}
+{id.startsWith('concepts/') && <span hidden data-concept-id={id} />}
 {lesson && <FurtherReading sources={sources} />}
 {lesson && <ApplyItNow lessonId={lesson.id} />}
 {
@@ -22,6 +32,7 @@ const sources = entry.data.furtherReading ?? [];
     <LessonComplete
       client:visible
       lessonId={lesson.id}
+      metadata={conceptMetadata}
       title={lesson.title}
       nextHref={next ? lessonHref(next.id) : undefined}
       nextTitle={next?.title}
@@ -30,8 +41,17 @@ const sources = entry.data.furtherReading ?? [];
 }
 
 <script>
-  import { recordVisit } from '../../lib/progress';
+  import { journeyById, journeyIncludes } from '../../data/journeys';
+  import { recordGuidedVisit, recordVisit } from '../../lib/progress';
 
+  const journey = journeyById(new URLSearchParams(location.search).get('journey') ?? undefined);
   const marker = document.querySelector<HTMLElement>('span[data-lesson-id]');
-  if (marker?.dataset.lessonId) recordVisit(marker.dataset.lessonId);
+  if (marker?.dataset.lessonId) {
+    recordVisit(marker.dataset.lessonId);
+    if (journey && journeyIncludes(journey, marker.dataset.lessonId)) recordGuidedVisit(marker.dataset.lessonId, journey.id);
+  }
+  const concept = document.querySelector<HTMLElement>('span[data-concept-id]');
+  if (concept?.dataset.conceptId) {
+    recordGuidedVisit(concept.dataset.conceptId, journey && journeyIncludes(journey, concept.dataset.conceptId) ? journey.id : undefined);
+  }
 </script>

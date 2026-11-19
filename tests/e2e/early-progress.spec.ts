@@ -72,8 +72,7 @@ test.describe('phone menu', () => {
     await page.goto('foundations/unique-ids/');
     await page.getByRole('button', { name: 'Menu' }).click();
     const sidebar = page.locator('#starlight__sidebar');
-    const group = (label: string) =>
-      sidebar.locator('details').filter({ has: page.locator('summary', { hasText: label }) });
+    const group = (label: string) => sidebar.locator('summary').filter({ hasText: label }).locator('..');
 
     await expect(group('1. Foundations')).toHaveAttribute('open', '');
     await expect(sidebar.getByRole('link', { name: 'Unique IDs' })).toHaveAttribute('aria-current', 'page');

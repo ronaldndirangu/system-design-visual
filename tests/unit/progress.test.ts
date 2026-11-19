@@ -15,6 +15,8 @@ import {
   parseProgress,
   questionSetFingerprint,
   readProgress,
+  recordConceptQuiz,
+  recordGuidedVisit,
   recordQuiz,
   recordVisit,
   resetProgress,
@@ -210,6 +212,40 @@ describe('progress store', () => {
     resetProgress();
     expect(importProgress(exported, 'replace')).toEqual({ ok: true, lessons: 2 });
     expect(readProgress()).toEqual(before);
+  });
+
+  it('preserves lesson history while retaining concept attempts, mastery and guided resume through export', () => {
+    const lesson = 'thinking/anatomy-of-a-web-app';
+    const concept = 'concepts/load-balancer';
+    setComplete(lesson, true, new Date('2026-11-17T18:58:14.161Z'));
+    recordVisit(lesson);
+    recordGuidedVisit('journeys/feeds', 'feeds');
+    recordGuidedVisit(concept);
+    recordConceptQuiz(concept, 1, 2, [`${concept}/q2`], 'set', new Date('2026-11-18T00:00:00Z'));
+    expect(isComplete(readProgress(), concept)).toBe(false);
+    recordConceptQuiz(concept, 2, 2, [], 'set', new Date('2026-11-19T00:00:00Z'));
+    expect(isComplete(readProgress(), concept)).toBe(true);
+    recordConceptQuiz(
+      concept,
+      0,
+      2,
+      [`${concept}/q1`, `${concept}/q2`],
+      'set',
+      new Date('2026-11-20T00:00:00Z'),
+    );
+    expect(isComplete(readProgress(), concept)).toBe(false);
+    expect(readProgress().lessons[concept]?.quizBest?.score).toBe(2);
+    expect(readProgress().lessons[concept]?.quizLast?.score).toBe(0);
+    expect(readProgress().last).toBe(lesson);
+    const before = readProgress();
+    const exported = exportProgress();
+    resetProgress();
+    importProgress(exported, 'replace');
+    expect(readProgress()).toEqual(before);
+    recordVisit(lesson);
+    expect(readProgress().resume).toBeUndefined();
+    expect(readProgress().journey).toBe('feeds');
+    expect(readProgress().lessons[lesson]?.completedAt).toBe('2026-11-17T18:58:14.161Z');
   });
 
   describe('importing an older partial export into populated storage', () => {

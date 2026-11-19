@@ -147,6 +147,7 @@ export function hasStudyData({ progress, review, practice }: Required<StudyData>
   return (
     Object.keys(progress.lessons).length > 0 ||
     progress.last !== undefined ||
+    progress.resume !== undefined ||
     Object.keys(review.cards).length > 0 ||
     Object.keys(review.checkpoints).length > 0 ||
     practice.rounds.length > 0

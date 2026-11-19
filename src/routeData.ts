@@ -1,5 +1,6 @@
 import { defineRouteMiddleware, type StarlightRouteData } from '@astrojs/starlight/route-data';
 import { type CoursePage, pathNeighbours } from './data/coursePath';
+import { findLesson } from './data/curriculum';
 import { withBase } from './lib/paths';
 
 type SidebarEntry = StarlightRouteData['sidebar'][number];
@@ -12,10 +13,12 @@ function fixHashLinks(entries: SidebarEntry[]): void {
   }
 }
 
-/** Previous and next links follow the learning path; off-path pages rejoin it at the nearest core lesson. */
+/** Lesson completion owns the next action. Lookup pages have no arbitrary sidebar-order pagination. */
 export const onRequest = defineRouteMiddleware((context) => {
   const route = context.locals.starlightRoute;
   fixHashLinks(route.sidebar);
+  route.pagination = { prev: undefined, next: undefined };
+  if (!findLesson(route.id)) return;
   const neighbours = pathNeighbours(route.id);
   if (!neighbours) return;
   const toLink = (page: CoursePage | undefined) =>
@@ -29,6 +32,6 @@ export const onRequest = defineRouteMiddleware((context) => {
     };
   route.pagination = {
     prev: toLink(neighbours.prev),
-    next: toLink(neighbours.next),
+    next: undefined,
   };
 });

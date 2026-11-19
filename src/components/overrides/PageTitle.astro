@@ -22,8 +22,18 @@ const buildsOn = (lesson?.buildsOn ?? [])
   .map((lessonId) => findLesson(lessonId))
   .filter((found): found is Lesson => found !== undefined);
 const hasSim = lesson !== undefined && lessonStats(entry.body ?? '').sims > 0;
+const format = id.startsWith('concepts/')
+  ? 'Visual concept'
+  : id.startsWith('journeys')
+    ? 'Learning path'
+    : id.startsWith('case-studies/')
+      ? 'Case study'
+      : lesson
+        ? 'Deeper lesson'
+        : undefined;
 ---
 
+{format && <p class="sdv-overline" data-pagefind-meta={`title:${format}: ${entry.data.title}`} data-pagefind-filter={`Format:${format}`}>{format}</p>}
 {
   lesson && module && position ? (
     <div class="sdv-lesson-head not-content">

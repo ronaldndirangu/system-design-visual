@@ -4,15 +4,18 @@ const duelName = 'Simulation: Same clicks, with and without a CDN';
 
 test('/scaling/cdn/ sits between caching and object storage', async ({ page }) => {
   await page.goto('scaling/caching/');
-  await page.locator('a[rel="next"]').click();
+  await page.locator('.sdv-complete').getByRole('link', { name: 'Next: CDNs', exact: true }).click();
   await expect(page).toHaveURL(/\/scaling\/cdn\/$/);
   await expect(page.getByRole('heading', { level: 1, name: 'CDNs' })).toBeVisible();
   await expect(page.locator('.sdv-arc__stages [aria-current="step"]')).toContainText('CDN');
   await expect(page.locator('.sdv-arc svg[role="img"]')).toHaveAttribute('aria-label', /CDN edge/);
 
-  await page.locator('a[rel="next"]').click();
+  await page
+    .locator('.sdv-complete')
+    .getByRole('link', { name: 'Next: Object storage', exact: true })
+    .click();
   await expect(page).toHaveURL(/\/scaling\/object-storage\/$/);
-  await page.locator('a[rel="next"]').click();
+  await page.locator('.sdv-complete').getByRole('link', { name: 'Next: Replication', exact: true }).click();
   await expect(page).toHaveURL(/\/scaling\/read-replicas\/$/);
   await expect(page.locator('.sdv-arc__stages [aria-current="step"]')).toContainText('Read replicas');
 

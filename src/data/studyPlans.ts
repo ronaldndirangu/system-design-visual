@@ -83,7 +83,7 @@ export const studyPlans: StudyPlan[] = [
     title: 'One weekend',
     pace: 'Four sittings of about two and a half hours',
     audience:
-      'You want the big picture fast. Saturday grows the URL shortener from one server to a sharded fleet. Sunday keeps it alive under failure and ends with a case study and a practice round.',
+      'You want the big picture fast. Saturday covers reusable scaling patterns, from balancing traffic to sharding data. Sunday adds failure handling, a case study and a practice round.',
     sessionMinutes: 150,
     sessions: [
       {
